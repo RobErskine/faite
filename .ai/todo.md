@@ -14,16 +14,25 @@ Plan of record: `~/.claude/plans/please-check-this-image-starry-eich.md`
 
 ## P1 — Local main loop (no backend)
 
-- [ ] Zod schema: todos, lists, labels, projects (`src/lib/schema.ts`)
-- [ ] `deriveColumn()` + timezone + workday rollover (`src/lib/scheduling.ts`)
-- [ ] Fractional indexing helpers (`src/lib/ordering.ts`)
-- [ ] **`mutate()` single write path + outbox** (`src/lib/store/mutate.ts`) — load-bearing for P3
-- [ ] IndexedDB local store
-- [ ] Calendar half (day columns + Overflow)
-- [ ] Planning half (list columns, Backlog undeletable)
-- [ ] dnd-kit: reorder within column + drag across halves
-- [ ] Quick add
-- [ ] Unit tests for `deriveColumn()` (tz boundaries, DST, rolls 0/1/3/4, workdays on/off)
+- [x] Zod schema: todos, lists, labels, projects (`src/lib/schema.ts`)
+- [x] `deriveColumn()` + timezone + workday rollover (`src/lib/scheduling.ts`)
+- [x] Fractional indexing helpers (`src/lib/ordering.ts`)
+- [x] **`mutate()` single write path + outbox** (`src/lib/store/mutate.ts`) — load-bearing for P3
+- [x] IndexedDB local store (Dexie) + reactive hooks
+- [x] CRUD repositories for todos, lists, labels, projects
+- [x] Calendar half (day columns + Overflow)
+- [x] Planning half (list columns, Backlog undeletable)
+- [x] dnd-kit: reorder within column + drag across halves
+- [x] Quick add (inline per column) + ⌘K command palette
+- [x] Todo detail sheet (full CRUD)
+- [x] 47 unit tests: scheduling, ordering, board grouping
+
+### Still open in P1
+- [ ] Browser-verify the board interactively (blocked on Chrome extension
+      permission prompt at time of writing)
+- [ ] Keyboard drag-and-drop pass — dnd-kit sensors are wired, but the
+      end-to-end keyboard reorder flow has not been exercised
+- [ ] Empty-state polish when every column is empty
 
 ## P2 — Auth
 
