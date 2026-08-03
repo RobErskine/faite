@@ -15,6 +15,8 @@ interface TodoCardProps {
   ctx: PlacementContext;
   /** Scheduled outside the visible window — shown dimmed in its list column. */
   isAway?: boolean;
+  /** Draw the drop indicator immediately above this card. */
+  showInsertionLine?: boolean;
   onToggle: (todo: Todo) => void;
   onOpen: (todo: Todo) => void;
 }
@@ -24,6 +26,7 @@ export function TodoCard({
   labels,
   ctx,
   isAway,
+  showInsertionLine,
   onToggle,
   onOpen,
 }: TodoCardProps) {
@@ -38,25 +41,47 @@ export function TodoCard({
       ref={setNodeRef}
       style={{ transform: CSS.Translate.toString(transform), transition }}
       className={cn(
-        "group flex items-start gap-2 border-b border-border/60 px-2 py-1.5",
-        "hover:bg-accent/50 focus-within:bg-accent/50",
-        isDragging && "opacity-40",
+        "group relative flex items-start gap-2 border-b border-border/60 px-2 py-1.5",
+        "transition-colors hover:bg-accent/50 focus-within:bg-accent/50",
+        // The dragged row stays in place as a faint ghost so the list does not
+        // visibly collapse out from under the cursor.
+        isDragging && "opacity-30",
         isAway && "opacity-60",
       )}
     >
       {/*
+        Insertion indicator: a solid line showing exactly where the dragged item
+        will land. Without it the column highlight tells you *which* column but
+        not *where* in it.
+      */}
+      {showInsertionLine && (
+        <span
+          aria-hidden
+          className="absolute -top-px left-0 right-0 z-10 h-0.5 rounded-full bg-primary"
+        >
+          <span className="absolute -left-0.5 -top-[3px] size-2 rounded-full bg-primary" />
+        </span>
+      )}
+
+      {/*
         Drag handle is a separate control from the card body. Making the whole
         card draggable would swallow text selection and make the checkbox
         fiddly to hit.
+
+        It stays faintly visible at rest rather than fully hidden — a control
+        that only exists on hover is undiscoverable until you happen to sweep
+        over it.
       */}
       <button
         type="button"
         className={cn(
-          "mt-0.5 cursor-grab touch-none text-muted-foreground/40 opacity-0",
-          "group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none",
-          "focus-visible:ring-2 focus-visible:ring-ring rounded",
+          "mt-0.5 touch-none rounded text-muted-foreground/30",
+          "cursor-grab active:cursor-grabbing",
+          "transition-all group-hover:text-muted-foreground",
+          "hover:bg-accent hover:text-foreground",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         )}
-        aria-label={`Reorder ${todo.title}`}
+        aria-label={`Drag to reschedule or reorder ${todo.title}`}
         {...attributes}
         {...listeners}
       >

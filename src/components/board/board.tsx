@@ -10,13 +10,15 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
+  type DragOverEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
-import { Command as CommandIcon } from "lucide-react";
+import { Command as CommandIcon, GripVertical } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { cn } from "@/lib/utils";
 import type { Todo } from "@/lib/schema";
 import { buildBoard, parseColumnId } from "@/lib/board";
 import { positionForIndex } from "@/lib/ordering";
@@ -68,6 +70,7 @@ export function Board() {
   const ctx = usePlacementContext(settings);
 
   const [activeTodo, setActiveTodo] = useState<Todo | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
   const [openTodo, setOpenTodo] = useState<Todo | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
 
@@ -95,6 +98,18 @@ export function Board() {
     [todos, lists, ctx],
   );
 
+  /**
+   * `over` is either a column or a card. Only a card gives us a precise
+   * insertion point; a column means "append to the end".
+   *
+   * The dragged card is excluded so the indicator never renders above the item
+   * being moved, which would suggest a no-op drop.
+   */
+  const overTodoId = useMemo(() => {
+    if (!overId || !activeTodo || overId === activeTodo.id) return null;
+    return parseColumnId(overId) ? null : overId;
+  }, [overId, activeTodo]);
+
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {
       setActiveTodo(todos.find((t) => t.id === event.active.id) ?? null);
@@ -102,10 +117,20 @@ export function Board() {
     [todos],
   );
 
+  const handleDragOver = useCallback((event: DragOverEvent) => {
+    setOverId(event.over ? String(event.over.id) : null);
+  }, []);
+
+  const handleDragCancel = useCallback(() => {
+    setActiveTodo(null);
+    setOverId(null);
+  }, []);
+
   const handleDragEnd = useCallback(
     async (event: DragEndEvent) => {
       const { active, over } = event;
       setActiveTodo(null);
+      setOverId(null);
       if (!over || !board) return;
 
       const todo = todos.find((t) => t.id === active.id);
@@ -178,7 +203,9 @@ export function Board() {
       sensors={sensors}
       collisionDetection={closestCorners}
       onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
+      onDragCancel={handleDragCancel}
     >
       <div className="flex h-dvh flex-col">
         {/* Calendar half */}
@@ -194,6 +221,9 @@ export function Board() {
             onOpen={setOpenTodo}
             onQuickAdd={() => {}}
             emphasis
+            isDragActive={!!activeTodo}
+            overTodoId={overTodoId}
+            rejectsDrop
           />
           {board.days.map((column) => {
             const { weekday, label } = formatDay(column.day);
@@ -211,6 +241,8 @@ export function Board() {
                 onToggle={handleToggle}
                 onOpen={setOpenTodo}
                 onQuickAdd={(title) => handleQuickAdd(title, { day: column.day })}
+                isDragActive={!!activeTodo}
+                overTodoId={overTodoId}
               />
             );
           })}
@@ -255,16 +287,29 @@ export function Board() {
                   handleQuickAdd(title, { listId: column.list.id })
                 }
                 minRows={5}
+                isDragActive={!!activeTodo}
+                overTodoId={overTodoId}
               />
             ))}
           </div>
         </div>
       </div>
 
-      <DragOverlay>
+      {/*
+        The overlay follows the cursor at a slight tilt and scale so the item
+        reads as lifted off the board rather than sliding along it.
+      */}
+      <DragOverlay dropAnimation={{ duration: 150, easing: "cubic-bezier(.2,.8,.3,1)" }}>
         {activeTodo && (
-          <div className="rounded border bg-background px-2 py-1.5 text-sm shadow-lg">
-            {activeTodo.title}
+          <div
+            className={cn(
+              "flex max-w-xs cursor-grabbing items-center gap-2 rounded-md border",
+              "bg-background px-2 py-1.5 text-sm shadow-xl ring-2 ring-primary/40",
+              "rotate-2 scale-[1.02]",
+            )}
+          >
+            <GripVertical className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+            <span className="truncate">{activeTodo.title}</span>
           </div>
         )}
       </DragOverlay>

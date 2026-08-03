@@ -25,6 +25,15 @@ interface BoardColumnProps {
   onQuickAdd: (title: string) => void;
   /** Ruled lines fill the empty space, matching the reference UI's paper feel. */
   minRows?: number;
+  /** True while any drag is in flight — used to outline candidate targets. */
+  isDragActive?: boolean;
+  /** Id of the todo the pointer is currently over, for the insertion line. */
+  overTodoId?: string | null;
+  /**
+   * Dropping here will be refused (Overflow). Styled as a rejecting target so
+   * the outcome is obvious before the pointer is released.
+   */
+  rejectsDrop?: boolean;
 }
 
 export function BoardColumn({
@@ -41,6 +50,9 @@ export function BoardColumn({
   onOpen,
   onQuickAdd,
   minRows = 8,
+  isDragActive,
+  overTodoId,
+  rejectsDrop,
 }: BoardColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id });
   const [draft, setDraft] = useState("");
@@ -59,8 +71,20 @@ export function BoardColumn({
       ref={setNodeRef}
       aria-label={typeof title === "string" ? title : undefined}
       className={cn(
-        "flex min-w-0 flex-1 flex-col transition-colors",
-        isOver && "bg-accent/40",
+        "flex min-w-0 flex-1 flex-col rounded-md transition-all",
+        // Three distinct drag states, so at a glance you can tell where a drop
+        // is possible, where it will land, and where it will be refused.
+        //   candidate — every valid column, dashed and quiet
+        //   active    — the column under the pointer, solid ring and tint
+        //   rejecting — Overflow, which refuses drops
+        isDragActive && !isOver && !rejectsDrop &&
+          "outline-dashed outline-1 outline-offset-[-2px] outline-border",
+        isOver && !rejectsDrop &&
+          "bg-primary/5 outline outline-2 outline-offset-[-2px] outline-primary",
+        isDragActive && rejectsDrop && !isOver &&
+          "outline-dashed outline-1 outline-offset-[-2px] outline-destructive/30",
+        isOver && rejectsDrop &&
+          "bg-destructive/5 outline outline-2 outline-offset-[-2px] outline-destructive/60",
       )}
     >
       <header className="flex items-baseline justify-between gap-2 px-2 pb-1">
@@ -91,11 +115,22 @@ export function BoardColumn({
               labels={labels}
               ctx={ctx}
               isAway={awayTodoIds?.has(todo.id)}
+              showInsertionLine={!rejectsDrop && overTodoId === todo.id}
               onToggle={onToggle}
               onOpen={onOpen}
             />
           ))}
         </SortableContext>
+
+        {/*
+          Hovering the column itself rather than a specific card means the item
+          lands at the end, so show the indicator there instead.
+        */}
+        {isOver && !rejectsDrop && !overTodoId && (
+          <span aria-hidden className="relative block h-0.5 rounded-full bg-primary">
+            <span className="absolute -left-0.5 -top-[3px] size-2 rounded-full bg-primary" />
+          </span>
+        )}
 
         {/* Quick add sits directly under the last item, like the reference UI. */}
         <div className="group relative flex items-center border-b border-border/60">
