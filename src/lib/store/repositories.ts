@@ -288,37 +288,56 @@ export async function deleteProject(id: string): Promise<void> {
 // Seeding
 // ---------------------------------------------------------------------------
 
+const SEED_LISTS = [
+  { slug: "backlog", name: "Backlog", isBacklog: true },
+  { slug: "brain-dump", name: "Brain Dump", isBacklog: false },
+  { slug: "grocery-list", name: "Grocery List", isBacklog: false },
+  { slug: "to-buy", name: "To Buy", isBacklog: false },
+  { slug: "to-read", name: "To Read", isBacklog: false },
+] as const;
+
+/** Deterministic id for a default list. */
+const seedListId = (slug: string) => `seed:list:${slug}`;
+
 /**
  * Create the default lists and settings on first run.
  *
- * Idempotent — safe to call on every mount.
+ * Idempotent in two independent ways, because a single guard was not enough:
+ *
+ * 1. The emptiness check runs INSIDE the transaction. Reading the count first
+ *    and then opening a transaction let two concurrent callers both observe an
+ *    empty database and both seed it — which is exactly what React StrictMode's
+ *    double-invoked effect does in development.
+ * 2. Seed rows use deterministic ids with `put`, so even a re-entrant call
+ *    upserts the same five rows instead of appending another set.
+ *
+ * The deterministic ids also pay off at P3: two devices seeding independently
+ * converge on the same rows rather than merging into ten default lists.
  */
 export async function seedIfEmpty(): Promise<void> {
   const db = getDb();
-  const existing = await db.lists.count();
-  if (existing > 0) return;
-
   const timestamp = now();
-  const names = ["Backlog", "Brain Dump", "Grocery List", "To Buy", "To Read"];
-  const positions = positionsBetween(null, null, names.length);
+  const positions = positionsBetween(null, null, SEED_LISTS.length);
 
-  await db.transaction("rw", db.lists, db.settings, db.outbox, async () => {
-    for (const [i, name] of names.entries()) {
+  await db.transaction("rw", db.lists, db.settings, async () => {
+    if ((await db.lists.count()) > 0) return;
+
+    for (const [i, seed] of SEED_LISTS.entries()) {
       const list: List = {
-        id: newId(),
+        id: seedListId(seed.slug),
         ownerId: LOCAL_OWNER_ID,
         createdAt: timestamp,
         updatedAt: timestamp,
         deletedAt: null,
-        name,
-        isBacklog: i === 0,
+        name: seed.name,
+        isBacklog: seed.isBacklog,
         position: positions[i],
         tabId: null,
         color: null,
         emoji: null,
         iconUrl: null,
       };
-      await db.lists.add(list);
+      await db.lists.put(list);
     }
 
     await db.settings.put({
@@ -332,4 +351,53 @@ export async function seedIfEmpty(): Promise<void> {
       updatedAt: timestamp,
     });
   });
+}
+
+/**
+ * Repair duplicate lists left behind by the seeding race described above.
+ *
+ * Groups surviving lists by name, keeps the oldest, moves any todos off the
+ * duplicates, and hard-deletes them. Hard deletion is correct here precisely
+ * because this only runs pre-sync: the duplicates never left this device, so
+ * there is no peer that needs a tombstone.
+ *
+ * Safe to remove once no local database predates the fix.
+ */
+export async function repairDuplicateLists(): Promise<number> {
+  const db = getDb();
+  let removed = 0;
+
+  await db.transaction("rw", db.lists, db.todos, async () => {
+    const lists = (await db.lists.toArray()).filter((l) => !l.deletedAt);
+
+    const byName = new Map<string, List[]>();
+    for (const list of lists) {
+      const group = byName.get(list.name) ?? [];
+      group.push(list);
+      byName.set(list.name, group);
+    }
+
+    for (const group of byName.values()) {
+      if (group.length < 2) continue;
+
+      // Prefer the deterministic seed row, then the oldest, as the survivor.
+      group.sort((a, b) => {
+        const aSeed = a.id.startsWith("seed:") ? 0 : 1;
+        const bSeed = b.id.startsWith("seed:") ? 0 : 1;
+        return aSeed - bSeed || a.createdAt.localeCompare(b.createdAt);
+      });
+
+      const [keeper, ...duplicates] = group;
+      for (const duplicate of duplicates) {
+        const orphans = await db.todos.where("listId").equals(duplicate.id).toArray();
+        for (const todo of orphans) {
+          await db.todos.update(todo.id, { listId: keeper.id });
+        }
+        await db.lists.delete(duplicate.id);
+        removed++;
+      }
+    }
+  });
+
+  return removed;
 }

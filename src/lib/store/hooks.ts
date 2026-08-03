@@ -6,7 +6,7 @@ import type { Label, List, Project, Settings, Todo } from "@/lib/schema";
 import { byPosition } from "@/lib/ordering";
 import { contextFromSettings, type PlacementContext } from "@/lib/scheduling";
 import { canUseDb, getDb } from "./db";
-import { LOCAL_OWNER_ID, seedIfEmpty } from "./repositories";
+import { LOCAL_OWNER_ID, repairDuplicateLists, seedIfEmpty } from "./repositories";
 
 /**
  * Reactive reads.
@@ -24,9 +24,15 @@ export function useBootstrap(): boolean {
   useEffect(() => {
     if (!canUseDb()) return;
     seedIfEmpty()
-      .then(() => setReady(true))
+      .then(repairDuplicateLists)
+      .then((removed) => {
+        if (removed > 0) {
+          console.info(`[faite] removed ${removed} duplicate list(s)`);
+        }
+        setReady(true);
+      })
       .catch((error) => {
-        console.error("[faite] failed to seed local store", error);
+        console.error("[faite] failed to prepare local store", error);
         setReady(true);
       });
   }, []);

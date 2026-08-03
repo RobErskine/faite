@@ -40,7 +40,6 @@ import {
   updateTodo,
 } from "@/lib/store/repositories";
 import { BoardColumn } from "./board-column";
-import { TodoCard } from "./todo-card";
 import { TodoSheet } from "./todo-sheet";
 import { CommandPalette } from "./command-palette";
 

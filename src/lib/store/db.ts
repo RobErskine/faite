@@ -60,3 +60,13 @@ export function getDb(): FaiteDatabase {
 export function canUseDb(): boolean {
   return typeof indexedDB !== "undefined";
 }
+
+/** Drop and recreate the database. Test-only. */
+export async function resetDbForTests(): Promise<void> {
+  if (instance) {
+    instance.close();
+    await instance.delete();
+    instance = null;
+  }
+  await getDb().open();
+}

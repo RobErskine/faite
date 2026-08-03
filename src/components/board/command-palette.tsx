@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import {
+  Command,
   CommandDialog,
   CommandEmpty,
   CommandGroup,
@@ -119,6 +120,16 @@ export function CommandPalette({
       title="Command palette"
       description="Create and manage to-dos, lists, labels, and projects"
     >
+      {/*
+        CommandDialog renders children straight into DialogContent without a
+        <Command> wrapper, so the cmdk context has to be established here or
+        CommandInput has no store to subscribe to.
+
+        shouldFilter is off in entry modes: there the input is free text (a new
+        list name), not a search query, and cmdk's built-in filtering would hide
+        the single "create" item as soon as the typed value stopped matching.
+      */}
+      <Command shouldFilter={!isEntryMode}>
       <CommandInput
         placeholder={placeholder}
         value={value}
@@ -226,6 +237,7 @@ export function CommandPalette({
           </>
         )}
       </CommandList>
+      </Command>
     </CommandDialog>
   );
 }
