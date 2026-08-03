@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildBoard, parseColumnId } from "./board";
+import { buildBoard, isColumnId, parseColumnId, preferPreciseTarget } from "./board";
 import { buildWindow } from "./scheduling";
 import type { List, Todo } from "./schema";
 import { positionsBetween } from "./ordering";
@@ -138,6 +138,45 @@ describe("buildBoard", () => {
       ctx,
     );
     expect(board.lists[0].todos.map((t) => t.id)).toEqual(["a", "b"]);
+  });
+});
+
+describe("preferPreciseTarget", () => {
+  it("returns null when nothing collides", () => {
+    expect(preferPreciseTarget([])).toBeNull();
+  });
+
+  it("prefers a card over the column containing it", () => {
+    // The pointer is inside both; the card gives a precise insertion point
+    // while the column only means "append to the end".
+    const collisions = [{ id: "day:2026-08-03" }, { id: "todo-abc" }];
+    expect(preferPreciseTarget(collisions)?.id).toBe("todo-abc");
+  });
+
+  it("falls back to the column when no card is under the pointer", () => {
+    // Empty space anywhere in a column must still be a valid drop.
+    const collisions = [{ id: "list:groceries" }];
+    expect(preferPreciseTarget(collisions)?.id).toBe("list:groceries");
+  });
+
+  it("picks the first card when several overlap", () => {
+    const collisions = [{ id: "todo-a" }, { id: "todo-b" }];
+    expect(preferPreciseTarget(collisions)?.id).toBe("todo-a");
+  });
+
+  it("treats overflow as a column, not a card", () => {
+    const collisions = [{ id: "day:overflow" }];
+    expect(preferPreciseTarget(collisions)?.id).toBe("day:overflow");
+  });
+});
+
+describe("isColumnId", () => {
+  it("distinguishes columns from todo ids", () => {
+    expect(isColumnId("day:2026-08-03")).toBe(true);
+    expect(isColumnId("day:overflow")).toBe(true);
+    expect(isColumnId("list:abc")).toBe(true);
+    // UUIDv7, the shape real todo ids take.
+    expect(isColumnId("0192f3a1-7c2e-7000-8000-abcdef123456")).toBe(false);
   });
 });
 

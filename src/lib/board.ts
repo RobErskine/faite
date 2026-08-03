@@ -31,6 +31,27 @@ export function parseColumnId(id: string): DropTarget | null {
   return null;
 }
 
+/** True when an id refers to a column rather than a todo card. */
+export function isColumnId(id: string): boolean {
+  return parseColumnId(id) !== null;
+}
+
+/**
+ * Pick the most specific droppable from a set of collisions.
+ *
+ * The pointer is usually inside both a card and the column containing it. The
+ * card is the better answer: it gives a precise insertion point, whereas the
+ * column only means "append to the end". Falling back to the column when no
+ * card is present is what makes empty space anywhere in a column a valid drop.
+ */
+export function preferPreciseTarget<T extends { id: string | number }>(
+  collisions: readonly T[],
+): T | null {
+  if (collisions.length === 0) return null;
+  const card = collisions.find((c) => !isColumnId(String(c.id)));
+  return card ?? collisions[0];
+}
+
 export interface DayColumn {
   id: string;
   day: CivilDate;

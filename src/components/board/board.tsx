@@ -7,8 +7,10 @@ import {
   KeyboardSensor,
   PointerSensor,
   closestCorners,
+  pointerWithin,
   useSensor,
   useSensors,
+  type CollisionDetection,
   type DragEndEvent,
   type DragOverEvent,
   type DragStartEvent,
@@ -20,7 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import type { Todo } from "@/lib/schema";
-import { buildBoard, parseColumnId } from "@/lib/board";
+import { buildBoard, parseColumnId, preferPreciseTarget } from "@/lib/board";
 import { positionForIndex } from "@/lib/ordering";
 import { OVERFLOW } from "@/lib/scheduling";
 import {
@@ -59,6 +61,31 @@ function formatDay(day: string) {
   const date = new Date(`${day}T12:00:00Z`);
   return { weekday: WEEKDAY.format(date), label: MONTH_DAY.format(date) };
 }
+
+/**
+ * Resolve the drop target from the POINTER, not the dragged element's box.
+ *
+ * closestCorners measures the dragged rect's corners against each droppable's
+ * corners. The drag overlay is far wider than a column gutter, so when it
+ * straddles a boundary its corners can be equidistant from two columns and the
+ * winner flip-flops — or resolves to a column the cursor was never over. The
+ * item then appears to hover between two zones, droppable in neither.
+ *
+ * pointerWithin asks the only question that matches the user's intent: what is
+ * under the cursor? Columns fill their half's full height, so any point inside
+ * one resolves to it.
+ *
+ * closestCorners stays as the fallback for two cases where there is no pointer
+ * to consult: the few pixels of container padding that belong to no column,
+ * and keyboard drags, which have no pointer coordinates at all. Without the
+ * fallback, dragging with the keyboard would find no target whatsoever.
+ */
+const collisionDetection: CollisionDetection = (args) => {
+  const underPointer = pointerWithin(args);
+  const collisions = underPointer.length > 0 ? underPointer : closestCorners(args);
+  const target = preferPreciseTarget(collisions);
+  return target ? [target] : collisions;
+};
 
 export function Board() {
   const ready = useBootstrap();
@@ -201,7 +228,7 @@ export function Board() {
   return (
     <DndContext
       sensors={sensors}
-      collisionDetection={closestCorners}
+      collisionDetection={collisionDetection}
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
