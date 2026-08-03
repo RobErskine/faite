@@ -1,0 +1,46 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "faite",
+  // Custom entry (not the raw .open-next/worker.js) so the Durable Object class
+  // is exported alongside the OpenNext handler. See src/server/worker.ts.
+  "main": "src/server/worker.ts",
+  "compatibility_date": "2026-08-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+
+  // Resolves the `open-next/worker` specifier used by src/server/worker.ts to the
+  // generated bundle. TypeScript resolves the same specifier via the matching
+  // paths entry in tsconfig.worker.json.
+  "alias": {
+    "open-next/worker": "./.open-next/worker.js"
+  },
+
+  "observability": {
+    "enabled": true
+  },
+
+  // Per-user Durable Object: authoritative user data + sync coordinator (plan P3).
+  // Declared at P0 so the custom worker entry and migrations exist before sync lands.
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "USER_DO",
+        "class_name": "UserDurableObject"
+      }
+    ]
+  },
+
+  // SQLite-backed DO storage. Confirmed available on this account.
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["UserDurableObject"]
+    }
+  ]
+
+  // D1 binding for auth/global tables is added at P2 (`wrangler d1 create faite-auth`).
+}

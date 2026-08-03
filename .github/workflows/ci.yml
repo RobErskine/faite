@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck (app + worker)
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build (Workers target)
+        run: npm run build
+
+      # Capacitor guard. The mobile app (P7) is a static bundle in a WebView with
+      # no server, so this build must stay green every phase. If it breaks, an app
+      # route has taken a dependency on RSC data fetching, middleware, or
+      # next/image optimization — fix it now, not at P7.
+      - name: Build (static export target for Capacitor)
+        run: npm run build:static
