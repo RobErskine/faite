@@ -121,6 +121,74 @@ merge stays a plain field-level LWW with no special-casing for order.
 A hard delete leaves nothing to tell the other device the row is gone, so it
 would resurrect on the next pull. Tombstones (`deletedAt`) survive the merge.
 
+**Archiving is a separate axis, not a softer delete.** A list carries
+`archivedAt` alongside `deletedAt`, and the two mean different things:
+
+|              | the list        | its to-dos                  |
+| ------------ | --------------- | --------------------------- |
+| `deletedAt`  | tombstoned      | rehomed to Backlog          |
+| `archivedAt` | hidden, intact  | hidden with it, `listId` untouched |
+
+Keeping the to-dos attached is what makes restoring return a full column, and
+what makes the item count in the archive true. It costs one rule elsewhere:
+`buildBoard` sends a to-do whose list is missing to Backlog, so archived lists'
+to-dos must be filtered out *before* it (`Board`'s `visibleTodos`) or they
+would land there anyway.
+
+Both fields are nullable and were added after rows already existed, so filters
+test truthiness — a row written by an earlier version reads back `undefined`,
+not `null`.
+
+### 2.8b Tabs partition the planning half only
+
+A tab groups list columns. `List.tabId` points at one; switching tabs swaps
+which columns the planning half renders.
+
+Two things deliberately do **not** belong to a tab:
+
+- **The calendar half.** A to-do scheduled to Thursday is on Thursday whatever
+  tab is open. Scheduling is a decision about time, and tabs are a decision
+  about filing.
+- **Backlog.** It carries `tabId: null` and is pinned into every tab, holding
+  the same to-dos in each. This is load-bearing, not cosmetic: `buildBoard`
+  routes a to-do whose list is missing to `the Backlog column, or the first
+  one`, so a tab without Backlog would quietly collect other tabs' orphans in
+  whichever column sorted first. `null` therefore means "pinned everywhere",
+  and Backlog is the only row allowed to hold it — `ensureDefaultTab` backfills
+  every other list onto the default tab on boot.
+
+That split is why tab filtering could **not** reuse the archived-list filter in
+§2.8. Archiving removes a list from both halves, so filtering `visibleTodos`
+upstream is correct there. Tab membership must not reach the calendar, so
+`buildBoard` takes a `hiddenListIds` set instead and consults it *after* the
+calendar branch has already returned. Filtering tabs upstream would have
+emptied Thursday every time you switched tabs.
+
+**A new tab is born with one list**, named `{tab name} List`. A tab with no
+lists renders an empty track whose only way forward is the create-list slot at
+the far left — usable, but a dead end on first sight. `createTab` therefore
+returns both ids, and `createTabWithUndo` folds them into a single undo entry
+that tombstones the list before the tab, so undoing a create never strands an
+orphan column on the default tab.
+
+**Archiving a tab takes its lists with it.** Each live list is marked with
+`archivedWithTabId`, and that marker is what lets `unarchiveTab` restore
+exactly the group that left while a list filed on its own stays filed.
+
+The group is **recorded, not inferred**, and that distinction was paid for.
+The first implementation gave the tab and its lists one shared `archivedAt` and
+matched on it — equivalent-looking, one field cheaper, and wrong: `now()` has
+millisecond resolution, so archiving a list and then archiving its tab lands
+both on the same instant and makes them indistinguishable. Restoring the tab
+dragged back a list the user had deliberately filed separately. A test pins the
+collision. The lists still share the tab's `archivedAt` so the archive can list
+them together, but that timestamp is presentation only — identity lives in the
+marker.
+
+The **default tab** ("My Lists", `isDefault`) cannot be archived or deleted,
+for the same reason Backlog cannot: it is the guaranteed destination that
+`deleteTab` rehomes lists to. Renaming and recolouring it are fine.
+
 ### 2.9 Per-user Durable Object as the sync backend (P3)
 
 Chosen over a shared D1 because it gives, for free: a monotonic per-user
@@ -299,8 +367,10 @@ passing test.
 
 **P6 fast-follow, in priority order:** projects + views, sub-tasks, recurrence
 (RRULE template + lazily materialized occurrences + exceptions table), priority,
-markdown descriptions, location, list tabs, search/saved views, icon upload,
+markdown descriptions, location, search/saved views, icon upload,
 Google + magic-link auth.
+
+List tabs were pulled forward out of P6 and shipped — see §2.8b.
 
 ### Known P2/P3 gotchas, recorded early
 

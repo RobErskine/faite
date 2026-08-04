@@ -19,7 +19,7 @@ import { createUndoStep, pushUndo, undoById } from "@/lib/undo";
  * making it a drop target would mean answering what "drop a to-do on Create
  * list" does, and every answer is worse than not offering it.
  */
-export function CreateListColumn() {
+export function CreateListColumn({ tabId }: { tabId: string }) {
   /** `null` is idle. A string — including "" — means the field is open. */
   const [draft, setDraft] = useState<string | null>(null);
 
@@ -28,7 +28,9 @@ export function CreateListColumn() {
     setDraft(null);
     if (!name) return;
 
-    const id = await createList(name);
+    // Lands on the tab you are looking at, which is the only column track it
+    // could appear in.
+    const id = await createList(name, {}, tabId);
     const label = `List "${name}" created`;
     const entryId = pushUndo(label, [createUndoStep("list", id)]);
 

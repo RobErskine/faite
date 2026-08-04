@@ -58,7 +58,8 @@ Plan of record: `~/.claude/plans/please-check-this-image-starry-eich.md`
 
 ## P6 — Fast follow
 - [ ] Projects + views · sub-tasks · recurrence (RRULE + exceptions) · priority 1–4
-- [ ] Markdown descriptions · location · list tabs · search/saved views · icon upload
+- [x] List tabs (pulled forward — grouping, colour, drag-sort, cross-tab carry)
+- [ ] Markdown descriptions · location · search/saved views · icon upload
 - [ ] Google + magic-link auth (Resend)
 
 ## P7 — Capacitor + MCP

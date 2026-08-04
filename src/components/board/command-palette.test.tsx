@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { CommandPalette } from "./command-palette";
 import { FONT_PAIRINGS } from "@/lib/fonts";
-import type { List, Settings, Todo } from "@/lib/schema";
+import type { List, Settings, Tab, Todo } from "@/lib/schema";
 
 /**
  * Regression guard for the ⌘K crash.
@@ -31,6 +31,8 @@ const list = (id: string, name: string, isBacklog = false): List => ({
   deletedAt: null,
   name,
   isBacklog,
+  archivedAt: null,
+  archivedWithTabId: null,
   position: "a0",
   tabId: null,
   color: null,
@@ -69,10 +71,29 @@ const settings: Settings = {
   overflowAfterDays: 3,
   visibleDays: 7,
   fontPairing: "hyperlegible",
+  activeTabId: null,
   updatedAt: "2026-08-03T00:00:00.000Z",
 };
 
+const tab = (id: string, name: string, isDefault = false): Tab => ({
+  id,
+  ownerId: "local-user",
+  createdAt: "2026-08-03T00:00:00.000Z",
+  updatedAt: "2026-08-03T00:00:00.000Z",
+  deletedAt: null,
+  name,
+  description: null,
+  isDefault,
+  archivedAt: null,
+  position: "a0",
+  color: null,
+  emoji: null,
+  iconUrl: null,
+});
+
 const LISTS = [list("l1", "Backlog", true), list("l2", "Grocery List")];
+
+const TABS = [tab("tab1", "My Lists", true), tab("tab2", "Work")];
 
 const TODOS = [
   todo({ id: "t1", title: "Buy oat milk", listId: "l2" }),
@@ -88,9 +109,12 @@ function renderPalette(
     open: true,
     onOpenChange: () => {},
     lists: LISTS,
+    tabs: TABS,
     todos: TODOS,
     settings,
+    activeTabId: "tab1",
     onSelectTodo: () => {},
+    onSelectTab: () => {},
     ...overrides,
   };
   return render(<CommandPalette {...props} />);
@@ -118,7 +142,23 @@ describe("CommandPalette", () => {
     expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeTruthy();
     expect(screen.getByText("New to-do")).toBeTruthy();
     expect(screen.getByText("New list")).toBeTruthy();
+    expect(screen.getByText("New tab")).toBeTruthy();
     expect(screen.getByText("Delete a list…")).toBeTruthy();
+    expect(screen.getByText("Delete a tab…")).toBeTruthy();
+  });
+
+  it("lists tabs for switching, marking the active one", () => {
+    renderPalette();
+
+    expect(screen.getByText("Work")).toBeTruthy();
+    expect(screen.getByText("current")).toBeTruthy();
+  });
+
+  it("hides the switcher when there is only one tab", () => {
+    // A group of one that is already selected is pure noise.
+    renderPalette({ tabs: [TABS[0]] });
+
+    expect(screen.queryByText("current")).toBeNull();
   });
 
   it("offers every font pairing, previewed in its own pairing", () => {

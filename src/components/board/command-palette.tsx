@@ -17,24 +17,29 @@ import {
   createList,
   createProject,
   createTodo,
-  deleteList,
   LOCAL_OWNER_ID,
 } from "@/lib/store/repositories";
 import { mutateSettings } from "@/lib/store/mutate";
-import { createUndoStep, deleteListUndoSteps, pushUndo, undoById } from "@/lib/undo";
+import { createUndoStep, pushUndo, undoById } from "@/lib/undo";
+import { deleteListWithUndo } from "./list-actions";
+import { createTabWithUndo, deleteTabWithUndo } from "./tab-actions";
 import { DEFAULT_FONT_PAIRING, FONT_PAIRINGS } from "@/lib/fonts";
 import { formatShortDate } from "@/lib/scheduling";
 import { searchTodos } from "@/lib/search";
-import type { List, Settings, Todo } from "@/lib/schema";
+import type { List, Settings, Tab, Todo } from "@/lib/schema";
 
 interface CommandPaletteProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   lists: List[];
+  tabs: Tab[];
   todos: Todo[];
   settings: Settings | undefined;
+  activeTabId: string;
   /** Opens a search hit. Board owns which to-do the sheet is showing. */
   onSelectTodo: (todo: Todo) => void;
+  /** Switches the planning half. Board owns where the active tab is stored. */
+  onSelectTab: (tabId: string) => void;
 }
 
 type Mode =
@@ -42,8 +47,10 @@ type Mode =
   | { kind: "new-list" }
   | { kind: "new-label" }
   | { kind: "new-project" }
+  | { kind: "new-tab" }
   | { kind: "new-todo" }
-  | { kind: "delete-list" };
+  | { kind: "delete-list" }
+  | { kind: "delete-tab" };
 
 /**
  * Keyboard-first entry point for everything that is not drag-and-drop.
@@ -56,9 +63,12 @@ export function CommandPalette({
   open,
   onOpenChange,
   lists,
+  tabs,
   todos,
   settings,
+  activeTabId,
   onSelectTodo,
+  onSelectTab,
 }: CommandPaletteProps) {
   const [mode, setMode] = useState<Mode>({ kind: "root" });
   const [value, setValue] = useState("");
@@ -132,7 +142,17 @@ export function CommandPalette({
 
     switch (mode.kind) {
       case "new-list":
-        recordCreate(`List "${name}" created`, "list", await createList(name));
+        // Lands on the tab currently showing, matching the create-list column.
+        recordCreate(
+          `List "${name}" created`,
+          "list",
+          await createList(name, {}, activeTabId),
+        );
+        break;
+      case "new-tab":
+        // Delegated rather than routed through recordCreate: creating a tab is
+        // also a navigation, and switching to it is what makes it visible.
+        onSelectTab(await createTabWithUndo(name));
         break;
       case "new-label":
         recordCreate(`Label "${name}" created`, "label", await createLabel(name));
@@ -166,11 +186,17 @@ export function CommandPalette({
         ? "Label name…"
         : mode.kind === "new-project"
           ? "Project name…"
-          : mode.kind === "new-todo"
-            ? "What needs doing?"
-            : "Search to-dos or run a command…";
+          : mode.kind === "new-tab"
+            ? "Tab name…"
+            : mode.kind === "new-todo"
+              ? "What needs doing?"
+              : "Search to-dos or run a command…";
 
-  const isEntryMode = mode.kind !== "root" && mode.kind !== "delete-list";
+  /** The picker modes filter an existing set; the rest take free text. */
+  const isEntryMode =
+    mode.kind !== "root" &&
+    mode.kind !== "delete-list" &&
+    mode.kind !== "delete-tab";
 
   return (
     <CommandDialog
@@ -222,32 +248,33 @@ export function CommandPalette({
                   <CommandItem
                     key={list.id}
                     onSelect={async () => {
-                      const result = await deleteList(list.id);
-                      if (!result) return; // Backlog, or already gone
-                      /**
-                       * One entry covers the list AND every todo that moved,
-                       * so a single undo puts it back whole. Undoing only the
-                       * list would restore it empty and strand its to-dos in
-                       * Backlog — worse than not offering undo at all.
-                       */
-                      const entryId = pushUndo(
-                        `Deleted "${list.name}"`,
-                        deleteListUndoSteps(result.listId, result.movedTodoIds),
-                      );
-                      toast.success(`Deleted "${list.name}"`, {
-                        description: "Its to-dos moved to Backlog.",
-                        // The most destructive action in the app, and there is
-                        // no confirmation step before it. Give it room.
-                        duration: 10000,
-                        action: {
-                          label: "Undo",
-                          onClick: () => void undoById(entryId),
-                        },
-                      });
+                      // Shared with the column header's list dialog so the two
+                      // entry points cannot diverge. See ./list-actions.
+                      await deleteListWithUndo(list);
                       close();
                     }}
                   >
                     {list.name}
+                  </CommandItem>
+                ))}
+            </CommandGroup>
+          </>
+        ) : mode.kind === "delete-tab" ? (
+          <>
+            <CommandEmpty>No tabs found.</CommandEmpty>
+            <CommandGroup heading="Delete a tab (its lists move to your default tab)">
+              {tabs
+                .filter((t) => !t.isDefault)
+                .map((tab) => (
+                  <CommandItem
+                    key={tab.id}
+                    onSelect={async () => {
+                      // Shared with the tab dialog, same reason as lists.
+                      await deleteTabWithUndo(tab);
+                      close();
+                    }}
+                  >
+                    {tab.name}
                   </CommandItem>
                 ))}
             </CommandGroup>
@@ -327,13 +354,50 @@ export function CommandPalette({
               <CommandItem onSelect={() => { setMode({ kind: "new-project" }); setValue(""); }}>
                 New project
               </CommandItem>
+              <CommandItem onSelect={() => { setMode({ kind: "new-tab" }); setValue(""); }}>
+                New tab
+              </CommandItem>
             </CommandGroup>
 
             <CommandSeparator />
 
+            {/*
+              Switching by name, for when the strip has scrolled or there are
+              more tabs than fit. The active one is listed too — cheaper to read
+              past than to explain its absence.
+            */}
+            {tabs.length > 1 ? (
+              <>
+                <CommandGroup heading="Tabs">
+                  {tabs.map((tab) => (
+                    <CommandItem
+                      key={tab.id}
+                      value={`Switch to tab ${tab.name}`}
+                      onSelect={() => {
+                        onSelectTab(tab.id);
+                        close();
+                      }}
+                    >
+                      {tab.name}
+                      {tab.id === activeTabId ? (
+                        <span className="ml-auto text-xs text-muted-foreground">
+                          current
+                        </span>
+                      ) : null}
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+
+                <CommandSeparator />
+              </>
+            ) : null}
+
             <CommandGroup heading="Manage">
               <CommandItem onSelect={() => { setMode({ kind: "delete-list" }); setValue(""); }}>
                 Delete a list…
+              </CommandItem>
+              <CommandItem onSelect={() => { setMode({ kind: "delete-tab" }); setValue(""); }}>
+                Delete a tab…
               </CommandItem>
             </CommandGroup>
 

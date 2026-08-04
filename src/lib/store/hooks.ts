@@ -2,11 +2,16 @@
 
 import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useMemo, useState } from "react";
-import type { Label, List, Project, Settings, Todo } from "@/lib/schema";
+import type { Label, List, Project, Settings, Tab, Todo } from "@/lib/schema";
 import { byPosition } from "@/lib/ordering";
 import { contextFromSettings, type PlacementContext } from "@/lib/scheduling";
 import { canUseDb, getDb } from "./db";
-import { LOCAL_OWNER_ID, repairDuplicateLists, seedIfEmpty } from "./repositories";
+import {
+  ensureDefaultTab,
+  LOCAL_OWNER_ID,
+  repairDuplicateLists,
+  seedIfEmpty,
+} from "./repositories";
 
 /**
  * Reactive reads.
@@ -17,7 +22,13 @@ import { LOCAL_OWNER_ID, repairDuplicateLists, seedIfEmpty } from "./repositorie
  * on the interaction path waits for a network round trip.
  */
 
-/** Seeds default lists on first run and reports readiness. */
+/**
+ * Seeds default lists on first run, repairs the store, and reports readiness.
+ *
+ * `ensureDefaultTab` runs last and on every boot, not just the first: it is
+ * what puts pre-tabs databases onto a tab. Ordering matters — it has to see the
+ * lists seeding created and the survivors the duplicate repair chose.
+ */
 export function useBootstrap(): boolean {
   const [ready, setReady] = useState(false);
 
@@ -28,6 +39,12 @@ export function useBootstrap(): boolean {
       .then((removed) => {
         if (removed > 0) {
           console.info(`[faite] removed ${removed} duplicate list(s)`);
+        }
+        return ensureDefaultTab();
+      })
+      .then((assigned) => {
+        if (assigned > 0) {
+          console.info(`[faite] moved ${assigned} list(s) onto the default tab`);
         }
         setReady(true);
       })
@@ -49,9 +66,58 @@ export function useTodos(): Todo[] {
   );
 }
 
+/**
+ * Live lists, archived ones excluded.
+ *
+ * Filtering here rather than at each call site is what makes archiving a single
+ * change: the board, the ⌘K list pickers, and the to-do sheet's list select all
+ * read this hook, so an archived list disappears from every one of them at once.
+ */
 export function useLists(): List[] {
   const rows = useLiveQuery(() => getDb().lists.toArray(), [], [] as List[]);
-  return useMemo(() => alive(rows).sort(byPosition), [rows]);
+  return useMemo(
+    () => alive(rows).filter((l) => !l.archivedAt).sort(byPosition),
+    [rows],
+  );
+}
+
+/**
+ * Archived lists, most recently archived first.
+ *
+ * Ordered by when they were put away rather than by `position`: the archive is
+ * a history, and the list you just filed is the one you are most likely to want
+ * back.
+ */
+export function useArchivedLists(): List[] {
+  const rows = useLiveQuery(() => getDb().lists.toArray(), [], [] as List[]);
+  return useMemo(
+    () =>
+      alive(rows)
+        .filter((l) => !!l.archivedAt)
+        .sort((a, b) => (b.archivedAt ?? "").localeCompare(a.archivedAt ?? "")),
+    [rows],
+  );
+}
+
+/** Live tabs, archived ones excluded. Mirrors `useLists`. */
+export function useTabs(): Tab[] {
+  const rows = useLiveQuery(() => getDb().tabs.toArray(), [], [] as Tab[]);
+  return useMemo(
+    () => alive(rows).filter((t) => !t.archivedAt).sort(byPosition),
+    [rows],
+  );
+}
+
+/** Archived tabs, most recently archived first — same rationale as lists. */
+export function useArchivedTabs(): Tab[] {
+  const rows = useLiveQuery(() => getDb().tabs.toArray(), [], [] as Tab[]);
+  return useMemo(
+    () =>
+      alive(rows)
+        .filter((t) => !!t.archivedAt)
+        .sort((a, b) => (b.archivedAt ?? "").localeCompare(a.archivedAt ?? "")),
+    [rows],
+  );
 }
 
 export function useLabels(): Label[] {

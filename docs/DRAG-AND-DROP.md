@@ -72,12 +72,20 @@ day:2026-08-03     a day column          droppable
 day:overflow       the Overflow column   droppable
 list:<listId>      a list column         droppable
 listdrag:<listId>  a column's reorder handle   DRAGGABLE ONLY
+tab:<tabId>        a tab pill            droppable  (reorder target AND card hover)
+tabdrag:<tabId>    a tab's reorder handle      DRAGGABLE ONLY
 <uuid>             a todo card           both
 ```
 
 `parseColumnId(id)` returns `{kind:"day"|"overflow"|"list", ...}` or `null`.
 **`null` means the id is a card**, which is how the code distinguishes the two
 everywhere. `isColumnId()` wraps that check.
+
+**A tab pill is a drop zone without being a column** — nothing lands *in* it, so
+it is not a `DropTarget`. That makes it the one id shape that would slip through
+the `null`-means-card rule, so any code resolving a card's target must use
+`isDropZoneId()` (columns **plus** tab pills) rather than `isColumnId()`. See
+§4.3 for the specific bug this prevents.
 
 **`listdrag:` is deliberately a separate id space from `list:`.** A list column
 is a drop *target* for cards and a drag *source* for reordering, and those two
@@ -89,6 +97,13 @@ null for `list:` ids, and `parseColumnId` returns null for `listdrag:` ids.
 There is a test pinning that non-overlap, because a collision here fails
 *silently*: a column reorder would fall into the card path, find no todo, and
 return without writing anything.
+
+**The same split repeats one level up for tabs**, and there the trap is sharper:
+`tabdrag:` begins with the literal string `tab`, so a prefix check written as
+`startsWith("tab")` rather than `startsWith("tab:")` would match both. Four id
+spaces now share one `DndContext`, and `board.test.ts` carries a full
+non-collision matrix asserting every parser returns null for every other
+namespace's ids.
 
 ### 4.2 Collision detection — pointer first
 
@@ -365,6 +380,41 @@ correct and practically annoying.
 `planListDrop()` is pure and unit-tested, including the exact case that prompted
 it: grab the last column, drop it on the leftmost movable one, land between
 Backlog and that column.
+
+### 4.10b Reordering tabs, and carrying a card between them
+
+Tabs are the third gesture in the same `DndContext`. Reordering them is
+`planTabDrop()` — `planListDrop()` with the Backlog special-casing removed,
+since tabs have no pinned member (the default tab is undeletable, not
+immovable). Same direction rule, same insertion bar, same `data-drop-indicator`
+so the overlay lands on it.
+
+**Hovering a tab mid-card-drag focuses that tab.** Pick up a to-do, hold it over
+another tab for ~600 ms, and the planning half switches; drop it into one of the
+columns that just appeared. Without this, moving a to-do to another tab would be
+a drop, a click, and a second drag.
+
+Three things make it work, and two of them are easy to lose:
+
+1. **`measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}` on
+   `DndContext`.** By default dnd-kit measures droppables once, when the drag
+   starts. A tab switch unmounts every column droppable and mounts a new set, so
+   with the default the columns that appear are **invisible to the card already
+   in flight** — it hovers them and drops into nothing. Silently. If cross-tab
+   drops ever stop working, look here first.
+2. **The dwell timer.** The strip sits between the two halves, so a card dragged
+   upward crosses it. Switching on contact would flip through every tab on the
+   way past. The timer is keyed on `overId`, so leaving a pill before it fires
+   cancels it — React tears the effect down on every change of target.
+3. **`preferPreciseTarget` knowing about `tab:` ids** (§4.1, §4.3). A pill is
+   not a column, so under the old `!isColumnId()` test it would be taken for a
+   card, looked up in `todos`, and not found.
+
+**Releasing a card *on* a pill writes nothing.** By then the tab has already
+switched and the card belongs in a column, so the handler refuses explicitly and
+leaves the landing rect null — the card visibly returns home rather than flying
+into the strip. Distinct from Overflow's refusal (§5.1), which raises a toast;
+this one is silent, because the tab switch the user just watched is the feedback.
 
 ### 4.11 The React Compiler rejects refs read during render
 

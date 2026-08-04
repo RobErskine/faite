@@ -75,9 +75,39 @@ export const listSchema = z.object({
   name: z.string().min(1),
   /** The Backlog list cannot be deleted or renamed. Exactly one per user. */
   isBacklog: z.boolean().default(false),
+  /**
+   * Set when the list is put away: it leaves the board WITH its to-dos, and
+   * restoring brings both back.
+   *
+   * A sibling of `deletedAt`, not a reuse of it. Deleting is destructive and
+   * rehomes the to-dos to Backlog; archiving is a filing decision that keeps
+   * the list whole, which is what makes an item count meaningful in the
+   * archive. Rows written before this field existed read back `undefined`, so
+   * every filter must test truthiness rather than `=== null`.
+   */
+  archivedAt: z.string().nullable().default(null),
+  /**
+   * The tab that archived this list, when it went away as part of one.
+   *
+   * The group is RECORDED, not inferred. Matching on a shared `archivedAt`
+   * looked equivalent and was cheaper, right up until two archives landed in
+   * the same millisecond — `now()` has millisecond resolution, so a list filed
+   * on its own moments before its tab was archived became indistinguishable
+   * from one the tab took with it, and restoring the tab dragged it back.
+   *
+   * Null means "archived on its own", which is also what legacy rows read as.
+   */
+  archivedWithTabId: idSchema.nullable().default(null),
   /** Fractional index. See lib/ordering.ts. */
   position: z.string(),
-  /** Planning-half tab. Single tab in v1; multi-tab is P6. */
+  /**
+   * The planning-half tab this list belongs to.
+   *
+   * Null means "pinned into every tab", which only Backlog is allowed to be —
+   * it is the fallback column for homeless todos, so a tab without it would
+   * quietly collect them (see buildBoard). Every other list is backfilled onto
+   * the default tab by `ensureDefaultTab`.
+   */
   tabId: idSchema.nullable().default(null),
 });
 export type List = z.infer<typeof listSchema>;
@@ -181,14 +211,50 @@ export const settingsSchema = z.object({
    * so it syncs with the rest of the user's settings across devices.
    */
   fontPairing: z.enum(FONT_PAIRING_IDS).default(DEFAULT_FONT_PAIRING),
+  /**
+   * Which planning-half tab is showing.
+   *
+   * Stored rather than held in component state so the board comes back the way
+   * it was left. Null (and any id that no longer resolves) falls back to the
+   * default tab, which is why nothing has to clean this up when a tab is
+   * archived or deleted.
+   */
+  activeTabId: idSchema.nullable().default(null),
   updatedAt: z.string(),
 });
 export type Settings = z.infer<typeof settingsSchema>;
 
-/** Planning-half tab. Single "Planning" tab in v1; multi-tab is P6. */
+/**
+ * A Tab groups list columns in the planning half.
+ *
+ * Tabs partition the PLANNING half only. The calendar half is the week and
+ * belongs to no tab, and Backlog is pinned into every tab (`List.tabId` null),
+ * so switching tabs never changes what is scheduled or what is in Backlog.
+ * See lib/board.ts for how that partition is applied.
+ */
 export const tabSchema = z.object({
   ...syncableFields,
+  ...decorationSchema.shape,
   name: z.string().min(1),
+  /** Prose shown as the tab's tooltip. Plain text, not markdown. */
+  description: z.string().nullable().default(null),
+  /**
+   * The tab a user starts with. Cannot be archived or deleted — it is the
+   * guaranteed destination for lists rehomed by `deleteTab`, the same role
+   * Backlog plays for todos. Renaming and recolouring it are fine.
+   */
+  isDefault: z.boolean().default(false),
+  /**
+   * Set when the tab is put away: it leaves the strip WITH its lists, and
+   * restoring brings both back.
+   *
+   * A sibling of `deletedAt`, not a reuse of it, for the same reasons given on
+   * `listSchema.archivedAt`. The lists archived alongside a tab are stamped
+   * with this exact timestamp, which is what lets `unarchiveTab` restore
+   * precisely those and leave lists archived earlier alone.
+   */
+  archivedAt: z.string().nullable().default(null),
+  /** Fractional index. See lib/ordering.ts. */
   position: z.string(),
 });
 export type Tab = z.infer<typeof tabSchema>;

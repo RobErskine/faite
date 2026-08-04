@@ -2,14 +2,20 @@ import { describe, expect, it } from "vitest";
 import {
   buildBoard,
   isColumnId,
+  isDropZoneId,
   listDragId,
   parseColumnId,
   parseListDragId,
+  parseTabDragId,
+  parseTabDropId,
   planListDrop,
+  planTabDrop,
   preferPreciseTarget,
+  tabDragId,
+  tabDropId,
 } from "./board";
 import { buildWindow } from "./scheduling";
-import type { List, Todo } from "./schema";
+import type { List, Tab, Todo } from "./schema";
 import { positionsBetween } from "./ordering";
 
 const TODAY = "2026-08-03";
@@ -38,6 +44,8 @@ function list(
     deletedAt: null,
     name,
     isBacklog,
+    archivedAt: null,
+    archivedWithTabId: null,
     position,
     tabId: null,
     color: null,
@@ -68,6 +76,24 @@ function todo(overrides: Partial<Todo> & { id: string }): Todo {
     recurrenceParentId: null,
     completedAt: null,
     ...overrides,
+  };
+}
+
+function tab(id: string, name: string, position = positions[0]): Tab {
+  return {
+    id,
+    ownerId: "u",
+    createdAt: "",
+    updatedAt: "",
+    deletedAt: null,
+    name,
+    description: null,
+    isDefault: false,
+    archivedAt: null,
+    position,
+    color: null,
+    emoji: null,
+    iconUrl: null,
   };
 }
 
@@ -154,6 +180,67 @@ describe("buildBoard", () => {
   });
 });
 
+describe("buildBoard with hidden lists (tabs)", () => {
+  const TABBED = [
+    list("backlog", "Backlog", true, positions[0]),
+    list("groceries", "Grocery List", false, positions[1]),
+  ];
+  // "work" lives on another tab, so it is absent from the columns AND hidden.
+  const hidden = new Set(["work"]);
+
+  it("keeps a scheduled todo on its day even when its list is on another tab", () => {
+    // The calendar half is the week, not a tab. Switching tabs must not empty
+    // Thursday. This is the regression the hiddenListIds parameter exists for:
+    // filtering these todos out upstream would have taken them off the
+    // calendar too.
+    const board = buildBoard(
+      [todo({ id: "a", listId: "work", scheduledDate: "2026-08-05" })],
+      TABBED,
+      ctx,
+      hidden,
+    );
+    const day = board.days.find((d) => d.day === "2026-08-05")!;
+    expect(day.todos.map((t) => t.id)).toEqual(["a"]);
+  });
+
+  it("drops an unscheduled todo from another tab instead of piling it into Backlog", () => {
+    // Without the explicit check, buildBoard's "unknown list falls back to
+    // Backlog" rule would collect every other tab's todos — and Backlog is
+    // shared by every tab, so they would be visible from all of them.
+    const board = buildBoard(
+      [todo({ id: "a", listId: "work" })],
+      TABBED,
+      ctx,
+      hidden,
+    );
+    expect(board.lists.every((c) => c.todos.length === 0)).toBe(true);
+  });
+
+  it("still rescues a todo whose list was deleted outright", () => {
+    // The Backlog fallback must survive: an unknown list is not the same thing
+    // as a list on another tab.
+    const board = buildBoard(
+      [todo({ id: "a", listId: "deleted-list" })],
+      TABBED,
+      ctx,
+      hidden,
+    );
+    expect(board.lists.find((c) => c.list.isBacklog)!.todos.map((t) => t.id)).toEqual([
+      "a",
+    ]);
+  });
+
+  it("shows Backlog's own todos regardless of the active tab", () => {
+    const board = buildBoard(
+      [todo({ id: "a", listId: "backlog" })],
+      TABBED,
+      ctx,
+      hidden,
+    );
+    expect(board.lists.find((c) => c.list.isBacklog)!.todos).toHaveLength(1);
+  });
+});
+
 describe("preferPreciseTarget", () => {
   it("returns null when nothing collides", () => {
     expect(preferPreciseTarget([])).toBeNull();
@@ -180,6 +267,107 @@ describe("preferPreciseTarget", () => {
   it("treats overflow as a column, not a card", () => {
     const collisions = [{ id: "day:overflow" }];
     expect(preferPreciseTarget(collisions)?.id).toBe("day:overflow");
+  });
+
+  it("does not mistake a tab pill for a card", () => {
+    // A tab is a drop zone without being a column. Treated as a card it would
+    // be looked up in `todos`, found missing, and the drop would do nothing —
+    // silently, which is the whole hazard.
+    const collisions = [{ id: tabDropId("work") }];
+    expect(preferPreciseTarget(collisions)?.id).toBe(tabDropId("work"));
+  });
+});
+
+describe("isDropZoneId", () => {
+  it("covers columns and tab pills but not cards", () => {
+    expect(isDropZoneId("day:2026-08-03")).toBe(true);
+    expect(isDropZoneId("list:abc")).toBe(true);
+    expect(isDropZoneId(tabDropId("abc"))).toBe(true);
+    expect(isDropZoneId("0192f3a1-7c2e-7000-8000-abcdef123456")).toBe(false);
+  });
+});
+
+describe("tab id namespaces", () => {
+  it("round-trips both tab id spaces", () => {
+    expect(parseTabDropId(tabDropId("abc"))).toBe("abc");
+    expect(parseTabDragId(tabDragId("abc"))).toBe("abc");
+  });
+
+  /**
+   * The full non-collision matrix. Four namespaces now share one DndContext,
+   * and a prefix that accidentally matches another routes a gesture into the
+   * wrong handler with no error — the failure is a drop that does nothing.
+   */
+  it("keeps all four id spaces disjoint", () => {
+    const ids = {
+      column: "list:abc",
+      day: "day:2026-08-03",
+      listDrag: listDragId("abc"),
+      tabDrop: tabDropId("abc"),
+      tabDrag: tabDragId("abc"),
+      card: "0192f3a1-7c2e-7000-8000-abcdef123456",
+    };
+
+    // Each parser accepts only its own.
+    expect(parseColumnId(ids.tabDrop)).toBeNull();
+    expect(parseColumnId(ids.tabDrag)).toBeNull();
+    expect(parseListDragId(ids.tabDrag)).toBeNull();
+    expect(parseListDragId(ids.tabDrop)).toBeNull();
+
+    // `tabdrag:` starts with "tab", which is exactly the trap.
+    expect(parseTabDropId(ids.tabDrag)).toBeNull();
+    expect(parseTabDragId(ids.tabDrop)).toBeNull();
+
+    expect(parseTabDropId(ids.column)).toBeNull();
+    expect(parseTabDropId(ids.day)).toBeNull();
+    expect(parseTabDropId(ids.listDrag)).toBeNull();
+    expect(parseTabDragId(ids.listDrag)).toBeNull();
+    expect(parseTabDropId(ids.card)).toBeNull();
+    expect(parseTabDragId(ids.card)).toBeNull();
+  });
+});
+
+describe("planTabDrop", () => {
+  const ordered = [
+    tab("personal", "Personal", positions[0]),
+    tab("work", "Work", positions[1]),
+    tab("trip", "Trip", positions[2]),
+  ];
+
+  const positionOf = (id: string) => ordered.find((t) => t.id === id)!.position;
+
+  it("lands after the target when dragging rightwards", () => {
+    // Direction is what makes the last slot reachable at all.
+    const plan = planTabDrop(ordered, "personal", "trip")!;
+    expect(plan.side).toBe("after");
+    expect(plan.position > positionOf("trip")).toBe(true);
+  });
+
+  it("lands before the target when dragging leftwards", () => {
+    const plan = planTabDrop(ordered, "trip", "personal")!;
+    expect(plan.side).toBe("before");
+    expect(plan.position < positionOf("personal")).toBe(true);
+  });
+
+  it("moves into the middle slot", () => {
+    const plan = planTabDrop(ordered, "trip", "work")!;
+    expect(plan.position > positionOf("personal")).toBe(true);
+    expect(plan.position < positionOf("work")).toBe(true);
+  });
+
+  it("returns null when dropped on itself", () => {
+    expect(planTabDrop(ordered, "work", "work")).toBeNull();
+  });
+
+  it("returns null for an unknown tab", () => {
+    expect(planTabDrop(ordered, "ghost", "work")).toBeNull();
+    expect(planTabDrop(ordered, "work", "ghost")).toBeNull();
+  });
+
+  it("has no pinned member, unlike lists", () => {
+    // The default tab is undeletable, not immovable — dragging it must work.
+    const plan = planTabDrop(ordered, "personal", "work")!;
+    expect(plan.side).toBe("after");
   });
 });
 

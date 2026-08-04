@@ -1,4 +1,4 @@
-import type { CivilDate, List, Todo } from "@/lib/schema";
+import type { CivilDate, List, Tab, Todo } from "@/lib/schema";
 import { byPosition, positionForIndex, type Position } from "@/lib/ordering";
 import { OVERFLOW, deriveColumn, type PlacementContext } from "@/lib/scheduling";
 
@@ -30,6 +30,29 @@ export function parseListDragId(id: string): string | null {
   return id.startsWith("listdrag:") ? id.slice(9) : null;
 }
 
+/**
+ * Tab strip ids. A tab pill is a drop target twice over — it accepts a dragged
+ * tab for reordering, and it accepts a hovering card to focus itself — but it
+ * is only ever dragged by its handle, so the two id spaces stay split exactly
+ * as they are for list columns above.
+ *
+ * `tab:` must not be confused with a card id, and `tabdrag:` must not be
+ * confused with `listdrag:`. Both are pinned by tests, because a namespace
+ * collision here fails silently rather than loudly.
+ */
+export const tabDropId = (tabId: string) => `tab:${tabId}`;
+export const tabDragId = (tabId: string) => `tabdrag:${tabId}`;
+
+/** The tab id behind a pill droppable, or null if this is not one. */
+export function parseTabDropId(id: string): string | null {
+  return id.startsWith("tab:") ? id.slice(4) : null;
+}
+
+/** The tab id behind a tab reorder handle, or null if this is not one. */
+export function parseTabDragId(id: string): string | null {
+  return id.startsWith("tabdrag:") ? id.slice(8) : null;
+}
+
 export type DropTarget =
   | { kind: "day"; day: CivilDate }
   | { kind: "overflow" }
@@ -53,6 +76,18 @@ export function isColumnId(id: string): boolean {
 }
 
 /**
+ * True for anything a card can be dragged onto that is not another card.
+ *
+ * Distinct from `isColumnId` because a tab pill is a drop zone without being a
+ * column: nothing lands *in* it. Everything that resolves a card's drop target
+ * must use this rather than `isColumnId`, or a tab pill gets mistaken for a
+ * card and looked up in the todo list, where it is silently not found.
+ */
+export function isDropZoneId(id: string): boolean {
+  return isColumnId(id) || parseTabDropId(id) !== null;
+}
+
+/**
  * Pick the most specific droppable from a set of collisions.
  *
  * The pointer is usually inside both a card and the column containing it. The
@@ -64,7 +99,7 @@ export function preferPreciseTarget<T extends { id: string | number }>(
   collisions: readonly T[],
 ): T | null {
   if (collisions.length === 0) return null;
-  const card = collisions.find((c) => !isColumnId(String(c.id)));
+  const card = collisions.find((c) => !isDropZoneId(String(c.id)));
   return card ?? collisions[0];
 }
 
@@ -130,6 +165,36 @@ export function planListDrop(
   return { position: positionForIndex(ordered, index + (backlog ? 1 : 0)), side };
 }
 
+/**
+ * Resolve where a dragged tab lands.
+ *
+ * The same direction rule as `planListDrop` — dragging rightwards onto a tab
+ * means "go after it" — which is what keeps the last slot reachable. Simpler
+ * than the list version because tabs have no pinned member: the default tab is
+ * undeletable, not immovable.
+ *
+ * `tabs` must be sorted by position. Returns null for a no-op.
+ */
+export function planTabDrop(
+  tabs: readonly Tab[],
+  draggedId: string,
+  overTabId: string,
+): ListDropPlan | null {
+  const fromIndex = tabs.findIndex((t) => t.id === draggedId);
+  if (fromIndex < 0) return null;
+
+  // The dragged tab must not be one of its own neighbours.
+  const remaining = tabs.filter((t) => t.id !== draggedId);
+  const overIndex = remaining.findIndex((t) => t.id === overTabId);
+  if (overIndex < 0) return null; // dropped on itself, or an unknown tab
+
+  const movingRight = fromIndex < tabs.findIndex((t) => t.id === overTabId);
+  return {
+    position: positionForIndex(remaining, movingRight ? overIndex + 1 : overIndex),
+    side: movingRight ? "after" : "before",
+  };
+}
+
 export interface DayColumn {
   id: string;
   day: CivilDate;
@@ -156,11 +221,17 @@ export interface BoardModel {
  * Completed and dropped todos are excluded from the board. History and an
  * "show completed" toggle are P6 — for now finishing something removes it from
  * view, which is the behaviour the reference UI has.
+ *
+ * `lists` is the columns to render: the active tab's lists plus Backlog.
+ * `hiddenListIds` is the live lists on OTHER tabs. The two are separate on
+ * purpose — see the planning branch below for why a hidden list cannot simply
+ * be left out of `lists`.
  */
 export function buildBoard(
   todos: Todo[],
   lists: List[],
   ctx: PlacementContext,
+  hiddenListIds: ReadonlySet<string> = new Set(),
 ): BoardModel {
   const open = todos.filter((t) => t.status === "open");
 
@@ -194,6 +265,22 @@ export function buildBoard(
       }
       continue;
     }
+
+    /**
+     * A todo whose list lives on another tab is not on this board.
+     *
+     * This has to be an explicit check rather than "its column is absent",
+     * because the Backlog fallback below cannot tell the two cases apart: it
+     * exists to rescue orphans of a *deleted* list, and would otherwise pile
+     * every other tab's todos into Backlog — the one place they must not go,
+     * since Backlog is shared by every tab.
+     *
+     * It sits after the calendar branch above deliberately. Scheduling is not a
+     * tab-level concern: a todo scheduled to Thursday shows on Thursday no
+     * matter which tab is open, and only its unscheduled siblings disappear
+     * with their column.
+     */
+    if (todo.listId && hiddenListIds.has(todo.listId)) continue;
 
     if (placement.awayDate) awayTodoIds.add(todo.id);
 

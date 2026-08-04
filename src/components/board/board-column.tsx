@@ -5,6 +5,7 @@ import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { edge } from "@/lib/colors";
 import type { Label as LabelRecord, Todo } from "@/lib/schema";
 import type { PlacementContext } from "@/lib/scheduling";
 import { ColumnGrip } from "./column-grip";
@@ -53,6 +54,11 @@ interface BoardColumnProps {
   columnDropSide?: "before" | "after" | null;
   /** True while a list column is being dragged — dims the card affordances. */
   isColumnDragActive?: boolean;
+  /**
+   * The owning tab's colour, tinting the header rule. Absent on day columns and
+   * on Backlog, neither of which belongs to a tab.
+   */
+  accentColor?: string | null;
 }
 
 export function BoardColumn({
@@ -77,6 +83,7 @@ export function BoardColumn({
   reservesGripSlot,
   columnDropSide,
   isColumnDragActive,
+  accentColor,
 }: BoardColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id });
   const [draft, setDraft] = useState("");
@@ -137,7 +144,15 @@ export function BoardColumn({
           <span className="absolute -left-[3px] -top-0.5 size-2 rounded-full bg-primary" />
         </span>
       )}
-      <header className="flex items-baseline justify-between gap-2 px-2 pb-1">
+      <header
+        className={cn(
+          "flex items-baseline justify-between gap-2 px-2 pb-1",
+          // Only drawn when the tab has a colour, so an uncoloured tab keeps
+          // the original headers rather than gaining a grey rule.
+          accentColor && "border-b-2",
+        )}
+        style={accentColor ? { borderColor: edge(accentColor) } : undefined}
+      >
         <div className="min-w-0">
           {subtitle && (
             <p className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">

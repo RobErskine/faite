@@ -20,6 +20,8 @@ no request is ever on the interaction path.
   rationale, stack, layout, scheduling rules, build gotchas, roadmap.
 - **[docs/DRAG-AND-DROP.md](docs/DRAG-AND-DROP.md)** — self-contained working
   document for the drag-and-drop system.
+- **[docs/KEYBOARD.md](docs/KEYBOARD.md)** — how shortcuts are structured, the
+  guard model, and how to add one.
 - **[.ai/todo.md](.ai/todo.md)** — phase checklist and progress.
 - **[.ai/lessons.md](.ai/lessons.md)** — mistakes worth not repeating.
 

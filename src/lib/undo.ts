@@ -182,6 +182,24 @@ export function deleteListUndoSteps(
 }
 
 /**
+ * Steps that undo a tab deletion. Same ordering rule as lists one level up:
+ * restore the tab before pointing any list back at it.
+ */
+export function deleteTabUndoSteps(
+  tabId: string,
+  movedListIds: string[],
+): UndoStep[] {
+  return [
+    { kind: "tab", entityId: tabId, patch: { deletedAt: null } },
+    ...movedListIds.map((id) => ({
+      kind: "list" as const,
+      entityId: id,
+      patch: { tabId },
+    })),
+  ];
+}
+
+/**
  * True when a keystroke came from a text field.
  *
  * ⌘Z inside an input has to reach the browser's own text undo. Stealing it
