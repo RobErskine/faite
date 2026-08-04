@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DEFAULT_FONT_PAIRING, FONT_PAIRING_IDS } from "./fonts";
 
 /**
  * Single source of truth for Faite's data model.
@@ -175,6 +176,11 @@ export const settingsSchema = z.object({
   overflowAfterDays: z.number().int().min(1).default(3),
   /** Day columns visible in the calendar half: 1, 3, 5, or 7. */
   visibleDays: z.number().int().min(1).max(7).default(7),
+  /**
+   * Typography pairing. Purely presentational, but stored (not localStorage)
+   * so it syncs with the rest of the user's settings across devices.
+   */
+  fontPairing: z.enum(FONT_PAIRING_IDS).default(DEFAULT_FONT_PAIRING),
   updatedAt: z.string(),
 });
 export type Settings = z.infer<typeof settingsSchema>;

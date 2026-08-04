@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   Command,
@@ -21,13 +21,20 @@ import {
   LOCAL_OWNER_ID,
 } from "@/lib/store/repositories";
 import { mutateSettings } from "@/lib/store/mutate";
-import type { List, Settings } from "@/lib/schema";
+import { createUndoStep, deleteListUndoSteps, pushUndo, undoById } from "@/lib/undo";
+import { DEFAULT_FONT_PAIRING, FONT_PAIRINGS } from "@/lib/fonts";
+import { formatShortDate } from "@/lib/scheduling";
+import { searchTodos } from "@/lib/search";
+import type { List, Settings, Todo } from "@/lib/schema";
 
 interface CommandPaletteProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   lists: List[];
+  todos: Todo[];
   settings: Settings | undefined;
+  /** Opens a search hit. Board owns which to-do the sheet is showing. */
+  onSelectTodo: (todo: Todo) => void;
 }
 
 type Mode =
@@ -49,10 +56,28 @@ export function CommandPalette({
   open,
   onOpenChange,
   lists,
+  todos,
   settings,
+  onSelectTodo,
 }: CommandPaletteProps) {
   const [mode, setMode] = useState<Mode>({ kind: "root" });
   const [value, setValue] = useState("");
+
+  const query = value.trim();
+
+  /**
+   * Search runs only at the root. In the entry modes the input is a name being
+   * typed, not a query, and in delete-list it filters that list instead.
+   */
+  const results = useMemo(
+    () => (mode.kind === "root" ? searchTodos(query, todos) : []),
+    [mode.kind, query, todos],
+  );
+
+  const listNameById = useMemo(
+    () => new Map(lists.map((list) => [list.id, list.name])),
+    [lists],
+  );
 
   /**
    * Reset to the root menu on dismissal.
@@ -71,27 +96,61 @@ export function CommandPalette({
 
   const close = () => handleOpenChange(false);
 
+  /**
+   * Undoing a create is the same soft delete `remove()` performs.
+   *
+   * These toasts already existed; they gain an Undo button rather than a new
+   * notification. Worth having even though a create is not destructive: the
+   * palette can drop a row into a column that is scrolled out of view, so
+   * the toast is the only place the user sees it happen.
+   */
+  const recordCreate = (
+    label: string,
+    kind: "todo" | "list" | "label" | "project",
+    id: string,
+  ) => {
+    const entryId = pushUndo(label, [createUndoStep(kind, id)]);
+    toast.success(label, {
+      action: { label: "Undo", onClick: () => void undoById(entryId) },
+    });
+  };
+
+  /** Files a to-do straight into Backlog, titled with whatever was typed. */
+  const createFromQuery = async () => {
+    const backlog = lists.find((l) => l.isBacklog);
+    recordCreate(
+      "To-do added to Backlog",
+      "todo",
+      await createTodo({ title: query, listId: backlog?.id ?? null }),
+    );
+    close();
+  };
+
   const submit = async () => {
     const name = value.trim();
     if (!name && mode.kind !== "root") return;
 
     switch (mode.kind) {
       case "new-list":
-        await createList(name);
-        toast.success(`List "${name}" created`);
+        recordCreate(`List "${name}" created`, "list", await createList(name));
         break;
       case "new-label":
-        await createLabel(name);
-        toast.success(`Label "${name}" created`);
+        recordCreate(`Label "${name}" created`, "label", await createLabel(name));
         break;
       case "new-project":
-        await createProject(name);
-        toast.success(`Project "${name}" created`);
+        recordCreate(
+          `Project "${name}" created`,
+          "project",
+          await createProject(name),
+        );
         break;
       case "new-todo": {
         const backlog = lists.find((l) => l.isBacklog);
-        await createTodo({ title: name, listId: backlog?.id ?? null });
-        toast.success("To-do added to Backlog");
+        recordCreate(
+          "To-do added to Backlog",
+          "todo",
+          await createTodo({ title: name, listId: backlog?.id ?? null }),
+        );
         break;
       }
       default:
@@ -109,7 +168,7 @@ export function CommandPalette({
           ? "Project name…"
           : mode.kind === "new-todo"
             ? "What needs doing?"
-            : "Type a command or search…";
+            : "Search to-dos or run a command…";
 
   const isEntryMode = mode.kind !== "root" && mode.kind !== "delete-list";
 
@@ -163,9 +222,27 @@ export function CommandPalette({
                   <CommandItem
                     key={list.id}
                     onSelect={async () => {
-                      await deleteList(list.id);
+                      const result = await deleteList(list.id);
+                      if (!result) return; // Backlog, or already gone
+                      /**
+                       * One entry covers the list AND every todo that moved,
+                       * so a single undo puts it back whole. Undoing only the
+                       * list would restore it empty and strand its to-dos in
+                       * Backlog — worse than not offering undo at all.
+                       */
+                      const entryId = pushUndo(
+                        `Deleted "${list.name}"`,
+                        deleteListUndoSteps(result.listId, result.movedTodoIds),
+                      );
                       toast.success(`Deleted "${list.name}"`, {
                         description: "Its to-dos moved to Backlog.",
+                        // The most destructive action in the app, and there is
+                        // no confirmation step before it. Give it room.
+                        duration: 10000,
+                        action: {
+                          label: "Undo",
+                          onClick: () => void undoById(entryId),
+                        },
                       });
                       close();
                     }}
@@ -178,7 +255,66 @@ export function CommandPalette({
         ) : (
           <>
             <CommandEmpty>No results found.</CommandEmpty>
+
+            {results.length > 0 ? (
+              <>
+                <CommandGroup heading="To-dos">
+                  {results.map((todo) => {
+                    const where = todo.scheduledDate
+                      ? formatShortDate(todo.scheduledDate)
+                      : (listNameById.get(todo.listId ?? "") ?? "Unfiled");
+                    return (
+                      <CommandItem
+                        key={todo.id}
+                        /*
+                          Titles repeat ("Follow up"), and cmdk keys its
+                          selection off `value` — so the id rides along to keep
+                          rows distinct. It also scores the value, hence title
+                          first. The description travels as a keyword so
+                          description-only hits survive cmdk's own filter.
+                        */
+                        value={`${todo.title} ${todo.id}`}
+                        keywords={todo.description ? [todo.description] : undefined}
+                        onSelect={() => {
+                          onSelectTodo(todo);
+                          close();
+                        }}
+                      >
+                        <span
+                          className={
+                            todo.status === "open"
+                              ? undefined
+                              : "text-muted-foreground line-through"
+                          }
+                        >
+                          {todo.title}
+                        </span>
+                        <span className="ml-auto text-xs text-muted-foreground">
+                          {where}
+                        </span>
+                      </CommandItem>
+                    );
+                  })}
+                </CommandGroup>
+
+                <CommandSeparator />
+              </>
+            ) : null}
+
             <CommandGroup heading="Create">
+              {/*
+                The fallback the whole search exists for: nothing matched what
+                you typed, so turn it into the to-do instead of making you
+                retype it behind "New to-do".
+              */}
+              {query ? (
+                <CommandItem
+                  value={`Create to-do ${query}`}
+                  onSelect={() => void createFromQuery()}
+                >
+                  Create to-do “{query}”
+                </CommandItem>
+              ) : null}
               <CommandItem onSelect={() => { setMode({ kind: "new-todo" }); setValue(""); }}>
                 New to-do
               </CommandItem>
@@ -207,6 +343,10 @@ export function CommandPalette({
               {[1, 3, 5, 7].map((days) => (
                 <CommandItem
                   key={days}
+                  // On the item, not a wrapper span: CommandItem is a flex row
+                  // with a gap, so a span would break the phrase into columns.
+                  // font-variant-numeric inherits, and `nums` keeps the body font.
+                  className="nums"
                   onSelect={async () => {
                     await mutateSettings(LOCAL_OWNER_ID, { visibleDays: days });
                     close();
@@ -233,6 +373,43 @@ export function CommandPalette({
                   ? "Roll over on every day"
                   : "Roll over on workdays only"}
               </CommandItem>
+            </CommandGroup>
+
+            <CommandSeparator />
+
+            <CommandGroup heading="Typography">
+              {FONT_PAIRINGS.map((pairing) => (
+                <CommandItem
+                  key={pairing.id}
+                  // Preview each option in its own pairing — choosing a
+                  // typeface from a list rendered in a different typeface is
+                  // guesswork.
+                  data-font={pairing.id}
+                  onSelect={async () => {
+                    await mutateSettings(LOCAL_OWNER_ID, {
+                      fontPairing: pairing.id,
+                    });
+                    close();
+                  }}
+                >
+                  <span className="font-heading">{pairing.label}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {pairing.description}
+                  </span>
+                  {/*
+                    Settings rows written before this feature existed have no
+                    fontPairing, and useSettings hands back the raw Dexie row
+                    rather than a schema-parsed one — so fall back explicitly
+                    instead of showing no current option at all.
+                  */}
+                  {(settings?.fontPairing ?? DEFAULT_FONT_PAIRING) ===
+                  pairing.id ? (
+                    <span className="text-xs text-muted-foreground">
+                      (current)
+                    </span>
+                  ) : null}
+                </CommandItem>
+              ))}
             </CommandGroup>
           </>
         )}

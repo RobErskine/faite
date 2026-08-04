@@ -25,6 +25,10 @@ Plan of record: `~/.claude/plans/please-check-this-image-starry-eich.md`
 - [x] dnd-kit: reorder within column + drag across halves
 - [x] Quick add (inline per column) + ⌘K command palette
 - [x] Todo detail sheet (full CRUD)
+- [x] Column min/max width (`--column-min` / `--column-max`) + a horizontally
+      scrolling column track on both halves, with a persistently drawn bar
+- [x] Planning columns 50px wider than day columns (`--list-column-min`)
+- [x] "Create list" card at the end of the planning track
 - [x] 47 unit tests: scheduling, ordering, board grouping
 
 ### Still open in P1

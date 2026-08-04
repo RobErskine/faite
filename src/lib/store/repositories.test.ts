@@ -44,6 +44,26 @@ describe("seedIfEmpty", () => {
   });
 });
 
+describe("deleteList", () => {
+  it("reports the todos it reassigned, so one undo can put them back", async () => {
+    await seedIfEmpty();
+    const listId = await createList("Weekend");
+    const todoId = await createTodo({ title: "Mow the lawn", listId });
+
+    const result = await deleteList(listId);
+
+    expect(result).toEqual({ listId, movedTodoIds: [todoId] });
+    const backlog = (await getDb().lists.toArray()).find((l) => l.isBacklog)!;
+    expect((await getDb().todos.get(todoId))?.listId).toBe(backlog.id);
+  });
+
+  it("returns null for Backlog, which cannot be deleted", async () => {
+    await seedIfEmpty();
+    const backlog = (await getDb().lists.toArray()).find((l) => l.isBacklog)!;
+    expect(await deleteList(backlog.id)).toBeNull();
+  });
+});
+
 describe("repairDuplicateLists", () => {
   it("removes duplicates and rehomes their todos", async () => {
     await seedIfEmpty();

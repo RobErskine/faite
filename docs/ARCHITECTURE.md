@@ -143,6 +143,38 @@ things are cheap now and painful to retrofit, so they are already in place:
 
 No sharing UI, permission model, or cross-DO reads exist.
 
+### 2.11 Undo is a forward mutation
+
+An undo entry is **data** — a list of `{kind, entityId, patch}` steps — not a
+closure. Every reversible action happens to be expressible that way, so a
+closure would buy nothing and cost testability plus the risk of capturing an
+object a later edit has made stale.
+
+The payoff lands on §2.5 and §2.6. Replaying an entry goes through `mutate()`,
+so it gets a fresh `updatedAt`/`hlc` and joins the outbox as an ordinary edit.
+**Sync never has to know undo exists** — no revert opcode, no inverse-patch
+protocol, no special case in the merge.
+
+Three rules make it safe without an invalidation pass:
+
+1. An inverse writes **only the keys the forward patch touched**, so a later
+   edit to a different field of the same record survives.
+2. ⌘Z is strict **LIFO**, so a later edit to the *same* field has already been
+   reversed by its own newer entry before the older one is reached.
+3. Recording happens at **call sites**, not inside `mutate()`. Auto-recording
+   would push a read-before-write into the write path, would record the undo's
+   own `mutate()` call, and would split a compound operation like `deleteList`
+   into N+1 entries — so one ⌘Z would undo only its last step.
+
+Consequence worth knowing: undoing out of order (via a toast's Undo rather than
+⌘Z) reverses only that action's fields, which is the same field-level
+last-writer-wins §2.6 already commits to.
+
+History is in-memory only. A delete followed by a reload is permanent.
+
+Redo is not built. `⇧⌘Z` is deliberately left unbound rather than swallowed, so
+adding it is not a change in behaviour.
+
 ---
 
 ## 3. Stack
@@ -301,6 +333,13 @@ npm test         # vitest run
 - **`repositories.test.ts`** — uses `fake-indexeddb`; covers the concurrent
   seeding race that React StrictMode's double-invoked effect triggers.
 - **`board.test.ts`** — column grouping and drop-target resolution.
+- **`undo.test.ts`** — `inversePatch` is the correctness core, so most cases
+  live there: falsy values must survive (a `?? null` regression would rewrite
+  `false`/`0`/`""`), and a field missing from the before-state must invert to
+  `null`, never `undefined` — Dexie's `update()` reads `undefined` as "delete
+  this key path". Also guards the shared patch shapes: `listPatch` writes
+  `scheduledDate: null` internally, so a hand-built inverse would leave a
+  dragged todo unscheduled after undo.
 
 ### Lesson worth keeping
 

@@ -1,5 +1,5 @@
 import type { CivilDate, List, Todo } from "@/lib/schema";
-import { byPosition } from "@/lib/ordering";
+import { byPosition, positionForIndex, type Position } from "@/lib/ordering";
 import { OVERFLOW, deriveColumn, type PlacementContext } from "@/lib/scheduling";
 
 /**
@@ -13,6 +13,22 @@ import { OVERFLOW, deriveColumn, type PlacementContext } from "@/lib/scheduling"
 export const dayColumnId = (day: CivilDate) => `day:${day}`;
 export const overflowColumnId = () => `day:${OVERFLOW}`;
 export const listColumnId = (listId: string) => `list:${listId}`;
+
+/**
+ * Draggable id for a list column's reorder handle.
+ *
+ * Deliberately a different id space from the column's droppable (`list:<id>`).
+ * A column is a drop *target* for cards and a drag *source* for reordering, and
+ * those must stay distinguishable: `active.id` tells the handlers which of the
+ * two gestures is in flight, and the card path can keep resolving `list:` ids
+ * exactly as it did.
+ */
+export const listDragId = (listId: string) => `listdrag:${listId}`;
+
+/** The list id behind a reorder handle, or null if this is not one. */
+export function parseListDragId(id: string): string | null {
+  return id.startsWith("listdrag:") ? id.slice(9) : null;
+}
 
 export type DropTarget =
   | { kind: "day"; day: CivilDate }
@@ -50,6 +66,68 @@ export function preferPreciseTarget<T extends { id: string | number }>(
   if (collisions.length === 0) return null;
   const card = collisions.find((c) => !isColumnId(String(c.id)));
   return card ?? collisions[0];
+}
+
+export interface ListDropPlan {
+  /** The fractional index to write onto the dragged list. */
+  position: Position;
+  /** Which edge of the hovered column the insertion bar belongs on. */
+  side: "before" | "after";
+}
+
+/**
+ * Resolve where a dragged list column lands.
+ *
+ * Direction decides the side, the way every sortable list does it: dragging a
+ * column *rightwards* onto another means "go after it", leftwards means "go
+ * before it". Without that, hovering a column could only ever mean "insert
+ * before", and the last slot would be unreachable — you could never drag a
+ * column to the end.
+ *
+ * **Backlog is structurally pinned leftmost.** It is filtered out of the
+ * movable set entirely and only ever used as the lower bound for the first
+ * slot, so no arithmetic here can produce a key below it. That is stronger than
+ * clamping an index: there is no path through this function that displaces it.
+ *
+ * `lists` must be sorted by position. Returns null for a no-op — dropping a
+ * column on itself, or dragging Backlog, which has no handle to begin with.
+ */
+export function planListDrop(
+  lists: readonly List[],
+  draggedId: string,
+  overListId: string,
+): ListDropPlan | null {
+  const dragged = lists.find((l) => l.id === draggedId);
+  if (!dragged || dragged.isBacklog) return null;
+
+  const backlog = lists.find((l) => l.isBacklog);
+  const movable = lists.filter((l) => !l.isBacklog);
+  const fromIndex = movable.findIndex((l) => l.id === draggedId);
+  if (fromIndex < 0) return null;
+
+  // The dragged column must not be one of its own neighbours — same rule as
+  // reordering todos.
+  const remaining = movable.filter((l) => l.id !== draggedId);
+
+  let index: number;
+  let side: ListDropPlan["side"];
+
+  if (backlog && overListId === backlog.id) {
+    // Dropping on Backlog means "as far left as allowed", which is just after it.
+    index = 0;
+    side = "after";
+  } else {
+    const overIndex = remaining.findIndex((l) => l.id === overListId);
+    if (overIndex < 0) return null; // dropped on itself, or an unknown column
+    const movingRight = fromIndex < movable.findIndex((l) => l.id === overListId);
+    index = movingRight ? overIndex + 1 : overIndex;
+    side = movingRight ? "after" : "before";
+  }
+
+  // Backlog rides along as the floor for the first slot, so the leftmost
+  // reachable key is always above it.
+  const ordered = backlog ? [backlog, ...remaining] : remaining;
+  return { position: positionForIndex(ordered, index + (backlog ? 1 : 0)), side };
 }
 
 export interface DayColumn {

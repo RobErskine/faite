@@ -7,9 +7,24 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
+  /*
+    Four TYPE ROLES. Each resolves to an --app-* var that the active pairing
+    block below redefines, so `font-sans` / `font-heading` / `font-mono` /
+    `font-numeric` follow the pairing without any component knowing which
+    family is in play.
+
+    These must never reference themselves (`--font-sans: var(--font-sans)`) —
+    a self-referential custom property is invalid at computed-value time, so
+    every utility built on it silently falls back to the UA serif.
+  */
+  --font-sans: var(--app-sans);
+  --font-heading: var(--app-heading);
+  --font-mono: var(--app-mono);
+  --font-numeric: var(--app-numeric);
+
+  /* 10px. Names the size the board already uses; not a resize. */
+  --text-2xs: 0.625rem;
+  --text-2xs--line-height: 0.875rem;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -81,6 +96,36 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+
+  /*
+    THE COLUMN TRACK.
+
+    Columns still flex to fill their half, but the floor is what makes the
+    board scroll: once more columns exist than fit at --column-min, the half
+    overflows instead of squeezing every column into an illegible sliver.
+
+    The ceiling is the other half of the same idea. Without it, two lists on a
+    wide display stretch into slabs where a five-word to-do occupies an inch of
+    a foot of width, and the eye has to travel the whole span to read a row.
+
+    168px is not arbitrary: it is the largest floor at which the default view —
+    Overflow plus a seven-day week, eight columns — still fits a 1440pt laptop
+    without scrolling. Any wider and the most common window size would open on
+    a half-clipped Sunday, which reads as a bug rather than as an affordance.
+  */
+  --column-min: 10.5rem;
+  --column-max: 18rem;
+
+  /*
+    Planning columns run wider than day columns. A day column holds a handful
+    of items already committed to a date; a list column is where to-dos are
+    written and read in bulk, and its header carries a name of arbitrary
+    length rather than "TUESDAY".
+
+    Expressed as an offset so the two floors cannot drift apart: the planning
+    half is always exactly this much roomier, whatever --column-min becomes.
+  */
+  --list-column-min: calc(var(--column-min) + 50px);
 }
 
 .dark {
@@ -117,6 +162,153 @@
   --sidebar-ring: oklch(0.556 0 0);
 }
 
+/* ---------------------------------------------------------------------------
+   Font pairings
+
+   One block per pairing, selected by `data-font` on <html>. `:root` carries the
+   default so server-rendered HTML is already correct before the inline script
+   in layout.tsx runs.
+
+   `:root` and `[data-font="…"]` have equal specificity, so the override blocks
+   must stay BELOW the default block — source order is what breaks the tie.
+   --------------------------------------------------------------------------- */
+
+:root,
+[data-font="hyperlegible"] {
+  --app-sans: var(--font-atkinson), ui-sans-serif, system-ui, sans-serif;
+  --app-heading: var(--app-sans);
+  --app-mono: var(--font-atkinson-mono), ui-monospace, monospace;
+  --app-numeric: var(--app-mono);
+}
+
+[data-font="precision"] {
+  --app-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --app-heading: var(--app-sans);
+  --app-mono: var(--font-jetbrains-mono), ui-monospace, monospace;
+  --app-numeric: var(--app-mono);
+  /* Inter character variants: tailed l (cv05) and disambiguated 1/I (cv08). */
+  font-feature-settings: "cv05" 1, "cv08" 1;
+}
+
+[data-font="systematic"] {
+  --app-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  --app-heading: var(--app-sans);
+  --app-mono: var(--font-plex-mono), ui-monospace, monospace;
+  --app-numeric: var(--app-mono);
+}
+
+[data-font="editorial"] {
+  --app-sans: var(--font-source-sans), ui-sans-serif, system-ui, sans-serif;
+  --app-heading: var(--font-source-serif), ui-serif, Georgia, serif;
+  --app-mono: var(--font-plex-mono), ui-monospace, monospace;
+  --app-numeric: var(--app-mono);
+}
+
+/*
+  Numerals.
+
+  `num` is for STANDALONE numeric display — dates, times, amounts, counts. It
+  swaps in the pairing's numeral face and locks the figures to equal width so a
+  count going 9 → 10 cannot reflow the row around it.
+
+  `nums` is for numbers inside a sentence ("Show 3 days"), where switching
+  family mid-phrase reads as a rendering glitch. Same figure handling, no swap.
+*/
+@utility num {
+  /*
+    --app-numeric, not the --font-numeric theme token: Tailwind only emits
+    theme variables that some generated utility actually references, so relying
+    on one from hand-written CSS risks it being tree-shaken away. --app-numeric
+    is declared in the plain :root rules above and is always present.
+  */
+  font-family: var(--app-numeric);
+  font-variant-numeric: tabular-nums slashed-zero lining-nums;
+}
+
+@utility nums {
+  font-variant-numeric: tabular-nums slashed-zero;
+}
+
+/*
+  Horizontal column track — the scrolling row that each half of the board lays
+  its columns out in.
+
+  `overflow-x: auto` alone would technically scroll, but on macOS overlay
+  scrollbars stay invisible until a scroll is already under way — the one
+  moment the affordance is not needed. A thin, always-drawn bar is the only
+  thing that says "there are more columns this way" before you go looking.
+
+  Deliberately no `overflow-y` here. Setting it to `hidden` would clip a column
+  whose cards run past the bottom of the half; leaving it unset lets it compute
+  to `auto` alongside the x-axis, so a tall column scrolls rather than truncates.
+*/
+@utility column-track {
+  overflow-x: auto;
+
+  /*
+    Deliberately ::-webkit-scrollbar rather than `scrollbar-width: thin`.
+
+    The standard property is the tidier spelling, but on macOS it leaves the
+    scroller on OVERLAY scrollbars — invisible until a scroll is already under
+    way, which is the one moment the affordance is not needed. Styling the
+    pseudo-element opts the scroller out of overlay entirely, so the bar is
+    drawn the whole time there is more board to reach.
+
+    The two cannot be combined: Blink ignores these pseudo-elements outright
+    once `scrollbar-width` is set to anything but `auto`, so adding it back
+    "for Firefox" would silently return every Chrome user to overlay.
+  */
+  &::-webkit-scrollbar {
+    height: 0.5rem;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  &::-webkit-scrollbar-thumb {
+    border-radius: 9999px;
+    background: color-mix(in oklch, var(--foreground) 18%, transparent);
+  }
+  &::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in oklch, var(--foreground) 34%, transparent);
+  }
+}
+
+/*
+  Sonner's Undo button.
+
+  This has to be CSS rather than `toastOptions.classNames.actionButton`, and
+  the reason is not obvious. Sonner injects its stylesheet at runtime with
+  head.appendChild, so its rules are UNLAYERED — while Tailwind v4 puts every
+  utility inside `@layer utilities`. Layers are resolved before specificity, so
+  an unlayered declaration beats a layered one no matter how specific the
+  layered one is. Tailwind classes handed to `classNames.actionButton` land on
+  the element and then silently lose every property sonner also sets.
+
+  Sonner's own rule is `[data-sonner-toast][data-styled=true] [data-button]`.
+  One extra compound selector clears it without reaching for !important.
+
+  Values mirror buttonVariants({ variant: "outline", size: "xs" }) — an Undo
+  inside a toast should read as the same control as an Undo anywhere else.
+  Scoped to [data-action] so the cancel button keeps sonner's defaults.
+*/
+[data-sonner-toaster] [data-sonner-toast][data-styled="true"] [data-button][data-action] {
+  height: 1.5rem;
+  padding-inline: 0.5rem;
+  border-radius: min(var(--radius-md), 10px);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--foreground);
+  background: var(--background);
+  border: 1px solid var(--border);
+  transition: background-color 150ms;
+}
+
+[data-sonner-toaster]
+  [data-sonner-toast][data-styled="true"]
+  [data-button][data-action]:hover {
+  background: var(--muted);
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -126,5 +318,7 @@
   }
   html {
     @apply font-sans;
+    /* Lets the opsz axis on Inter and Source Serif actually engage. */
+    font-optical-sizing: auto;
   }
 }

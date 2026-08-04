@@ -41,6 +41,13 @@ interface TodoSheetProps {
   projects: Project[];
   onClose: () => void;
   onSave: (id: string, patch: Partial<Todo>) => void;
+  /**
+   * Status is separate from onSave because it is not a plain field write: it
+   * also stamps `completedAt`. Routing it through onSave left that null on a
+   * completed todo here while the card checkbox set it — the same action
+   * producing two different records depending on where it was triggered.
+   */
+  onSetStatus: (id: string, status: Todo["status"]) => void;
   onToggleLabel: (todoId: string, labelId: string) => void;
   onDelete: (id: string) => void;
 }
@@ -69,6 +76,7 @@ function TodoSheetContent({
   projects,
   onClose,
   onSave,
+  onSetStatus,
   onToggleLabel,
   onDelete,
 }: TodoSheetProps & { todo: Todo }) {
@@ -183,7 +191,7 @@ function TodoSheetContent({
                 <SelectContent>
                   <SelectItem value={NONE}>None</SelectItem>
                   {[1, 2, 3, 4].map((p) => (
-                    <SelectItem key={p} value={String(p)}>
+                    <SelectItem key={p} className="num" value={String(p)}>
                       P{p}
                     </SelectItem>
                   ))}
@@ -266,9 +274,7 @@ function TodoSheetContent({
               variant="outline"
               size="sm"
               onClick={() => {
-                onSave(todo.id, {
-                  status: todo.status === "done" ? "open" : "done",
-                });
+                onSetStatus(todo.id, todo.status === "done" ? "open" : "done");
                 onClose();
               }}
             >
@@ -282,7 +288,7 @@ function TodoSheetContent({
               variant="outline"
               size="sm"
               onClick={() => {
-                onSave(todo.id, { status: "dropped" });
+                onSetStatus(todo.id, "dropped");
                 onClose();
               }}
             >

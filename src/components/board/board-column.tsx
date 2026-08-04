@@ -7,6 +7,7 @@ import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Label as LabelRecord, Todo } from "@/lib/schema";
 import type { PlacementContext } from "@/lib/scheduling";
+import { ColumnGrip } from "./column-grip";
 import { TodoCard } from "./todo-card";
 
 interface BoardColumnProps {
@@ -29,11 +30,29 @@ interface BoardColumnProps {
   isDragActive?: boolean;
   /** Id of the todo the pointer is currently over, for the insertion line. */
   overTodoId?: string | null;
+  /** Id of the todo flying to its new slot — hidden until the ghost arrives. */
+  landingTodoId?: string | null;
   /**
    * Dropping here will be refused (Overflow). Styled as a rejecting target so
    * the outcome is obvious before the pointer is released.
    */
   rejectsDrop?: boolean;
+  /**
+   * List id, when this column may be dragged to reorder. Absent for day
+   * columns (date-ordered, so reordering is meaningless) and for Backlog,
+   * which is pinned leftmost.
+   */
+  reorderListId?: string;
+  /**
+   * Keep the grip's width even when this column has no grip, so titles stay
+   * aligned across a half. Set on every planning-half column; day columns have
+   * no grips at all, so they have nothing to align to.
+   */
+  reservesGripSlot?: boolean;
+  /** Edge to draw the column insertion bar on while a column drag hovers here. */
+  columnDropSide?: "before" | "after" | null;
+  /** True while a list column is being dragged — dims the card affordances. */
+  isColumnDragActive?: boolean;
 }
 
 export function BoardColumn({
@@ -52,7 +71,12 @@ export function BoardColumn({
   minRows = 8,
   isDragActive,
   overTodoId,
+  landingTodoId,
   rejectsDrop,
+  reorderListId,
+  reservesGripSlot,
+  columnDropSide,
+  isColumnDragActive,
 }: BoardColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id });
   const [draft, setDraft] = useState("");
@@ -71,37 +95,76 @@ export function BoardColumn({
       ref={setNodeRef}
       aria-label={typeof title === "string" ? title : undefined}
       className={cn(
-        "flex min-w-0 flex-1 flex-col rounded-md transition-all",
+        // Grows to fill the half, but between a floor and a ceiling. The floor
+        // is what pushes the half into horizontal scroll once the columns stop
+        // fitting; see --column-min in globals.css.
+        "group/column relative flex flex-1 flex-col rounded-md transition-all",
+        "min-w-(--column-min) max-w-(--column-max)",
         // Three distinct drag states, so at a glance you can tell where a drop
         // is possible, where it will land, and where it will be refused.
         //   candidate — every valid column, dashed and quiet
         //   active    — the column under the pointer, solid ring and tint
         //   rejecting — Overflow, which refuses drops
+        // All four are card-drag states. A column drag hovers these same
+        // droppables, but there the hovered column is only a reference point
+        // for where the dragged one lands — highlighting it as "the target"
+        // would say the wrong thing, so the insertion bar speaks alone.
         isDragActive && !isOver && !rejectsDrop &&
           "outline-dashed outline-1 outline-offset-[-2px] outline-border",
-        isOver && !rejectsDrop &&
+        isOver && !rejectsDrop && !isColumnDragActive &&
           "bg-primary/5 outline outline-2 outline-offset-[-2px] outline-primary",
         isDragActive && rejectsDrop && !isOver &&
           "outline-dashed outline-1 outline-offset-[-2px] outline-destructive/30",
-        isOver && rejectsDrop &&
+        isOver && rejectsDrop && !isColumnDragActive &&
           "bg-destructive/5 outline outline-2 outline-offset-[-2px] outline-destructive/60",
       )}
     >
+      {/*
+        Column insertion bar. Sits on whichever edge the dragged column will
+        land on, so "before" and "after" are visible rather than inferred.
+        Carries `data-drop-indicator` so the drop animation flies the column
+        chip here, exactly as it does for cards.
+      */}
+      {columnDropSide && (
+        <span
+          aria-hidden
+          data-drop-indicator
+          className={cn(
+            "absolute inset-y-0 z-10 w-0.5 rounded-full bg-primary",
+            columnDropSide === "before" ? "-left-px" : "-right-px",
+          )}
+        >
+          <span className="absolute -left-[3px] -top-0.5 size-2 rounded-full bg-primary" />
+        </span>
+      )}
       <header className="flex items-baseline justify-between gap-2 px-2 pb-1">
         <div className="min-w-0">
           {subtitle && (
-            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+            <p className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">
               {subtitle}
             </p>
           )}
-          <h2
-            className={cn(
-              "truncate text-lg font-bold uppercase tracking-tight",
-              emphasis && "text-primary",
+          {/*
+            Grip sits immediately left of the name, matching a todo row. The
+            empty slot on Backlog is deliberate: it cannot be reordered, but
+            without the reserved space its title would sit flush left while
+            every neighbouring column's title was indented past a grip.
+          */}
+          <div className="flex min-w-0 items-center gap-1.5">
+            {reorderListId && typeof title === "string" ? (
+              <ColumnGrip listId={reorderListId} listName={title} />
+            ) : (
+              reservesGripSlot && <span className="size-3 shrink-0" aria-hidden />
             )}
-          >
-            {title}
-          </h2>
+            <h2
+              className={cn(
+                "truncate font-heading text-lg font-bold uppercase tracking-tight",
+                emphasis && "text-primary",
+              )}
+            >
+              {title}
+            </h2>
+          </div>
         </div>
         {actions}
       </header>
@@ -116,6 +179,7 @@ export function BoardColumn({
               ctx={ctx}
               isAway={awayTodoIds?.has(todo.id)}
               showInsertionLine={!rejectsDrop && overTodoId === todo.id}
+              isLanding={landingTodoId === todo.id}
               onToggle={onToggle}
               onOpen={onOpen}
             />
@@ -127,7 +191,11 @@ export function BoardColumn({
           lands at the end, so show the indicator there instead.
         */}
         {isOver && !rejectsDrop && !overTodoId && (
-          <span aria-hidden className="relative block h-0.5 rounded-full bg-primary">
+          <span
+            aria-hidden
+            data-drop-indicator
+            className="relative block h-0.5 rounded-full bg-primary"
+          >
             <span className="absolute -left-0.5 -top-[3px] size-2 rounded-full bg-primary" />
           </span>
         )}

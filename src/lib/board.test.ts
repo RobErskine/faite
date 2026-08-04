@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { buildBoard, isColumnId, parseColumnId, preferPreciseTarget } from "./board";
+import {
+  buildBoard,
+  isColumnId,
+  listDragId,
+  parseColumnId,
+  parseListDragId,
+  planListDrop,
+  preferPreciseTarget,
+} from "./board";
 import { buildWindow } from "./scheduling";
 import type { List, Todo } from "./schema";
 import { positionsBetween } from "./ordering";
@@ -16,7 +24,12 @@ const ctx = {
 
 const positions = positionsBetween(null, null, 10);
 
-function list(id: string, name: string, isBacklog = false): List {
+function list(
+  id: string,
+  name: string,
+  isBacklog = false,
+  position = positions[0],
+): List {
   return {
     id,
     ownerId: "u",
@@ -25,7 +38,7 @@ function list(id: string, name: string, isBacklog = false): List {
     deletedAt: null,
     name,
     isBacklog,
-    position: positions[0],
+    position,
     tabId: null,
     color: null,
     emoji: null,
@@ -189,5 +202,85 @@ describe("parseColumnId", () => {
     expect(parseColumnId("day:overflow")).toEqual({ kind: "overflow" });
     expect(parseColumnId("list:abc")).toEqual({ kind: "list", listId: "abc" });
     expect(parseColumnId("nonsense")).toBeNull();
+  });
+});
+
+describe("parseListDragId", () => {
+  it("round-trips a list id", () => {
+    expect(parseListDragId(listDragId("abc"))).toBe("abc");
+  });
+
+  it("does not collide with the column droppable id space", () => {
+    // `list:abc` is the column's DROP target; `listdrag:abc` is its DRAG
+    // source. Confusing the two would route a column reorder into the card
+    // path, which fails silently.
+    expect(parseListDragId("list:abc")).toBeNull();
+    expect(parseColumnId(listDragId("abc"))).toBeNull();
+  });
+
+  it("returns null for a card id", () => {
+    expect(parseListDragId("some-uuid")).toBeNull();
+  });
+});
+
+describe("planListDrop", () => {
+  // Backlog first, then three movable columns in order.
+  const ordered = [
+    list("backlog", "Backlog", true, positions[0]),
+    list("brain", "Brain Dump", false, positions[1]),
+    list("grocery", "Grocery List", false, positions[2]),
+    list("buy", "To Buy", false, positions[3]),
+  ];
+
+  const positionOf = (id: string) => ordered.find((l) => l.id === id)!.position;
+
+  it("moves the last column to first-after-Backlog", () => {
+    // The reported scenario: grab "To Buy" from last place, drop it on the
+    // leftmost movable column.
+    const plan = planListDrop(ordered, "buy", "brain")!;
+    expect(plan.side).toBe("before");
+    expect(plan.position > positionOf("backlog")).toBe(true);
+    expect(plan.position < positionOf("brain")).toBe(true);
+  });
+
+  it("keeps Backlog leftmost when a column is dropped onto it", () => {
+    const plan = planListDrop(ordered, "buy", "backlog")!;
+    expect(plan.side).toBe("after");
+    expect(plan.position > positionOf("backlog")).toBe(true);
+    expect(plan.position < positionOf("brain")).toBe(true);
+  });
+
+  it("lands after the target when dragging rightwards", () => {
+    // Direction is what makes the last slot reachable at all.
+    const plan = planListDrop(ordered, "brain", "buy")!;
+    expect(plan.side).toBe("after");
+    expect(plan.position > positionOf("buy")).toBe(true);
+  });
+
+  it("lands before the target when dragging leftwards", () => {
+    const plan = planListDrop(ordered, "buy", "grocery")!;
+    expect(plan.side).toBe("before");
+    expect(plan.position > positionOf("brain")).toBe(true);
+    expect(plan.position < positionOf("grocery")).toBe(true);
+  });
+
+  it("refuses to move Backlog itself", () => {
+    expect(planListDrop(ordered, "backlog", "buy")).toBeNull();
+  });
+
+  it("treats a drop on itself as a no-op", () => {
+    expect(planListDrop(ordered, "buy", "buy")).toBeNull();
+  });
+
+  it("returns null for an unknown column", () => {
+    expect(planListDrop(ordered, "buy", "nope")).toBeNull();
+    expect(planListDrop(ordered, "nope", "buy")).toBeNull();
+  });
+
+  it("works when there is no Backlog at all", () => {
+    const noBacklog = ordered.slice(1);
+    const plan = planListDrop(noBacklog, "buy", "brain")!;
+    expect(plan.side).toBe("before");
+    expect(plan.position < positionOf("brain")).toBe(true);
   });
 });

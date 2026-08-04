@@ -101,6 +101,51 @@ export function todayIn(timezone: string, now: Date = new Date()): CivilDate {
 }
 
 // ---------------------------------------------------------------------------
+// Display formatting
+// ---------------------------------------------------------------------------
+
+/*
+ * Formatters are module-level: constructing an Intl.DateTimeFormat is the
+ * expensive part, and these run once per column and per card badge on every
+ * render.
+ *
+ * `timeZone: "UTC"` throughout, paired with parsing at noon UTC below. A civil
+ * date has no time and no zone, so handing it to a local-time formatter would
+ * reintroduce exactly the drift the rest of this module exists to avoid.
+ */
+const WEEKDAY = new Intl.DateTimeFormat("en-US", {
+  weekday: "long",
+  timeZone: "UTC",
+});
+const MONTH_DAY_YEAR = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+  timeZone: "UTC",
+});
+const MONTH_DAY = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  timeZone: "UTC",
+});
+
+/** Noon UTC keeps the formatter clear of any midnight rounding. */
+function toUtcNoon(date: CivilDate): Date {
+  return new Date(`${date}T12:00:00Z`);
+}
+
+/** Column header parts: "Monday" plus "Aug 4, 2026". */
+export function formatDay(date: CivilDate): { weekday: string; label: string } {
+  const dt = toUtcNoon(date);
+  return { weekday: WEEKDAY.format(dt), label: MONTH_DAY_YEAR.format(dt) };
+}
+
+/** Compact form for inline badges: "Aug 4". Year is almost always noise here. */
+export function formatShortDate(date: CivilDate): string {
+  return MONTH_DAY.format(toUtcNoon(date));
+}
+
+// ---------------------------------------------------------------------------
 // Rollover
 // ---------------------------------------------------------------------------
 

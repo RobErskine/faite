@@ -8,8 +8,9 @@ import type {
   TodoStatus,
 } from "@/lib/schema";
 import { positionAtEnd, positionsBetween } from "@/lib/ordering";
+import { DEFAULT_FONT_PAIRING } from "@/lib/fonts";
 import { getDb } from "./db";
-import { create, mutate, newId, now, remove, restore } from "./mutate";
+import { create, mutate, newId, now, remove } from "./mutate";
 
 /**
  * CRUD for every entity, expressed on top of mutate().
@@ -85,16 +86,46 @@ export async function updateTodo(
 }
 
 /**
+ * The patch shapes, extracted so undo can reverse exactly what was written.
+ *
+ * An undo entry is built by picking the forward patch's keys off the record as
+ * it was before the write (see lib/undo.ts). That only works if the caller can
+ * see the WHOLE patch — and two of these write a field the caller never passes:
+ * `moveTodoToList` clears `scheduledDate`, `setTodoStatus` stamps `completedAt`.
+ *
+ * Hand-writing the patch at the call site would silently drop those, and the
+ * failure is invisible: dragging a scheduled todo into a list and undoing would
+ * restore the list but leave the todo unscheduled. Sharing one shape between
+ * the repository and the inverse means they cannot drift.
+ */
+export const statusPatch = (status: TodoStatus) => ({
+  status,
+  completedAt: status === "open" ? null : now(),
+});
+
+export const schedulePatch = (
+  scheduledDate: CivilDate | null,
+  position?: string,
+) => ({
+  scheduledDate,
+  ...(position ? { position } : {}),
+});
+
+export const listPatch = (listId: string | null, position?: string) => ({
+  listId,
+  // Moving into a list returns the todo to planning, so any schedule goes.
+  scheduledDate: null,
+  ...(position ? { position } : {}),
+});
+
+/**
  * Set completion state.
  *
  * `dropped` ("won't do") is deliberately a separate status from `done` — the
  * distinction is the whole point of the Overflow column's triage.
  */
 export async function setTodoStatus(id: string, status: TodoStatus): Promise<void> {
-  await mutate("todo", id, {
-    status,
-    completedAt: status === "open" ? null : now(),
-  });
+  await mutate("todo", id, statusPatch(status));
 }
 
 /** Schedule onto a day. Does NOT clear listId or labels — membership is kept. */
@@ -103,10 +134,7 @@ export async function scheduleTodo(
   scheduledDate: CivilDate | null,
   position?: string,
 ): Promise<void> {
-  await mutate("todo", id, {
-    scheduledDate,
-    ...(position ? { position } : {}),
-  });
+  await mutate("todo", id, schedulePatch(scheduledDate, position));
 }
 
 /** Move into a list column, clearing any schedule so it returns to planning. */
@@ -115,19 +143,19 @@ export async function moveTodoToList(
   listId: string | null,
   position?: string,
 ): Promise<void> {
-  await mutate("todo", id, {
-    listId,
-    scheduledDate: null,
-    ...(position ? { position } : {}),
-  });
+  await mutate("todo", id, listPatch(listId, position));
 }
 
 export async function reorderTodo(id: string, position: string): Promise<void> {
   await mutate("todo", id, { position });
 }
 
+/**
+ * Soft delete. There is no `restoreTodo` counterpart on purpose: undo writes
+ * `{deletedAt: null}` through mutate() like any other patch, so a bespoke
+ * restore helper would be a second way to do the same thing.
+ */
 export const deleteTodo = (id: string) => remove("todo", id);
-export const restoreTodo = (id: string) => restore("todo", id);
 
 // ---------------------------------------------------------------------------
 // Lists
@@ -169,11 +197,18 @@ export async function updateList(
  *
  * Backlog itself cannot be deleted — it is the guaranteed destination, so
  * removing it would leave orphaned todos with nowhere to land.
+ *
+ * Returns which todos were reassigned so one undo can put the list AND its
+ * todos back. Without them, undoing would restore an empty list and strand
+ * every todo in Backlog — worse than no undo at all. Null means nothing was
+ * deleted (Backlog, or an id that is already gone).
  */
-export async function deleteList(id: string): Promise<void> {
+export async function deleteList(
+  id: string,
+): Promise<{ listId: string; movedTodoIds: string[] } | null> {
   const db = getDb();
   const list = await db.lists.get(id);
-  if (!list || list.isBacklog) return;
+  if (!list || list.isBacklog) return null;
 
   const backlog = await getBacklog();
   const orphans = await db.todos.where("listId").equals(id).toArray();
@@ -181,6 +216,8 @@ export async function deleteList(id: string): Promise<void> {
     await mutate("todo", todo.id, { listId: backlog?.id ?? null });
   }
   await remove("list", id);
+
+  return { listId: id, movedTodoIds: orphans.map((t) => t.id) };
 }
 
 export async function getBacklog(): Promise<List | undefined> {
@@ -348,6 +385,7 @@ export async function seedIfEmpty(): Promise<void> {
       workdays: [1, 2, 3, 4, 5],
       overflowAfterDays: 3,
       visibleDays: 7,
+      fontPairing: DEFAULT_FONT_PAIRING,
       updatedAt: timestamp,
     });
   });
