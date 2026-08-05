@@ -39,13 +39,13 @@ export function WelcomeDialog() {
           <DialogTitle>Welcome to Faite</DialogTitle>
           <DialogDescription>
             Capture to-dos into lists, then drag them onto a day to commit to
-            doing them. Missed items roll forward and eventually land in
+            doing them. Missed items roll to the next day and eventually land in
             Overflow.
           </DialogDescription>
         </DialogHeader>
         <p className="text-sm text-muted-foreground">
-          You&apos;re using it right now with no account — everything you add
-          lives only in this browser. Create a free account and it&apos;s
+          You&apos;re using it right now with no account. Everything you add
+          lives offline, only in this browser. Create a free account and it&apos;s
           saved to you, not just this device.
         </p>
         <DialogFooter>

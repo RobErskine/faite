@@ -49,9 +49,9 @@ export default function Home() {
 
           <Link
             href="/board"
-            className={cn(buttonVariants({ variant: "default", size: "lg" }))}
+            className={cn(buttonVariants({ variant: "default", size: "lg" }), 'text-center flex p-4 max-h-auto')}
           >
-            Open the board
+            Open the board <em className="text-xs">(free and offline)</em>
           </Link>
         </main>
 
