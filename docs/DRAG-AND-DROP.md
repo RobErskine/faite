@@ -42,11 +42,12 @@ handle mid-drag.
 | File | Role |
 |---|---|
 | `src/components/board/board.tsx` | `DndContext`, sensors, collision detection, all drag handlers, `DragOverlay` |
-| `src/components/board/board-column.tsx` | `useDroppable` + `SortableContext`; drop-target visual states; column insertion bar |
+| `src/components/board/board-column.tsx` | `useDroppable` + `SortableContext`; `useDraggable` for column reorder; whole-header drag; drop-target visual states |
 | `src/components/board/todo-card.tsx` | `useSortable`; whole-row drag, grip, insertion line |
-| `src/components/board/drag-grip.tsx` | The one grip affordance, shared by rows and columns |
-| `src/components/board/column-grip.tsx` | `useDraggable` handle for reordering list columns |
+| `src/components/board/drag-grip.tsx` | The one grip affordance, shared by rows, columns and tabs |
 | `src/components/board/create-list-column.tsx` | End-of-track "Create list" slot. Column-sized, deliberately **not** a droppable (§5.6) |
+| `src/components/board/use-day-track.ts` | Pure scroll-position/jump math for the day track (anchor index, jump clamping) — not itself drag-and-drop, but shares the track dnd-kit measures |
+| `src/components/board/date-nav.tsx` | Week/Month/Quarter jump buttons + calendar date picker above the day track |
 | `src/app/globals.css` | `--column-min` / `--column-max` / `--list-column-min`, and the `column-track` utility (§4.12) |
 | `src/lib/board.ts` | Column grouping, id codecs, `preferPreciseTarget()`, `planListDrop()` |
 | `src/lib/drop-animation.ts` | Drop animation: `readLandingRect()`, `landingTransform()`, `runLandingDropAnimation()` |
@@ -179,10 +180,18 @@ Two derived values, both `useMemo`:
 
 - `overTodoId` — null if `over` is a column, and **null if `over` is the dragged
   card itself**; an indicator above the item being moved would imply a no-op drop.
-- `columnDrop` — `{listId, side}` for the column insertion bar. Derived rather
-  than stored **so the indicator and the write cannot disagree**: `onDragEnd`
-  calls the same `planListDrop()` with the same inputs. If it were stored in
-  state, a missed render would show the bar in one place and write another.
+- `columnDrop` — `{listId, side}` for the actual landing computation. Derived
+  rather than stored **so the display and the write cannot disagree**:
+  `onDragEnd` calls the same `planListDrop()` with the same inputs. If it were
+  stored in state, a missed render would show one thing and write another.
+
+A third, `columnDropTargetId`, derives from `columnDrop` purely for display: it
+is `columnDrop.listId`, **except** when that id is Backlog's, in which case it
+is the first movable column's id instead. Backlog is a legitimate value for
+`columnDrop.listId` — hovering it is a valid way to drop "as far left as
+allowed" — but it must never render as highlighted (§4.10), so the two values
+are kept separate: `columnDrop` for `onDragEnd`'s math, `columnDropTargetId`
+for which column's `BoardColumn` receives `isColumnDropTarget`.
 
 ### 4.5 Drop resolution
 
@@ -344,14 +353,28 @@ fractional index and `useLists()` already sorted by it, so this added no schema
 change and no migration: a reorder is `updateList(id, {position})`, one field on
 one record, exactly like a todo reorder (§4.6).
 
-**Columns are dragged by a handle, not by their body.** This is the opposite
-choice from cards (§4.9), and for a concrete reason: a column's body is full of
-cards that are themselves drag sources, so a pointerdown on a card would bubble
-straight into a column drag. The header is the only surface in a column with no
-competing gesture. `ColumnGrip` is a separate component because the hook must
-not run for columns that cannot be reordered, and hooks cannot be conditional —
-rendering it conditionally is how "this column is draggable, that one is not"
-gets said.
+**Columns are dragged by their whole header, not by the grip alone.** Same
+bargain as a card's whole row (§4.9), scoped one level in: `onPointerDown` sits
+on the `<header>`, while `attributes` and the keyboard activator stay on the
+grip. It is the *header* rather than the whole `<section>` because a column's
+body is full of cards that are drag sources themselves — a pointerdown there
+has to mean "drag this card", not "drag its column". The header is the only
+surface in a column with no competing gesture.
+
+This was grip-only at first, on the theory that a header-wide drag surface
+would fight something. It does not, and the grip-only version had a visible
+tell: dnd-kit sizes the drag overlay from the source node's rect, so with the
+12px grip as the source the column chip came out 12px wide with its name
+truncated away to nothing. Dragging from the header makes the chip column-width
+and the name legible, for free.
+
+`useDraggable` is called unconditionally in `BoardColumn` with `disabled:
+!reorderListId`, rather than from a child that only renders for movable
+columns. Hooks cannot be conditional and this header markup is shared by every
+column, so the alternative was two copies of it. A disabled draggable registers
+but can never activate — and dnd-kit withholds its `listeners` entirely, so the
+header of a day column gets no `onPointerDown` at all rather than a live one
+guarded by a flag.
 
 **Direction decides the side**, the way every sortable list does it:
 
@@ -362,8 +385,8 @@ dragging leftwards  onto a column  -> land BEFORE it
 
 Without direction, hovering a column could only ever mean "insert before", and
 **the last slot would be unreachable** — there would be no way to drag a column
-to the end. The insertion bar renders on the matching edge, so before/after is
-visible rather than inferred.
+to the end. Direction still decides *where* the column lands; it no longer
+decides *what renders*. See below.
 
 **Backlog is pinned leftmost structurally, not by clamping.** `planListDrop()`
 filters Backlog out of the movable set entirely and only ever uses it as the
@@ -377,6 +400,36 @@ Dropping a column onto Backlog means "as far left as allowed" — i.e. the slot
 immediately after it — rather than being refused. Refusing would be technically
 correct and practically annoying.
 
+**The drop target is one outlined column, not a before/after edge bar.**
+Originally each column carried a 2px vertical rule on whichever edge
+`planListDrop()`'s `side` pointed to — the same idea as a card's insertion
+line, ported over. In practice it read as noise: a bar sitting flush against a
+column's edge looks like an unwanted second border on that side, and it drew
+attention to *which* edge rather than *which* column. Reordering five or six
+columns does not need edge-level precision the way reordering fifty todos
+does, so the display was simplified to the same "active" outline a card drag
+already uses when `isOver` (`board-column.tsx`) — `bg-primary/5 outline
+outline-2 outline-primary` on whichever single column `isColumnDropTarget`
+names. `side` still exists and still drives `planListDrop()`'s arithmetic; it
+just no longer drives anything on screen.
+
+**Backlog can never BE that column, even while it is legitimately the raw drop
+target.** `columnDrop.listId` is allowed to be Backlog's id — dropping there is
+how "as far left as allowed" gets triggered — but outlining Backlog would claim
+something false: there is no "before" for it to receive, and its own header has
+no grip to promise the gesture in the first place. `Board` derives a second
+value, `columnDropTargetId`, that redirects Backlog's id to the first movable
+column's id before it reaches any `BoardColumn`. `onDragEnd` still reads the
+raw `columnDrop`/`overId`, so dropping directly on Backlog computes exactly the
+same position as before — only the outline moved, not the math.
+
+A related leak, found while fixing the above: the little "insert at the end of
+this column" dot a card drag draws (`isOver && !rejectsDrop && !overTodoId`,
+just below the last card) was not gated on drag kind, so it lit up on whichever
+column a column drag happened to be hovering — including Backlog, which is
+exactly what read as "Backlog highlighting itself as a target" even though the
+box outline never did. Gated with `!isColumnDragActive` now.
+
 `planListDrop()` is pure and unit-tested, including the exact case that prompted
 it: grab the last column, drop it on the leftmost movable one, land between
 Backlog and that column.
@@ -386,8 +439,12 @@ Backlog and that column.
 Tabs are the third gesture in the same `DndContext`. Reordering them is
 `planTabDrop()` — `planListDrop()` with the Backlog special-casing removed,
 since tabs have no pinned member (the default tab is undeletable, not
-immovable). Same direction rule, same insertion bar, same `data-drop-indicator`
-so the overlay lands on it.
+immovable). Same direction rule, and tabs keep their own before/after edge
+insertion bar in `tab-strip.tsx` (`data-drop-indicator` on a 2px rule, not on
+the pill itself) — columns moved away from that shape (§4.10) because there
+are only ever a handful of them and the edge bar read as a stray border, but a
+strip of many tabs is closer to the todo-list case, where edge-level precision
+earns its keep.
 
 **Hovering a tab mid-card-drag focuses that tab.** Pick up a to-do, hold it over
 another tab for ~600 ms, and the planning half switches; drop it into one of the
@@ -466,16 +523,64 @@ it, two lists on a wide display stretch into slabs where a five-word to-do
 occupies a foot of width.
 
 **168px is not arbitrary.** It is the largest floor at which the default view —
-Overflow plus a seven-day week, eight columns — still fits a 1440pt laptop
-without scrolling. A wider floor means the most common window size opens on a
-half-clipped Sunday, which reads as a bug rather than as an affordance. If the
-day-count toggle or the Overflow column ever changes, that number is the thing
-to recompute.
+a seven-day week — still fits a 1440pt laptop without scrolling. A wider floor
+means the most common window size opens on a half-clipped Sunday, which reads
+as a bug rather than as an affordance. If the day-count toggle ever changes,
+that number is the thing to recompute.
 
-**The planning half's wider floor is set on the track, not on each column.**
-`BoardColumn` reads `--column-min`; the planning container overrides that one
-property, so every column inside — including the create-list slot — widens
-without a size prop threaded through the component.
+**The planning half's wider floor is set on the outer row, not on each
+column.** `BoardColumn` reads `--column-min`; the planning row overrides that
+one property, so every column inside — including the create-list slot —
+widens without a size prop threaded through the component.
+
+**Overflow and Backlog are pinned — fixed-width siblings outside the scroll
+track, not part of the fits-at-168px arithmetic above.** `BoardColumn`'s
+`pinned` prop renders a column at `w-(--column-min) shrink-0` next to the
+`.column-track` div, rather than as a `flex-1` child inside it: `[pinned
+column][scrolling track]`, both inside a non-scrolling outer row that carries
+the shared background and padding. They stay reachable however far the track
+scrolls — the point of pinning them, per the P1 feedback that prompted this.
+
+`position: sticky` was considered and rejected. dnd-kit caches each
+droppable's rect at drag start and corrects it by the scroll delta of its
+scrollable ancestors (see §4.2); a `sticky` element does not move with that
+scroll, so its corrected rect drifts off screen and a drop "on" the visually
+pinned column silently resolves to whatever is underneath it instead — exactly
+the gesture pinning exists to fix. A sibling outside the scroller has no such
+drift, needs no opaque background or z-index (columns are transparent; the
+outer row's background shows through every gap, pinned or not), and does not
+interact with dnd-kit's auto-scroll.
+
+**The day track now genuinely scrolls through more than a week, starting on
+first load.** `Board` renders `DEFAULT_RENDERED_DAYS` (30) day columns from
+the start — deliberately wider than any screen, so the track always has
+somewhere to scroll to rather than opening on a dead end — and grows further
+to cover both the furthest scheduled todo and however far the user has
+navigated, bounded by `Board`'s `cap` state (starts at `DEFAULT_DAY_CAP`,
+365 — about a year). See ARCHITECTURE.md §5 for why the window has to grow
+this way rather than simply widening with the ⌘K toggle (which still works,
+but now only as an explicit "collapse back to N days" action, not the thing
+that sizes the default view).
+
+Growth is always an explicit user action, never silent: a "Load N more days"
+tile sits at the end of the track (mirroring `create-list-column.tsx`'s slot
+at the end of the planning track) for as long as `cap` has not been reached,
+and the `Week`/`Month`/`Quarter` jump buttons extend the horizon on demand
+when a jump target lands past what is currently rendered — but stay bounded
+by `cap` themselves, same as the tile. The calendar-icon date picker is the
+one exception: it has no upper bound at all, so picking a day past `cap`
+raises `cap` itself to reach it, rather than the picker refusing a deliberate
+far-future pick (an 18-months-out reminder, say). `cap` only grows, never
+shrinks, and survives a later ⌘K collapse. `use-day-track.ts` owns the pure
+scroll-position and jump math for all of these, all of it against the day
+track specifically — the pinned columns beside it are unaffected.
+
+The date picker bridges `CivilDate` strings to `Date` objects for
+`react-day-picker`, which has no civil-date mode. This is the one place in the
+app that touches `Date` objects for a stored/derived date — see the comment
+above `civilDateToLocalDate` in `date-nav.tsx` for why it stays safe: both
+sides of every comparison are local-time `Date`s built the same way, so
+nothing is ever cross-checked against a UTC-parsed civil date.
 
 **The scrollbar is drawn with `::-webkit-scrollbar`, not `scrollbar-width`.**
 The standard property is the tidier spelling and was tried first, but on macOS
@@ -518,11 +623,15 @@ Scheduling does **not** clear `listId` or labels — membership is preserved, th
 todo simply renders in the calendar half instead. Dragging back to a list clears
 `scheduledDate`.
 
-### 5.3 Items scheduled outside the visible window fall back to their list
+### 5.3 Items scheduled past the day cap fall back to their list
 
-Shown dimmed with a date chip (`awayTodoIds`). Otherwise something scheduled
-three weeks out would appear in neither half. **Consequence: changing the
-1/3/5/7-day toggle changes which todos appear in the bottom half.** Intended.
+Shown dimmed with a date chip (`awayTodoIds`). This used to fire routinely —
+the window was always exactly `settings.visibleDays` long — but the board now
+opens on 30 days and grows the rendered window to cover any scheduled todo up
+to a ~year-long cap (ARCHITECTURE.md §5), so it fires only past that cap,
+where a day column is not an option. The 1/3/5/7-day toggle no longer sizes
+the default view or moves todos between halves; it is now only an explicit
+"collapse to N days" action.
 
 ### 5.4 One grip, always left of the name, small mark and large target
 
@@ -582,9 +691,9 @@ Two consequences worth knowing before changing it:
 - A **card** dragged over it finds no collision there, so `pointerWithin`
   returns nothing and `closestCorners` falls back to the nearest real column.
   The card lands in a list, never on the button.
-- A **column** dragged over it likewise finds nothing, so no insertion bar
-  renders and the drop is a no-op. The end slot is still reachable the normal
-  way: drag rightwards onto the last real column (§4.10).
+- A **column** dragged over it likewise finds nothing, so no column highlights
+  and the drop is a no-op. The end slot is still reachable the normal way: drag
+  rightwards onto the last real column (§4.10).
 
 Its own interaction is a plain button → autofocused field. Enter commits,
 Escape abandons, blur commits what was typed — matching the per-column quick-add
@@ -607,30 +716,39 @@ and toasts with an Undo action, the same shape the palette's creates use.
   bearing, not just decorative
 - landing row held at `opacity-0` while the overlay flies to it
 
-**Column** (`board-column.tsx`) — three mutually exclusive drag states:
+**Column** (`board-column.tsx`) — three mutually exclusive drag states, shared
+by card drags and column drags:
 
 | State | Condition | Style |
 |---|---|---|
-| candidate | drag active, not hovered | dashed 1px border outline |
-| active | hovered, accepts | solid 2px primary outline + `bg-primary/5` |
-| rejecting | Overflow | dashed/solid destructive outline + `bg-destructive/5` |
+| candidate | card drag active, not hovered | dashed 1px border outline |
+| active | card drag hovering it, OR it is the single column-drag drop target | solid 2px primary outline + `bg-primary/5` |
+| rejecting | Overflow, card drag hovering it | dashed/solid destructive outline + `bg-destructive/5` |
 
-All four are **card-drag** states and are suppressed during a column drag. A
-column drag hovers the same droppables, but there the hovered column is only a
-*reference point* for where the dragged one lands — outlining it as "the target"
-would say the wrong thing. During a column drag the insertion bar speaks alone.
+Candidate and rejecting are **card-drag only** — `isDragActive` is `false`
+for every column during a column drag, so neither can fire then. Active is the
+one style both gestures reach, from two different conditions
+(`isOver && !isColumnDragActive` for a card, `isColumnDragActive &&
+isColumnDropTarget` for a column) that are mutually exclusive in practice,
+since the board never has both `activeTodo` and `activeList` set at once.
 
 All use `outline-offset-[-2px]` to draw inside the column bounds.
 
-Hovering a column but no specific card renders an end-of-column indicator
-instead of a per-card line.
+Hovering a column but no specific card renders an end-of-column dot instead of
+a per-card line — but only for a **card** drag (`!isColumnDragActive`). Without
+that guard the same dot lit up during a column drag too, on whichever column
+happened to be hovered, including Backlog (§4.10).
 
-**Column reorder** (`board-column.tsx`, `column-grip.tsx`)
-- the same `DragGrip`, in the header immediately left of the list name; Backlog
-  reserves the slot but shows none, and day columns reserve nothing (§5.4)
-- insertion bar: 2px primary vertical rule on the **left** edge for "before" and
-  the **right** edge for "after", full column height, also carrying
-  `data-drop-indicator` so the column chip gets the same soft landing as a card
+**Column reorder** (`board-column.tsx`)
+- the whole header is `cursor-grab`; the same `DragGrip` sits in it immediately
+  left of the list name, as the keyboard and touch path. Backlog reserves the
+  slot but shows none, and day columns reserve nothing (§5.4)
+- the drop target is the single column's **active** outline above, not a
+  separate indicator — see §4.10 for why the earlier before/after edge bar was
+  dropped, and why Backlog is redirected rather than ever outlined itself
+- `data-drop-indicator` sits on that same column's `<section>` now, so the
+  chip's drop animation grows to the column's width as it lands, rather than
+  collapsing into a hairline the way the old edge bar did
 - overlay is a compact chip with the list name, sharing the card overlay's
   `LIFTED` tilt
 
@@ -682,16 +800,18 @@ list — see §4.7 and §4.9.)
    (§4.12), so "there is more board this way" is visible without a drag.
 4. **Touch is untested, and now asymmetric.** Cards drag from anywhere with a
    pointer but **only from the grip on touch** — `touch-action: none` on the row
-   would cost the columns their touch scrolling (§4.9). Columns likewise drag
-   only from their header grip. `activationConstraint: {distance: 4}` may need
+   would cost the columns their touch scrolling (§4.9). Columns are now the same
+   shape: header-wide with a pointer, grip-only on touch, for the same reason.
+   `activationConstraint: {distance: 4}` may need
    `delay`+`tolerance` on touch so a drag does not fight page scroll. Matters
    for Capacitor (P7), and is the most likely place this all falls over.
 5. **No multi-select drag.**
 6. **Overlay width vs. cursor.** The overlay is `max-w-xs`; on a narrow column
    it visually overhangs neighbours while only the cursor's column highlights.
    Correct, but arguably reads oddly — worth a look.
-7. **Column reorder has no keyboard path.** `ColumnGrip` is a focusable button
-   with dnd-kit's attributes, so Space should start a keyboard drag, but the
+7. **Column reorder has no keyboard path.** The header's grip is a focusable
+   button carrying dnd-kit's attributes and `onKeyDown`, so Space should start a
+   keyboard drag, but the
    `sortableKeyboardCoordinates` getter is tuned for sortable lists and columns
    are plain draggables. Unverified.
 8. **`onDragOver` sets state on every move.** Fine now; if the board grows to
@@ -761,24 +881,39 @@ logic cannot be meaningfully tested there.
 
 **Manual checklist — column reordering**
 
-16. Grab the header grip of the last list and drop it on the leftmost movable
-    column. It lands **immediately after Backlog, never before it.** *(This was
-    the requested behaviour.)*
-17. Drag a column rightwards onto the last one — it lands **after** it, i.e. the
-    end slot is reachable. The insertion bar sits on the right edge.
-18. Drag leftwards — bar sits on the left edge, and the column lands before the
-    target.
-19. Drop a column onto Backlog — lands just after it, no refusal.
+16. Grab the last list **by its title, not its grip**, and drop it on the
+    leftmost movable column. It lands **immediately after Backlog, never before
+    it.** *(This was the requested behaviour.)*
+17. Drag a column rightwards onto the last one — it lands **after** it, i.e.
+    the end slot is reachable. That column shows the single active-outline
+    border while hovered; releasing lands the dragged column just after it.
+18. Drag leftwards onto a column — same outline, and the column lands before
+    the target this time. The visual does not distinguish before from after;
+    only the release position does.
+19. Drop a column onto Backlog — lands just after it (the first slot), no
+    refusal. **Confirm Backlog itself never shows the outline** — while
+    hovering it, the first movable column shows it instead. *(This was the
+    reported bug: Backlog reading as a drop target when it structurally
+    cannot receive one.)*
 20. Confirm **Backlog has no grip**, but that its title still lines up with the
     other list titles — the empty slot is reserved. Day columns have neither.
-21. Grab a column by the padding just outside its grip icon — the drag should
-    still start, from the same 24×24 target a card grip has.
-22. During a column drag, confirm the card-drag chrome stays away: no dashed
-    candidate outlines, no solid outline on the hovered column, no card
-    insertion line. Only the vertical bar.
+21. Grab a column anywhere along its header — the grip, the title, the empty
+    space between the title and the info button. All start the same drag, and
+    the overlay chip shows the list name at roughly column width.
+21a. Click the header's info button. It opens the dialog and does **not** start
+    a drag; below the 4px threshold nothing activates (§4.9).
+21b. Day columns and Backlog: press and drag on their headers — nothing moves.
+22. During a column drag, confirm the card-drag-only chrome stays away: no
+    dashed candidate outline on the non-hovered columns, no destructive
+    styling anywhere (Overflow does not participate in column drags), and no
+    end-of-column card dot on the hovered column. **Exactly one column at a
+    time should show the active outline, and it should be a single border —
+    not a border plus an extra accent on one edge.** *(This was the other
+    reported bug.)*
 23. Drag a column up over the calendar half and release — nothing happens, no
     crash, no stray reorder.
-24. Drop a column on itself — no-op, no spurious write.
+24. Drop a column on itself — no-op, no spurious write, and no outline shown
+    (`planListDrop` returns null for this case).
 25. Reload after each reorder — the order persists (it is a real `position`
     write, not view state).
 
@@ -809,7 +944,7 @@ Layout, but every item here changes what a drag has to reach.
     mid-typing — it discards and returns to the button.
 34. Drag a card over the create-list card and release. It must land in the
     nearest real list, **never** on the button, and nothing may be created.
-35. Drag a list column over it. No insertion bar, no write, no crash.
+35. Drag a list column over it. No column highlights, no write, no crash.
 
 ### A caution
 

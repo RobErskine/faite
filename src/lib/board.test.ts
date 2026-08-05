@@ -140,6 +140,35 @@ describe("buildBoard", () => {
     expect(board.awayTodoIds.has("a")).toBe(true);
   });
 
+  it("renders a far-out todo in its day column once the window grows to cover it", () => {
+    // Same todo as above, but with a window wide enough to reach it — this is
+    // what the board does as the calendar half scrolls or a todo is
+    // scheduled further out than settings.visibleDays.
+    const widerCtx = { ...ctx, visibleWindow: buildWindow(TODAY, 30) };
+    const board = buildBoard(
+      [todo({ id: "a", listId: "groceries", scheduledDate: "2026-09-01" })],
+      LISTS,
+      widerCtx,
+    );
+    const day = board.days.find((d) => d.day === "2026-09-01");
+    expect(day?.todos).toHaveLength(1);
+    expect(board.lists.find((c) => c.list.id === "groceries")!.todos).toHaveLength(0);
+    expect(board.awayTodoIds.has("a")).toBe(false);
+  });
+
+  it("still flags a todo scheduled past the cap even with a wide window", () => {
+    // 2026-09-01 is 29 days out; a 20-day window is not enough to hold it —
+    // this is the safety valve past DAY_CAP in board.tsx.
+    const widerCtx = { ...ctx, visibleWindow: buildWindow(TODAY, 20) };
+    const board = buildBoard(
+      [todo({ id: "a", listId: "groceries", scheduledDate: "2026-09-01" })],
+      LISTS,
+      widerCtx,
+    );
+    expect(board.lists.find((c) => c.list.id === "groceries")!.todos).toHaveLength(1);
+    expect(board.awayTodoIds.has("a")).toBe(true);
+  });
+
   it("falls back to Backlog for todos with no list", () => {
     const board = buildBoard([todo({ id: "a", listId: null })], LISTS, ctx);
     expect(board.lists.find((c) => c.list.isBacklog)!.todos).toHaveLength(1);

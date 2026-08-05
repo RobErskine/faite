@@ -254,10 +254,11 @@ function TabPill({
 /**
  * Reorder handle for a tab.
  *
- * Separate component for the same reason ColumnGrip is: the pill's own body is
- * a button, so a pointerdown anywhere on it would race the drag gesture against
- * the click that switches tabs. The grip is the only surface with no competing
- * gesture.
+ * The one place on the board where the grip really is the only way in. A column
+ * header hands its pointer activator to the whole header, but a tab's body is
+ * itself a button, so a pointerdown anywhere on it would race the drag gesture
+ * against the click that switches tabs — and unlike a card's title, that click
+ * changes what the entire board is showing.
  */
 function TabGrip({ tab }: { tab: Tab }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({

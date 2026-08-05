@@ -64,6 +64,12 @@
 }
 
 :root {
+  /*
+    Tells the UA which palette its own chrome should use — scrollbars, form
+    controls, the overscroll canvas. Declared here rather than set from the
+    pre-paint script so `.dark` carries it: one class toggle, both effects.
+  */
+  color-scheme: light;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -109,9 +115,12 @@
     a foot of width, and the eye has to travel the whole span to read a row.
 
     168px is not arbitrary: it is the largest floor at which the default view —
-    Overflow plus a seven-day week, eight columns — still fits a 1440pt laptop
-    without scrolling. Any wider and the most common window size would open on
-    a half-clipped Sunday, which reads as a bug rather than as an affordance.
+    a seven-day week — still fits a 1440pt laptop without scrolling. Any wider
+    and the most common window size would open on a half-clipped Sunday, which
+    reads as a bug rather than as an affordance. Overflow and Backlog are no
+    longer part of this arithmetic: they render as fixed-width siblings outside
+    the scrolling track (`pinned` on BoardColumn), so they stay reachable
+    however far the track scrolls and do not count toward "columns that fit".
   */
   --column-min: 10.5rem;
   --column-max: 18rem;
@@ -129,6 +138,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
   --card: oklch(0.205 0 0);

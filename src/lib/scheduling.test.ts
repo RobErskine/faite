@@ -3,6 +3,7 @@ import {
   OVERFLOW,
   addDays,
   buildWindow,
+  contextFromSettings,
   dayOfWeek,
   daysBetween,
   deriveColumn,
@@ -60,6 +61,56 @@ describe("civil date arithmetic", () => {
     expect(dayOfWeek("2026-08-03")).toBe(1); // Monday
     expect(dayOfWeek("2026-08-07")).toBe(5); // Friday
     expect(dayOfWeek("2026-08-08")).toBe(6); // Saturday
+  });
+});
+
+describe("buildWindow", () => {
+  it("starts at today and runs the requested length", () => {
+    expect(buildWindow("2026-08-03", 7)).toEqual([
+      "2026-08-03",
+      "2026-08-04",
+      "2026-08-05",
+      "2026-08-06",
+      "2026-08-07",
+      "2026-08-08",
+      "2026-08-09",
+    ]);
+  });
+
+  it("crosses a month boundary without a gap or duplicate", () => {
+    const window = buildWindow("2026-08-29", 5);
+    expect(window).toEqual([
+      "2026-08-29",
+      "2026-08-30",
+      "2026-08-31",
+      "2026-09-01",
+      "2026-09-02",
+    ]);
+  });
+
+  it("is a single day when length is 1", () => {
+    expect(buildWindow("2026-08-03", 1)).toEqual(["2026-08-03"]);
+  });
+});
+
+describe("contextFromSettings", () => {
+  const settings = {
+    timezone: "UTC",
+    workdaysOnly: false,
+    workdays: [1, 2, 3, 4, 5],
+    overflowAfterDays: 3,
+    visibleDays: 7,
+  };
+  const now = new Date("2026-08-03T12:00:00Z");
+
+  it("defaults the window to settings.visibleDays", () => {
+    expect(contextFromSettings(settings, now).visibleWindow).toHaveLength(7);
+  });
+
+  it("lets renderedDays override the window length", () => {
+    // The board grows this past the setting as the calendar half scrolls or a
+    // todo is scheduled further out — see deriveColumn below.
+    expect(contextFromSettings(settings, now, 45).visibleWindow).toHaveLength(45);
   });
 });
 
@@ -186,6 +237,18 @@ describe("deriveColumn", () => {
       .toEqual({ half: "calendar", day: "2026-08-06" });
     expect(deriveColumn(todo, ctx({ visibleWindow: buildWindow("2026-08-03", 1) })))
       .toEqual({ half: "planning", awayDate: "2026-08-06" });
+  });
+
+  it("renders a far-out todo on its own day once the window is grown to cover it", () => {
+    // Same todo as the "falls back" case above, but with a window wide enough
+    // to hold it — this is what the board does as the calendar half scrolls
+    // or a todo is scheduled further out than the current window.
+    expect(
+      deriveColumn(
+        { scheduledDate: "2026-08-24" },
+        ctx({ visibleWindow: buildWindow("2026-08-03", 30) }),
+      ),
+    ).toEqual({ half: "calendar", day: "2026-08-24" });
   });
 
   it("keeps overflowed todos visible regardless of window size", () => {

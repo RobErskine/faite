@@ -10,8 +10,11 @@ import type {
 } from "@/lib/schema";
 import { positionAtEnd, positionsBetween } from "@/lib/ordering";
 import { DEFAULT_FONT_PAIRING } from "@/lib/fonts";
+import { DEFAULT_THEME_MODE } from "@/lib/theme";
+import { DEFAULT_AVATAR_KIND } from "@/lib/profile";
 import { getDb } from "./db";
 import { create, mutate, newId, now, remove } from "./mutate";
+import { getCurrentOwnerId, LOCAL_OWNER_ID } from "./owner";
 
 /**
  * CRUD for every entity, expressed on top of mutate().
@@ -20,14 +23,7 @@ import { create, mutate, newId, now, remove } from "./mutate";
  * through mutate()/create()/remove() so the outbox always sees it.
  */
 
-/**
- * The local user id.
- *
- * P1 is single-user with no auth, so this is a fixed value. P2 replaces it with
- * the authenticated user's id; every record already carries `ownerId`, so that
- * swap does not require a migration.
- */
-export const LOCAL_OWNER_ID = "local-user";
+export { LOCAL_OWNER_ID };
 
 /**
  * The tab every user starts with.
@@ -58,7 +54,7 @@ export async function createTodo(input: CreateTodoInput): Promise<string> {
   const timestamp = now();
   const todo: Todo = {
     id: newId(),
-    ownerId: LOCAL_OWNER_ID,
+    ownerId: getCurrentOwnerId(),
     createdAt: timestamp,
     updatedAt: timestamp,
     deletedAt: null,
@@ -187,7 +183,7 @@ export async function createList(
   const timestamp = now();
   const list: List = {
     id: newId(),
-    ownerId: LOCAL_OWNER_ID,
+    ownerId: getCurrentOwnerId(),
     createdAt: timestamp,
     updatedAt: timestamp,
     deletedAt: null,
@@ -301,7 +297,7 @@ export async function createTab(
   const timestamp = now();
   const tab: Tab = {
     id: newId(),
-    ownerId: LOCAL_OWNER_ID,
+    ownerId: getCurrentOwnerId(),
     createdAt: timestamp,
     updatedAt: timestamp,
     deletedAt: null,
@@ -437,7 +433,7 @@ export async function createLabel(
   const timestamp = now();
   const label: Label = {
     id: newId(),
-    ownerId: LOCAL_OWNER_ID,
+    ownerId: getCurrentOwnerId(),
     createdAt: timestamp,
     updatedAt: timestamp,
     deletedAt: null,
@@ -491,7 +487,7 @@ export async function createProject(
   const timestamp = now();
   const project: Project = {
     id: newId(),
-    ownerId: LOCAL_OWNER_ID,
+    ownerId: getCurrentOwnerId(),
     createdAt: timestamp,
     updatedAt: timestamp,
     deletedAt: null,
@@ -539,7 +535,7 @@ const seedListId = (slug: string) => `seed:list:${slug}`;
 function defaultTabRecord(timestamp: string): Tab {
   return {
     id: DEFAULT_TAB_ID,
-    ownerId: LOCAL_OWNER_ID,
+    ownerId: getCurrentOwnerId(),
     createdAt: timestamp,
     updatedAt: timestamp,
     deletedAt: null,
@@ -573,6 +569,7 @@ export async function seedIfEmpty(): Promise<void> {
   const db = getDb();
   const timestamp = now();
   const positions = positionsBetween(null, null, SEED_LISTS.length);
+  const ownerId = getCurrentOwnerId();
 
   await db.transaction("rw", db.lists, db.tabs, db.settings, async () => {
     if ((await db.lists.count()) > 0) return;
@@ -582,7 +579,7 @@ export async function seedIfEmpty(): Promise<void> {
     for (const [i, seed] of SEED_LISTS.entries()) {
       const list: List = {
         id: seedListId(seed.slug),
-        ownerId: LOCAL_OWNER_ID,
+        ownerId,
         createdAt: timestamp,
         updatedAt: timestamp,
         deletedAt: null,
@@ -602,6 +599,11 @@ export async function seedIfEmpty(): Promise<void> {
     }
 
     await db.settings.put({
+      // Deliberately NOT `ownerId` above: settings is a per-DEVICE singleton
+      // keyed on the placeholder forever, regardless of who is signed in — see
+      // adoptLocalData() in adopt-owner.ts. useSettings()/mutateSettings() are
+      // hardcoded to this same key throughout the app; keying it any other way
+      // would silently orphan every read.
       ownerId: LOCAL_OWNER_ID,
       // Use the device's zone as the starting point; user-editable in settings.
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
@@ -610,6 +612,12 @@ export async function seedIfEmpty(): Promise<void> {
       overflowAfterDays: 3,
       visibleDays: 7,
       fontPairing: DEFAULT_FONT_PAIRING,
+      theme: DEFAULT_THEME_MODE,
+      displayName: "",
+      avatarKind: DEFAULT_AVATAR_KIND,
+      avatarInitials: "",
+      avatarEmoji: "",
+      avatarImage: "",
       activeTabId: DEFAULT_TAB_ID,
       updatedAt: timestamp,
     });

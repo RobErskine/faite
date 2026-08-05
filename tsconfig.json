@@ -33,5 +33,17 @@
   // src/server is Workers-runtime code (Durable Object + custom worker entry).
   // It uses `cloudflare:workers` and imports the generated .open-next bundle, so it
   // is typechecked by tsconfig.worker.json rather than by the Next.js build.
-  "exclude": ["node_modules", "src/server", ".open-next", ".next-static"]
+  //
+  // cloudflare-env.d.ts (wrangler-generated) is excluded for the same reason:
+  // its `mainModule` field is `typeof import("./src/server/worker")`, which
+  // would otherwise drag worker.ts — and its Workers-only `open-next/worker`
+  // import — into this program too. Nothing in the Next app layer touches
+  // CloudflareEnv; only tsconfig.worker.json needs it.
+  "exclude": [
+    "node_modules",
+    "src/server",
+    ".open-next",
+    ".next-static",
+    "cloudflare-env.d.ts"
+  ]
 }

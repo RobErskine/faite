@@ -40,7 +40,29 @@
       "tag": "v1",
       "new_sqlite_classes": ["UserDurableObject"]
     }
+  ],
+
+  // Auth/global tables only (user, session, account, verification). Todo data
+  // stays in the per-user DO. See src/server/auth.ts.
+  "d1_databases": [
+    {
+      "binding": "AUTH_DB",
+      "database_name": "faite-auth",
+      "database_id": "d0be89ae-e45d-44f4-804f-7f88a2f169fa"
+    }
+  ],
+
+  // Transactional email (verification, password reset) via Cloudflare Email
+  // Service. Restricted to one sender so a compromised binding can't spoof other
+  // addresses. Sending is inert until `myfaite.app` DNS is on Cloudflare and
+  // `wrangler email sending enable myfaite.app` has run — see src/server/email.ts.
+  "send_email": [
+    {
+      "name": "EMAIL",
+      "allowed_sender_addresses": ["noreply@myfaite.app"]
+    }
   ]
 
-  // D1 binding for auth/global tables is added at P2 (`wrangler d1 create faite-auth`).
+  // Routes for myfaite.app are added once its DNS is on this Cloudflare account.
+  // Until then the app is reachable only at the workers.dev URL.
 }

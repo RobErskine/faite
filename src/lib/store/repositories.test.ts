@@ -1,6 +1,8 @@
 import "fake-indexeddb/auto";
 import { beforeEach, describe, expect, it } from "vitest";
 import { getDb, resetDbForTests } from "./db";
+import { DEFAULT_THEME_MODE } from "@/lib/theme";
+import { DEFAULT_AVATAR_KIND } from "@/lib/profile";
 import {
   archiveList,
   archiveTab,
@@ -200,6 +202,14 @@ describe("seeding tabs", () => {
     await seedIfEmpty();
     const settings = await getDb().settings.toArray();
     expect(settings[0].activeTabId).toBe(DEFAULT_TAB_ID);
+  });
+
+  it("seeds the default appearance and profile", async () => {
+    await seedIfEmpty();
+    const settings = await getDb().settings.toArray();
+    expect(settings[0].theme).toBe(DEFAULT_THEME_MODE);
+    expect(settings[0].avatarKind).toBe(DEFAULT_AVATAR_KIND);
+    expect(settings[0].displayName).toBe("");
   });
 });
 

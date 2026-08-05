@@ -219,11 +219,18 @@ export function contextFromSettings(
     "timezone" | "workdaysOnly" | "workdays" | "overflowAfterDays" | "visibleDays"
   >,
   now: Date = new Date(),
+  /**
+   * Overrides `settings.visibleDays` for the rendered window length. The
+   * board grows this past the setting as the calendar half scrolls or a todo
+   * is scheduled further out — see `deriveColumn` below for why the window
+   * has to keep pace with both.
+   */
+  renderedDays?: number,
 ): PlacementContext {
   const today = todayIn(settings.timezone, now);
   return {
     today,
-    visibleWindow: buildWindow(today, settings.visibleDays),
+    visibleWindow: buildWindow(today, renderedDays ?? settings.visibleDays),
     workdaysOnly: settings.workdaysOnly,
     workdays: settings.workdays,
     overflowAfterDays: settings.overflowAfterDays,
@@ -245,12 +252,17 @@ export function buildWindow(today: CivilDate, visibleDays: number): CivilDate[] 
  * otherwise                    -> calendar half, Overflow
  * ```
  *
- * Then one override: if the resulting day is not in the visible window, the
- * todo renders in the planning half instead, flagged with `awayDate`. That
- * follows from the rule "a todo is hidden from planning only when it is
- * actually visible in the calendar" — otherwise something scheduled three weeks
- * out would appear in neither half. A visible consequence is that changing the
- * 1/3/5/7-day toggle changes which todos appear below. That is intended.
+ * Then one override: if the resulting day is not in `ctx.visibleWindow`, the
+ * todo renders in the planning half instead, flagged with `awayDate`.
+ *
+ * This used to be normal behaviour, tied to the 1/3/5/7-day toggle: the
+ * window was always exactly `settings.visibleDays` long, so scheduling
+ * something for next week routinely bounced it here. It is now a safety
+ * valve only. The board grows `visibleWindow` (via `contextFromSettings`'s
+ * `renderedDays`) to always cover the furthest-scheduled todo, so a real day
+ * column is always waiting for anything within the day cap — this override
+ * fires only past that cap, where rendering a day column is not an option
+ * and the todo has to surface somewhere.
  */
 export function deriveColumn(
   todo: Pick<Todo, "scheduledDate">,
@@ -274,7 +286,14 @@ export function deriveColumn(
   }
 
   // Overflow is always visible, so only real days need the window check.
-  if (placement.day !== OVERFLOW && !ctx.visibleWindow.includes(placement.day)) {
+  // `visibleWindow` is always contiguous from `today`, and `placement.day` is
+  // always `today` or later by construction above, so an offset comparison is
+  // exact and O(1) — unlike `.includes`, which `buildBoard` (lib/board.ts)
+  // would otherwise run once per todo against an array up to a year long.
+  if (
+    placement.day !== OVERFLOW &&
+    daysBetween(ctx.today, placement.day) >= ctx.visibleWindow.length
+  ) {
     return { half: PLANNING, awayDate: scheduledDate };
   }
 

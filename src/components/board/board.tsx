@@ -41,8 +41,15 @@ import {
 } from "@/lib/drop-animation";
 import { tint } from "@/lib/colors";
 import { positionForIndex } from "@/lib/ordering";
-import { OVERFLOW, formatDay } from "@/lib/scheduling";
+import { OVERFLOW, daysBetween, formatDay, todayIn } from "@/lib/scheduling";
 import { FONT_STORAGE_KEY } from "@/lib/fonts";
+import {
+  DARK_CLASS,
+  PREFERS_DARK,
+  THEME_STORAGE_KEY,
+  normalizeTheme,
+  resolveTheme,
+} from "@/lib/theme";
 import {
   useArchivedLists,
   useArchivedTabs,
@@ -82,10 +89,13 @@ import {
 import type { GuardContext, Hotkey } from "@/lib/keyboard";
 import { Hotkeys } from "@/components/hotkeys";
 import { AppHeader } from "./app-header";
+import { SessionProvider } from "@/components/auth/session-provider";
+import { SettingsSheet } from "@/components/settings/settings-sheet";
 import { ArchivedListsSheet } from "./archived-lists-sheet";
 import { BoardColumn } from "./board-column";
 import { ColumnInfoButton } from "./column-info-button";
 import { CreateListColumn } from "./create-list-column";
+import { DateNav } from "./date-nav";
 import { ListInfoDialog } from "./list-info-dialog";
 import {
   archiveListWithUndo,
@@ -104,6 +114,7 @@ import {
 } from "./tab-actions";
 import { TodoSheet } from "./todo-sheet";
 import { CommandPalette } from "./command-palette";
+import { useDayTrack } from "./use-day-track";
 
 /**
  * How long a card must hover a tab before it focuses.
@@ -113,6 +124,29 @@ import { CommandPalette } from "./command-palette";
  * gesture is only discoverable once it fires, so erring long would hide it.
  */
 const TAB_FOCUS_DWELL_MS = 600;
+
+/**
+ * How many days the calendar half renders on first load, before any scroll,
+ * jump, or far-out scheduling. Wider than a screenful on purpose — the whole
+ * point is that a track with nothing to scroll to reads as "this is all the
+ * days there are," not as an invitation to scroll right.
+ */
+const DEFAULT_RENDERED_DAYS = 30;
+/** How many more days each click of the "Load more" tile adds. */
+const LOAD_MORE_STEP = 30;
+/**
+ * Starting ceiling on rendered day columns — about a year out. Bounds normal
+ * scrolling and the Week/Month/Quarter buttons so the board does not
+ * materialize an unbounded number of columns just from browsing forward;
+ * dnd-kit re-measures every droppable on every drag move
+ * (`MeasuringStrategy.Always` below), so this is also the ceiling on how many
+ * columns a single drag ever has to re-measure.
+ *
+ * NOT a hard limit, though: the date picker has no upper bound (a reminder a
+ * year and a half out should be reachable directly), so picking a day past
+ * this constant grows it to match — see `cap` state below.
+ */
+const DEFAULT_DAY_CAP = 365;
 
 /**
  * Resolve the drop target from the POINTER, not the dragged element's box.
@@ -170,7 +204,6 @@ export function Board() {
   const labels = useLabels();
   const projects = useProjects();
   const settings = useSettings();
-  const ctx = usePlacementContext(settings);
 
   const [activeTodo, setActiveTodo] = useState<Todo | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
@@ -181,6 +214,7 @@ export function Board() {
   /** The tab whose settings dialog is open, if any. */
   const [infoTabId, setInfoTabId] = useState<string | null>(null);
   const [archivedOpen, setArchivedOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   /**
    * Which tab the planning half is showing.
@@ -300,7 +334,12 @@ export function Board() {
     () => ({
       dragging: !!activeTodo || !!activeList || !!activeTab,
       modalOpen:
-        paletteOpen || !!openTodoId || !!infoListId || !!infoTabId || archivedOpen,
+        paletteOpen ||
+        !!openTodoId ||
+        !!infoListId ||
+        !!infoTabId ||
+        archivedOpen ||
+        settingsOpen,
     }),
     [
       activeTodo,
@@ -311,6 +350,7 @@ export function Board() {
       infoListId,
       infoTabId,
       archivedOpen,
+      settingsOpen,
     ],
   );
 
@@ -331,6 +371,46 @@ export function Board() {
       // Private modes can refuse writes. Costs a flash next load, nothing more.
     }
   }, [settings?.fontPairing]);
+
+  /**
+   * Push the stored appearance onto <html>, mirror it to localStorage, and —
+   * in "system" — keep listening.
+   *
+   * The mirror is what lets the inline script in the root layout resolve the
+   * theme before first paint, exactly as it does for the font pairing.
+   *
+   * The extra job here is that "system" is a SUBSCRIPTION, not a value: the OS
+   * can flip while the app is open (macOS auto-appearance does it at dusk),
+   * and without the listener the board would sit in yesterday's palette until
+   * reload. The listener is only attached in "system" — an explicit Light or
+   * Dark is not something the OS gets a vote on.
+   */
+  const themeMode = settings ? normalizeTheme(settings.theme) : null;
+
+  useEffect(() => {
+    // Null until the store has been read. Applying the default here would
+    // stomp whatever the pre-paint script correctly resolved, for one tick.
+    if (!themeMode) return;
+
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, themeMode);
+    } catch {
+      // Private modes can refuse writes. Costs a flash next load, nothing more.
+    }
+
+    const media = window.matchMedia(PREFERS_DARK);
+    const apply = () =>
+      document.documentElement.classList.toggle(
+        DARK_CLASS,
+        resolveTheme(themeMode, media.matches) === "dark",
+      );
+
+    apply();
+    if (themeMode !== "system") return;
+
+    media.addEventListener("change", apply);
+    return () => media.removeEventListener("change", apply);
+  }, [themeMode]);
 
   const sensors = useSensors(
     // A small activation distance keeps clicks and drags distinguishable, and
@@ -358,6 +438,99 @@ export function Board() {
     () => todos.filter((t) => !(t.listId && archivedListIds.has(t.listId))),
     [todos, archivedListIds],
   );
+
+  /**
+   * How many day columns to render: always at least `DEFAULT_RENDERED_DAYS`,
+   * always enough to hold the furthest-out scheduled todo — growing the
+   * window as a SIDE EFFECT of scrolling would silently drain cards out of
+   * their lists as the user looked further ahead, with no way back — and
+   * always at least `settings.visibleDays` (the ⌘K toggle's floor). All three
+   * are clamped to `cap`, past which `deriveColumn` in scheduling.ts falls
+   * back to showing the todo dimmed in its list — the load-more tile at the
+   * end of the day track is how the user reaches it from there.
+   */
+  const todayCivil = useMemo(
+    () => (settings ? todayIn(settings.timezone) : null),
+    [settings],
+  );
+  const furthestScheduledOffset = useMemo(() => {
+    if (!todayCivil) return 0;
+    let furthest: string | null = null;
+    for (const t of visibleTodos) {
+      if (t.status === "open" && t.scheduledDate && (!furthest || t.scheduledDate > furthest)) {
+        furthest = t.scheduledDate;
+      }
+    }
+    return furthest ? daysBetween(todayCivil, furthest) + 1 : 0;
+  }, [visibleTodos, todayCivil]);
+
+  const [horizon, setHorizon] = useState(DEFAULT_RENDERED_DAYS);
+  /**
+   * The rendering ceiling. Starts at `DEFAULT_DAY_CAP` and only ever grows —
+   * normal scrolling and the load-more tile stay within it, but the date
+   * picker in `date-nav.tsx` has no upper bound of its own: picking a day
+   * past this raises it to match (see `onExtend` below), rather than the
+   * picker refusing dates a deliberate "remind me in 18 months" pick needs.
+   * Never reset by the ⌘K toggle — an explicitly unlocked longer horizon
+   * should survive a temporary "show fewer days" collapse, not be forgotten.
+   */
+  const [cap, setCap] = useState(DEFAULT_DAY_CAP);
+  const loadMoreDays = useCallback(
+    () => setHorizon((h) => Math.min(cap, h + LOAD_MORE_STEP)),
+    [cap],
+  );
+
+  /**
+   * Collapses `horizon` back to exactly the ⌘K toggle's new value whenever
+   * the user explicitly changes it — the toggle's original "show only N
+   * days" meaning, preserved from before scrolling existed.
+   *
+   * Skips the FIRST time `settings.visibleDays` becomes defined: that
+   * transition is Dexie's initial load resolving, not a user action, and
+   * firing on it would collapse the default 30-day view down to 7 before
+   * the user ever touched anything.
+   */
+  const prevVisibleDaysRef = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (settings?.visibleDays === undefined) return;
+    const prev = prevVisibleDaysRef.current;
+    prevVisibleDaysRef.current = settings.visibleDays;
+    if (prev === undefined) return; // Dexie's initial load, not a user action.
+    if (settings.visibleDays !== prev) setHorizon(settings.visibleDays);
+  }, [settings?.visibleDays]);
+
+  const minDays = settings?.visibleDays ?? 7;
+  const renderedDays = todayCivil
+    ? Math.min(cap, Math.max(minDays, horizon, furthestScheduledOffset))
+    : minDays;
+
+  const ctx = usePlacementContext(settings, renderedDays);
+
+  /** The day track's scroll container, threaded into `useDayTrack` below. */
+  const dayTrackRef = useRef<HTMLDivElement>(null);
+
+  const {
+    anchorIndex,
+    visibleCount,
+    canJumpBack,
+    canJumpForward,
+    jumpBy,
+    jumpToIndex,
+    jumpToToday,
+  } = useDayTrack({
+    trackRef: dayTrackRef,
+    cap,
+    /**
+     * `jumpToIndex` (wired to the date picker) calls this with targets past
+     * `cap` on purpose — see the comment on `cap` above. Growing both here,
+     * together, is what makes an 18-months-out pick actually reachable
+     * instead of silently clamped back to a year.
+     */
+    onExtend: (days) => {
+      setCap((c) => Math.max(c, days));
+      setHorizon((h) => Math.max(h, days));
+    },
+  });
 
   /**
    * The planning half's columns: the active tab's lists, plus Backlog.
@@ -394,6 +567,21 @@ export function Board() {
   const board = useMemo(
     () => (ctx ? buildBoard(visibleTodos, tabLists, ctx, hiddenListIds) : null),
     [visibleTodos, tabLists, ctx, hiddenListIds],
+  );
+
+  /**
+   * Backlog rendered as a pinned sibling of the planning track, split out
+   * here rather than in `buildBoard` — `board.lists` keeps carrying every
+   * list, in position order, for `planListDrop` and the reorder logic, which
+   * never learn a column moved out of the track.
+   */
+  const backlogColumn = useMemo(
+    () => board?.lists.find((c) => c.list.isBacklog) ?? null,
+    [board],
+  );
+  const otherListColumns = useMemo(
+    () => board?.lists.filter((c) => !c.list.isBacklog) ?? [],
+    [board],
   );
 
   /**
@@ -477,6 +665,24 @@ export function Board() {
     const plan = planListDrop(lists, activeList.id, target.listId);
     return plan ? { listId: target.listId, side: plan.side } : null;
   }, [activeList, overId, lists]);
+
+  /**
+   * The column that should visually read as the drop target.
+   *
+   * Backlog is pinned leftmost and can never move, so outlining it as "the
+   * target" claims something false — there is no "before" for it to receive.
+   * Hovering it means "as far left as allowed" (see `planListDrop`), which is
+   * exactly what hovering the first movable column already means, so that
+   * column takes the border instead. The landing position is unchanged —
+   * this only redirects where the border is drawn, not where the drop lands.
+   */
+  const columnDropTargetId = useMemo(() => {
+    if (!columnDrop) return null;
+    if (backlogColumn && columnDrop.listId === backlogColumn.list.id) {
+      return otherListColumns[0]?.list.id ?? null;
+    }
+    return columnDrop.listId;
+  }, [columnDrop, backlogColumn, otherListColumns]);
 
   /** Same contract as `columnDrop`, one level up: derived from the same plan. */
   const tabDrop = useMemo(() => {
@@ -841,10 +1047,33 @@ export function Board() {
       <Hotkeys registry={hotkeys} context={guardContext} />
 
       <div className="flex h-dvh flex-col">
-        <AppHeader onOpenPalette={() => setPaletteOpen(true)} />
+        <AppHeader
+          onOpenPalette={() => setPaletteOpen(true)}
+          onOpenSettings={() => setSettingsOpen(true)}
+          settings={settings}
+        />
 
-        {/* Calendar half */}
-        <div className="column-track flex flex-1 gap-px border-b bg-border/40 px-4 pt-4">
+        <DateNav
+          today={ctx.today}
+          anchorIndex={anchorIndex}
+          visibleCount={visibleCount}
+          canJumpBack={canJumpBack}
+          canJumpForward={canJumpForward}
+          onJump={jumpBy}
+          onJumpToDate={jumpToIndex}
+          onToday={jumpToToday}
+        />
+
+        {/*
+          Calendar half. Overflow sits OUTSIDE the scrolling track as a fixed
+          sibling, so it stays reachable however far the day track scrolls —
+          the whole point of pinning it. `position: sticky` was considered and
+          rejected: dnd-kit caches each droppable's rect at drag start and
+          corrects it by the scroll delta of its scrollable ancestors, so a
+          sticky column's corrected rect would drift off screen and a drop
+          "on" Overflow would silently resolve to whatever is underneath it.
+        */}
+        <div className="flex flex-1 gap-px border-b bg-border/40 px-4 pt-4">
           <BoardColumn
             id={board.overflow.id}
             title="Overflow"
@@ -860,31 +1089,57 @@ export function Board() {
             overTodoId={overTodoId}
             landingTodoId={landingTodoId}
             rejectsDrop
+            pinned
           />
-          {board.days.map((column) => {
-            const { weekday, label } = formatDay(column.day);
-            const isToday = column.day === ctx.today;
-            return (
-              <BoardColumn
-                key={column.id}
-                id={column.id}
-                title={weekday}
-                // `subtitle` also carries prose on other columns, so the
-                // numeral face is applied here rather than in BoardColumn.
-                subtitle={<span className="num">{label}</span>}
-                todos={column.todos}
-                labels={labels}
-                ctx={ctx}
-                emphasis={isToday}
-                onToggle={handleToggle}
-                onOpen={(todo) => setOpenTodoId(todo.id)}
-                onQuickAdd={(title) => void handleQuickAdd(title, { day: column.day })}
-                isDragActive={!!activeTodo}
-                overTodoId={overTodoId}
-                landingTodoId={landingTodoId}
-              />
-            );
-          })}
+          <div ref={dayTrackRef} className="column-track flex flex-1 gap-px">
+            {board.days.map((column) => {
+              const { weekday, label } = formatDay(column.day);
+              const isToday = column.day === ctx.today;
+              return (
+                <BoardColumn
+                  key={column.id}
+                  id={column.id}
+                  title={weekday}
+                  // `subtitle` also carries prose on other columns, so the
+                  // numeral face is applied here rather than in BoardColumn.
+                  subtitle={<span className="num">{label}</span>}
+                  todos={column.todos}
+                  labels={labels}
+                  ctx={ctx}
+                  emphasis={isToday}
+                  onToggle={handleToggle}
+                  onOpen={(todo) => setOpenTodoId(todo.id)}
+                  onQuickAdd={(title) => void handleQuickAdd(title, { day: column.day })}
+                  isDragActive={!!activeTodo}
+                  overTodoId={overTodoId}
+                  landingTodoId={landingTodoId}
+                />
+              );
+            })}
+            {/*
+              A tile at the end of whatever is currently loaded, exactly like
+              CreateListColumn at the end of the planning track — growth is
+              always an explicit click, never silent, so it never surprises a
+              user mid-scroll with columns that weren't there a second ago.
+              Gone once `cap` is reached; there is nothing further to load
+              until the user picks a date past it (see `cap`'s definition).
+            */}
+            {renderedDays < cap && (
+              <button
+                type="button"
+                onClick={loadMoreDays}
+                className={cn(
+                  "flex flex-1 flex-col items-center justify-center rounded-md",
+                  "min-w-(--column-min) max-w-(--column-max) border border-dashed border-border",
+                  "px-2 text-center text-xs text-muted-foreground transition-colors",
+                  "hover:border-foreground/30 hover:bg-background/60 hover:text-foreground",
+                  "focus-visible:outline-2 focus-visible:outline-ring",
+                )}
+              >
+                Load {LOAD_MORE_STEP} more days
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Planning half */}
@@ -903,55 +1158,78 @@ export function Board() {
           />
           <Separator />
           {/*
-            The wider floor is set on the TRACK, not on each column: every
+            The wider floor is set on the outer row, not on each column: every
             column inside reads `--column-min`, so overriding it here widens
             the whole half without threading a size prop through BoardColumn.
+            Backlog sits outside the scrolling track — same reasoning as
+            Overflow above, and for the same reason it is not sticky.
           */}
-          <div className="column-track flex flex-1 gap-px bg-border/40 px-4 pt-3 [--column-min:var(--list-column-min)]">
-            {board.lists.map((column) => (
+          <div className="flex flex-1 gap-px bg-border/40 px-4 pt-3 [--column-min:var(--list-column-min)]">
+            {backlogColumn && (
               <BoardColumn
-                key={column.id}
-                id={column.id}
-                title={column.list.name}
-                todos={column.todos}
+                id={backlogColumn.id}
+                title={backlogColumn.list.name}
+                todos={backlogColumn.todos}
                 labels={labels}
                 ctx={ctx}
                 awayTodoIds={board.awayTodoIds}
                 onToggle={handleToggle}
                 onOpen={(todo) => setOpenTodoId(todo.id)}
                 onQuickAdd={(title) =>
-                  void handleQuickAdd(title, { listId: column.list.id })
+                  void handleQuickAdd(title, { listId: backlogColumn.list.id })
                 }
                 minRows={5}
                 isDragActive={!!activeTodo}
                 overTodoId={overTodoId}
                 landingTodoId={landingTodoId}
-                // Backlog is pinned leftmost, so it gets no reorder handle.
-                reorderListId={column.list.isBacklog ? undefined : column.list.id}
+                // Pinned leftmost, so it gets no reorder handle.
                 reservesGripSlot
                 // Backlog has nothing to offer here either: it cannot be
                 // renamed, archived, or deleted, and a button whose every
                 // action is disabled is worse than no button.
-                actions={
-                  column.list.isBacklog ? undefined : (
+                isColumnDragActive={!!activeList}
+                // Backlog belongs to no tab, so it stays neutral while the
+                // columns around it carry the current tab's colour. That
+                // difference is also the clearest signal that it is shared.
+                accentColor={null}
+                pinned
+              />
+            )}
+            <div className="column-track flex flex-1 gap-px">
+              {otherListColumns.map((column) => (
+                <BoardColumn
+                  key={column.id}
+                  id={column.id}
+                  title={column.list.name}
+                  todos={column.todos}
+                  labels={labels}
+                  ctx={ctx}
+                  awayTodoIds={board.awayTodoIds}
+                  onToggle={handleToggle}
+                  onOpen={(todo) => setOpenTodoId(todo.id)}
+                  onQuickAdd={(title) =>
+                    void handleQuickAdd(title, { listId: column.list.id })
+                  }
+                  minRows={5}
+                  isDragActive={!!activeTodo}
+                  overTodoId={overTodoId}
+                  landingTodoId={landingTodoId}
+                  reorderListId={column.list.id}
+                  reservesGripSlot
+                  actions={
                     <ColumnInfoButton
                       listName={column.list.name}
                       isOpen={infoListId === column.list.id}
                       onOpen={() => setInfoListId(column.list.id)}
                     />
-                  )
-                }
-                columnDropSide={
-                  columnDrop?.listId === column.list.id ? columnDrop.side : null
-                }
-                isColumnDragActive={!!activeList}
-                // Backlog belongs to no tab, so it stays neutral while the
-                // columns around it carry the current tab's colour. That
-                // difference is also the clearest signal that it is shared.
-                accentColor={column.list.isBacklog ? null : activeTabRecord?.color}
-              />
-            ))}
-            <CreateListColumn tabId={activeTabId} />
+                  }
+                  isColumnDropTarget={columnDropTargetId === column.list.id}
+                  isColumnDragActive={!!activeList}
+                  accentColor={activeTabRecord?.color}
+                />
+              ))}
+              <CreateListColumn tabId={activeTabId} />
+            </div>
           </div>
         </div>
       </div>
@@ -1045,6 +1323,12 @@ export function Board() {
         onRestoreTab={(tab) => void restoreTabWithUndo(tab)}
       />
 
+      <SettingsSheet
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        settings={settings}
+      />
+
       <CommandPalette
         open={paletteOpen}
         onOpenChange={setPaletteOpen}
@@ -1058,6 +1342,8 @@ export function Board() {
         onSelectTodo={(todo) => setOpenTodoId(todo.id)}
         onSelectTab={selectTab}
       />
+
+      <SessionProvider />
     </DndContext>
   );
 }

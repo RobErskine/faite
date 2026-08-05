@@ -32,6 +32,9 @@ export function ColumnInfoButton({ listName, isOpen, onOpen }: ColumnInfoButtonP
         // The header is baseline-aligned for its text; an icon has no
         // meaningful baseline, so opt it out rather than let it hang low.
         "self-center text-muted-foreground/50 transition-opacity",
+        // `cursor` inherits, and the header now advertises `grab`. This button
+        // still drags if you pull from it — it just should not say so.
+        "cursor-pointer",
         "opacity-0 group-hover/column:opacity-100 focus-visible:opacity-100",
         "hover:text-foreground",
         isOpen && "opacity-100",

@@ -140,13 +140,20 @@ export function usePendingCount(): number {
 }
 
 /**
- * Placement context, recomputed when settings change and when the day rolls
- * over.
+ * Placement context, recomputed when settings change, when `renderedDays`
+ * grows, and when the day rolls over.
  *
  * The midnight tick matters: leave the app open overnight and every todo's
  * column changes. Without it the board would silently show yesterday's layout.
+ *
+ * `renderedDays` overrides `settings.visibleDays` for the window length — see
+ * `contextFromSettings` and `deriveColumn` in lib/scheduling.ts for why the
+ * board needs to grow this independently of the setting.
  */
-export function usePlacementContext(settings: Settings | undefined): PlacementContext | null {
+export function usePlacementContext(
+  settings: Settings | undefined,
+  renderedDays?: number,
+): PlacementContext | null {
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
@@ -157,9 +164,9 @@ export function usePlacementContext(settings: Settings | undefined): PlacementCo
 
   return useMemo(() => {
     if (!settings) return null;
-    return contextFromSettings(settings);
+    return contextFromSettings(settings, undefined, renderedDays);
     // `tick` is intentionally a dependency: it forces recomputation so the
     // board follows the clock across midnight.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings, tick]);
+  }, [settings, tick, renderedDays]);
 }

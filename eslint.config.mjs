@@ -17,6 +17,9 @@ const eslintConfig = defineConfig([
     ".next-static/**",
     ".open-next/**",
     ".wrangler/**",
+    // wrangler-generated (`npm run cf-typegen`); machine-formatted, not ours
+    // to fix lint warnings in.
+    "cloudflare-env.d.ts",
   ]),
 ]);
 

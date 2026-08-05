@@ -71,6 +71,12 @@ const settings: Settings = {
   overflowAfterDays: 3,
   visibleDays: 7,
   fontPairing: "hyperlegible",
+  theme: "system",
+  displayName: "",
+  avatarKind: "initials",
+  avatarInitials: "",
+  avatarEmoji: "",
+  avatarImage: "",
   activeTabId: null,
   updatedAt: "2026-08-03T00:00:00.000Z",
 };

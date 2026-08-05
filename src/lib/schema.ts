@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { DEFAULT_FONT_PAIRING, FONT_PAIRING_IDS } from "./fonts";
+import { DEFAULT_THEME_MODE, THEME_MODE_IDS } from "./theme";
+import { AVATAR_KIND_IDS, DEFAULT_AVATAR_KIND } from "./profile";
 
 /**
  * Single source of truth for Faite's data model.
@@ -211,6 +213,28 @@ export const settingsSchema = z.object({
    * so it syncs with the rest of the user's settings across devices.
    */
   fontPairing: z.enum(FONT_PAIRING_IDS).default(DEFAULT_FONT_PAIRING),
+  /**
+   * Appearance. Stored rather than kept in localStorage for the same reason
+   * `fontPairing` is: it belongs to the account, not to the device.
+   *
+   * The stored value is the MODE, not the resolved palette. Storing "dark"
+   * when the user picked "system" on a dark laptop would freeze the choice at
+   * the moment they made it and stop it tracking the OS ever again.
+   */
+  theme: z.enum(THEME_MODE_IDS).default(DEFAULT_THEME_MODE),
+  /** "" falls back to a placeholder name — see lib/profile.ts. */
+  displayName: z.string().max(80).default(""),
+  /**
+   * Which of the three avatar fields below is active. Kept as flat fields
+   * rather than a nested object so each edit is its own outbox entry — two
+   * devices changing name and avatar at once must not clobber each other.
+   */
+  avatarKind: z.enum(AVATAR_KIND_IDS).default(DEFAULT_AVATAR_KIND),
+  /** "" falls back to initials derived from displayName. */
+  avatarInitials: z.string().max(2).default(""),
+  avatarEmoji: z.string().default(""),
+  /** A remote URL, or a small downscaled data: URL — see lib/avatar-image.ts. */
+  avatarImage: z.string().default(""),
   /**
    * Which planning-half tab is showing.
    *

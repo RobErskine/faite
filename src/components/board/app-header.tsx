@@ -1,34 +1,30 @@
 "use client";
 
-import { LogOut, Search, Settings } from "lucide-react";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import Link from "next/link";
+import { LogIn, LogOut, Search, Settings } from "lucide-react";
+import { toast } from "sonner";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { UserAvatar } from "@/components/user-avatar";
+import { resolveAvatar } from "@/lib/profile";
+import { signOut, useSession } from "@/lib/auth-client";
+import type { Settings as SettingsRow } from "@/lib/schema";
 
 interface AppHeaderProps {
   /** Opens the command palette. Owned by Board, which also owns ⌘K. */
   onOpenPalette: () => void;
+  /** Opens the settings sheet. */
+  onOpenSettings: () => void;
+  /** Raw Dexie row; undefined until the store has read it. */
+  settings: SettingsRow | undefined;
 }
-
-/**
- * Placeholder identity until P2 auth lands.
- *
- * Every record is written under `LOCAL_OWNER_ID` (src/lib/store/repositories.ts)
- * and the schema carries no name, email, or image, so there is nothing real to
- * bind to yet. Swapping this for the authenticated user is a one-line change.
- */
-const PLACEHOLDER_NAME = "Local User";
-const PLACEHOLDER_INITIALS = PLACEHOLDER_NAME.split(" ")
-  .map((word) => word[0])
-  .join("")
-  .slice(0, 2)
-  .toUpperCase();
 
 /**
  * The app's only global chrome: wordmark, palette trigger, account menu.
@@ -39,7 +35,15 @@ const PLACEHOLDER_INITIALS = PLACEHOLDER_NAME.split(" ")
  * the real field, and a second live input would duplicate value state and
  * fight it for focus.
  */
-export function AppHeader({ onOpenPalette }: AppHeaderProps) {
+export function AppHeader({ onOpenPalette, onOpenSettings, settings }: AppHeaderProps) {
+  const avatar = resolveAvatar(settings);
+  const { data: session } = useSession();
+
+  const handleSignOut = async () => {
+    await signOut();
+    toast.success("Signed out");
+  };
+
   return (
     <header className="flex h-12 shrink-0 items-center gap-3 border-b px-4">
       <span className="font-heading text-sm font-semibold tracking-tight">
@@ -68,27 +72,54 @@ export function AppHeader({ onOpenPalette }: AppHeaderProps) {
           aria-label="Account"
           className="rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
         >
-          <Avatar>
-            <AvatarFallback>{PLACEHOLDER_INITIALS}</AvatarFallback>
-          </Avatar>
+          <UserAvatar settings={settings} />
         </DropdownMenuTrigger>
         {/*
           The shared content sets `w-(--anchor-width)`, which would size the menu
           to the 28px trigger. Width has to be reclaimed here.
         */}
         <DropdownMenuContent align="end" className="w-48">
-          <DropdownMenuLabel>{PLACEHOLDER_NAME}</DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          {/* Both land in P2: settings will host typography, and sign-out
-              needs an actual session to end. */}
-          <DropdownMenuItem disabled>
-            <Settings aria-hidden />
-            Settings
-          </DropdownMenuItem>
-          <DropdownMenuItem disabled variant="destructive">
-            <LogOut aria-hidden />
-            Log out
-          </DropdownMenuItem>
+          {/*
+            The group is load-bearing, not decoration: DropdownMenuLabel is
+            Base UI's Menu.GroupLabel, which throws outright when it cannot
+            find a Menu.Group to name. It also gives the account actions the
+            accessible name the label carries.
+          */}
+          <DropdownMenuGroup>
+            <DropdownMenuLabel>
+              {avatar.name}
+              {/*
+                The display name above is the local profile (Settings >
+                Profile) and is independent of auth — it renders the same
+                signed in or out. The email is the only account-specific
+                identity worth surfacing here.
+              */}
+              {session ? (
+                <span className="mt-0.5 block truncate text-xs font-normal text-muted-foreground">
+                  {session.user.email}
+                </span>
+              ) : null}
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={onOpenSettings}>
+              <Settings aria-hidden />
+              Settings
+            </DropdownMenuItem>
+            {session ? (
+              <DropdownMenuItem
+                variant="destructive"
+                onClick={() => void handleSignOut()}
+              >
+                <LogOut aria-hidden />
+                Log out
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem render={<Link href="/login" />}>
+                <LogIn aria-hidden />
+                Sign in
+              </DropdownMenuItem>
+            )}
+          </DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>
     </header>

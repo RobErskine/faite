@@ -1,14 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { useDroppable } from "@dnd-kit/core";
+import type { KeyboardEventHandler, PointerEventHandler } from "react";
+import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { edge } from "@/lib/colors";
+import { listDragId } from "@/lib/board";
 import type { Label as LabelRecord, Todo } from "@/lib/schema";
 import type { PlacementContext } from "@/lib/scheduling";
-import { ColumnGrip } from "./column-grip";
+import { DragGrip } from "./drag-grip";
 import { TodoCard } from "./todo-card";
 
 interface BoardColumnProps {
@@ -50,15 +52,26 @@ interface BoardColumnProps {
    * no grips at all, so they have nothing to align to.
    */
   reservesGripSlot?: boolean;
-  /** Edge to draw the column insertion bar on while a column drag hovers here. */
-  columnDropSide?: "before" | "after" | null;
   /** True while a list column is being dragged — dims the card affordances. */
   isColumnDragActive?: boolean;
+  /**
+   * True on the single column a column drag would land next to. Only ever
+   * set on a movable column — Backlog can never be the target, since nothing
+   * can land before it (see `Board`'s `columnDropTargetId`).
+   */
+  isColumnDropTarget?: boolean;
   /**
    * The owning tab's colour, tinting the header rule. Absent on day columns and
    * on Backlog, neither of which belongs to a tab.
    */
   accentColor?: string | null;
+  /**
+   * Sits outside the scrolling track as a fixed-width sibling rather than
+   * flexing with it — Overflow and Backlog, so they stay reachable however far
+   * their track scrolls. Needs its own vertical scroll since it no longer
+   * shares the track that provided one.
+   */
+  pinned?: boolean;
 }
 
 export function BoardColumn({
@@ -81,12 +94,56 @@ export function BoardColumn({
   rejectsDrop,
   reorderListId,
   reservesGripSlot,
-  columnDropSide,
   isColumnDragActive,
+  isColumnDropTarget,
   accentColor,
+  pinned,
 }: BoardColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id });
   const [draft, setDraft] = useState("");
+
+  /**
+   * The list name when this column can be reordered, null when it cannot.
+   *
+   * One value drives all three halves of the gesture — the hook, the header's
+   * cursor, and the grip — so the header can never become a drag surface for a
+   * column with no grip to drag it by from the keyboard. It carries the name
+   * rather than a boolean because the grip has to announce it, and only this
+   * check knows the title is a string rather than arbitrary nodes.
+   */
+  const dragListName = reorderListId && typeof title === "string" ? title : null;
+
+  /**
+   * The column's own drag source, for reordering.
+   *
+   * Called here rather than inside the grip so that the whole header can start
+   * the drag, the way the whole row does on a card (§4.9). Called
+   * unconditionally with `disabled` rather than from a child that only renders
+   * for movable columns, because hooks cannot be conditional and this header
+   * markup is shared by every column — the alternative was two copies of it. A
+   * disabled draggable registers but can never activate, so day columns and
+   * Backlog stay exactly as inert as they were.
+   */
+  const {
+    attributes: dragAttributes,
+    listeners: dragListeners,
+    setNodeRef: setDragRef,
+    isDragging,
+  } = useDraggable({
+    id: reorderListId ? listDragId(reorderListId) : `${id}:fixed`,
+    disabled: dragListName === null,
+  });
+
+  // dnd-kit types its listeners as bare `Function`, which spreads onto an
+  // element fine but cannot be assigned to a specific handler prop. The two
+  // activators go to different elements here, so name them once. Both are
+  // undefined while disabled — dnd-kit withholds the listeners entirely, so a
+  // day column's header gets no handler at all rather than a guarded one.
+  const { onPointerDown: startPointerDrag, onKeyDown: startKeyboardDrag } =
+    (dragListeners ?? {}) as {
+      onPointerDown?: PointerEventHandler;
+      onKeyDown?: KeyboardEventHandler;
+    };
 
   const commit = () => {
     const title = draft.trim();
@@ -102,51 +159,57 @@ export function BoardColumn({
       ref={setNodeRef}
       aria-label={typeof title === "string" ? title : undefined}
       className={cn(
-        // Grows to fill the half, but between a floor and a ceiling. The floor
-        // is what pushes the half into horizontal scroll once the columns stop
-        // fitting; see --column-min in globals.css.
-        "group/column relative flex flex-1 flex-col rounded-md transition-all",
-        "min-w-(--column-min) max-w-(--column-max)",
-        // Three distinct drag states, so at a glance you can tell where a drop
+        "group/column relative flex flex-col rounded-md transition-all",
+        pinned
+          ? // Fixed-width sibling of the track, not a flex child of it — it
+            // keeps its own vertical scroll since the track no longer gives
+            // it one.
+            "w-(--column-min) shrink-0 overflow-y-auto"
+          : // Grows to fill the half, but between a floor and a ceiling. The
+            // floor is what pushes the half into horizontal scroll once the
+            // columns stop fitting; see --column-min in globals.css.
+            "flex-1 min-w-(--column-min) max-w-(--column-max)",
+        // Four distinct drag states, so at a glance you can tell where a drop
         // is possible, where it will land, and where it will be refused.
-        //   candidate — every valid column, dashed and quiet
+        //   candidate — every valid column, dashed and quiet (card drag)
         //   active    — the column under the pointer, solid ring and tint
+        //               (card drag OR the single column drop target)
         //   rejecting — Overflow, which refuses drops
-        // All four are card-drag states. A column drag hovers these same
-        // droppables, but there the hovered column is only a reference point
-        // for where the dragged one lands — highlighting it as "the target"
-        // would say the wrong thing, so the insertion bar speaks alone.
+        // A card drag and a column drag never overlap — `isDragActive` and
+        // `isColumnDragActive` are mutually exclusive booleans on the board —
+        // so both can safely drive the same "active" style without a clash.
+        // `data-drop-indicator` marks it for the drop animation to fly the
+        // column chip to, exactly as it does for a card.
         isDragActive && !isOver && !rejectsDrop &&
           "outline-dashed outline-1 outline-offset-[-2px] outline-border",
-        isOver && !rejectsDrop && !isColumnDragActive &&
+        ((isOver && !rejectsDrop && !isColumnDragActive) ||
+          (isColumnDragActive && isColumnDropTarget)) &&
           "bg-primary/5 outline outline-2 outline-offset-[-2px] outline-primary",
         isDragActive && rejectsDrop && !isOver &&
           "outline-dashed outline-1 outline-offset-[-2px] outline-destructive/30",
         isOver && rejectsDrop && !isColumnDragActive &&
           "bg-destructive/5 outline outline-2 outline-offset-[-2px] outline-destructive/60",
       )}
+      data-drop-indicator={isColumnDragActive && isColumnDropTarget ? "" : undefined}
     >
-      {/*
-        Column insertion bar. Sits on whichever edge the dragged column will
-        land on, so "before" and "after" are visible rather than inferred.
-        Carries `data-drop-indicator` so the drop animation flies the column
-        chip here, exactly as it does for cards.
-      */}
-      {columnDropSide && (
-        <span
-          aria-hidden
-          data-drop-indicator
-          className={cn(
-            "absolute inset-y-0 z-10 w-0.5 rounded-full bg-primary",
-            columnDropSide === "before" ? "-left-px" : "-right-px",
-          )}
-        >
-          <span className="absolute -left-[3px] -top-0.5 size-2 rounded-full bg-primary" />
-        </span>
-      )}
       <header
+        ref={setDragRef}
+        /*
+          The whole header is the drag surface, matching a card's whole row
+          (§4.9). Only `onPointerDown` moves here: `attributes` and the keyboard
+          activator stay on the grip, which is a real focusable control and can
+          carry them without making the header a button that contains buttons.
+
+          Scoped to the header rather than the section because the column body
+          is full of cards that are drag sources themselves — a pointerdown
+          there has to mean "drag this card", not "drag its column".
+        */
+        onPointerDown={startPointerDrag}
         className={cn(
           "flex items-baseline justify-between gap-2 px-2 pb-1",
+          // Stated rather than inherited, so the header advertises the gesture
+          // across its whole width and not just over the grip.
+          dragListName !== null && "cursor-grab active:cursor-grabbing",
           // Only drawn when the tab has a colour, so an uncoloured tab keeps
           // the original headers rather than gaining a grey rule.
           accentColor && "border-b-2",
@@ -164,10 +227,26 @@ export function BoardColumn({
             empty slot on Backlog is deliberate: it cannot be reordered, but
             without the reserved space its title would sit flush left while
             every neighbouring column's title was indented past a grip.
+
+            The header drags on its own now, so the grip is no longer the only
+            way in — but it stays a real control for the same two reasons it
+            does on a card: it is the keyboard activator, and it is the only
+            surface carrying `touch-none`, so on touch it remains the drag
+            surface while the track keeps its scrolling.
           */}
           <div className="flex min-w-0 items-center gap-1.5">
-            {reorderListId && typeof title === "string" ? (
-              <ColumnGrip listId={reorderListId} listName={title} />
+            {dragListName !== null ? (
+              <DragGrip
+                aria-label={`Drag to reorder the ${dragListName} list`}
+                className={cn(
+                  // Visible at rest, not hover-only, so the affordance is
+                  // discoverable without sweeping the header.
+                  "group-hover/column:text-muted-foreground",
+                  isDragging && "opacity-40",
+                )}
+                {...dragAttributes}
+                onKeyDown={startKeyboardDrag}
+              />
             ) : (
               reservesGripSlot && <span className="size-3 shrink-0" aria-hidden />
             )}
@@ -204,8 +283,15 @@ export function BoardColumn({
         {/*
           Hovering the column itself rather than a specific card means the item
           lands at the end, so show the indicator there instead.
+
+          `!isColumnDragActive` matters: `isOver` is dnd-kit's own per-droppable
+          state and knows nothing about which kind of drag is in flight, so
+          without this a column drag hovering here would ALSO light up this
+          card-drop dot — a stray card-drop indicator bleeding into a column
+          drag, which is a different bug from, but the same shape as, the
+          reason `isColumnDropTarget` exists above.
         */}
-        {isOver && !rejectsDrop && !overTodoId && (
+        {isOver && !rejectsDrop && !overTodoId && !isColumnDragActive && (
           <span
             aria-hidden
             data-drop-indicator

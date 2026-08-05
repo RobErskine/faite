@@ -15,6 +15,6 @@
       "open-next/worker": ["./src/server/open-next.d.ts"]
     }
   },
-  "include": ["src/server/**/*.ts"],
+  "include": ["src/server/**/*.ts", "cloudflare-env.d.ts"],
   "exclude": ["node_modules"]
 }

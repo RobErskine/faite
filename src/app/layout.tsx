@@ -7,6 +7,13 @@ import {
   FONT_PAIRING_IDS,
   FONT_STORAGE_KEY,
 } from "@/lib/fonts";
+import {
+  DARK_CLASS,
+  DEFAULT_THEME_MODE,
+  PREFERS_DARK,
+  THEME_MODE_IDS,
+  THEME_STORAGE_KEY,
+} from "@/lib/theme";
 import { fontVariables } from "./fonts";
 import "./globals.css";
 
@@ -30,6 +37,33 @@ const applyFontPairing = `try{var f=localStorage.getItem(${JSON.stringify(
   FONT_PAIRING_IDS as readonly string[],
 )}.indexOf(f)>-1)document.documentElement.dataset.font=f}catch(e){}`;
 
+/**
+ * Applies the saved appearance before first paint.
+ *
+ * Same job as applyFontPairing, with one wrinkle: "system" has to be RESOLVED
+ * here, because the class is what the `dark` custom variant keys off, and CSS
+ * alone cannot express "dark tokens, but only when the mode is system".
+ *
+ * Two separate try/catches, deliberately. localStorage throws outright in some
+ * privacy modes; if that took the matchMedia read down with it, exactly the
+ * users who cannot persist a choice would also lose the OS default — a white
+ * flash on a dark machine, every load.
+ *
+ * `color-scheme` is NOT set here: globals.css declares it on :root and .dark,
+ * so toggling the class carries it. One source of truth.
+ */
+const applyTheme = `(function(){var m=${JSON.stringify(
+  DEFAULT_THEME_MODE,
+)};try{var s=localStorage.getItem(${JSON.stringify(
+  THEME_STORAGE_KEY,
+)});if(${JSON.stringify(
+  THEME_MODE_IDS as readonly string[],
+)}.indexOf(s)>-1)m=s}catch(e){}var d=m==="dark";if(m==="system"){try{d=window.matchMedia(${JSON.stringify(
+  PREFERS_DARK,
+)}).matches}catch(e){}}document.documentElement.classList.toggle(${JSON.stringify(
+  DARK_CLASS,
+)},d)})();`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -52,6 +86,7 @@ export default function RootLayout({
           placed where it needs to execute.
         */}
         <script dangerouslySetInnerHTML={{ __html: applyFontPairing }} />
+        <script dangerouslySetInnerHTML={{ __html: applyTheme }} />
         <TooltipProvider>{children}</TooltipProvider>
         <Toaster />
         {process.env.NODE_ENV === "development" && (
