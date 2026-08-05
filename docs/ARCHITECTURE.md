@@ -6,10 +6,11 @@ recoverable later without re-deriving it.
 **Faite** ("done" in French) is a weekly-planner todo app. The double meaning is
 the point: you control your fate by getting things done.
 
-Status at time of writing: **P0 and P1 shipped. P2 (Better Auth) built.** Email
-verification stays off and OAuth stays unconfigured until `myfaite.app` DNS
-moves to Cloudflare and the GitHub/Google OAuth apps exist — see §7. Sync (P3)
-is next. Live at https://faite.bfmw-dev.workers.dev
+Status at time of writing: **P0 and P1 shipped. P2 (Better Auth) deployed.**
+`myfaite.app` is live, D1 and Cloudflare Email Sending are wired, and
+email/password auth works. Email verification stays off and OAuth stays
+unconfigured until the GitHub/Google apps exist — see §7 and `docs/SETUP.md`.
+Sync (P3) is next. Live at https://myfaite.app
 
 ---
 
@@ -329,6 +330,57 @@ signed in or out (§2.4 still holds — nothing here is on the render path), and
 `/login`/`/signup`/`/forgot-password`/`/reset-password`/`/verify-email` are
 ordinary reachable routes, never a gate.
 
+### 2.13 The board moved to `/board`; it stays ungated
+
+`/` used to serve the board directly — anyone visiting `myfaite.app` landed in
+a working app with no explanation of what it was. `/` is now a marketing page;
+the board lives at `/board`.
+
+**`/board` is not gated behind sign-in.** The instinct was to gate it, then to
+reconsider: this app already works fully against local data with no account
+(§2.4, §2.10), and `adoptLocalData()` (§2.12) already exists to fold that data
+into an account on first sign-in. Gating would have made that path an edge
+case; leaving it open makes it the primary onboarding flow — try it, then sign
+up and keep what you made. It also sidesteps a real trap: a gate built on
+`useSession()` (a network fetch) would show a login page to an offline
+signed-in user, which is exactly the failure §2.4 exists to prevent. With
+nothing gating the route, there is nothing to get that wrong.
+
+**Signed-in visitors to `/` bounce to `/board`, but on the local marker, not
+the session.** `getBoundOwnerId()` (`lib/store/owner.ts`) already answers "has
+this browser used the board before", synchronously, offline — the same inline
+pre-paint-script technique `layout.tsx` uses for font/theme, reused rather than
+reinvented. It is deliberately the *cheap* check for this one case: querying
+IndexedDB instead would drag Dexie into a page that should stay a static,
+near-JS-free Server Component. A local-only returning visitor this misses just
+clicks "Open the board" once.
+
+**Three logged-out nudges (welcome dialog, "this device only" banner, header
+Sign up CTA) all gate on `useShouldShowAuthNudges()`
+(`lib/auth-nudge.ts`), not on `useSession()` directly**, for the same offline
+reason as the gate that wasn't built: offline, a fetch failure and a genuine
+"not signed in" both resolve to `data: null`, and showing "create an account,
+your data isn't saved" to someone who IS signed in but offline would be
+actively wrong. The hook distinguishes them via `error` — a clean `null` is a
+confirmed answer, a `null` *with* an error is a failed check — and falls back
+to the local marker only in that failure case. An in-page sign-in/out is
+unaffected by this and reacts immediately, because that transition is not a
+network race the way a cold start is.
+
+The banner is additionally conditional on the board actually holding data
+(`todos.length > 0`). Empty, the warning is noise; once something exists to
+lose, it is the moment the message lands. The welcome dialog and the banner
+also use different storage tiers on purpose (`lib/onboarding.ts`): the dialog
+is a one-time explanation (`localStorage`, dismissed forever), the banner is a
+standing warning (`sessionStorage`, dismissed for the visit, back next time) —
+collapsing them into one mechanism would have made one of the two wrong.
+
+None of this is a security boundary. A client-side nudge (or a gate, had one
+been built) is trivially bypassed from devtools — acceptable only because
+there is nothing behind it yet: all data lives in the visitor's own IndexedDB.
+Real enforcement arrives at P3, when the per-user Durable Object holds the data
+and authenticates every sync request server-side.
+
 ---
 
 ## 3. Stack
@@ -355,7 +407,8 @@ ordinary reachable routes, never a gate.
 ```
 src/
   app/
-    page.tsx                  Board, dynamically imported with ssr:false
+    page.tsx                  Marketing page (Server Component) — see §2.13
+    board/page.tsx            The board, dynamically imported with ssr:false
     layout.tsx                TooltipProvider + Toaster
     login/, signup/,
     forgot-password/,
@@ -367,6 +420,8 @@ src/
     ordering.ts               fractional index helpers
     board.ts                  groups todos into columns; drop-target id codec
     auth-client.ts            createAuthClient(); NEXT_PUBLIC_AUTH_URL-aware
+    auth-nudge.ts             useShouldShowAuthNudges() — see §2.13
+    onboarding.ts             welcome-dialog/banner dismissal flags — §2.13
     store/
       db.ts                   Dexie schema, lazy singleton
       mutate.ts               THE single write path + outbox
@@ -376,7 +431,8 @@ src/
       hooks.ts                reactive reads (useLiveQuery)
   components/
     board/                    board, columns, cards, sheet, command palette
-    auth/                     SessionProvider, auth pages' shared UI
+    auth/                     SessionProvider, welcome dialog, signed-out banner
+    marketing/                landing page header — see §2.13
     ui/                       shadcn components
   server/
     worker.ts                 custom worker entry (exports the DO, mounts auth)
@@ -479,6 +535,12 @@ that build fails immediately instead of at P7 when it would be a rewrite.
    into whichever tsconfig includes the `.d.ts` file. It is excluded from the
    main `tsconfig.json` for exactly this reason (gotcha 4 again, one level
    removed) and included only in `tsconfig.worker.json`.
+8. **`/` is now the marketing page, not the board (§2.13) — and with
+   `output: export`, `/` is also the Capacitor bundle's `index.html`.**
+   Unaddressed as of P2: the mobile app would open on marketing, not the
+   board. Fix at P7, not before — either point Capacitor's entry at
+   `/board/index.html`, or have the marketing page detect the
+   `capacitor://localhost` origin and redirect.
 
 ---
 

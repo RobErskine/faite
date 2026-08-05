@@ -7,6 +7,27 @@
   "compatibility_date": "2026-08-01",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
 
+  // Custom domain. Cloudflare creates and manages the DNS record itself — do
+  // not hand-add an A/CNAME for the apex, or the two will fight.
+  //
+  // This is the canonical origin: src/server/auth.ts derives `baseURL` from it
+  // outside development, and every OAuth callback is registered against it.
+  "routes": [{ "pattern": "myfaite.app", "custom_domain": true }],
+
+  // Declaring a route silently turns BOTH of these off by default — wrangler
+  // warns about it at the end of a deploy, where it is easy to miss. The old
+  // faite.bfmw-dev.workers.dev URL started returning 404 the moment the custom
+  // domain landed.
+  //
+  // `workers_dev: false` is deliberate: myfaite.app is the only origin auth
+  // works on, so a second live URL would just be a broken-sign-in trap.
+  //
+  // `preview_urls: true` is load-bearing for CI/CD. Branch deploys run
+  // `opennextjs-cloudflare upload`, whose whole output is a preview URL — with
+  // this off, per-branch previews fail silently rather than loudly.
+  "workers_dev": false,
+  "preview_urls": true,
+
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS"

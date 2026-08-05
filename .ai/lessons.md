@@ -46,6 +46,35 @@ it *references*, not just where it lives — a `.d.ts` two directories away from
 an excluded folder can still reach into it via a type-only import and widen
 what "excluded" actually excludes.
 
+## Read the warnings *after* a successful deploy, not just the error path
+
+Adding `routes` to `wrangler.jsonc` silently flipped two unrelated defaults
+off: `workers_dev` (so the old `*.workers.dev` URL began 404ing immediately)
+and `preview_urls` (which would have broken per-branch preview deploys later,
+at a moment with no obvious connection to this change). Both were disclosed
+only in warnings printed *below* the "Deployed / Current Version ID" success
+lines, where a skim stops.
+
+**Rule:** on any deploy that changed configuration, read to the very bottom of
+the output. Success lines are not the end of the message, and Cloudflare's
+"because X is not in your config, it will be disabled by default" notices are
+the kind that surface as a mystery bug weeks later.
+
+## Retry a just-provisioned cloud service once before diagnosing it
+
+`wrangler email sending send` failed with
+`email.sending.error.email.sending_disabled [code: 10203]` about 30 seconds
+after `wrangler email sending enable` reported success — and succeeded on a
+plain retry with nothing changed. The domain was onboarded; the account-level
+quota simply had not propagated. Worse, `wrangler email sending dns get`
+happily listed all the DNS records throughout, which reads as "ready."
+
+**Rule:** the same lesson as the post-deploy 404 above, generalized — when a
+resource was provisioned seconds ago, retry once before believing an error.
+And prefer a state endpoint over an output listing when checking readiness:
+`GET /accounts/{id}/email/sending/limits` returning a real quota rather than
+`null` was the honest signal.
+
 ## A shared module must have zero DOM-only bindings anywhere in the file
 
 `src/server/sync/apply-patch.ts` (Workers code) imported only `compareHlc`

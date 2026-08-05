@@ -36,7 +36,7 @@ export default function SignupPage() {
       return;
     }
     if (data?.token) {
-      router.push("/");
+      router.push("/board");
       return;
     }
     setAwaitingVerification(true);

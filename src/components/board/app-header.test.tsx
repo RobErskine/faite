@@ -7,12 +7,16 @@ import type { Settings } from "@/lib/schema";
 /**
  * `useSession` normally hits the network via better-auth's react client.
  * Mocked so tests are deterministic and don't depend on a running auth
- * backend — `mockSession` is mutated per-test to switch signed in/out.
+ * backend — the three `mock*` vars are mutated per-test to switch signed
+ * in/out/pending, which also drives `useShouldShowAuthNudges` (auth-nudge.ts)
+ * since it wraps this same `useSession`.
  */
 let mockSession: { user: { email: string } } | null = null;
+let mockIsPending = false;
+let mockError: unknown = null;
 const mockSignOut = vi.fn();
 vi.mock("@/lib/auth-client", () => ({
-  useSession: () => ({ data: mockSession }),
+  useSession: () => ({ data: mockSession, isPending: mockIsPending, error: mockError }),
   signOut: () => mockSignOut(),
 }));
 
@@ -26,6 +30,8 @@ vi.mock("@/lib/auth-client", () => ({
 afterEach(() => {
   cleanup();
   mockSession = null;
+  mockIsPending = false;
+  mockError = null;
   mockSignOut.mockClear();
 });
 
@@ -149,5 +155,43 @@ describe("AppHeader", () => {
     fireEvent.click(screen.getByText("Settings"));
 
     expect(opened).toBe(1);
+  });
+
+  it("links the wordmark to the board", () => {
+    render(
+      <AppHeader onOpenPalette={noop} onOpenSettings={noop} settings={undefined} />,
+    );
+
+    expect(screen.getByText("Faite").closest("a")?.getAttribute("href")).toBe(
+      "/board",
+    );
+  });
+
+  it("shows a Sign up CTA next to the avatar when signed out", () => {
+    render(
+      <AppHeader onOpenPalette={noop} onOpenSettings={noop} settings={undefined} />,
+    );
+
+    expect(screen.getByText("Sign up").closest("a")?.getAttribute("href")).toBe(
+      "/signup",
+    );
+  });
+
+  it("hides the Sign up CTA once signed in", () => {
+    mockSession = { user: { email: "rob@myfaite.app" } };
+    render(
+      <AppHeader onOpenPalette={noop} onOpenSettings={noop} settings={undefined} />,
+    );
+
+    expect(screen.queryByText("Sign up")).toBeNull();
+  });
+
+  it("hides the Sign up CTA while the session check is still pending", () => {
+    mockIsPending = true;
+    render(
+      <AppHeader onOpenPalette={noop} onOpenSettings={noop} settings={undefined} />,
+    );
+
+    expect(screen.queryByText("Sign up")).toBeNull();
   });
 });

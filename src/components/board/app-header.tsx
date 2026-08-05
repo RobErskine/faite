@@ -12,9 +12,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
 import { UserAvatar } from "@/components/user-avatar";
 import { resolveAvatar } from "@/lib/profile";
 import { signOut, useSession } from "@/lib/auth-client";
+import { useShouldShowAuthNudges } from "@/lib/auth-nudge";
 import type { Settings as SettingsRow } from "@/lib/schema";
 
 interface AppHeaderProps {
@@ -38,6 +40,7 @@ interface AppHeaderProps {
 export function AppHeader({ onOpenPalette, onOpenSettings, settings }: AppHeaderProps) {
   const avatar = resolveAvatar(settings);
   const { data: session } = useSession();
+  const shouldShowAuthNudges = useShouldShowAuthNudges();
 
   const handleSignOut = async () => {
     await signOut();
@@ -46,9 +49,12 @@ export function AppHeader({ onOpenPalette, onOpenSettings, settings }: AppHeader
 
   return (
     <header className="flex h-12 shrink-0 items-center gap-3 border-b px-4">
-      <span className="font-heading text-sm font-semibold tracking-tight">
+      <Link
+        href="/board"
+        className="font-heading text-sm font-semibold tracking-tight"
+      >
         Faite
-      </span>
+      </Link>
 
       <div className="flex flex-1 justify-center">
         <button
@@ -66,6 +72,12 @@ export function AppHeader({ onOpenPalette, onOpenSettings, settings }: AppHeader
           </kbd>
         </button>
       </div>
+
+      {shouldShowAuthNudges ? (
+        <Button size="sm" nativeButton={false} render={<Link href="/signup" />}>
+          Sign up
+        </Button>
+      ) : null}
 
       <DropdownMenu>
         <DropdownMenuTrigger

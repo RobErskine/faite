@@ -3,7 +3,7 @@
 A weekly-planner todo app. *Faite* is "done" in French — the double meaning is
 the point: you control your fate by getting things done.
 
-Live: https://faite.bfmw-dev.workers.dev
+Live: https://myfaite.app
 
 The UI is two horizontal halves, and dragging between them is the whole app.
 The top half is a day-by-day calendar plus an **Overflow** column; the bottom

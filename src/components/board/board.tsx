@@ -90,6 +90,8 @@ import type { GuardContext, Hotkey } from "@/lib/keyboard";
 import { Hotkeys } from "@/components/hotkeys";
 import { AppHeader } from "./app-header";
 import { SessionProvider } from "@/components/auth/session-provider";
+import { SignedOutBanner } from "@/components/auth/signed-out-banner";
+import { WelcomeDialog } from "@/components/auth/welcome-dialog";
 import { SettingsSheet } from "@/components/settings/settings-sheet";
 import { ArchivedListsSheet } from "./archived-lists-sheet";
 import { BoardColumn } from "./board-column";
@@ -1047,6 +1049,8 @@ export function Board() {
       <Hotkeys registry={hotkeys} context={guardContext} />
 
       <div className="flex h-dvh flex-col">
+        <SignedOutBanner hasUserData={todos.length > 0} />
+
         <AppHeader
           onOpenPalette={() => setPaletteOpen(true)}
           onOpenSettings={() => setSettingsOpen(true)}
@@ -1344,6 +1348,7 @@ export function Board() {
       />
 
       <SessionProvider />
+      <WelcomeDialog />
     </DndContext>
   );
 }

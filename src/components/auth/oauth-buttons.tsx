@@ -42,7 +42,7 @@ interface OAuthButtonsProps {
   callbackURL?: string;
 }
 
-export function OAuthButtons({ callbackURL = "/" }: OAuthButtonsProps) {
+export function OAuthButtons({ callbackURL = "/board" }: OAuthButtonsProps) {
   const [pending, setPending] = useState<"github" | "google" | null>(null);
 
   const handle = async (provider: "github" | "google") => {

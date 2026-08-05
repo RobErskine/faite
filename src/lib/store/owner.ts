@@ -14,7 +14,9 @@
  */
 export const LOCAL_OWNER_ID = "local-user";
 
-const BOUND_OWNER_KEY = "faite:bound-owner-id";
+/** Exported so callers that can't import a function — an inline pre-paint
+ * script, e.g. — can still read the same key `getBoundOwnerId()` uses. */
+export const BOUND_OWNER_KEY = "faite:bound-owner-id";
 
 function hasLocalStorage(): boolean {
   return typeof localStorage !== "undefined";

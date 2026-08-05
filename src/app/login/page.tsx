@@ -30,7 +30,7 @@ export default function LoginPage() {
       setError(signInError.message ?? "Couldn't sign in with those details.");
       return;
     }
-    router.push("/");
+    router.push("/board");
   };
 
   return (

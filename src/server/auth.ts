@@ -17,7 +17,6 @@ const REQUIRE_EMAIL_VERIFICATION = false;
 
 const TRUSTED_ORIGINS = [
   "https://myfaite.app",
-  "https://faite.bfmw-dev.workers.dev",
   "http://localhost:3000",
   "http://localhost:8787",
   // Capacitor's WebView origin (P7, EI-51). Free to declare now, not a code
