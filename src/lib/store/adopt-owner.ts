@@ -1,6 +1,6 @@
 import type { EntityKind } from "@/lib/schema";
 import { getDb } from "./db";
-import { newId, now } from "./mutate";
+import { enqueue, now } from "./mutate";
 import {
   clearBoundOwnerId,
   getBoundOwnerId,
@@ -34,14 +34,11 @@ async function adoptTable(
     // the same shape and takes the same escape hatch for the same reason.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (db[table] as any).update(row.id, stamped);
-    await db.outbox.add({
-      id: newId(),
-      kind,
-      entityId: row.id,
-      patch: stamped,
-      hlc: now(),
-      createdAt: now(),
-    });
+    // `enqueue` (not a hand-rolled row) so `hlc` is a real, monotone HLC
+    // stamp — a hand-rolled `hlc: now()` here is exactly how this outbox
+    // entry drifted into an ISO string that would have won every LWW
+    // comparison forever. See hlc-core.ts's `normalizeLegacyHlc`.
+    await db.outbox.add(enqueue(kind, row.id, stamped));
   }
 }
 

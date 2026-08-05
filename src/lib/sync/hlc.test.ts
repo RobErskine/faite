@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { compareHlc, decodeHlc, encodeHlc, localEvent, receiveEvent } from "./hlc";
+import {
+  compareHlc,
+  decodeHlc,
+  encodeHlc,
+  isHlc,
+  localEvent,
+  normalizeLegacyHlc,
+  receiveEvent,
+} from "./hlc";
 
 const NODE_A = "aaaa1111";
 const NODE_B = "bbbb2222";
@@ -121,5 +129,51 @@ describe("compareHlc", () => {
     expect(compareHlc(a, b) < 0).toBe(true);
     expect(compareHlc(b, a) > 0).toBe(true);
     expect(compareHlc(a, a)).toBe(0);
+  });
+
+  it("REGRESSION: a legacy ISO wall-clock stamp sorts GREATER than every real HLC", () => {
+    // Pinned so this can never be "fixed" back on the belief that ISO sorts
+    // low — it sorts high, which is what makes normalizeLegacyHlc load-bearing
+    // rather than cosmetic. See hlc-core.ts's normalizeLegacyHlc doc comment.
+    const iso = new Date(2026, 0, 1).toISOString();
+    const realHlc = localEvent(null, Date.now(), NODE_A);
+    expect(compareHlc(iso, realHlc) > 0).toBe(true);
+  });
+});
+
+describe("isHlc", () => {
+  it("accepts a well-formed stamp", () => {
+    expect(isHlc(localEvent(null, Date.now(), NODE_A))).toBe(true);
+    expect(isHlc(encodeHlc({ phys: 0, counter: 0, nodeId: NODE_A }))).toBe(true);
+  });
+
+  it("rejects a legacy ISO wall-clock stamp", () => {
+    expect(isHlc(new Date().toISOString())).toBe(false);
+  });
+
+  it("rejects garbage", () => {
+    expect(isHlc("")).toBe(false);
+    expect(isHlc("not-an-hlc")).toBe(false);
+  });
+});
+
+describe("normalizeLegacyHlc", () => {
+  it("produces a well-formed HLC", () => {
+    const normalized = normalizeLegacyHlc(new Date().toISOString(), NODE_A);
+    expect(isHlc(normalized)).toBe(true);
+  });
+
+  it("preserves relative order between two legacy ISO stamps", () => {
+    const earlier = new Date(2026, 0, 1).toISOString();
+    const later = new Date(2026, 0, 2).toISOString();
+    const normEarlier = normalizeLegacyHlc(earlier, NODE_A);
+    const normLater = normalizeLegacyHlc(later, NODE_A);
+    expect(compareHlc(normEarlier, normLater) < 0).toBe(true);
+  });
+
+  it("sorts below a real HLC stamped afterwards, on the same device", () => {
+    const legacy = normalizeLegacyHlc(new Date(2026, 0, 1).toISOString(), NODE_A);
+    const real = localEvent(null, Date.now(), NODE_A);
+    expect(compareHlc(legacy, real) < 0).toBe(true);
   });
 });

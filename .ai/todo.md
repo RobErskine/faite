@@ -233,6 +233,19 @@ plan's own flag.
    it. Relied on typecheck/build/dry-run instead for Phase 5's UI change.
    **Rule:** `lsof`/`ps` for an existing process on the target port *before*
    backgrounding a dev server, especially unattended.
+5. **The "legacy outbox rows sort before any real HLC" claim two paragraphs
+   above (D2's summary), and the same claim in `mutate.ts`'s original comment
+   and in `docs/SYNC.md`, was backwards — they sort AFTER.** `"2026-…"[0]` is
+   `'2'`, a real HLC's leading hex digit is `'0'` at any epoch before the year
+   10889, and `compareHlc` is plain string comparison — so a legacy entry wins
+   every LWW comparison it is ever compared in, forever. Found when P3's
+   transport work began: `adopt-owner.ts:42` was still writing `hlc: now()` on
+   every first sign-in, so this was live, not only historical. Fixed at the
+   source (`adopt-owner.ts` now uses `mutate.ts`'s real `enqueue`) and by a
+   one-time `normalizeOutboxHlcs()` migration
+   (`src/lib/store/normalize-outbox.ts`) gated on a localStorage flag, plus a
+   regression test pinning the sort direction (`hlc.test.ts`) so the comment
+   can't drift back to wrong. See `docs/SYNC.md`'s "Known traps".
 
 ### Also still outstanding (unrelated to this session, from P2)
 

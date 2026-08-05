@@ -129,3 +129,30 @@ the answer is "the user is stuck with no recovery path", derive the guard from
 the environment rather than hardcoding it — and make the service wrapper
 degrade in dev instead of throwing. Neighbouring code already branching on
 environment is a strong hint the new flag should too.
+
+## "Sortable" isn't one order — verify the direction with a test, not a comment
+
+Three places in this repo (`mutate.ts`'s doc comment, `docs/SYNC.md`,
+`.ai/todo.md`'s own P3 review) asserted that legacy `new Date().toISOString()`
+outbox stamps "sort before any real HLC" and are therefore harmless. They
+sort *after* — `"2026-…"[0]` is `'2'` (0x32), a real HLC's leading hex digit
+is `'0'` (0x30) at any epoch before the year 10889, and the merge's
+`compareHlc` is plain string comparison. So a legacy stamp wins every
+last-writer-wins comparison it's ever compared in, forever, and the claim
+that this was "harmless because nothing has drained the outbox yet" was true
+only by accident — `adopt-owner.ts` was still producing new legacy stamps on
+every first sign-in, so the first real drain would have poisoned an account's
+server-side field clocks permanently and unrepairably.
+
+Both the fixed-width-hex HLC encoding and an ISO-8601 string are individually
+"lexicographically sortable" — that property says nothing about whether they
+sort *against each other* in the direction someone assumed. Nobody had run
+`"2026-..." < "019f..."` in a REPL; the comment was written from intuition
+("newer-looking things sort... after? before?") and then copied into two more
+files without being re-derived.
+
+**Rule:** a claim about lexicographic (or any) ordering between two encodings
+is a one-line, ten-second thing to verify in a REPL or a test — do it before
+writing the comment, and encode the verified direction as a regression test
+(`hlc.test.ts`'s `compareHlc(iso, realHlc) > 0` case here), not just prose.
+Prose drifts silently across copies; a red test doesn't.

@@ -149,9 +149,16 @@ kinds, so a client pull is "give me every row of every kind with
   "One settings row per device" was never going to survive sync unchanged, and
   P3 needs its own answer. Do not naively sync it.
 - **Legacy outbox rows** written before the HLC swap hold plain ISO wall-clock
-  strings. They sort before any real HLC. Harmless today because nothing has
-  ever drained the outbox — but the first drain will encounter them on a
-  long-lived local database.
+  strings. **They sort AFTER any real HLC** (`"2026-…"` > `"019f…"`
+  lexicographically) — not before, as this doc previously and incorrectly
+  said. That means an un-normalized legacy entry wins every LWW comparison it
+  is ever compared in, forever, and `field_clocks` on the server cannot be
+  repaired by a later client deploy once one lands there. Fixed at the source
+  (`adopt-owner.ts` now uses `mutate.ts`'s real `enqueue`, not a hand-rolled
+  `hlc: now()`) and by a one-time `normalizeOutboxHlcs()` migration
+  (`src/lib/store/normalize-outbox.ts`) that must run — on every device —
+  before the first drain. See `normalizeLegacyHlc` in `hlc-core.ts` and the
+  regression test pinning the sort direction in `hlc.test.ts`.
 - **`bootstrap.ts` is hand-maintained** against
   `drizzle/user/0000_*.sql`. There is no filesystem in a Workers bundle and no
   module rule for importing `.sql` as text, so the DDL is duplicated

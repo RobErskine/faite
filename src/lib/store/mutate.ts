@@ -68,10 +68,11 @@ function setLastHlc(hlc: string): void {
  * Real HLC, per P3 (`src/lib/sync/hlc.ts`, EI-47).
  *
  * Outbox rows written before this change hold plain wall-clock ISO strings
- * instead of `<phys>:<counter>:<nodeId>`. They sort before any new HLC
- * (different shape/length entirely), which is harmless: nothing has ever
- * drained the outbox, so no merge has ever compared an old-style stamp
- * against a new one.
+ * instead of `<phys>:<counter>:<nodeId>`. They sort AFTER every real HLC
+ * (`"2026-…"` > `"019f…"` lexicographically) — the opposite of harmless: an
+ * un-normalized legacy stamp would win every LWW comparison forever. See
+ * `normalizeLegacyHlc` (`hlc-core.ts`) and `normalizeOutboxHlcs`
+ * (`normalize-outbox.ts`), which run once before the first drain.
  */
 function nextHlc(): string {
   const hlc = localEvent(getLastHlc(), Date.now(), getNodeId());
@@ -79,7 +80,13 @@ function nextHlc(): string {
   return hlc;
 }
 
-function enqueue(
+/**
+ * Exported for `adopt-owner.ts`, which needs to append an outbox entry
+ * outside `mutate()`'s own transaction. Using this (instead of hand-rolling
+ * the row) is what keeps the `hlc` a real, monotone stamp — a hand-rolled
+ * copy is exactly how that drifted into `hlc: now()` before.
+ */
+export function enqueue(
   kind: EntityKind,
   entityId: string,
   patch: Record<string, unknown>,

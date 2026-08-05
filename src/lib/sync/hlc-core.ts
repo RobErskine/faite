@@ -111,3 +111,31 @@ export function receiveEvent(
 export function compareHlc(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
+
+const HLC_SHAPE = /^[0-9a-f]{12}:[0-9a-f]{4}:.+$/;
+
+/** True for a well-formed `<phys:12hex>:<counter:4hex>:<nodeId>` stamp. */
+export function isHlc(value: string): boolean {
+  return HLC_SHAPE.test(value);
+}
+
+/**
+ * Rewrites a pre-HLC wall-clock ISO stamp into a well-formed HLC.
+ *
+ * Outbox entries written before P3's HLC swap (and by `adoptLocalData`, until
+ * it was fixed to call `mutate.ts`'s real `enqueue`) hold plain
+ * `new Date().toISOString()` strings instead. Those sort *lexicographically
+ * greater* than every real HLC (`"2026-…"` > `"019f…"`), which is the opposite
+ * of "harmless legacy data" — it means a legacy stamp wins every LWW
+ * comparison it's ever compared in, forever. This must run before any legacy
+ * entry reaches a merge.
+ *
+ * Derives `phys` from `Date.parse` rather than collapsing to a flat floor, so
+ * relative order among legacy entries survives (a legacy create still sorts
+ * before its legacy update) while still landing below every post-fix HLC on
+ * the same device, since those stamp a later `Date.now()` and `localEvent`
+ * only ever clamps forward.
+ */
+export function normalizeLegacyHlc(value: string, nodeId: string): string {
+  return encodeHlc({ phys: Date.parse(value) || 0, counter: 0, nodeId });
+}
