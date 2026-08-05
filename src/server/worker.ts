@@ -16,16 +16,24 @@
  */
 import openNextHandler from "open-next/worker";
 import { createAuth } from "./auth";
+import { handleSyncRequest } from "./sync/routes";
 
 export { UserDurableObject } from "./user-do";
 
 export default {
   fetch(request, env, ctx) {
-    if (new URL(request.url).pathname.startsWith("/api/auth")) {
+    const pathname = new URL(request.url).pathname;
+
+    if (pathname.startsWith("/api/auth")) {
       // `request` is passed so Better Auth derives its baseURL from the origin
       // this actually arrived on — production, a branch preview, or localhost.
       // See createAuth's doc comment for why hardcoding it breaks previews.
       return createAuth(env, request).handler(request);
+    }
+    if (pathname.startsWith("/api/sync")) {
+      // Same reasoning as /api/auth above: EI-46's push/pull routes read
+      // `Request`, so they can't be a Next.js Route Handler either.
+      return handleSyncRequest(request, env);
     }
     // OpenNext always exports a fetch handler; the optional type is generic
     // ExportedHandler boilerplate, not a real possibility here.

@@ -4,7 +4,9 @@ import { drizzle } from "drizzle-orm/d1";
 import * as schema from "./auth-schema";
 import { sendEmail } from "./email";
 
-const TRUSTED_ORIGINS = [
+/** Also the CORS allow-list for `/api/sync/*` (`src/server/sync/routes.ts`) —
+ * one list, so it can't drift between the two seams. */
+export const TRUSTED_ORIGINS = [
   "https://myfaite.app",
   "http://localhost:3000",
   "http://localhost:8787",

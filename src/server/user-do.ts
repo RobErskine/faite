@@ -1,7 +1,14 @@
 import { DurableObject } from "cloudflare:workers";
 import { drizzle, type DrizzleSqliteDODatabase } from "drizzle-orm/durable-sqlite";
+import type { PullResponse, PushRequest, PushResponse } from "@/lib/sync/wire";
+import { SYNC_KINDS, SYNC_PROTOCOL_VERSION } from "@/lib/sync/wire";
 import { BOOTSTRAP_STATEMENTS } from "./db/bootstrap";
 import * as schema from "./db/user-schema";
+import type { FieldClockMap } from "./sync/apply-patch";
+import { COLUMNS_BY_KIND, rowFromSqlRow, TABLE_NAME_BY_KIND, toColumnValue } from "./sync/columns";
+import { type KindPage, mergePages } from "./sync/pull";
+import { groupByEntity, resolveEntityPush, validateEntries } from "./sync/push";
+import { buildInsertColumns } from "./sync/upsert";
 
 /**
  * Per-user Durable Object. Authoritative store for one user's todos/lists/labels
@@ -14,11 +21,12 @@ import * as schema from "./db/user-schema";
  *
  * D1 holds only auth/global tables, which need a conventional SQL adapter.
  *
- * P3 status: storage schema only (`src/server/db/user-schema.ts`), bootstrapped
- * here on construction. No RPC, no fetch routes, no client calls yet — `fetch`
- * is still the P0 stub. The sync protocol itself (outbox drain, `since=version`
- * pull, WebSocket push) is later P3/P4 work; see `src/server/sync/apply-patch.ts`
- * for the pure per-field merge logic it will call into.
+ * EI-46: `push`/`pull` are RPC methods, not `fetch()` routes — the worker
+ * already owns HTTP (session, Zod, CORS; see `src/server/sync/routes.ts`),
+ * and `env.USER_DO` is typed `DurableObjectNamespace<UserDurableObject>`, so
+ * the wire types are `tsc`-enforced at both ends. `fetch()` stays a stub so
+ * P4's WebSocket upgrade — which can only arrive there — gets a clean file to
+ * extend, not a router.
  */
 export class UserDurableObject extends DurableObject {
   db: DrizzleSqliteDODatabase<typeof schema>;
@@ -42,5 +50,165 @@ export class UserDurableObject extends DurableObject {
       { ok: true, phase: "P3", note: "Storage schema only; sync protocol not wired yet" },
       { status: 200 },
     );
+  }
+
+  /**
+   * Applies a batch of outbox entries. `userId` comes from the worker's
+   * verified session — never from the request body — and is the only source
+   * of `owner_id` on an insert (see `columns.ts`'s `SERVER_ONLY_FIELDS`).
+   *
+   * The whole batch runs inside one `transactionSync` so a crash mid-push
+   * can't leave `field_clocks`, a row, and `sync_meta`'s counter mutually
+   * inconsistent. `transactionSync`'s closure must be synchronous — every
+   * helper below is, since `ctx.storage.sql.exec` itself is synchronous.
+   */
+  async push(userId: string, request: PushRequest): Promise<PushResponse> {
+    const { accepted, rejected } = validateEntries(request.entries);
+    const groups = groupByEntity(accepted);
+    const conflicts: PushResponse["conflicts"] = [];
+    let highestVersion = 0;
+    const nowIso = new Date().toISOString();
+
+    this.ctx.storage.transactionSync(() => {
+      for (const group of groups) {
+        const existingClocks = this.readFieldClocks(group.entityId);
+        const resolution = resolveEntityPush(existingClocks, group);
+
+        if (resolution.conflicts.length > 0) {
+          conflicts.push({ entityId: group.entityId, fields: resolution.conflicts });
+        }
+        // Every field lost (a duplicate re-push, most commonly) — nothing to
+        // write, so allocate no version. Otherwise a lost-response retry
+        // would churn the counter and force every device to re-pull nothing.
+        if (Object.keys(resolution.apply).length === 0) continue;
+
+        const version = this.allocateVersion();
+        const tableName = TABLE_NAME_BY_KIND[group.kind];
+        if (this.rowExists(tableName, group.entityId)) {
+          this.updateRow(group.kind, tableName, group.entityId, resolution.apply, version);
+        } else {
+          const row = buildInsertColumns(group.kind, group.entityId, userId, resolution.apply, nowIso, version);
+          this.insertRow(group.kind, tableName, row);
+        }
+        this.writeFieldClocks(group.entityId, group.kind, resolution.clockUpdates);
+        highestVersion = Math.max(highestVersion, version);
+      }
+    });
+
+    return {
+      acked: accepted.map((entry) => entry.id),
+      rejected,
+      highestVersion,
+      conflicts,
+    };
+  }
+
+  /** `since=version` pull across every sync kind — see `pull.ts`'s `mergePages`. */
+  async pull(cursor: number, limit: number): Promise<PullResponse> {
+    const pages: KindPage[] = SYNC_KINDS.map((kind) => {
+      const tableName = TABLE_NAME_BY_KIND[kind];
+      const sqlRows = this.ctx.storage.sql
+        .exec(`SELECT * FROM ${tableName} WHERE version > ? ORDER BY version LIMIT ?`, cursor, limit)
+        .toArray();
+      const rows = sqlRows.map(
+        (sqlRow) => rowFromSqlRow(kind, sqlRow) as Record<string, unknown> & { id: string; version: number },
+      );
+      return { kind, rows, exhausted: sqlRows.length === limit };
+    });
+
+    const entityIds = pages.flatMap((page) => page.rows.map((row) => row.id));
+    const fieldClocksByEntityId = this.readFieldClocksBulk(entityIds);
+    const merged = mergePages(pages, cursor, limit, fieldClocksByEntityId);
+
+    return { protocol: SYNC_PROTOCOL_VERSION, ...merged };
+  }
+
+  private allocateVersion(): number {
+    const row = this.ctx.storage.sql
+      .exec<{ next_version: number }>("SELECT next_version FROM sync_meta WHERE id = 1")
+      .one();
+    this.ctx.storage.sql.exec("UPDATE sync_meta SET next_version = ? WHERE id = 1", row.next_version + 1);
+    return row.next_version;
+  }
+
+  private rowExists(tableName: string, entityId: string): boolean {
+    return (
+      this.ctx.storage.sql.exec(`SELECT 1 FROM ${tableName} WHERE id = ?`, entityId).toArray().length > 0
+    );
+  }
+
+  private insertRow(kind: (typeof SYNC_KINDS)[number], tableName: string, row: Record<string, unknown>): void {
+    const columns = COLUMNS_BY_KIND[kind];
+    const fields = Object.keys(row);
+    const sqlNames = fields.map((field) => columns[field].sqlName);
+    const placeholders = fields.map(() => "?").join(", ");
+    const values = fields.map((field) => toColumnValue(kind, field, row[field]));
+    // `tableName`/`sqlNames` come only from our own whitelisted metadata
+    // (COLUMNS_BY_KIND/TABLE_NAME_BY_KIND), never from client input — every
+    // actual value is a bound parameter.
+    this.ctx.storage.sql.exec(
+      `INSERT INTO ${tableName} (${sqlNames.join(", ")}) VALUES (${placeholders})`,
+      ...values,
+    );
+  }
+
+  private updateRow(
+    kind: (typeof SYNC_KINDS)[number],
+    tableName: string,
+    entityId: string,
+    apply: Record<string, unknown>,
+    version: number,
+  ): void {
+    const columns = COLUMNS_BY_KIND[kind];
+    const fields = Object.keys(apply);
+    const setClauses = [...fields.map((field) => `${columns[field].sqlName} = ?`), "version = ?"];
+    const values = [...fields.map((field) => toColumnValue(kind, field, apply[field])), version];
+    this.ctx.storage.sql.exec(
+      `UPDATE ${tableName} SET ${setClauses.join(", ")} WHERE id = ?`,
+      ...values,
+      entityId,
+    );
+  }
+
+  private readFieldClocks(entityId: string): FieldClockMap {
+    const rows = this.ctx.storage.sql
+      .exec<{ field: string; hlc: string }>("SELECT field, hlc FROM field_clocks WHERE entity_id = ?", entityId)
+      .toArray();
+    const clocks: FieldClockMap = {};
+    for (const row of rows) clocks[row.field] = row.hlc;
+    return clocks;
+  }
+
+  private readFieldClocksBulk(entityIds: string[]): Record<string, FieldClockMap> {
+    if (entityIds.length === 0) return {};
+    const placeholders = entityIds.map(() => "?").join(", ");
+    const rows = this.ctx.storage.sql
+      .exec<{ entity_id: string; field: string; hlc: string }>(
+        `SELECT entity_id, field, hlc FROM field_clocks WHERE entity_id IN (${placeholders})`,
+        ...entityIds,
+      )
+      .toArray();
+    const result: Record<string, FieldClockMap> = {};
+    for (const row of rows) {
+      (result[row.entity_id] ??= {})[row.field] = row.hlc;
+    }
+    return result;
+  }
+
+  private writeFieldClocks(
+    entityId: string,
+    kind: (typeof SYNC_KINDS)[number],
+    clockUpdates: FieldClockMap,
+  ): void {
+    for (const [field, hlc] of Object.entries(clockUpdates)) {
+      this.ctx.storage.sql.exec(
+        `INSERT INTO field_clocks (entity_id, kind, field, hlc) VALUES (?, ?, ?, ?)
+         ON CONFLICT(entity_id, field) DO UPDATE SET hlc = excluded.hlc, kind = excluded.kind`,
+        entityId,
+        kind,
+        field,
+        hlc,
+      );
+    }
   }
 }

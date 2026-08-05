@@ -61,6 +61,20 @@ function buildColumnsByKind(): Record<SyncKind, Record<string, ColumnMeta>> {
 /** TS field name -> column metadata, per sync kind. Built once at module load. */
 export const COLUMNS_BY_KIND: Record<SyncKind, Record<string, ColumnMeta>> = buildColumnsByKind();
 
+function buildSqlToTsByKind(): Record<SyncKind, Record<string, string>> {
+  const result = {} as Record<SyncKind, Record<string, string>>;
+  for (const [kind, columns] of Object.entries(COLUMNS_BY_KIND) as Array<
+    [SyncKind, Record<string, ColumnMeta>]
+  >) {
+    const reverse: Record<string, string> = {};
+    for (const [tsName, meta] of Object.entries(columns)) reverse[meta.sqlName] = tsName;
+    result[kind] = reverse;
+  }
+  return result;
+}
+
+const SQL_TO_TS_BY_KIND: Record<SyncKind, Record<string, string>> = buildSqlToTsByKind();
+
 /**
  * Drops any patch key that isn't a real, sync-eligible column: unknown keys
  * (including prototype-pollution attempts), and the server-owned fields in
@@ -115,4 +129,21 @@ export function fromColumnValue(kind: SyncKind, field: string, value: unknown): 
     default:
       return value;
   }
+}
+
+/**
+ * Converts one raw `SELECT *` row (keyed by SQL column names, SQLite-typed
+ * values) into a JS-typed object keyed by TS field names — the shape
+ * `changesFromRow` (`wire.ts`) expects. The inverse direction of
+ * `buildInsertColumns`'s TS-keyed input.
+ */
+export function rowFromSqlRow(kind: SyncKind, sqlRow: Record<string, unknown>): Record<string, unknown> {
+  const sqlToTs = SQL_TO_TS_BY_KIND[kind];
+  const result: Record<string, unknown> = {};
+  for (const [sqlName, value] of Object.entries(sqlRow)) {
+    const tsName = sqlToTs[sqlName];
+    if (!tsName) continue;
+    result[tsName] = fromColumnValue(kind, tsName, value);
+  }
+  return result;
 }

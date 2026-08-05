@@ -13,6 +13,10 @@ import type { EntityKind } from "@/lib/schema";
 /** `settings` is excluded from P3 sync — see docs/SYNC.md's "Known traps". */
 export type SyncKind = Exclude<EntityKind, "settings">;
 
+// `as const` (not just `readonly SyncKind[]`) so consumers that need a
+// literal tuple — `z.enum(SYNC_KINDS)` in `routes.ts` — get one without a cast.
+export const SYNC_KINDS = ["todo", "list", "label", "project", "tab"] as const satisfies readonly SyncKind[];
+
 export const SYNC_PROTOCOL_VERSION = 1 as const;
 
 /**
