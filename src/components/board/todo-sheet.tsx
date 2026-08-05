@@ -123,7 +123,7 @@ function TodoSheetContent({
                 description !== (todo.description ?? "") &&
                 onSave(todo.id, { description: description || null })
               }
-              placeholder="Markdown supported"
+              placeholder="Add notes"
               rows={4}
             />
           </div>

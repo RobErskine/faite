@@ -3,7 +3,7 @@
 import type { KeyboardEventHandler, PointerEventHandler } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { CalendarClock } from "lucide-react";
+import { CalendarClock, Flag, MapPin } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -151,8 +151,18 @@ export function TodoCard({
       >
         <span className="block truncate">{todo.title}</span>
 
-        {(todoLabels.length > 0 || deadlineMissed || isAway) && (
+        {(todoLabels.length > 0 ||
+          deadlineMissed ||
+          isAway ||
+          todo.priority ||
+          todo.location) && (
           <span className="mt-1 flex flex-wrap items-center gap-1">
+            {todo.priority && (
+              <Badge variant="outline" className="num gap-1 text-2xs font-normal">
+                <Flag className="size-2.5" aria-hidden />
+                P{todo.priority}
+              </Badge>
+            )}
             {isAway && todo.scheduledDate && (
               <Badge variant="outline" className="num gap-1 text-2xs font-normal">
                 <CalendarClock className="size-2.5" aria-hidden />
@@ -162,6 +172,12 @@ export function TodoCard({
             {deadlineMissed && todo.deadline && (
               <Badge variant="destructive" className="text-2xs font-normal">
                 Deadline <span className="num">{formatShortDate(todo.deadline)}</span>
+              </Badge>
+            )}
+            {todo.location && (
+              <Badge variant="outline" className="gap-1 text-2xs font-normal">
+                <MapPin className="size-2.5" aria-hidden />
+                {todo.location}
               </Badge>
             )}
             {todoLabels.map((label) => (
