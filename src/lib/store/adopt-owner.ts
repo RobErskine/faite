@@ -1,4 +1,5 @@
 import type { EntityKind } from "@/lib/schema";
+import { clearSyncCursors } from "@/lib/sync/cursor";
 import { getDb } from "./db";
 import { enqueue, now } from "./mutate";
 import {
@@ -116,4 +117,9 @@ export async function resetLocalDataForNewOwner(): Promise<void> {
     },
   );
   clearBoundOwnerId();
+  // The old owner's pull cursor is meaningless against the new owner's DO —
+  // reusing it would silently skip the new owner's earliest rows. NOT called
+  // on a plain sign-out: a returning same-account sign-in should resume from
+  // where it left off, not re-pull everything.
+  clearSyncCursors();
 }
