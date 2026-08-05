@@ -1,5 +1,5 @@
 import type { OutboxEntry } from "@/lib/schema";
-import { compareHlc } from "./hlc";
+import { compareHlc } from "./hlc-core";
 
 /**
  * Field-level last-writer-wins merge — the correctness core of P3 (EI-47, D2).
