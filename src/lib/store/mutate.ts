@@ -1,5 +1,6 @@
 import { uuidv7 } from "uuidv7";
 import type { EntityKind, OutboxEntry } from "@/lib/schema";
+import { getNodeId, localEvent } from "@/lib/sync/hlc";
 import { getDb } from "./db";
 
 /**
@@ -35,16 +36,47 @@ export function now(): string {
   return new Date().toISOString();
 }
 
+const LAST_HLC_KEY = "faite:last-hlc";
+
+// Memoized for the same reason hlc.ts memoizes the node id: a localStorage
+// throw (privacy modes) should still leave this session internally
+// monotonic instead of restarting from a null "last" on every mutation.
+let cachedLastHlc: string | null = null;
+
+function getLastHlc(): string | null {
+  if (cachedLastHlc !== null) return cachedLastHlc;
+  if (typeof localStorage === "undefined") return null;
+  try {
+    return localStorage.getItem(LAST_HLC_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function setLastHlc(hlc: string): void {
+  cachedLastHlc = hlc;
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(LAST_HLC_KEY, hlc);
+  } catch {
+    // Best effort; the in-memory cache above still keeps this page's writes
+    // monotonic even if it can't survive a reload.
+  }
+}
+
 /**
- * Stand-in for a Hybrid Logical Clock.
+ * Real HLC, per P3 (`src/lib/sync/hlc.ts`, EI-47).
  *
- * P1 uses a wall-clock ISO string, which is enough while there is exactly one
- * writer. P3 replaces this with a real HLC so clock skew between devices cannot
- * reorder causally related edits. The field exists now so the outbox shape does
- * not change when that lands.
+ * Outbox rows written before this change hold plain wall-clock ISO strings
+ * instead of `<phys>:<counter>:<nodeId>`. They sort before any new HLC
+ * (different shape/length entirely), which is harmless: nothing has ever
+ * drained the outbox, so no merge has ever compared an old-style stamp
+ * against a new one.
  */
 function nextHlc(): string {
-  return now();
+  const hlc = localEvent(getLastHlc(), Date.now(), getNodeId());
+  setLastHlc(hlc);
+  return hlc;
 }
 
 function enqueue(
