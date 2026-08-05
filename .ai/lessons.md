@@ -45,3 +45,36 @@ excluded.
 it *references*, not just where it lives — a `.d.ts` two directories away from
 an excluded folder can still reach into it via a type-only import and widen
 what "excluded" actually excludes.
+
+## A shared module must have zero DOM-only bindings anywhere in the file
+
+`src/server/sync/apply-patch.ts` (Workers code) imported only `compareHlc`
+from `src/lib/sync/hlc.ts`, but `tsc -p tsconfig.worker.json` still failed on
+`localStorage`, which lived in a *different* function in that same file
+(`getNodeId`). `tsc` type-checks a whole imported file under the importing
+project's `lib` config, not just the specific bindings actually used — so one
+DOM-only reference anywhere in a module poisons it for every importer with a
+DOM-less `lib`.
+
+**Rule:** before sharing a "pure" module between client and Workers code,
+grep the whole file for globals the Workers `lib` config won't have
+(`localStorage`, `window`, `document`, etc.), not just the exports the new
+importer needs. If any exist, split the file — pure logic in one module,
+environment-touching accessors in a sibling that re-exports the pure module's
+surface, same pattern as `hlc-core.ts` / `hlc.ts` here.
+
+## `wrangler deploy --dry-run` catches what `tsc` and `next build` can't
+
+Neither `npm run build` nor `build:static` actually bundles the Workers
+entry (`src/server/worker.ts`) through wrangler's esbuild — they're pure
+Next builds and never touch `drizzle-orm/durable-sqlite`-style
+Workers-runtime imports. `tsc -p tsconfig.worker.json` only checks *types*,
+not whether the bundler can actually resolve everything. A `--dry-run` deploy
+doesn't publish or touch live infra, so it's safe to run any time, and it's
+the only step in this repo's verification list that actually proves a new
+`src/server` module bundles.
+
+**Rule:** after any change under `src/server` that adds a new import (not
+just edits existing ones), run `npx wrangler deploy --dry-run` once before
+calling the change verified — it's free and it's the only check that exercises
+the real bundler.
