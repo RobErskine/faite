@@ -32,24 +32,29 @@ work — worth skimming for the reasoning behind choices this doc only states.
 
 | Piece | Linear | State |
 |---|---|---|
-| HLC (pure) | EI-47 | ✅ done, 14 tests |
+| HLC (pure) | EI-47 | ✅ done, 21 tests |
 | Field-level LWW merge, client | EI-47 | ✅ done, 11 tests |
 | Real HLC wired into `mutate()`'s outbox stamp | EI-47 | ✅ done |
 | DO SQLite schema + bootstrap + version counter | EI-46 | ✅ done |
 | Field-level LWW, server half (pure) | EI-46 | ✅ done, 7 tests |
-| **DO RPC / fetch routes** | EI-46 | ❌ **not started** |
-| **Outbox drain + `since=version` pull** | EI-48 | ❌ **not started** |
-| WebSocket push + hibernation | EI-49 (P4) | ❌ not started |
+| DO `push`/`pull` RPC behind `/api/sync/*` | EI-46 | ✅ done |
+| Outbox drain + `since=version` pull loop | EI-48 | ✅ done |
+| DO wipe on account deletion | — | ✅ done |
+| **WebSocket push + hibernation** | EI-49 (P4) | ❌ **not started** |
+| **Settings sync** | — | ❌ **deliberately excluded from P3** |
 
-**The semantics are finished and tested. None of the transport exists.**
-`UserDurableObject.fetch()` is still a stub returning a JSON note, and no
-client code opens a network connection for sync.
+**P3 (EI-46/EI-48) is done, including transport — see `.ai/todo.md`'s
+"Review — P3 transport" for the phase-by-phase breakdown, what a live smoke
+test against a real Durable Object confirmed, and what it couldn't reach
+locally.** `UserDurableObject.fetch()` remains a stub — RPC (`push`/`pull`)
+is the transport, and `fetch()` is deliberately left clean for P4's WebSocket
+upgrade, which can only arrive there.
 
-That split was deliberate: the merge rules are the part that must be right the
-first time (EI-47), so they were built and pinned by tests before any wire
-format could bake assumptions into them. **Do not redesign them.** If a
-transport decision seems to require changing merge semantics, that is a signal
-the transport is wrong, not the semantics.
+The merge-semantics-before-transport split was deliberate and held: the
+transport built on top of `mergeRecord`/`applyIncomingPatch` without needing
+to touch either. **Still do not redesign them for P4.** If a transport
+decision seems to require changing merge semantics, that is a signal the
+transport is wrong, not the semantics.
 
 ---
 
@@ -114,7 +119,11 @@ kinds, so a client pull is "give me every row of every kind with
 
 ---
 
-## What the next agent needs to do (EI-46 routes + EI-48)
+## What the next agent needs to do (EI-46 routes + EI-48) — ✅ done
+
+Kept as the record of the plan that was followed — see `.ai/todo.md`'s
+"Review — P3 transport" for what actually landed, file by file, and what a
+live smoke test against a real Durable Object confirmed.
 
 1. **Route `/api/sync/*` in `src/server/worker.ts`,** next to the existing
    `/api/auth/*` intercept. **Not a Next.js route handler** — `output: export`
@@ -144,10 +153,15 @@ kinds, so a client pull is "give me every row of every kind with
 
 ### Known traps
 
-- **`settings` is device-local and excluded from ownerId adoption** (§2.12). Its
-  Dexie primary key *is* `ownerId`, hardcoded to `LOCAL_OWNER_ID` app-wide.
-  "One settings row per device" was never going to survive sync unchanged, and
-  P3 needs its own answer. Do not naively sync it.
+- **`settings` is device-local and excluded from ownerId adoption** (§2.12), and
+  **P3 excludes it from sync entirely** — `kind === "settings"` outbox entries
+  are dropped in the drain and deleted locally (`src/lib/sync/drain.ts`),
+  since `board.tsx`'s tab switcher writes one on every tab change and keeping
+  unackable entries would grow the outbox without bound. Its Dexie primary key
+  *is* `ownerId`, hardcoded to `LOCAL_OWNER_ID` app-wide, so "one settings row
+  per device" still hasn't survived sync — see `.ai/todo.md`'s "Please review:
+  settings excluded from sync" for the cost (the `fontPairing`/`theme`
+  cross-device promise in `schema.ts` doesn't hold yet) and the sketched fix.
 - **Legacy outbox rows** written before the HLC swap hold plain ISO wall-clock
   strings. **They sort AFTER any real HLC** (`"2026-…"` > `"019f…"`
   lexicographically) — not before, as this doc previously and incorrectly
@@ -172,16 +186,17 @@ kinds, so a client pull is "give me every row of every kind with
   pure Next builds. Add it to verification for any `src/server/` change.
 - **Undo needs no special casing.** An undo is an ordinary forward `mutate()`
   and lands in the outbox like any other edit (§2.11). No revert opcode.
-- **Deleting a user from D1 does not delete their Durable Object.** The auth
-  tables cascade within D1, but a DO is addressed by
-  `idFromName(userId)` and has no foreign key to anything — its storage simply
-  persists, unreachable, paid for, and holding that user's to-dos. This was
-  found while clearing test accounts, before any user data existed to strand.
-  Once sync writes real data, **account deletion needs an explicit DO wipe**
-  (`ctx.storage.deleteAll()` behind a DO route) as part of the delete flow, and
-  a re-registration on the same email would otherwise inherit the previous
-  account's board. Better Auth's `user.deleteUser` hook is the natural place
-  to call it from.
+- **Deleting a user from D1 does not delete their Durable Object — ✅ fixed.**
+  A DO is addressed by `idFromName(userId)` and has no foreign key to
+  anything, so its storage would otherwise persist unreachable and paid for.
+  `UserDurableObject.wipe()` (`ctx.storage.deleteAll()`) is now wired to
+  Better Auth's `user.deleteUser.afterDelete` hook in `auth.ts`. **Unverified
+  end-to-end**: the `/delete-user` endpoint's CSRF Origin check rejects any
+  port not in `TRUSTED_ORIGINS`, which blocked exercising it against a local
+  `wrangler dev` instance on a nonstandard port. The `ctx.storage.deleteAll()`
+  call itself is a single, stable, documented platform API, so this is
+  low-risk — but verify it once against `myfaite.app` or a branch preview
+  with a disposable test account before leaning on it.
 
 ---
 

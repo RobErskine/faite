@@ -76,9 +76,14 @@ Plan of record: `~/.claude/plans/please-check-this-image-starry-eich.md`
       counter); bootstrapped in `user-do.ts`'s constructor. **Schema/migration
       only** — see Review below
 - [x] Server-side per-field apply decision (`src/server/sync/apply-patch.ts`,
-      pure, mirrors `mergeRecord`) — not yet wired to the DO's storage
-- [ ] Outbox drain, `since=version` pull, focus + interval trigger — real
-      transport, not started (deliberately out of scope this session, D4)
+      pure, mirrors `mergeRecord`), now wired to the DO's storage
+- [x] DO `push`/`pull` RPC behind authenticated `/api/sync/*` routes (EI-46)
+- [x] Outbox drain, `since=version` pull loop, focus/online/interval/local-
+      write triggers (EI-48) — see Review below
+- [x] `UserDurableObject.wipe()` wired to Better Auth's
+      `user.deleteUser.afterDelete` — the orphaned-DO trap from the P2/P3
+      handoff doc, closed rather than deferred again
+- [ ] `settings` sync (P3 deliberately excludes it — see Review)
 
 ## P4 — Sync v1
 - [ ] WebSocket push, hibernation, reconnect/backfill, multi-tab
@@ -251,3 +256,106 @@ plan's own flag.
 
 Unchanged from the plan — DNS, OAuth app registration, and secrets, in that
 order (see the P2 section above for the full list and reasoning).
+
+## Review — P3 transport (EI-46 + EI-48)
+
+Five phases, one commit each, all green (typecheck × 2, full vitest suite,
+both build targets, `wrangler deploy --dry-run`). Final state: **359 tests
+passing** (271 baseline + 88 new), same 1 pre-existing lint error as the
+documented baseline. Scope was P3 only, per Rob's call — EI-49 (WebSocket
+push, P4) stays a separate follow-up.
+
+### What landed
+
+- **Phase 0** — the HLC-direction bug (see Surprise #5 above) fixed at the
+  source plus a one-time migration.
+- **Phase 1** — `src/lib/sync/wire.ts` (the push/pull wire types and
+  `changesFromRow`, which groups a row's fields into one `WireChange` per
+  distinct HLC — never the row's max HLC, which would silently let a stale
+  field clobber a newer local edit on a different field) and
+  `src/server/sync/columns.ts`/`upsert.ts` (patch whitelist + JS↔SQL
+  coercion derived from the drizzle schema itself, and NOT-NULL synthesis
+  for a partial create).
+- **Phase 2 (EI-46)** — `UserDurableObject.push()`/`pull()` RPC behind a new
+  `/api/sync/*` branch in `worker.ts`. RPC rather than `fetch()` routing, so
+  `fetch()` stays a clean stub for P4's WebSocket upgrade. One version is
+  allocated per row actually written (not per push batch, and not at all
+  when a push changes nothing), so a scalar cursor can page correctly and a
+  duplicate push can't churn every device into a needless re-pull.
+- **Phase 3 (EI-48, client half)** — `src/lib/sync/{hydrate,apply-plan,drain}.ts`
+  decide what a pull page writes locally and what a push batch sends,
+  without ever touching the outbox from the apply side (that would echo
+  every remote change straight back into the next push, forever).
+- **Phase 4 (EI-48, transport)** — `engine.ts`'s poll loop, mounted via
+  `SyncProvider` next to `SessionProvider`. Gates on
+  `getBoundOwnerId() === session.user.id`, not on the session existing —
+  see Surprise below. `UserDurableObject.wipe()` closes the orphaned-DO trap
+  from the P2/P3 handoff doc via Better Auth's `user.deleteUser.afterDelete`.
+
+### Please review: settings excluded from sync
+
+Rob's call this session: `kind === "settings"` outbox entries are dropped
+from the drain and deleted locally rather than synced. `board.tsx`'s tab
+switcher writes one every time the active tab changes, so keeping
+unackable entries around would grow the outbox without bound and slow
+`findLocalFieldHlc` on every future merge. Cost: `schema.ts`'s comment
+promising `fontPairing`/`theme` sync across devices doesn't hold yet, and
+settings changes made before an eventual settings-sync phase land are
+silently lost (never pushed, so never recoverable). Worth a second look
+before that promise ships elsewhere in the UI.
+
+### Surprises worth keeping
+
+1. **`Object.hasOwn` alone doesn't need a `__proto__` special case, but the
+   input side does.** `sanitizePatch`'s whitelist check
+   (`Object.hasOwn(columns, key)`) is safe by construction either way — but
+   worth knowing why: `JSON.parse('{"__proto__":1}')` creates a normal own
+   property (JSON.parse doesn't trigger the setter the way object-literal or
+   bracket-assignment syntax does), so a patch parsed from a request body
+   really can carry `Object.keys(patch)` containing `"__proto__"`. Pinned by
+   a test (`columns.test.ts`) rather than left to be re-discovered under
+   incident conditions.
+2. **The engine's activation gate had to be "adopted into this session's
+   user", not "has a session" — session alone is briefly true against the
+   WRONG board.** `SessionProvider` shows a "switch accounts?" confirmation
+   dialog *before* calling `resetLocalDataForNewOwner()` when a different
+   account signs in on a bound device. In that window, `useSession()` already
+   returns the new account, but the local board is still the old account's.
+   Gating the sync engine on the session alone would have pushed the old
+   account's entire board into the new account's Durable Object while that
+   dialog was still on screen. Caught during design, before any code was
+   written — worth flagging as the kind of bug that's invisible in every
+   test that doesn't specifically construct the account-switch race.
+3. **A live smoke test against a real Durable Object found nothing round-trip.test.ts's
+   fake-store composition could have missed, which is itself the useful
+   signal.** Ran a temporary `wrangler dev` instance on an unused port
+   (8790) specifically so as not to disturb an already-running preview
+   instance on 8787 — `ps`-checked first, per the existing dev-server lesson
+   above, and killed only the PID this session spawned. Exercised: an
+   unauthenticated 401, a real INSERT with NOT-NULL synthesis (confirmed the
+   synthesized fields come back grouped under `FLOOR_HLC`, exactly as
+   designed), a real UPDATE with correct version increment, JSON coercion
+   for `labelIds` round-tripping through SQLite TEXT, and a byte-identical
+   duplicate push correctly re-acking with zero version churn and reporting
+   every field as a self-conflict (ties lose, as designed). All matched the
+   pure-function tests' predictions exactly — evidence the pure/impure split
+   is doing its job, not just evidence the DO works. One thing this could
+   NOT reach locally: the `user.deleteUser` endpoint's CSRF Origin check
+   rejects any port not in `TRUSTED_ORIGINS`, so `wipe()`'s actual
+   invocation via the Better Auth hook is unverified end-to-end — the
+   `ctx.storage.deleteAll()` call itself is a single, stable, documented
+   platform API, so this is a low-risk gap, but it's a real one. Verify it
+   once against `myfaite.app` (or a branch preview) with a disposable test
+   account before relying on it in production.
+4. **Local email verification blocked sign-in even on `localhost`, for a
+   reason unrelated to any change this session.** `curl`-driven sign-up
+   left `email_verified = 0` and sign-in 403'd with `EMAIL_NOT_VERIFIED` —
+   reproduced identically against the untouched pre-existing dev process, so
+   confirmed pre-existing rather than a regression from this session's
+   `auth.ts` edit (the `user.deleteUser` block, which doesn't touch
+   `requireEmailVerification`/`isLocal`). Worked around via the exact
+   `UPDATE user SET email_verified = 1` command `docs/SETUP.md` already
+   documents for this class of problem. Root cause not investigated — likely
+   `request.url`'s origin under `wrangler dev`'s local socket proxying not
+   resolving to a bare `localhost`/`127.0.0.1` hostname — but that's a P2
+   auth question, out of scope here.
