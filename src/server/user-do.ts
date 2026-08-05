@@ -53,6 +53,19 @@ export class UserDurableObject extends DurableObject {
   }
 
   /**
+   * Permanently erases this DO's storage. Called from `auth.ts`'s
+   * `user.deleteUser.afterDelete` hook — a DO has no foreign key to D1, so
+   * deleting a user there leaves this storage orphaned (paid for,
+   * unreachable) unless something explicitly wipes it, and a
+   * re-registration on the same email would otherwise inherit the previous
+   * account's board (`idFromName(userId)` addresses the same DO again). See
+   * docs/SYNC.md's "Known traps".
+   */
+  async wipe(): Promise<void> {
+    await this.ctx.storage.deleteAll();
+  }
+
+  /**
    * Applies a batch of outbox entries. `userId` comes from the worker's
    * verified session — never from the request body — and is the only source
    * of `owner_id` on an insert (see `columns.ts`'s `SERVER_ONLY_FIELDS`).

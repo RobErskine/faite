@@ -115,6 +115,25 @@ export function createAuth(env: CloudflareEnv, request?: Request) {
         clientSecret: env.GOOGLE_CLIENT_SECRET,
       },
     },
+
+    user: {
+      deleteUser: {
+        enabled: true,
+        // A Durable Object has no foreign key to D1 — deleting the D1 user
+        // row alone leaves this account's DO storage orphaned: paid for,
+        // unreachable, still holding their to-dos (see docs/SYNC.md's
+        // "Known traps"). The user row is already gone by the time this
+        // runs, so a wipe failure here is logged, not thrown — it must not
+        // roll back a deletion that already succeeded from the user's POV.
+        afterDelete: async (user) => {
+          try {
+            await env.USER_DO.get(env.USER_DO.idFromName(user.id)).wipe();
+          } catch (error) {
+            console.error(`Failed to wipe Durable Object for deleted user ${user.id}`, error);
+          }
+        },
+      },
+    },
   });
 }
 

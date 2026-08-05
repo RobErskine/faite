@@ -90,6 +90,7 @@ import type { GuardContext, Hotkey } from "@/lib/keyboard";
 import { Hotkeys } from "@/components/hotkeys";
 import { AppHeader } from "./app-header";
 import { SessionProvider } from "@/components/auth/session-provider";
+import { SyncProvider } from "@/components/sync/sync-provider";
 import { SignedOutBanner } from "@/components/auth/signed-out-banner";
 import { WelcomeDialog } from "@/components/auth/welcome-dialog";
 import { SettingsSheet } from "@/components/settings/settings-sheet";
@@ -1348,6 +1349,7 @@ export function Board() {
       />
 
       <SessionProvider />
+      <SyncProvider />
       <WelcomeDialog />
     </DndContext>
   );
