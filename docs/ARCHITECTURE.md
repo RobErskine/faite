@@ -6,11 +6,17 @@ recoverable later without re-deriving it.
 **Faite** ("done" in French) is a weekly-planner todo app. The double meaning is
 the point: you control your fate by getting things done.
 
-Status at time of writing: **P0 and P1 shipped. P2 (Better Auth) deployed.**
-`myfaite.app` is live, D1 and Cloudflare Email Sending are wired, and
-email/password auth works. Email verification stays off and OAuth stays
-unconfigured until the GitHub/Google apps exist — see §7 and `docs/SETUP.md`.
-Sync (P3) is next. Live at https://myfaite.app
+Status at time of writing: **P0, P1 and P2 shipped.** Live at
+https://myfaite.app — custom domain, D1, Cloudflare Email Sending, and
+GitHub/Google OAuth all wired and verified against production. Deploys run
+from Workers Builds on push to `main`.
+
+**P3 is half done:** the sync *semantics* (HLC, field-level LWW, DO storage
+schema) are built and tested; none of the *transport* exists yet. Start at
+`docs/SYNC.md`, not here.
+
+One flag still down deliberately: `REQUIRE_EMAIL_VERIFICATION` in
+`src/server/auth.ts` — see `docs/SETUP.md` §6.
 
 ---
 
@@ -550,8 +556,8 @@ that build fails immediately instead of at P7 when it would be a rewrite.
 |---|---|---|
 | P0 | Scaffold + deploy | done |
 | P1 | Local main loop, no backend | done |
-| P2 | Better Auth on D1 — email/password, GitHub + Google OAuth | built, not yet live — see below |
-| P3 | Sync v0 — per-user DO, HLC LWW, polling | next |
+| P2 | Better Auth on D1 — email/password, GitHub + Google OAuth | **shipped and live** |
+| P3 | Sync v0 — per-user DO, HLC LWW, polling | **semantics done; transport not started** — see `docs/SYNC.md` |
 | P4 | Sync v1 — WebSocket push, hibernation | |
 | P5 | API + OpenAPI docs | |
 | P6 | Fast follow (see below) | |

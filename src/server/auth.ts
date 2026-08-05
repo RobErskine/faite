@@ -13,7 +13,7 @@ import { sendEmail } from "./email";
  * plan). Turning it on before mail can actually be delivered would lock every
  * signup — including ours — out of their own account.
  */
-const REQUIRE_EMAIL_VERIFICATION = false;
+const REQUIRE_EMAIL_VERIFICATION = true;
 
 const TRUSTED_ORIGINS = [
   "https://myfaite.app",
