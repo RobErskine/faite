@@ -11,12 +11,15 @@ https://myfaite.app — custom domain, D1, Cloudflare Email Sending, and
 GitHub/Google OAuth all wired and verified against production. Deploys run
 from Workers Builds on push to `main`.
 
+**P2 is fully verified against production**, not just deployed: GitHub, Google,
+and email/password sign-in all confirmed by inspecting D1, and the
+signup → email → verify → sign-in loop confirmed end to end (verified user row,
+token consumed, session issued). Email verification is required in production
+and off in local dev — see "P2 is live" in §7.
+
 **P3 is half done:** the sync *semantics* (HLC, field-level LWW, DO storage
 schema) are built and tested; none of the *transport* exists yet. Start at
 `docs/SYNC.md`, not here.
-
-One flag still down deliberately: `REQUIRE_EMAIL_VERIFICATION` in
-`src/server/auth.ts` — see `docs/SETUP.md` §6.
 
 ---
 
@@ -574,23 +577,28 @@ auth (Google moved into P2 — see §2.12).
 
 List tabs were pulled forward out of P6 and shipped — see §2.8b.
 
-### What's left to make P2 live
+### P2 is live
 
-The code is complete and both build targets are green, but three things need
-Rob, not code, and in this order — registering the OAuth apps against the
-wrong domain means registering them twice:
+DNS, OAuth apps, secrets, Email Sending, and CI are all done — see
+`docs/SETUP.md` for the runbook and the current state of each.
 
-1. **Point `myfaite.app`'s DNS at Cloudflare.** Blocks email only (below);
-   nothing else in P2 depends on it.
-2. **GitHub OAuth App and Google Cloud OAuth client**, once (1) is done —
-   callbacks at `https://myfaite.app/api/auth/callback/{github,google}`.
-3. **Secrets**: `.dev.vars` locally, `wrangler secret put` in production —
-   `BETTER_AUTH_SECRET`, `GITHUB_CLIENT_ID`/`_SECRET`,
-   `GOOGLE_CLIENT_ID`/`_SECRET`. Email needs no key, only
-   `wrangler email sending enable myfaite.app` once (1) is done.
+**`createAuth(env, request)` derives `baseURL` from the request's origin — do
+not hardcode it.** Better Auth builds its origin check and every callback URL
+from `baseURL`, so a fixed value breaks auth on every host that is not the one
+hardcoded: both local ports and, once branch previews were enabled, every
+`*-faite.bfmw-dev.workers.dev` preview. Deriving it makes production,
+previews, and localhost all work with no environment branching. This does not
+weaken the origin check — a browser sets `Origin` from the page's real origin
+and scripts cannot forge it, so a cross-origin request still mismatches and is
+still rejected; `trustedOrigins` remains the redirect allow-list.
 
-Once mail can actually send, flip `REQUIRE_EMAIL_VERIFICATION` in
-`src/server/auth.ts` to `true` — see §2.12.
+The same request origin decides one more thing: **email verification is
+required everywhere except localhost** (`requireEmailVerification = !isLocal`).
+The `send_email` binding does not deliver under local `wrangler dev` without
+`"remote": true`, so requiring it locally deadlocks every local signup with no
+way to reach the link. `sendEmail` logs the message body locally for the same
+reason. Branch previews are not local and stay strict — they share
+production's D1.
 
 ### Known P2/P3 gotchas, recorded early
 

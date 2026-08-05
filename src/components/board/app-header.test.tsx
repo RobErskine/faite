@@ -11,7 +11,7 @@ import type { Settings } from "@/lib/schema";
  * in/out/pending, which also drives `useShouldShowAuthNudges` (auth-nudge.ts)
  * since it wraps this same `useSession`.
  */
-let mockSession: { user: { email: string } } | null = null;
+let mockSession: { user: { email: string; name?: string | null } } | null = null;
 let mockIsPending = false;
 let mockError: unknown = null;
 const mockSignOut = vi.fn();
@@ -128,7 +128,7 @@ describe("AppHeader", () => {
   });
 
   it("shows the account email and a working sign-out when signed in", async () => {
-    mockSession = { user: { email: "rob@myfaite.app" } };
+    mockSession = { user: { email: "rob@myfaite.app", name: "Rob Erskine" } };
     render(
       <AppHeader onOpenPalette={noop} onOpenSettings={noop} settings={undefined} />,
     );
@@ -139,6 +139,32 @@ describe("AppHeader", () => {
     fireEvent.click(screen.getByText("Log out"));
 
     expect(mockSignOut).toHaveBeenCalledOnce();
+  });
+
+  it("shows the account name and its initials instead of the placeholder", () => {
+    mockSession = { user: { email: "rob@myfaite.app", name: "Rob Erskine" } };
+    render(
+      <AppHeader onOpenPalette={noop} onOpenSettings={noop} settings={undefined} />,
+    );
+
+    // Initials render on the closed trigger; the name needs the menu open.
+    expect(screen.getByText("RE")).toBeTruthy();
+    fireEvent.click(screen.getByLabelText("Account"));
+    expect(screen.getByText("Rob Erskine")).toBeTruthy();
+    expect(screen.queryByText("Local User")).toBeNull();
+  });
+
+  it("falls back to the email when the account has no name, without repeating it", () => {
+    mockSession = { user: { email: "rob@myfaite.app", name: null } };
+    render(
+      <AppHeader onOpenPalette={noop} onOpenSettings={noop} settings={undefined} />,
+    );
+
+    fireEvent.click(screen.getByLabelText("Account"));
+
+    // Exactly once: as the name. The secondary email line suppresses itself
+    // rather than printing the same string twice.
+    expect(screen.getAllByText("rob@myfaite.app")).toHaveLength(1);
   });
 
   it("opens settings from the account menu", () => {

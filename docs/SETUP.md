@@ -5,20 +5,30 @@ Work top to bottom — **order matters**, because §2 and §4 both bake
 
 ## Status
 
+**Setup is complete.** Kept as the record of how it was done and why, and as
+the runbook for standing this up again in a second environment.
+
 | § | Step | State |
 |---|---|---|
 | 0 | wrangler token scopes | ✅ done |
 | 1 | `myfaite.app` on Cloudflare DNS | ✅ was already Active |
 | 2 | Worker on the custom domain | ✅ live at https://myfaite.app |
-| 3 | Cloudflare Email Sending | ✅ enabled, test message delivered |
-| 4 | GitHub + Google OAuth apps | ⬜ **needs you** |
-| 5 | Production secrets | 🟡 `BETTER_AUTH_SECRET` set; OAuth ones pending §4 |
-| 6 | Email verification flag | ⬜ **needs you** — after §7 |
-| 7 | Smoke test | ⬜ **needs you** |
-| 8 | CI/CD | 🟡 `preview_urls` enabled in config; dashboard connection **needs you** |
+| 3 | Cloudflare Email Sending | ✅ enabled, real messages delivering |
+| 4 | GitHub + Google OAuth apps | ✅ both registered |
+| 5 | Production secrets | ✅ all five set |
+| 6 | Email verification flag | ✅ `true` as of `c48f7fe` |
+| 7 | Smoke test | ✅ verified in the UI **and** against D1 |
+| 8 | CI/CD | ✅ deploys on `main`; branch previews enabled |
 
-Email/password sign-up, sign-in, and password reset should work on
-https://myfaite.app right now. Only the two OAuth buttons are dead until §4.
+Verified against production D1, not just the UI: GitHub, Google, and
+email/password each produced the expected `account.provider_id`; OAuth users
+arrive `email_verified: 1` while `credential` users do not; and the
+signup → email → verify → sign-in loop leaves a verified user row, a consumed
+`verification` token, and a live session.
+
+**Known consequence of turning §6 on:** any `credential` user created *before*
+the flip still has `email_verified: 0` and can no longer sign in. Verify or
+delete those rows.
 
 ---
 
@@ -189,20 +199,36 @@ needs no key — it is a binding.
 
 ---
 
-## 6. Turn on email verification
+## 6. Email verification
 
-§3 already delivers real mail, so this is unblocked — but **do §7's smoke test
-first**. Confirm the signup → email → verify loop actually works end to end
-before putting it in front of every signup, including your own.
-
-In `src/server/auth.ts`:
+**Done, and no longer a manual switch.** `src/server/auth.ts` derives it from
+the hostname the request arrived on:
 
 ```ts
-const REQUIRE_EMAIL_VERIFICATION = true;   // was false
+const isLocal = hostname === "localhost" || hostname === "127.0.0.1";
+const requireEmailVerification = !isLocal;
 ```
 
-Flipping this before mail can actually send locks every signup — including
-yours — out of their own account. Deploy after changing it.
+On in production and on branch previews (they share production's D1), off on
+localhost. That asymmetry is a deadlock fix, not a convenience: the
+`send_email` binding does not deliver under local `wrangler dev` without
+`"remote": true`, so requiring verification locally strands every local signup
+with no way to reach the link. `sendEmail` also logs the whole message — reset
+and verify URLs included — to the worker console locally, so the flow stays
+inspectable without a mailbox.
+
+Keyed on the request hostname rather than `NEXTJS_ENV` deliberately: an env
+var can disagree with the origin a request actually came in on, and that
+disagreement is invisible until auth mysteriously 403s.
+
+**If you ever gate a *new* environment on verification, confirm mail actually
+delivers there first.** Turning it on somewhere that cannot send locks every
+signup out of its own account, including yours.
+
+**One-off consequence of turning it on:** any `credential` user created before
+the flip still has `email_verified = 0` and can no longer sign in. Verify or
+delete those rows (all such test accounts were deleted; only
+`rob@roberskine.com` remains).
 
 ---
 
@@ -275,9 +301,64 @@ Production-as-staging is a reasonable call while Faite has one user, but:
 
 ---
 
+## Local development
+
+### Local D1 is a completely separate database
+
+`wrangler dev` (and therefore `npm run preview`) uses a **local** SQLite file
+under `.wrangler/state/v3/d1`, not the D1 instance in Cloudflare. The two share
+only a schema, because the same migration was applied to each with `--local`
+and `--remote`.
+
+Consequences worth internalising:
+
+- **Your production account does not exist locally.** Sign up fresh on
+  `http://localhost:8787` — it is a different user table.
+- **Nothing you do locally can affect production data.** Wipe and re-seed
+  freely.
+- **New migrations must be applied twice**, once with `--local` and once with
+  `--remote`. Forgetting `--local` produces "no such table" only in dev;
+  forgetting `--remote` produces it only in production, after a deploy.
+
+Inspect and reset the local auth tables:
+
+```bash
+# What users exist locally?
+npx wrangler d1 execute faite-auth --local \
+  --command "SELECT email, email_verified FROM user;"
+
+# Unstick a local account (verification is off on localhost, but a row created
+# before that was true may still read email_verified = 0).
+npx wrangler d1 execute faite-auth --local \
+  --command "UPDATE user SET email_verified = 1;"
+
+# Start completely clean. Child rows first — SQLite only enforces
+# ON DELETE CASCADE when PRAGMA foreign_keys is on, which is not guaranteed.
+npx wrangler d1 execute faite-auth --local \
+  --command "DELETE FROM session; DELETE FROM account; DELETE FROM user; DELETE FROM verification;"
+```
+
+### What works locally, and what doesn't
+
+| | Local | Why |
+|---|---|---|
+| Email/password sign-up + sign-in | ✅ | Verification is off on localhost (§6) |
+| Verification / reset **emails** | ⚠️ logged, not sent | The `send_email` binding needs `"remote": true` to deliver. The full message, links included, goes to the `preview` terminal — copy the URL from there |
+| Google OAuth | ⚠️ needs config | Works once the real client ID/secret are in `.dev.vars` — `http://localhost:8787/api/auth/callback/google` is already a registered redirect URI on that client |
+| GitHub OAuth | ❌ | A GitHub OAuth App accepts exactly **one** callback URL, and it points at production. Needs a separate "Faite (local)" app to work locally |
+
+### `npm run preview` does not hot-reload
+
+It is `opennextjs-cloudflare build && … preview` — the build runs **once, at
+startup**. Any change under `src/server/` (or anywhere else) needs a full
+restart, not a page refresh. A stale worker serving old code looks exactly
+like a bug that "won't go away", so restart before diagnosing.
+
+---
+
 ## Known-failing baseline
 
 `npm run verify` currently fails on one **pre-existing** lint error in
 `src/components/board/use-day-track.ts:156` (`react-hooks/set-state-in-effect`),
-unrelated to auth or setup. Typecheck, all 239 tests, and both build targets
+unrelated to auth or setup. Typecheck, all 282 tests, and both build targets
 are green. Don't read a red `verify` here as "something I just did broke it."

@@ -49,4 +49,53 @@ describe("resolveAvatar", () => {
     const avatar = resolveAvatar({ avatarKind: "hologram" });
     expect(avatar.kind).toBe("initials");
   });
+
+  describe("session fallback", () => {
+    it("uses the account name and its initials when no local display name is set", () => {
+      const avatar = resolveAvatar(undefined, {
+        name: "Rob Erskine",
+        email: "rob@roberskine.com",
+      });
+      expect(avatar.name).toBe("Rob Erskine");
+      expect(avatar.initials).toBe("RE");
+    });
+
+    it("falls back to the email when the account has no name", () => {
+      const avatar = resolveAvatar(undefined, {
+        name: null,
+        email: "rob@roberskine.com",
+      });
+      expect(avatar.name).toBe("rob@roberskine.com");
+      expect(avatar.initials).toBe("R");
+    });
+
+    it("treats a blank account name as absent rather than rendering an empty header", () => {
+      const avatar = resolveAvatar(undefined, {
+        name: "   ",
+        email: "rob@roberskine.com",
+      });
+      expect(avatar.name).toBe("rob@roberskine.com");
+    });
+
+    /**
+     * The precedence that matters: Settings > Profile is something the user
+     * explicitly typed on this device, so signing in must not silently
+     * overwrite it with the provider's name.
+     */
+    it("prefers a local display name over the account's", () => {
+      const avatar = resolveAvatar(
+        { displayName: "Bob Smith" },
+        { name: "Rob Erskine", email: "rob@roberskine.com" },
+      );
+      expect(avatar.name).toBe("Bob Smith");
+      // Initials follow the winning name, not the account's ("RE").
+      expect(avatar.initials).toBe("BS");
+    });
+
+    it("still reaches the placeholder when signed out with nothing set", () => {
+      const avatar = resolveAvatar(undefined, undefined);
+      expect(avatar.name).toBe("Local User");
+      expect(avatar.initials).toBe("LU");
+    });
+  });
 });

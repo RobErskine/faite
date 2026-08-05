@@ -22,7 +22,10 @@ export { UserDurableObject } from "./user-do";
 export default {
   fetch(request, env, ctx) {
     if (new URL(request.url).pathname.startsWith("/api/auth")) {
-      return createAuth(env).handler(request);
+      // `request` is passed so Better Auth derives its baseURL from the origin
+      // this actually arrived on — production, a branch preview, or localhost.
+      // See createAuth's doc comment for why hardcoding it breaks previews.
+      return createAuth(env, request).handler(request);
     }
     // OpenNext always exports a fetch handler; the optional type is generic
     // ExportedHandler boilerplate, not a real possibility here.

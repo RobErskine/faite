@@ -107,3 +107,25 @@ the only step in this repo's verification list that actually proves a new
 just edits existing ones), run `npx wrangler deploy --dry-run` once before
 calling the change verified — it's free and it's the only check that exercises
 the real bundler.
+
+## A production-only guard that local dev can't satisfy is a deadlock
+
+`requireEmailVerification` was written as a hardcoded `true`. Production was
+fine — real mail delivers. Local `wrangler dev` was not: the `send_email`
+binding doesn't actually send without `"remote": true`, so a local signup
+created an unverified user, sign-in returned a bare **403**, and there was no
+way to reach the verification link to escape. The only visible symptom was
+`POST /api/auth/sign-in/email 403` — nothing naming email or verification.
+
+Two compounding mistakes. The flag was a module constant when everything
+around it (`baseURL`, one line below) already branched on `env.NEXTJS_ENV`.
+And `sendEmail` swallowed exactly one error code (`E_SENDER_NOT_VERIFIED`)
+while rethrowing every other, so the local binding's failure mode wasn't
+covered by the fallback that existed precisely for "can't send right now".
+
+**Rule:** when adding a guard that depends on an external service succeeding,
+ask what happens in an environment where that service is stubbed or absent. If
+the answer is "the user is stuck with no recovery path", derive the guard from
+the environment rather than hardcoding it — and make the service wrapper
+degrade in dev instead of throwing. Neighbouring code already branching on
+environment is a strong hint the new flag should too.

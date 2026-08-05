@@ -1,8 +1,30 @@
 # Sync — P3/P4 handoff
 
 State of the sync work, what is settled, and what the next agent should and
-should not do. Read `docs/ARCHITECTURE.md` §2.4–§2.7 and §2.12–§2.13 first;
-this doc assumes them.
+should not do.
+
+## Read first, in this order
+
+1. **`docs/ARCHITECTURE.md`** — §2.4–§2.7 (local-first store, `mutate()`,
+   field-level LWW, fractional ordering) and §2.12–§2.13 (auth, routing).
+   This doc assumes all of them.
+2. **`.ai/lessons.md`** — not optional. Several entries were paid for during
+   exactly this work and will cost you an hour each if rediscovered: the
+   `hlc-core.ts` / `hlc.ts` split and *why* a shared module cannot contain a
+   single DOM-only reference; `wrangler deploy --dry-run` being the only check
+   that bundles `src/server`; reading deploy warnings *below* the success
+   lines; and retrying a just-provisioned Cloudflare resource before
+   diagnosing it.
+3. **`docs/SETUP.md`** → "Local development" — local D1 is a **separate
+   database** from production, `npm run preview` does **not** hot-reload, and
+   emails log to the terminal rather than sending. All three have already
+   caused false bug hunts.
+4. `AGENTS.md` loads automatically via `CLAUDE.md`. Heed it: this is Next.js
+   16 with real breaking changes, and `node_modules/next/dist/docs/` is the
+   source of truth over anything remembered.
+
+`.ai/todo.md` carries the previous agent's own review of the P3 semantics
+work — worth skimming for the reasoning behind choices this doc only states.
 
 ---
 
@@ -99,11 +121,18 @@ kinds, so a client pull is "give me every row of every kind with
    forbids route handlers that read `Request`, and the static build is the P7
    Capacitor guard (§2.12, §6). This is the same seam auth already uses; follow
    it exactly.
-2. **Key the DO by the authenticated user id.** `createAuth(env)` is already
-   there; get the session from the request, then
+2. **Key the DO by the authenticated user id.** `createAuth(env, request)` is
+   already there; get the session from the request, then
    `env.USER_DO.idFromName(session.user.id)`. Reject unauthenticated sync
    requests outright — **this is where real authorization lives.** The
    client-side nudges in §2.13 are presentation only and secure nothing.
+
+   Corollary worth stating: the board is deliberately usable **signed out**
+   (§2.13), so the sync layer must treat "no session" as a normal, permanent
+   state — not an error to retry or a reason to nag. A logged-out user simply
+   has no sync peer. Their data still lives in IndexedDB and must keep working
+   untouched, and `adoptLocalData()` (§2.12) is what folds it into an account
+   if they later sign up.
 3. **Push:** drain outbox → POST → apply via `applyIncomingPatch` → return the
    new version → clear only acknowledged entries.
 4. **Pull:** `GET ?since=<cursor>` → rows with `version > cursor` → merge each
@@ -136,6 +165,16 @@ kinds, so a client pull is "give me every row of every kind with
   pure Next builds. Add it to verification for any `src/server/` change.
 - **Undo needs no special casing.** An undo is an ordinary forward `mutate()`
   and lands in the outbox like any other edit (§2.11). No revert opcode.
+- **Deleting a user from D1 does not delete their Durable Object.** The auth
+  tables cascade within D1, but a DO is addressed by
+  `idFromName(userId)` and has no foreign key to anything — its storage simply
+  persists, unreachable, paid for, and holding that user's to-dos. This was
+  found while clearing test accounts, before any user data existed to strand.
+  Once sync writes real data, **account deletion needs an explicit DO wipe**
+  (`ctx.storage.deleteAll()` behind a DO route) as part of the delete flow, and
+  a re-registration on the same email would otherwise inherit the previous
+  account's board. Better Auth's `user.deleteUser` hook is the natural place
+  to call it from.
 
 ---
 
@@ -171,10 +210,45 @@ so use the hibernation API rather than holding connections open.
 ## Environment as of this handoff
 
 - Live at **https://myfaite.app** (custom domain; `workers.dev` is disabled).
-- Auth is **live and working** — GitHub OAuth and email/password both verified
-  against production D1. Google is configured but was not exercised.
+- **Auth is complete and verified against production D1** — GitHub, Google, and
+  email/password all confirmed, plus the full signup → verify → sign-in loop.
+  `createAuth(env, request)` derives its `baseURL` from the request origin, so
+  it works on production, branch previews, and localhost alike — **follow the
+  same pattern for sync routes rather than hardcoding a host.** Email
+  verification is required everywhere except localhost, because the
+  `send_email` binding does not deliver under local `wrangler dev`.
 - Bindings on the `faite` Worker: `USER_DO`, `AUTH_DB` (D1), `EMAIL`, `ASSETS`.
-- CI: Workers Builds deploys `main` on push. `preview_urls: true` is set in
-  `wrangler.jsonc`, but **"Builds for non-production branches" is currently
-  off** in the dashboard, so branch previews do not run yet.
-- `REQUIRE_EMAIL_VERIFICATION` in `src/server/auth.ts` is still `false`.
+- CI: Workers Builds deploys `main` on push, and branch previews are live at
+  `*-faite.bfmw-dev.workers.dev` (both `preview_urls: true` in
+  `wrangler.jsonc` and "Builds for non-production branches" in the dashboard
+  are on — it needs both).
+- **Production D1 holds exactly one user**, `rob@roberskine.com`, with both a
+  `github` and a `credential` account row under one user id — Better Auth
+  links providers that share a verified email. Test accounts were deleted; if
+  you add more while developing, clean up after yourself, since the DO for a
+  deleted user id is left orphaned (see below).
+
+**What this means for you:** a real, authenticated `session.user.id` is
+available on every request now. That is what keys the per-user Durable Object
+(`env.USER_DO.idFromName(session.user.id)`), and it is the thing P3 was
+waiting on. There is no remaining auth blocker.
+
+Note that **OAuth users and password users differ in one way that matters**:
+OAuth accounts arrive `email_verified: 1`, `credential` accounts only after
+clicking the link. If sync ever needs to gate on verification, read the field —
+do not infer it from the provider.
+
+### Verifying against production
+
+The D1 auth tables are queryable through the Cloudflare API without touching
+the app, which is how everything above was confirmed:
+
+```
+POST /accounts/{account_id}/d1/database/{database_id}/query   { "sql": "..." }
+database_id: d0be89ae-e45d-44f4-804f-7f88a2f169fa   (faite-auth)
+```
+
+The DO's SQLite is **not** reachable this way — a Durable Object's storage has
+no external query endpoint. Once sync routes exist, expose a debug read
+through the DO itself if you need to inspect it, and remember that gap when
+planning how to debug a two-machine divergence.

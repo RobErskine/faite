@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { UserAvatar } from "@/components/user-avatar";
 import { resolveAvatar } from "@/lib/profile";
+import { useIdentity } from "@/lib/use-identity";
 import { signOut, useSession } from "@/lib/auth-client";
 import { useShouldShowAuthNudges } from "@/lib/auth-nudge";
 import type { Settings as SettingsRow } from "@/lib/schema";
@@ -38,8 +39,9 @@ interface AppHeaderProps {
  * fight it for focus.
  */
 export function AppHeader({ onOpenPalette, onOpenSettings, settings }: AppHeaderProps) {
-  const avatar = resolveAvatar(settings);
   const { data: session } = useSession();
+  const identity = useIdentity();
+  const avatar = resolveAvatar(settings, identity);
   const shouldShowAuthNudges = useShouldShowAuthNudges();
 
   const handleSignOut = async () => {
@@ -101,12 +103,12 @@ export function AppHeader({ onOpenPalette, onOpenSettings, settings }: AppHeader
             <DropdownMenuLabel>
               {avatar.name}
               {/*
-                The display name above is the local profile (Settings >
-                Profile) and is independent of auth — it renders the same
-                signed in or out. The email is the only account-specific
-                identity worth surfacing here.
+                `avatar.name` above already prefers a local display name, then
+                the account's name, then its email (resolveAvatar). Showing the
+                email again underneath is only additive when it is not already
+                the line above it.
               */}
-              {session ? (
+              {session && avatar.name !== session.user.email ? (
                 <span className="mt-0.5 block truncate text-xs font-normal text-muted-foreground">
                   {session.user.email}
                 </span>

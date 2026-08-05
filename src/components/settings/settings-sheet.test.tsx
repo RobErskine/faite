@@ -1,11 +1,21 @@
 // @vitest-environment happy-dom
 import "fake-indexeddb/auto";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { SettingsSheet } from "./settings-sheet";
 import { SETTINGS_SECTIONS } from "./sections";
 import { FONT_PAIRINGS } from "@/lib/fonts";
 import type { Settings } from "@/lib/schema";
+
+/**
+ * ProfileSection reads the session (via useIdentity) to fall back to the
+ * account's name/email when no local display name is set. Mocked signed-out so
+ * these tests stay about the settings UI and don't reach the network.
+ */
+vi.mock("@/lib/auth-client", () => ({
+  useSession: () => ({ data: null, isPending: false, error: null }),
+  signOut: vi.fn(),
+}));
 
 afterEach(cleanup);
 

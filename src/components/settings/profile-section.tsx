@@ -16,6 +16,7 @@ import {
   AvatarImageTooLargeError,
   fileToAvatarDataUrl,
 } from "@/lib/avatar-image";
+import { useIdentity } from "@/lib/use-identity";
 import { LOCAL_OWNER_ID } from "@/lib/store/repositories";
 import { mutateSettings } from "@/lib/store/mutate";
 import { cn } from "@/lib/utils";
@@ -26,7 +27,10 @@ import type { SettingsSectionProps } from "./types";
  * component the header renders — so what's shown here is what appears there.
  */
 export function ProfileSection({ settings }: SettingsSectionProps) {
-  const avatar = resolveAvatar(settings);
+  // Same fallback chain as the header, so the placeholder in the name field
+  // shows what will actually render if they leave it blank.
+  const identity = useIdentity();
+  const avatar = resolveAvatar(settings, identity);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState(settings?.displayName ?? "");
   const [uploading, setUploading] = useState(false);

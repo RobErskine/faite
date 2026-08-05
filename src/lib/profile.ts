@@ -24,8 +24,10 @@ export const AVATAR_KIND_IDS = AVATAR_KINDS.map((k) => k.id) as unknown as [
 export const DEFAULT_AVATAR_KIND: AvatarKind = "initials";
 
 /**
- * Placeholder identity until P2 auth lands. Moved here from app-header.tsx so
- * both the header and the profile settings section can fall back to it.
+ * Last-resort name, used only when there is no local display name AND no
+ * session to borrow one from — i.e. a signed-out visitor who has not set one
+ * in Settings > Profile. Signed in, `resolveAvatar`'s `fallback` supplies a
+ * real name or email long before this.
  */
 export const PLACEHOLDER_NAME = "Local User";
 
@@ -75,15 +77,43 @@ export interface ResolvedAvatar {
 }
 
 /**
+ * Identity borrowed from the auth session, when there is one. Shaped to accept
+ * `session.user` directly — GitHub and Google both populate `name`, and the
+ * signup form requires one, so `email` is a genuine last resort rather than a
+ * routine path.
+ *
+ * Kept as a parameter rather than read here so this module stays free of both
+ * React and DOM (see the file header). `lib/use-identity.ts` is the hook that
+ * supplies it.
+ */
+export interface IdentityFallback {
+  name?: string | null;
+  email?: string | null;
+}
+
+/**
  * The single read path for identity, applying every fallback in one place:
  * empty display name, empty initials, an unrecognized avatar kind. Settings
  * rows written before these fields existed have none of them, and
  * `useSettings()` hands back the raw Dexie row rather than a schema-parsed
  * one, so every consumer must go through this rather than reading the fields
  * directly.
+ *
+ * Name precedence is deliberate: **the local display name wins over the
+ * session's.** Settings > Profile is an explicit choice the user typed on this
+ * device, so a signed-in user who renamed themselves keeps that name rather
+ * than having their provider silently overwrite it. Only when they have set
+ * nothing does the account's name — then their email — fill in.
  */
-export function resolveAvatar(settings: ProfileFields | undefined): ResolvedAvatar {
-  const name = settings?.displayName?.trim() || PLACEHOLDER_NAME;
+export function resolveAvatar(
+  settings: ProfileFields | undefined,
+  fallback?: IdentityFallback,
+): ResolvedAvatar {
+  const name =
+    settings?.displayName?.trim() ||
+    fallback?.name?.trim() ||
+    fallback?.email?.trim() ||
+    PLACEHOLDER_NAME;
   const kind = (AVATAR_KIND_IDS as readonly string[]).includes(
     settings?.avatarKind ?? "",
   )
