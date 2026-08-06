@@ -1,6 +1,7 @@
 import { uuidv7 } from "uuidv7";
 import type { EntityKind, OutboxEntry } from "@/lib/schema";
 import { getNodeId, localEvent } from "@/lib/sync/hlc";
+import { SEED_HLC } from "@/lib/sync/wire";
 import { getDb } from "./db";
 
 /**
@@ -20,12 +21,16 @@ import { getDb } from "./db";
 /** Tables that carry a syncable `id` primary key. */
 type RecordTable = Exclude<EntityKind, "settings">;
 
-const TABLE_BY_KIND: Record<RecordTable, "todos" | "lists" | "labels" | "projects" | "tabs"> = {
+/** Every syncable Dexie table, keyed by kind. `seedWrite` is the one caller
+ * that needs the `settings` entry — `mutate()`/`create()` stay narrowed to
+ * `RecordTable` via their own generic bound. */
+const TABLE_BY_KIND: Record<EntityKind, "todos" | "lists" | "labels" | "projects" | "tabs" | "settings"> = {
   todo: "todos",
   list: "lists",
   label: "labels",
   project: "projects",
   tab: "tabs",
+  settings: "settings",
 };
 
 export function newId(): string {
@@ -80,6 +85,15 @@ function nextHlc(): string {
   return hlc;
 }
 
+function enqueueAt(
+  kind: EntityKind,
+  entityId: string,
+  patch: Record<string, unknown>,
+  hlc: string,
+): OutboxEntry {
+  return { id: newId(), kind, entityId, patch, hlc, createdAt: now() };
+}
+
 /**
  * Exported for `adopt-owner.ts`, which needs to append an outbox entry
  * outside `mutate()`'s own transaction. Using this (instead of hand-rolling
@@ -91,14 +105,7 @@ export function enqueue(
   entityId: string,
   patch: Record<string, unknown>,
 ): OutboxEntry {
-  return {
-    id: newId(),
-    kind,
-    entityId,
-    patch,
-    hlc: nextHlc(),
-    createdAt: now(),
-  };
+  return enqueueAt(kind, entityId, patch, nextHlc());
 }
 
 /**
@@ -137,6 +144,42 @@ export async function create<K extends RecordTable>(
   });
 
   return record.id;
+}
+
+export interface SeedRecord {
+  kind: EntityKind;
+  /** Dexie primary key AND the outbox entry's `entityId` — the row's `id`
+   * for every kind except `settings`, whose Dexie key is `ownerId`. */
+  key: string;
+  row: Record<string, unknown>;
+}
+
+/**
+ * One first-run write: the row itself (`put`, so a re-entrant seed with the
+ * same deterministic id is an idempotent upsert, matching `seedIfEmpty`'s
+ * existing re-entrancy contract) plus ONE full-row outbox entry stamped at
+ * `SEED_HLC` — never a real, monotone HLC.
+ *
+ * A seed has no real provenance: it's this device's *starting guess*, not a
+ * decision a person made. `SEED_HLC` (`wire.ts`) encodes exactly that —
+ * it populates a genuinely empty server, and loses every field to any real
+ * edit on an established one, so a second device's fresh seed can never
+ * overwrite a renamed board. Deliberately does NOT call `nextHlc()`/advance
+ * `faite:last-hlc` — folding a seed into this device's HLC chain would make
+ * a later real edit's clock depend on when the device happened to seed, for
+ * no benefit.
+ *
+ * MUST be called inside an existing `rw` transaction whose scope covers the
+ * target table and `outbox` — it opens none of its own. That's why this
+ * can't reuse `create()`: `create()` opens its own transaction and uses
+ * `add()`, which throws on the deterministic-id re-entry seeding depends on.
+ */
+export async function seedWrite(record: SeedRecord): Promise<void> {
+  const db = getDb();
+  const table = TABLE_BY_KIND[record.kind];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await (db[table] as any).put(record.row);
+  await db.outbox.add(enqueueAt(record.kind, record.key, record.row, SEED_HLC));
 }
 
 /**

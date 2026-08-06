@@ -60,6 +60,17 @@ export async function applyPulledChanges(changes: WireChange[]): Promise<ApplyPl
 
       const plan = planApply(changes, pending, locals, { ownerId, now: now() });
 
+      if (plan.skipped.length > 0) {
+        // A skipped row's version is still below the cursor this cycle
+        // advances to (the cursor is a single scalar per page, not a
+        // per-row watermark), so this device will not automatically retry
+        // it. Rare post-Phase-2 (see hydrate.ts's REQUIRED_FALLBACKS note),
+        // but worth being loud about rather than silent — a genuinely
+        // unhydratable row is a data anomaly worth investigating, not
+        // something to paper over with an invented value.
+        console.warn("[faite] skipped applying pulled changes for entities:", plan.skipped);
+      }
+
       for (const write of plan.writes) {
         const table = TABLE_BY_KIND[write.kind];
         const key = dexieKeyFor(write.kind, write.entityId);

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { encodeHlc } from "@/lib/sync/hlc-core";
 import { mergeRecord } from "@/lib/sync/merge";
-import { SETTINGS_ENTITY_ID, SYNC_KINDS, SYNC_PROTOCOL_VERSION } from "@/lib/sync/wire";
+import { SEED_HLC, SETTINGS_ENTITY_ID, SYNC_KINDS, SYNC_PROTOCOL_VERSION } from "@/lib/sync/wire";
 import type { PullResponse, PushRequest, PushResponse, SyncKind } from "@/lib/sync/wire";
 import type { FieldClockMap } from "./apply-patch";
 import { type KindPage, mergePages } from "./pull";
@@ -259,6 +259,74 @@ describe("round trip: two devices editing different fields", () => {
       }
 
       expect(local.name).toBe("Personal Lists");
+    },
+  );
+
+  it(
+    "REGRESSION: a second device's fresh seed can never overwrite an established, renamed " +
+      "board — the SEED_HLC contract this session's fix depends on",
+    () => {
+      const server = new FakeServer();
+      const TAB_ID = "seed:tab:my-lists";
+
+      // Device A: seeds the default tab. A full-row create at SEED_HLC —
+      // what seedWrite (mutate.ts) now produces, replacing the old raw
+      // Dexie `put` that had no outbox entry at all.
+      const aCreate = server.push(USER_ID, {
+        protocol: SYNC_PROTOCOL_VERSION,
+        entries: [
+          {
+            id: "a-seed-tab",
+            kind: "tab",
+            entityId: TAB_ID,
+            patch: { name: "My Lists", isDefault: true, position: "a0" },
+            hlc: SEED_HLC,
+          },
+        ],
+      });
+      expect(aCreate.acked).toEqual(["a-seed-tab"]);
+      expect(aCreate.highestVersion).toBe(1); // a genuine version — nothing was synthesized
+
+      // Device A renames it, later, with a real HLC.
+      const renameHlc = encodeHlc({ phys: 5000, counter: 0, nodeId: "device-a" });
+      const aRename = server.push(USER_ID, {
+        protocol: SYNC_PROTOCOL_VERSION,
+        entries: [
+          { id: "a-rename", kind: "tab", entityId: TAB_ID, patch: { name: "Personal Lists" }, hlc: renameHlc },
+        ],
+      });
+      expect(aRename.acked).toEqual(["a-rename"]);
+
+      // Device B: a second browser on the SAME account, seeding
+      // independently. SEED_HLC is a fixed constant — every device's fresh
+      // seed carries the exact same clock, which is what makes this safe:
+      // it can only ever tie-or-lose against anything already established.
+      const bPush = server.push(USER_ID, {
+        protocol: SYNC_PROTOCOL_VERSION,
+        entries: [
+          {
+            id: "b-seed-tab",
+            kind: "tab",
+            entityId: TAB_ID,
+            patch: { name: "My Lists", isDefault: true, position: "a0" },
+            hlc: SEED_HLC,
+          },
+        ],
+      });
+      expect(bPush.acked).toEqual(["b-seed-tab"]); // processed...
+      expect(bPush.highestVersion).toBe(0); // ...but nothing changed — no churn
+      expect(bPush.conflicts).toEqual([{ entityId: TAB_ID, fields: ["name", "isDefault", "position"] }]);
+
+      // Device B pulls. Its own seed entry is already acked (deleted
+      // locally), so nothing blocks the real name from landing.
+      let resolved: Record<string, unknown> = { id: TAB_ID, name: "My Lists", isDefault: true, position: "a0" };
+      const bPull = server.pull(0, 100);
+      for (const change of bPull.changes) {
+        const result = mergeRecord(resolved, [], change);
+        resolved = { ...resolved, ...result.apply };
+      }
+
+      expect(resolved.name).toBe("Personal Lists");
     },
   );
 

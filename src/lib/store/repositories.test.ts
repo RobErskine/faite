@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { getDb, resetDbForTests } from "./db";
 import { DEFAULT_THEME_MODE } from "@/lib/theme";
 import { DEFAULT_AVATAR_KIND } from "@/lib/profile";
+import { SEED_HLC } from "@/lib/sync/wire";
 import {
   archiveList,
   archiveTab,
@@ -51,6 +52,35 @@ describe("seedIfEmpty", () => {
     await deleteList(backlog.id); // no-op: Backlog is undeletable
     await seedIfEmpty();
     expect(await getDb().lists.count()).toBe(5);
+  });
+
+  it(
+    "REGRESSION: writes a real outbox entry at SEED_HLC for every seeded row " +
+      "(5 lists + 1 tab + 1 settings) — the root cause of the live data-loss " +
+      "incident was these rows having NO outbox entry at all",
+    async () => {
+      await seedIfEmpty();
+      const entries = await getDb().outbox.toArray();
+
+      expect(entries).toHaveLength(7);
+      expect(entries.every((e) => e.hlc === SEED_HLC)).toBe(true);
+
+      const kinds = entries.map((e) => e.kind).sort();
+      expect(kinds).toEqual(["list", "list", "list", "list", "list", "settings", "tab"]);
+
+      // Full-row patches, not the {ownerId, updatedAt} sliver adoptLocalData
+      // used to be these rows' first-ever outbox entry.
+      const tabEntry = entries.find((e) => e.kind === "tab")!;
+      expect(tabEntry.patch.name).toBe("My Lists");
+      const settingsEntry = entries.find((e) => e.kind === "settings")!;
+      expect(settingsEntry.patch.fontPairing).toBeDefined();
+    },
+  );
+
+  it("seeding twice does not duplicate outbox entries (guarded by the same emptiness check)", async () => {
+    await seedIfEmpty();
+    await seedIfEmpty();
+    expect(await getDb().outbox.count()).toBe(7);
   });
 });
 
@@ -256,6 +286,33 @@ describe("ensureDefaultTab", () => {
     expect(await ensureDefaultTab()).toBe(0);
     expect(await getDb().tabs.count()).toBe(1);
   });
+
+  it(
+    "REGRESSION: the legacy tabId backfill produces a real outbox entry with a real HLC, " +
+      "not a silent Dexie write — otherwise the repair never reached other devices, and a " +
+      "synced peer's next pull could reset tabId right back to null",
+    async () => {
+      await seedIfEmpty();
+      const db = getDb();
+      const listId = await createList("Weekend");
+      const outboxCountBeforeBackfill = await db.outbox.count();
+
+      const legacy = (await db.lists.get(listId))!;
+      delete (legacy as { tabId?: string | null }).tabId;
+      await db.lists.put(legacy);
+
+      await ensureDefaultTab();
+
+      const newEntries = (await db.outbox.toArray()).slice(outboxCountBeforeBackfill);
+      const backfillEntry = newEntries.find((e) => e.entityId === listId);
+      expect(backfillEntry).toBeDefined();
+      expect(backfillEntry?.patch.tabId).toBe(DEFAULT_TAB_ID);
+      // A real, monotone HLC (via mutate()) — not SEED_HLC. This is a
+      // deliberate local decision about an existing row, not a first-run
+      // guess, so it must win against any real edit, not lose to one.
+      expect(backfillEntry?.hlc).not.toBe(SEED_HLC);
+    },
+  );
 });
 
 describe("archiveTab", () => {

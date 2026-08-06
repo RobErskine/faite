@@ -13,7 +13,7 @@ import { DEFAULT_FONT_PAIRING } from "@/lib/fonts";
 import { DEFAULT_THEME_MODE } from "@/lib/theme";
 import { DEFAULT_AVATAR_KIND } from "@/lib/profile";
 import { getDb } from "./db";
-import { create, mutate, newId, now, remove } from "./mutate";
+import { create, mutate, newId, now, remove, seedWrite } from "./mutate";
 import { getCurrentOwnerId, LOCAL_OWNER_ID } from "./owner";
 
 /**
@@ -531,11 +531,13 @@ const SEED_LISTS = [
 /** Deterministic id for a default list. */
 const seedListId = (slug: string) => `seed:list:${slug}`;
 
-/** The default tab record, built fresh so seeding and repair cannot drift. */
-function defaultTabRecord(timestamp: string): Tab {
+/** The default tab record, built fresh so seeding and repair cannot drift.
+ * Takes `ownerId` as a parameter rather than resolving it internally so this
+ * stays a pure builder — the caller decides whose seed this is. */
+function defaultTabRecord(timestamp: string, ownerId: string): Tab {
   return {
     id: DEFAULT_TAB_ID,
-    ownerId: getCurrentOwnerId(),
+    ownerId,
     createdAt: timestamp,
     updatedAt: timestamp,
     deletedAt: null,
@@ -564,6 +566,17 @@ function defaultTabRecord(timestamp: string): Tab {
  *
  * The deterministic ids also pay off at P3: two devices seeding independently
  * converge on the same rows rather than merging into ten default lists.
+ *
+ * **Every seed row goes through `seedWrite()` (real outbox entry, `SEED_HLC`)
+ * — never a raw Dexie `put`.** A raw `put` was the root cause of a live
+ * data-loss incident: with no outbox entry, these rows' first-ever sync
+ * write was `adoptLocalData`'s later `{ownerId, updatedAt}` patch, which the
+ * server received as a genuinely partial create and synthesized placeholder
+ * values for (`"Untitled"` names, `null` tabIds) — see `src/lib/sync/
+ * merge.ts`'s `FLOOR_HLC` note. `SEED_HLC` closes this at the source: a
+ * fresh seed populates an empty server and loses every field to any real
+ * edit on an established one, so it can never again produce a partial
+ * server-side create.
  */
 export async function seedIfEmpty(): Promise<void> {
   const db = getDb();
@@ -571,10 +584,14 @@ export async function seedIfEmpty(): Promise<void> {
   const positions = positionsBetween(null, null, SEED_LISTS.length);
   const ownerId = getCurrentOwnerId();
 
-  await db.transaction("rw", db.lists, db.tabs, db.settings, async () => {
+  await db.transaction("rw", db.lists, db.tabs, db.settings, db.outbox, async () => {
     if ((await db.lists.count()) > 0) return;
 
-    await db.tabs.put(defaultTabRecord(timestamp));
+    await seedWrite({
+      kind: "tab",
+      key: DEFAULT_TAB_ID,
+      row: defaultTabRecord(timestamp, ownerId),
+    });
 
     for (const [i, seed] of SEED_LISTS.entries()) {
       const list: List = {
@@ -595,31 +612,35 @@ export async function seedIfEmpty(): Promise<void> {
         emoji: null,
         iconUrl: null,
       };
-      await db.lists.put(list);
+      await seedWrite({ kind: "list", key: list.id, row: list });
     }
 
-    await db.settings.put({
-      // Deliberately NOT `ownerId` above: settings is a per-DEVICE singleton
-      // keyed on the placeholder forever, regardless of who is signed in — see
-      // adoptLocalData() in adopt-owner.ts. useSettings()/mutateSettings() are
-      // hardcoded to this same key throughout the app; keying it any other way
-      // would silently orphan every read.
-      ownerId: LOCAL_OWNER_ID,
-      // Use the device's zone as the starting point; user-editable in settings.
-      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
-      workdaysOnly: false,
-      workdays: [1, 2, 3, 4, 5],
-      overflowAfterDays: 3,
-      visibleDays: 7,
-      fontPairing: DEFAULT_FONT_PAIRING,
-      theme: DEFAULT_THEME_MODE,
-      displayName: "",
-      avatarKind: DEFAULT_AVATAR_KIND,
-      avatarInitials: "",
-      avatarEmoji: "",
-      avatarImage: "",
-      activeTabId: DEFAULT_TAB_ID,
-      updatedAt: timestamp,
+    await seedWrite({
+      kind: "settings",
+      key: LOCAL_OWNER_ID,
+      row: {
+        // Deliberately NOT `ownerId` above: settings is a per-DEVICE singleton
+        // keyed on the placeholder forever, regardless of who is signed in — see
+        // adoptLocalData() in adopt-owner.ts. useSettings()/mutateSettings() are
+        // hardcoded to this same key throughout the app; keying it any other way
+        // would silently orphan every read.
+        ownerId: LOCAL_OWNER_ID,
+        // Use the device's zone as the starting point; user-editable in settings.
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+        workdaysOnly: false,
+        workdays: [1, 2, 3, 4, 5],
+        overflowAfterDays: 3,
+        visibleDays: 7,
+        fontPairing: DEFAULT_FONT_PAIRING,
+        theme: DEFAULT_THEME_MODE,
+        displayName: "",
+        avatarKind: DEFAULT_AVATAR_KIND,
+        avatarInitials: "",
+        avatarEmoji: "",
+        avatarImage: "",
+        activeTabId: DEFAULT_TAB_ID,
+        updatedAt: timestamp,
+      },
     });
   });
 }
@@ -633,32 +654,40 @@ export async function seedIfEmpty(): Promise<void> {
  * looks exactly like data loss. Backlog is skipped deliberately: null is its
  * permanent "pinned into every tab" value, not a missing one.
  *
- * Writes go straight to Dexie rather than through mutate(), for the same
- * reason repairDuplicateLists does: this only ever runs pre-sync, so there is
- * no peer that needs an outbox entry for a field it was always going to
- * compute the same way.
+ * The tab (if missing) goes through `seedWrite()` — same `SEED_HLC` reasoning
+ * as `seedIfEmpty`. The legacy `tabId` backfill is a real, local decision
+ * about an existing row (not a first-run guess), so it goes through ordinary
+ * `mutate()` with a real HLC — outside the tab-creation transaction, since
+ * `mutate()` opens its own. That's also new: it used to write straight to
+ * Dexie with no outbox entry at all, so the repair never reached other
+ * devices and a synced peer's `FLOOR_HLC` pull could reset it right back to
+ * `null` before this session's `merge.ts` fix.
  *
  * Idempotent — deterministic id with `put`, and the list pass is a no-op once
  * every list has a tab.
  */
 export async function ensureDefaultTab(): Promise<number> {
   const db = getDb();
-  let assigned = 0;
 
-  await db.transaction("rw", db.tabs, db.lists, async () => {
+  await db.transaction("rw", db.tabs, db.outbox, async () => {
     if (!(await db.tabs.get(DEFAULT_TAB_ID))) {
-      await db.tabs.put(defaultTabRecord(now()));
-    }
-
-    for (const list of await db.lists.toArray()) {
-      // Truthiness, not `=== null`: legacy rows read the field back undefined.
-      if (list.deletedAt || list.isBacklog || list.tabId) continue;
-      await db.lists.update(list.id, { tabId: DEFAULT_TAB_ID });
-      assigned++;
+      await seedWrite({
+        kind: "tab",
+        key: DEFAULT_TAB_ID,
+        row: defaultTabRecord(now(), getCurrentOwnerId()),
+      });
     }
   });
 
-  return assigned;
+  // Truthiness, not `=== null`: legacy rows read the field back undefined.
+  const orphaned = (await db.lists.toArray()).filter(
+    (list) => !list.deletedAt && !list.isBacklog && !list.tabId,
+  );
+  for (const list of orphaned) {
+    await mutate("list", list.id, { tabId: DEFAULT_TAB_ID });
+  }
+
+  return orphaned.length;
 }
 
 /**

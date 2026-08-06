@@ -88,6 +88,35 @@ export const SYNC_PROTOCOL_VERSION = 1 as const;
 export const FLOOR_HLC = "000000000000:0000:server";
 
 /**
+ * The clock every first-run seed write is stamped with (`seedWrite` in
+ * `src/lib/store/mutate.ts`). Sits strictly ABOVE `FLOOR_HLC` and strictly
+ * BELOW every real HLC (whose `phys` is a real `Date.now()`, so it always
+ * starts higher than the all-zero `phys` here) — exactly the semantics a
+ * seed needs:
+ *
+ * - On a genuinely fresh account the server holds no clock for these fields
+ *   (`existingHlc === null`), so the seed wins and the server gets a
+ *   complete row — `buildInsertColumns` is never reached, nothing is ever
+ *   synthesized.
+ * - On an established account every field's real clock is `> SEED_HLC`, so
+ *   the seed loses every field — a second device's fresh seed can never
+ *   overwrite a renamed board.
+ *
+ * Distinct from `FLOOR_HLC` on purpose, not an alias for it: `FLOOR_HLC`
+ * means "the server invented this value and has no clock for it"
+ * (populate-only, see `merge.ts`); `SEED_HLC` means "a client wrote this
+ * deliberately, with no real provenance, and stays subject to ordinary LWW".
+ * Keeping `SEED_HLC` above `FLOOR_HLC` is also what lets a post-fix seed
+ * repair a DO that already holds synthesized placeholders — a clockless
+ * server value loses to `SEED_HLC` too.
+ *
+ * Must satisfy `isHlc()` (`hlc-core.ts`) — `planDrain` silently rewrites
+ * anything that doesn't via `normalizeLegacyHlc`, and `validateEntries`
+ * rejects it server-side.
+ */
+export const SEED_HLC = "000000000000:0001:seed";
+
+/**
  * Never crosses the wire in either direction. `version` and `id` are
  * server/identity-owned; `ownerId` is a function of which Durable Object a
  * request reached, not a synced field — see `src/server/sync/columns.ts`.

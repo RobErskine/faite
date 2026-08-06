@@ -22,14 +22,43 @@ describe("hydrateRemoteRow", () => {
     expect(result.row.deletedAt).toBeNull();
   });
 
-  it("synthesizes required-with-no-default fields when genuinely missing", () => {
-    const result = hydrateRemoteRow("list", "list-1", {}, CTX);
+  it("still synthesizes position when genuinely missing — a wrong sort order is cosmetic", () => {
+    const result = hydrateRemoteRow("list", "list-1", { name: "Real name" }, CTX);
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("expected ok");
-    expect(result.row.name).toBe("Untitled");
     expect(typeof result.row.position).toBe("string");
     expect((result.row.position as string).length).toBeGreaterThan(0);
   });
+
+  it(
+    "REGRESSION: fails closed (does not invent a name) when name is genuinely missing — " +
+      "this fallback used to fire, and inventing \"Untitled\" was the client-side half of a " +
+      "live data-loss incident",
+    () => {
+      const result = hydrateRemoteRow("list", "list-1", { position: "a0" }, CTX);
+      expect(result.ok).toBe(false);
+    },
+  );
+
+  it("fails closed when title is genuinely missing, same reasoning as name", () => {
+    const result = hydrateRemoteRow("todo", "todo-1", { position: "a0" }, CTX);
+    expect(result.ok).toBe(false);
+  });
+
+  it(
+    "settings: a missing fontPairing/theme/avatarKind still succeeds, via settingsSchema's " +
+      "OWN Zod .default() — not this file's fallback map, which has no entry for them. Not a " +
+      "gap: hydrateRemoteRow only ever runs on the brand-new-local-row path, so there's no " +
+      "existing value to lose (merge.ts's FLOOR_HLC rule already protects that case)",
+    () => {
+      const result = hydrateRemoteRow("settings", "settings", { displayName: "Rob" }, CTX);
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error("expected ok");
+      expect(result.row.fontPairing).toBe("hyperlegible");
+      expect(result.row.theme).toBe("system");
+      expect(result.row.avatarKind).toBe("initials");
+    },
+  );
 
   it("id and ownerId always come from ctx/entityId, never from the fields payload", () => {
     const result = hydrateRemoteRow(
@@ -76,8 +105,13 @@ describe("hydrateRemoteRow", () => {
     expect(result.row).not.toHaveProperty("createdAt");
   });
 
-  it("synthesizes fontPairing/theme/avatarKind for a bare settings create", () => {
-    const result = hydrateRemoteRow("settings", "settings", {}, CTX);
+  it("hydrates a fully-specified settings create", () => {
+    const result = hydrateRemoteRow(
+      "settings",
+      "settings",
+      { fontPairing: "hyperlegible", theme: "system", avatarKind: "initials" },
+      CTX,
+    );
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("expected ok");
     expect(result.row.fontPairing).toBe("hyperlegible");

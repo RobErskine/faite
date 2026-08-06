@@ -1,8 +1,5 @@
 import { labelSchema, listSchema, projectSchema, settingsSchema, tabSchema, todoSchema } from "@/lib/schema";
-import { DEFAULT_FONT_PAIRING } from "@/lib/fonts";
 import { positionAtEnd } from "@/lib/ordering";
-import { DEFAULT_AVATAR_KIND } from "@/lib/profile";
-import { DEFAULT_THEME_MODE } from "@/lib/theme";
 import type { SyncKind } from "./wire";
 
 /**
@@ -23,23 +20,35 @@ const SCHEMA_BY_KIND = {
 };
 
 /**
- * Fallbacks for the handful of fields that are required with NO Zod
- * `.default()` and aren't already guaranteed by the caller (`id`, `ownerId`,
- * `createdAt`, `updatedAt`). Reachable only when a row's create WireChanges
- * are somehow incomplete — normally every field lands in the same pull
- * response, since `changesFromRow` partitions one row's fields across
- * changes but never drops any (see `wire.ts`). Mirrors `upsert.ts`'s
- * `FIELD_DEFAULTS` on the server side for the same reason — `fontPairing`/
- * `theme`/`avatarKind` reuse the exact same default constants so a
- * synthesized settings row can't disagree with a brand-new local one.
+ * Fallback for the one field worth inventing when genuinely missing:
+ * `position` is a sort key, and a wrong sort order is cosmetic — recoverable
+ * by dragging, not a hidden semantic loss the way a fabricated name is.
+ *
+ * `title`/`name` deliberately have NO fallback anymore. They used to, and
+ * that synthesis was the client-side half of a live data-loss incident:
+ * every seed write now goes through the outbox as a complete row
+ * (`seedWrite`, `mutate.ts`), so `changesFromRow` (`wire.ts`) always
+ * delivers every field of a row together in one pull response — a
+ * *genuinely* missing required field means something upstream is wrong, and
+ * the correct response to "something is wrong" is to skip the row and let
+ * the next pull redeliver it once it's actually complete, not to silently
+ * invent a value a person will read as real. See `apply-plan.ts`'s
+ * `skipped` handling and `merge.ts`'s `FLOOR_HLC` note for the full incident.
+ *
+ * `fontPairing`/`theme`/`avatarKind` have no entry here for a DIFFERENT
+ * reason: `settingsSchema` (`schema.ts`) already gives them a Zod
+ * `.default()` — unlike `title`/`name`, they can't be made to fail closed
+ * from this file at all, since Zod fills them before this ever sees a
+ * failure. That's fine, not a gap: `hydrateRemoteRow` only ever runs on the
+ * brand-new-local-row path (`apply-plan.ts`'s `local === undefined`
+ * branch) — an EXISTING local value is already fully protected by
+ * `merge.ts`'s `FLOOR_HLC` populate-only rule regardless of what this
+ * function does, so a Zod default landing on a row that never existed
+ * locally isn't loss, it's just what a fresh install would default to
+ * anyway.
  */
 const REQUIRED_FALLBACKS: Record<string, () => unknown> = {
-  title: () => "",
-  name: () => "Untitled",
   position: () => positionAtEnd(null),
-  fontPairing: () => DEFAULT_FONT_PAIRING,
-  theme: () => DEFAULT_THEME_MODE,
-  avatarKind: () => DEFAULT_AVATAR_KIND,
 };
 
 export type HydrateResult =
