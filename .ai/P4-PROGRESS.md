@@ -94,5 +94,16 @@ mechanism is and where it lives.
   `setTimeout` so the cadence can actually change when a socket connects.
   Incidentally fixed a pre-existing quirk: a tab that drew a low jitter value
   kept that same offset for its entire lifetime.
+- A self-review after the last commit caught a real bug in my own Phase 3
+  code: `openedAt` was a field shared across reconnects and never reset, so a
+  connection that never opened inherited the *previous* one's timestamp.
+  `nextAttempt` then saw a long "open duration", reset the backoff ladder,
+  and a server that was simply down would have been retried at the floor
+  delay forever without ever reaching `shouldPause` — the exact hammering the
+  backoff exists to prevent. Fixed by scoping it per-socket in the connect
+  closure, which makes the whole class of bug unrepresentable rather than
+  just fixing this instance. Committed as `fix(sync)` on top of Phase 5.
+- No open GitHub issues or discussions on `RobErskine/faite` — nothing to
+  cross-reference, fix, or close.
 - Test account `p4-smoke@example.com` existed only in **local** D1 and is
   cleaned up. Production was never touched. No dev server left running.

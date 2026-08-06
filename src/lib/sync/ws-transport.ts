@@ -85,7 +85,6 @@ export function createWsConnection(options: WsConnectionOptions): SyncConnection
   /** Set when the server says the account is gone. Never reconnect after this. */
   let abandoned = false;
   let attempt = 0;
-  let openedAt = 0;
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
   const pending = createPendingRequests<ServerMessage>(() => {
@@ -162,6 +161,13 @@ export function createWsConnection(options: WsConnectionOptions): SyncConnection
       return;
     }
     socket = next;
+    // Per-socket, in this closure, NOT a field shared across reconnects.
+    // As a shared field it is never reset, so a connection that never opens
+    // inherits the previous one's timestamp; `nextAttempt` then sees a long
+    // "open duration", resets the ladder, and a server that is simply down
+    // gets retried at the floor delay forever without ever reaching
+    // `shouldPause` — precisely the hammering the backoff exists to prevent.
+    let openedAt = 0;
 
     next.onopen = () => {
       openedAt = Date.now();
