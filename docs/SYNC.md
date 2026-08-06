@@ -44,8 +44,8 @@ work — worth skimming for the reasoning behind choices this doc only states.
 | DO `push`/`pull` RPC behind `/api/sync/*` | EI-46 | ✅ done |
 | Outbox drain + `since=version` pull loop | EI-48 | ✅ done |
 | DO wipe on account deletion | — | ✅ done |
+| Settings sync | EI-60 | ✅ done |
 | **WebSocket push + hibernation** | EI-49 (P4) | ❌ **not started** |
-| **Settings sync** | — | ❌ **deliberately excluded from P3** |
 
 **P3 (EI-46/EI-48) is done, including transport — see `.ai/todo.md`'s
 "Review — P3 transport" for the phase-by-phase breakdown, what a live smoke
@@ -157,15 +157,20 @@ live smoke test against a real Durable Object confirmed.
 
 ### Known traps
 
-- **`settings` is device-local and excluded from ownerId adoption** (§2.12), and
-  **P3 excludes it from sync entirely** — `kind === "settings"` outbox entries
-  are dropped in the drain and deleted locally (`src/lib/sync/drain.ts`),
-  since `board.tsx`'s tab switcher writes one on every tab change and keeping
-  unackable entries would grow the outbox without bound. Its Dexie primary key
-  *is* `ownerId`, hardcoded to `LOCAL_OWNER_ID` app-wide, so "one settings row
-  per device" still hasn't survived sync — see `.ai/todo.md`'s "Please review:
-  settings excluded from sync" for the cost (the `fontPairing`/`theme`
-  cross-device promise in `schema.ts` doesn't hold yet) and the sketched fix.
+- **`settings` is device-local and excluded from ownerId adoption** (§2.12) —
+  that part is permanent, not a P3 gap. Its Dexie primary key *is* `ownerId`,
+  hardcoded to `LOCAL_OWNER_ID` app-wide, and always will be.
+  **Field-level sync of an allow-listed subset now works (EI-60)** — see
+  `SETTINGS_ENTITY_ID`/`SETTINGS_SYNCED_FIELDS` in `src/lib/sync/wire.ts`.
+  `activeTabId` is excluded permanently (device view-state, and the
+  highest-frequency writer via `board.tsx`'s tab switcher) — enforced on
+  *both* directions server-side (`sanitizePatch` on push, `changesFromRow` on
+  pull), not just in the client's drain, after a live smoke test found it
+  otherwise rides along as `null` on every pull and can silently reset which
+  tab is showing. Because settings has no `id` column (a true singleton,
+  looked up by `owner_id` alone), it needed its own small branch in a few
+  places rather than fitting the generic per-row-id machinery directly — see
+  `.ai/todo.md`'s "Review — EI-60" for the full list.
 - **Legacy outbox rows** written before the HLC swap hold plain ISO wall-clock
   strings. **They sort AFTER any real HLC** (`"2026-…"` > `"019f…"`
   lexicographically) — not before, as this doc previously and incorrectly

@@ -83,7 +83,7 @@ Plan of record: `~/.claude/plans/please-check-this-image-starry-eich.md`
 - [x] `UserDurableObject.wipe()` wired to Better Auth's
       `user.deleteUser.afterDelete` — the orphaned-DO trap from the P2/P3
       handoff doc, closed rather than deferred again
-- [ ] `settings` sync (P3 deliberately excludes it — see Review)
+- [x] `settings` field-level sync, allow-listed (EI-60) — see Review
 
 ## P4 — Sync v1
 - [ ] WebSocket push, hibernation, reconnect/backfill, multi-tab
@@ -292,7 +292,7 @@ push, P4) stays a separate follow-up.
   see Surprise below. `UserDurableObject.wipe()` closes the orphaned-DO trap
   from the P2/P3 handoff doc via Better Auth's `user.deleteUser.afterDelete`.
 
-### Please review: settings excluded from sync
+### Please review: settings excluded from sync — ✅ resolved (EI-60)
 
 Rob's call this session: `kind === "settings"` outbox entries are dropped
 from the drain and deleted locally rather than synced. `board.tsx`'s tab
@@ -303,6 +303,9 @@ promising `fontPairing`/`theme` sync across devices doesn't hold yet, and
 settings changes made before an eventual settings-sync phase land are
 silently lost (never pushed, so never recoverable). Worth a second look
 before that promise ships elsewhere in the UI.
+
+**Resolved the same session** — see "Review — EI-60" below. `activeTabId`
+specifically stays excluded, permanently, by design.
 
 ### Surprises worth keeping
 
@@ -359,3 +362,76 @@ before that promise ships elsewhere in the UI.
    `request.url`'s origin under `wrangler dev`'s local socket proxying not
    resolving to a bare `localhost`/`127.0.0.1` hostname — but that's a P2
    auth question, out of scope here.
+
+## Review — EI-60 (settings sync)
+
+Same-session follow-up once Rob asked for it. All green (typecheck × 2, full
+vitest suite — 376 tests, 17 new — both build targets, `wrangler
+deploy --dry-run`).
+
+### What landed
+
+Widened `SyncKind` to include `"settings"` and reused every piece of P3's
+transport unchanged (wire format, merge, push/pull loop, poll engine).
+Settings' one real difference from the other five kinds — a singleton with
+no `id` column, keyed by `ownerId` itself — needed small, localized branches
+rather than a parallel system:
+
+- `SETTINGS_ENTITY_ID` (`wire.ts`): a shared sentinel entityId for "the one
+  settings row". The server overrides whatever the client sends to this
+  constant on push and emits it on pull, so neither side needs to agree on
+  the other's actual identity convention.
+- `SETTINGS_SYNCED_FIELDS` (`wire.ts`): the sync allow-list, excluding
+  `activeTabId` permanently (device view-state, highest-frequency writer).
+- Server: `user-do.ts`'s `rowExists`/`updateRow` branch on `owner_id`
+  instead of `id` for settings; `upsert.ts`'s `buildInsertColumns` now
+  filters its output to only columns the kind actually has (a generic fix,
+  not settings-specific — protects every kind against a future stray key,
+  not just this one).
+- Client: `apply-plan.ts` forces `ownerId = LOCAL_OWNER_ID` when hydrating a
+  new local settings row (never the signed-in user's real id — settings is
+  permanently excluded from `adoptLocalData`, ARCHITECTURE §2.12);
+  `apply-remote.ts` substitutes `LOCAL_OWNER_ID` for the wire's `entityId`
+  on every Dexie read/write.
+
+### A live smoke test caught a real bug the unit tests didn't
+
+`activeTabId` — a real, always-present SQLite column, simply never written
+server-side — rode along as `null` in every pull's `FLOOR_HLC` group,
+because `changesFromRow` only knew about `SERVER_ONLY_FIELDS`, not the
+settings allow-list. `sanitizePatch` blocked it on the way *in*; nothing
+blocked it on the way *out*. Once a device's local pending edit for
+`activeTabId` cleared (which the drain does immediately, since an
+`activeTabId`-only entry never has anything left to push), that server-side
+`null` would win the merge outright on the next pull and silently reset
+which tab was showing — on every device, forever.
+
+The hand-written unit tests for `changesFromRow`/`mergePages` never caught
+this because I controlled the row fixtures directly and never happened to
+include `activeTabId` in one. `round-trip.test.ts`'s in-memory fake didn't
+either, and structurally *can't* without more work — it only ever stores
+fields that were explicitly patched, unlike a real `SELECT *` which returns
+every column a `CREATE TABLE` declared, defaulting the untouched ones to
+`NULL`. That gap between "a fake that stores what you tell it to" and "a
+database that returns everything it has" is exactly the class of bug a live
+smoke test exists to catch. Fixed in `changesFromRow` itself (enforces the
+allow-list on output too, not just `sanitizePatch` on input) and pinned with
+a regression test. Left `round-trip.test.ts`'s fake as-is rather than
+rebuilding it to model full-row fidelity — the direct `wire.test.ts` test is
+the right place for this specific case, and widening the fake's fidelity
+for one bug felt like solving a problem I hadn't actually hit elsewhere yet.
+
+### Verified live, against a real Durable Object
+
+Same pattern as the P3 transport session: temporary `wrangler dev` on an
+unused port, `ps`-checked first, never touching an already-running preview
+instance, test account cleaned up after. Confirmed: a first-ever settings
+push correctly synthesizes `fontPairing`/`theme`/`avatarKind` (no SQL
+default) with no `field_clocks` row, grouping them under `FLOOR_HLC` on
+pull exactly like any other kind's partial create; a second push updates
+via the `owner_id`-keyed branch with the version correctly incrementing;
+`workdays` round-trips as a real JS array through SQLite TEXT storage; and
+— after the fix — `activeTabId` never appears in any pull response,
+confirmed by re-querying the same live instance without restarting it
+(`wrangler dev` picked up the `src/lib`/`src/server` source fix live,
+since only `.open-next/worker.js` itself requires a full rebuild).
