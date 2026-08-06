@@ -56,6 +56,13 @@ describe("the shipped migration list", () => {
     // Migration 1 re-runs against every account created before this ledger
     // existed. It is only safe to do that because every bootstrap statement
     // is IF NOT EXISTS / INSERT OR IGNORE.
+    //
+    // NB this is an IDENTITY check, and identity is all it can be: it pins
+    // that migration 1 *is* the bootstrap list, not what that list contains.
+    // Editing `bootstrap.ts` keeps this green while silently changing what
+    // migration 1 means — the exact hole `docs/SCHEMA-CHANGES.md` warns
+    // about. `schema-parity.test.ts`'s bootstrap fingerprint is what closes
+    // it; do not treat this assertion as covering that.
     expect(USER_DB_MIGRATIONS[0].id).toBe(1);
     expect(USER_DB_MIGRATIONS[0].statements).toBe(BOOTSTRAP_STATEMENTS);
   });

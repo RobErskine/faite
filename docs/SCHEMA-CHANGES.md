@@ -11,7 +11,20 @@ does not produce a type error; it produces a runtime failure on one device,
 often only for accounts that already have data.
 
 This document is the checklist. `src/server/db/migrations.ts` is the
-mechanism.
+mechanism. **`docs/SCHEMA-OPS.md` is the procedure** — how to actually make a
+change locally and on production, which commands to run, and how to read the
+failures. This file deliberately does not repeat it.
+
+Two things now check the checklist for you, so read this to understand *why*
+rather than to remember steps:
+
+- **`npm run schema:check`** — `src/server/db/schema-parity.test.ts` replays
+  the migration ledger and asserts the result is exactly what
+  `user-schema.ts` declares, cross-checks Zod against Drizzle, and fingerprints
+  `bootstrap.ts`. The failure that used to reach production silently now fails
+  in CI.
+- **`npm run schema:info`** — the schema state of a live Durable Object, which
+  has no other query endpoint.
 
 ---
 
@@ -75,10 +88,13 @@ This is safe and you should reach for it by default.
    { id: 2, name: "todos-add-energy",
      statements: ["ALTER TABLE todos ADD COLUMN energy text"] },
    ```
-5. **`drizzle-kit generate --config=drizzle.user-do.config.ts`**, then
-   hand-diff the generated SQL against `bootstrap.ts`. The generated file is
-   the source of truth to check yourself against; it is not loaded at runtime
-   (no filesystem in a Workers bundle).
+5. **`npm run schema:generate`**, for the record in `drizzle/user/`. The
+   generated file is not loaded at runtime (no filesystem in a Workers
+   bundle).
+
+   The hand-diff this step used to ask for is gone: `npm run schema:check`
+   does it mechanically, and checks against the **migration ledger** — the
+   thing that actually runs — rather than a generated file that never does.
 6. **Dexie** — only if you need to *query* by the field. Adding an unindexed
    field needs no version bump; Dexie stores whole objects and `.stores()`
    declares indexes only. If you do need an index, bump to
@@ -165,16 +181,47 @@ both versions across the transition.
 
 ---
 
-## Never do this
+## Resetting is now supported — see `docs/SCHEMA-OPS.md`
 
-**Do not "reset" a Durable Object to fix a schema problem.**
-`ctx.storage.deleteAll()` resets `sync_meta.next_version` to 1, so every
-client's persisted `faite:sync-cursor:*` sits *above* every new version and
-sync goes silently dead **on every device at once**. The same applies to
-clearing a browser's IndexedDB without also clearing that localStorage key.
+This section used to say **never reset a Durable Object**, because
+`ctx.storage.deleteAll()` resets `sync_meta.next_version` to 1 and every
+client's persisted `faite:sync-cursor:*` then sat *above* every new version,
+so sync went silently dead on every device at once.
 
-If you genuinely need a clean slate, use a **new account** — a new user id
-addresses a different, empty DO for free.
+That failure is now detected rather than avoided. Every row's `version` is
+allocated below `sync_meta.next_version`, so a cursor at or above it is
+**provably** only reachable after a wipe — `pull()` returns `reset: true` and
+the client re-reads from 0. `npm run schema:reset` is a supported operation,
+and `resetAccountData()` (`src/lib/store/reset.ts`) does both halves in the
+correct order.
+
+The remaining rule still holds: **do not clear a browser's IndexedDB by hand
+without also clearing `faite:sync-cursor:*`.** That strands local data, which
+is a different problem the server cannot see.
+
+## Not built yet, and why
+
+Deliberately absent while Faite has one user. Each has a trigger, not a date.
+
+| Missing | Build it when | Why not now |
+|---|---|---|
+| **Client backfill ledger** — ordered, idempotent one-time migrations writing through `mutate()` | the first schema change where losing the data is unacceptable | a reset is cheaper and there is nothing to preserve. Note `normalize-outbox.ts` is the existing one-off to fold in when this arrives |
+| **Retirement ladder** (`RETIRED_KINDS`, three-deploy dance for removing a field or kind) | **a second real account exists** | with one user there is no deploy skew that matters — you control every open tab |
+| **Client bundle stamp** in the push envelope | you need to *observe* when the old-bundle window closed | same trigger; without a second user there is nothing to observe |
+
+**The trap to remember when the ladder does get built:** removing a kind from
+`SYNC_KINDS` makes an older client's push return `rejected: "unknown-kind"`,
+which `wire.ts` defines as *"Permanently unacceptable. Delete these locally."*
+That is silent data loss for every tab still on the previous bundle. A retired
+kind must stay in `SYNC_KINDS` until no old clients remain.
+
+A backfill written server-side, inside a migration, is the other thing to get
+right when the time comes: an `UPDATE` there allocates no `version` (so
+`pull()`'s `version > cursor` never returns the row) and writes no
+`field_clocks` entry (so it arrives under `FLOOR_HLC`, which `merge.ts` makes
+populate-only). It would be invisible. Prefer a client backfill through
+`mutate()`, which gets a real HLC and ordinary LWW for free — and which is the
+only kind that works for a signed-out user, who has no Durable Object at all.
 
 ---
 

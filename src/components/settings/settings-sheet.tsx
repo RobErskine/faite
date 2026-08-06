@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import {
   Sheet,
   SheetContent,
@@ -8,8 +8,28 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { isLocalDev } from "@/lib/dev";
 import type { Settings } from "@/lib/schema";
 import { SETTINGS_SECTIONS } from "./sections";
+
+/** Never changes within a page's life — the origin cannot. */
+const subscribeToNothing = () => () => {};
+
+/**
+ * `isLocalDev()` reads `location`, which does not exist during the static
+ * export's prerender (§6). Reading it directly would render one section list
+ * into the HTML and a different one on hydration — a mismatch React resolves
+ * by discarding the server markup.
+ *
+ * `useSyncExternalStore` with an explicit server snapshot of `false` is the
+ * sanctioned way to say "this value is client-only": the prerender commits to
+ * the production list, and the client swaps in the dev list during hydration
+ * without a cascading render. An effect-plus-setState would also work and is
+ * what the `react-hooks/set-state-in-effect` rule exists to discourage.
+ */
+function useIsLocalDev(): boolean {
+  return useSyncExternalStore(subscribeToNothing, isLocalDev, () => false);
+}
 
 interface SettingsSheetProps {
   open: boolean;
@@ -23,6 +43,8 @@ interface SettingsSheetProps {
  * ./types for how to add a section.
  */
 export function SettingsSheet({ open, onOpenChange, settings }: SettingsSheetProps) {
+  const showDevTools = useIsLocalDev();
+  const sections = SETTINGS_SECTIONS.filter((section) => !section.devOnly || showDevTools);
   const [sectionId, setSectionId] = useState(SETTINGS_SECTIONS[0].id);
 
   /**
@@ -64,7 +86,7 @@ export function SettingsSheet({ open, onOpenChange, settings }: SettingsSheetPro
           className="min-h-0 flex-1 gap-0"
         >
           <TabsList variant="line" className="w-44 shrink-0 border-r p-2">
-            {SETTINGS_SECTIONS.map((section) => (
+            {sections.map((section) => (
               <TabsTrigger key={section.id} value={section.id} className="w-full">
                 <section.icon aria-hidden />
                 {section.label}
@@ -72,7 +94,7 @@ export function SettingsSheet({ open, onOpenChange, settings }: SettingsSheetPro
             ))}
           </TabsList>
 
-          {SETTINGS_SECTIONS.map((section) => (
+          {sections.map((section) => (
             <TabsContent
               key={section.id}
               value={section.id}

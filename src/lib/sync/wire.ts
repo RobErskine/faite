@@ -200,6 +200,26 @@ export interface PullResponse {
   cursor: number;
   /** More rows remain above `cursor`; pull again immediately. */
   hasMore: boolean;
+  /**
+   * The server's version counter is BELOW the cursor we were asked about, so
+   * this device's watermark is from a Durable Object that no longer exists —
+   * i.e. the account was reset (`/api/sync/reset`, or `wipe()` on account
+   * deletion). `cursor` comes back 0 and `hasMore` true, so the ordinary pull
+   * loop re-reads from the beginning without needing to know why.
+   *
+   * Additive and optional on purpose: an older client simply ignores it, and
+   * is left no worse off than it is today. No `SYNC_PROTOCOL_VERSION` bump.
+   *
+   * **This is what makes resetting safe.** Before it, wiping a DO reset
+   * `sync_meta.next_version` to 1 while every device kept a cursor above it,
+   * so every device believed it was caught up and never pulled again —
+   * silently, everywhere at once, with nothing in any log. That failure was
+   * documented as a trap to be avoided by careful procedure; a terminal
+   * script that wipes the server cannot reach browser localStorage, so
+   * procedure was never going to be enough. Detecting it server-side makes it
+   * unreachable instead. See `docs/SCHEMA-OPS.md`.
+   */
+  reset?: true;
 }
 
 /**

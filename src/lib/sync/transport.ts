@@ -37,6 +37,21 @@ export interface SyncTransport {
   pull(cursor: number, limit: number): Promise<PullResponse>;
 }
 
+/**
+ * Wipes the signed-in user's server-side board. Deliberately NOT part of
+ * `SyncTransport`: that interface is the push/pull pair the socket and HTTP
+ * paths both implement, and a reset must never ride a socket — it is a rare,
+ * destructive, one-shot operation whose response nobody correlates.
+ *
+ * **Not a public API.** `resetAccountData()` (`src/lib/store/reset.ts`) is the
+ * only supported caller, because this half alone leaves every device's pull
+ * cursor stranded above the server's freshly-reset `next_version` — sync then
+ * dies silently, everywhere, with no error to notice. See `docs/SCHEMA-OPS.md`.
+ */
+export async function resetRemoteBoard(): Promise<void> {
+  await syncFetch("/api/sync/reset", { method: "POST" });
+}
+
 export const httpTransport: SyncTransport = {
   async push(request: PushRequest): Promise<PushResponse> {
     const response = await syncFetch("/api/sync/push", {

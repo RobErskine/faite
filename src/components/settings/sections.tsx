@@ -1,7 +1,8 @@
-import { Palette, User } from "lucide-react";
+import { Palette, User, Wrench } from "lucide-react";
 import type { SettingsSection } from "./types";
 import { ProfileSection } from "./profile-section";
 import { DesignSection } from "./design-section";
+import { DeveloperSection } from "./developer-section";
 
 /**
  * The settings surface's left nav, as data. Adding a section is one new file
@@ -21,5 +22,13 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     description: "How the board looks: typeface and appearance.",
     icon: Palette,
     Component: DesignSection,
+  },
+  {
+    id: "developer",
+    label: "Developer",
+    description: "Local-only tools for working on the app itself.",
+    icon: Wrench,
+    Component: DeveloperSection,
+    devOnly: true,
   },
 ];

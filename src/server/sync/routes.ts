@@ -92,6 +92,38 @@ export async function handleSyncRequest(request: Request, env: CloudflareEnv): P
       return json(result, 200, headers);
     }
 
+    // Read-only introspection of the caller's OWN Durable Object. A DO's
+    // SQLite has no external query endpoint, so this is the only way to
+    // confirm a migration landed on a real account — see `schemaInfo()`.
+    if (url.pathname === "/api/sync/schema" && request.method === "GET") {
+      return json(await stub.schemaInfo(), 200, headers);
+    }
+
+    /**
+     * Wipes the caller's own board, server-side, and re-runs the migration
+     * ledger. The escape hatch that makes "change the model, throw the data
+     * away, start again" a supported operation instead of the trap
+     * `docs/SYNC.md` warns about — see `docs/SCHEMA-OPS.md`.
+     *
+     * Safe to expose in production **because of the DO keying, not because of
+     * a flag**: the stub is `idFromName(session.user.id)`, exactly as every
+     * other branch here, so the worst a caller can do is destroy their own
+     * data. There is no id to tamper with and no cross-account reach.
+     *
+     * The dangerous half is on the CLIENT, and it is not danger this endpoint
+     * can remove: wiping the DO resets `sync_meta.next_version` to 1, so any
+     * device still holding a `faite:sync-cursor:*` above that value believes
+     * it is caught up and never pulls again — silently, on every device at
+     * once. `resetAccountData()` (`src/lib/store/reset.ts`) is the only
+     * supported caller for that reason. Do not call this from anywhere that
+     * cannot also clear the cursor.
+     */
+    if (url.pathname === "/api/sync/reset" && request.method === "POST") {
+      await stub.wipe();
+      console.log(`[faite] reset board for user ${userId}`);
+      return json({ ok: true }, 200, headers);
+    }
+
     return json({ error: "not-found" }, 404, headers);
   } catch (error) {
     // A thrown error inside a DO RPC call surfaces as a thrown error here —

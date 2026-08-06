@@ -17,7 +17,19 @@ vi.mock("@/lib/auth-client", () => ({
   signOut: vi.fn(),
 }));
 
-afterEach(cleanup);
+/**
+ * happy-dom serves pages from `localhost`, so `isLocalDev()` is true here by
+ * accident — which would let the dev-only section render in every test and
+ * quietly prove nothing about the gate. Mocked so both states are asserted
+ * deliberately.
+ */
+const dev = vi.hoisted(() => ({ isLocal: true }));
+vi.mock("@/lib/dev", () => ({ isLocalDev: () => dev.isLocal }));
+
+afterEach(() => {
+  dev.isLocal = true;
+  cleanup();
+});
 
 function settingsWith(patch: Partial<Settings>): Settings {
   return {
@@ -57,6 +69,32 @@ describe("SettingsSheet", () => {
     for (const section of SETTINGS_SECTIONS) {
       expect(screen.getByText(section.label)).toBeTruthy();
     }
+  });
+
+  it("shows dev-only sections on localhost", () => {
+    render(<SettingsSheet open onOpenChange={() => {}} settings={undefined} />);
+
+    expect(screen.getByText("Developer")).toBeTruthy();
+  });
+
+  /**
+   * The gate. A destructive "wipe this board" button reaching a deployed
+   * origin is the failure being ruled out — so this asserts on the section's
+   * `devOnly` flag rather than the literal string "Developer", and will keep
+   * covering any future dev-only section without being updated.
+   */
+  it("hides every dev-only section anywhere that is not localhost", () => {
+    dev.isLocal = false;
+    render(<SettingsSheet open onOpenChange={() => {}} settings={undefined} />);
+
+    const devSections = SETTINGS_SECTIONS.filter((section) => section.devOnly);
+    expect(devSections.length).toBeGreaterThan(0);
+    for (const section of devSections) {
+      expect(screen.queryByText(section.label)).toBeNull();
+    }
+    // The ordinary sections are untouched.
+    expect(screen.getByText("Profile")).toBeTruthy();
+    expect(screen.getByText("Design")).toBeTruthy();
   });
 
   it("shows the Profile panel by default", () => {

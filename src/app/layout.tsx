@@ -89,7 +89,22 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: applyTheme }} />
         <TooltipProvider>{children}</TooltipProvider>
         <Toaster />
-        {process.env.NODE_ENV === "development" && (
+        {/*
+          Gated on an explicit flag rather than `NODE_ENV === "development"`.
+          Better Auth only works locally under `npm run preview`, and that
+          script runs a real `next build` — a PRODUCTION build — so the
+          NODE_ENV check compiled this to `false &&` and stripped the toolbar
+          from the one local environment where you can actually be logged in.
+          It presented as "Agentation only works on :3000", but the port was a
+          coincidence: :3000 is `next dev`, :8787 is the preview worker.
+
+          `package.json` sets the flag on `dev` and `preview` and nowhere else,
+          so `build`, `build:static`, `start` and `deploy` still strip it. The
+          reference has to be a literal `process.env.NEXT_PUBLIC_AGENTATION`:
+          Next inlines it at build time and a destructured or computed lookup
+          is not substituted at all.
+        */}
+        {process.env.NEXT_PUBLIC_AGENTATION === "1" && (
           <Agentation endpoint="http://localhost:4747" />
         )}
       </body>
