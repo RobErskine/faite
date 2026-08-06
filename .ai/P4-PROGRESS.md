@@ -1,11 +1,11 @@
 # P4 / EI-49 — overnight progress log
 
-**Status: complete. All six phases committed and verified. Nothing in flight.**
+**Status: complete. All six phases committed and verified, plus one self-review fix. Nothing in flight.**
 
 The one thing left is yours: two real browsers on two machines.
 
 - Plan of record: `~/.claude/plans/i-would-like-to-majestic-backus.md`
-- Branch: `rob/ei-49-websocket-live-push-with-hibernation` — **6 commits, not pushed**
+- Branch: `rob/ei-49-websocket-live-push-with-hibernation` — **7 commits, not pushed**
 - Linear: [EI-49](https://linear.app/rob-erskine/issue/EI-49/websocket-live-push-with-hibernation) (still Todo — left for you to move)
 - Full write-up: `docs/SYNC.md` → "P4 (EI-49) — WebSocket live push, shipped"
 - Retrospective: `.ai/todo.md` → "Review — P4 (EI-49...)"
@@ -20,7 +20,8 @@ The one thing left is yours: two real browsers on two machines.
 | 2 | `/api/sync/ws` + DO `fetch()` upgrade + handlers | `42a2998` | ✅ |
 | 3 | `ws-transport.ts` + fallback routing + provider wiring | `80e8562` | ✅ |
 | 4 | broadcast-on-write + `notifyRemoteChange` | `3cee615` | ✅ |
-| 5 | adaptive interval + docs + smoke harnesses | (this commit) | ✅ |
+| 5 | adaptive interval + docs + smoke harnesses | `5e3451e` | ✅ |
+| — | self-review fix: per-socket `openedAt` | `af48e25` | ✅ |
 
 ## Verification — all green
 
