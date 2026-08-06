@@ -161,7 +161,8 @@ export class UserDurableObject extends DurableObject {
           this.reply(ws, { id: requestId, type: "error", payload: { message: "invalid-request" } });
           return;
         }
-        const result = await this.push(attachment.userId, parsed);
+        // `ws` as origin: this device already has the write it just sent.
+        const result = await this.push(attachment.userId, parsed, ws);
         this.reply(ws, { id: requestId, type: "push-response", payload: result });
         return;
       }
@@ -267,7 +268,7 @@ export class UserDurableObject extends DurableObject {
    * inconsistent. `transactionSync`'s closure must be synchronous — every
    * helper below is, since `ctx.storage.sql.exec` itself is synchronous.
    */
-  async push(userId: string, request: PushRequest): Promise<PushResponse> {
+  async push(userId: string, request: PushRequest, originWs?: WebSocket): Promise<PushResponse> {
     const { accepted, rejected } = validateEntries(request.entries);
     const groups = groupByEntity(accepted);
     const conflicts: PushResponse["conflicts"] = [];
@@ -300,12 +301,51 @@ export class UserDurableObject extends DurableObject {
       }
     });
 
+    // `highestVersion === 0` is precisely "nothing was written" — a
+    // duplicate re-push whose every field lost the LWW comparison allocates
+    // no version at all (see the `continue` above). Broadcasting on those
+    // would wake every device on every retry to pull nothing.
+    if (highestVersion > 0) this.broadcastChanged(highestVersion, originWs);
+
     return {
       acked: accepted.map((entry) => entry.id),
       rejected,
       highestVersion,
       conflicts,
     };
+  }
+
+  /**
+   * Tells every other connected device that something changed. This is the
+   * point of P4 — without it, a device waits up to a full poll interval.
+   *
+   * Ordering is safe by platform contract, not by luck: the runtime pauses
+   * outgoing messages from a Durable Object until all preceding writes have
+   * been confirmed flushed to disk. A `changed` frame therefore provably
+   * cannot arrive before the write that caused it is durable, so a receiver
+   * that pulls immediately cannot read stale state.
+   *
+   * `originWs` is the socket the push arrived on, when it arrived on one.
+   * Skipping it avoids telling a device about its own write. An HTTP push
+   * has no origin socket and so notifies everyone, which is required rather
+   * than incidental: a device on the polling fallback must still be able to
+   * wake a device on a socket.
+   */
+  private broadcastChanged(version: number, originWs?: WebSocket): void {
+    const message = encode({ type: "changed", version });
+    for (const ws of this.ctx.getWebSockets()) {
+      if (ws === originWs) continue;
+      try {
+        ws.send(message);
+      } catch (error) {
+        // A socket can close between `getWebSockets()` and here, and `send`
+        // throws on a closed socket. Unguarded, that would escape `push()`
+        // AFTER the transaction committed: the pusher would see an error and
+        // re-push forever while the dead socket lingered. Re-push is
+        // idempotent so no data is lost, but the pushes would never ack.
+        console.warn("[faite] broadcast to a socket failed", error);
+      }
+    }
   }
 
   /** `since=version` pull across every sync kind — see `pull.ts`'s `mergePages`. */
