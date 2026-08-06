@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "NEXT_PUBLIC_AGENTATION=1 next dev",
     "build": "next build",
     "build:static": "BUILD_TARGET=static next build",
     "start": "next start",
@@ -12,7 +12,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "verify": "npm run typecheck && npm run lint && npm run test && npm run build && npm run build:static",
-    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "preview": "NEXT_PUBLIC_AGENTATION=1 opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
     "auth:schema": "better-auth generate --config src/server/auth-cli.ts --output src/server/auth-schema.ts --yes && drizzle-kit generate"
