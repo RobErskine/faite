@@ -226,6 +226,21 @@ The **default tab** ("My Lists", `isDefault`) cannot be archived or deleted,
 for the same reason Backlog cannot: it is the guaranteed destination that
 `deleteTab` rehomes lists to. Renaming and recolouring it are fine.
 
+### 2.8c Changing a field is a seven-file operation — see `docs/SCHEMA-CHANGES.md`
+
+An entity's fields are declared in four places (`lib/schema.ts`,
+`store/db.ts`, `server/db/user-schema.ts`, `server/db/bootstrap.ts`) and
+derived in three more (`server/db/migrations.ts`, `server/sync/columns.ts`,
+`lib/sync/wire.ts`). Most mismatches do not produce a type error.
+
+The one that matters: **`bootstrap.ts` cannot deliver a new column to an
+account that already exists**, because `CREATE TABLE IF NOT EXISTS` is a no-op
+on an existing table. The column then appears in `COLUMNS_BY_KIND`, passes
+`sanitizePatch`, and gets named in SQL — so the first push carrying it throws
+`no such column` inside `push()`'s transaction and **pushes fail permanently
+for that account while pulls keep working**. `src/server/db/migrations.ts` is
+the ledgered `ALTER` path that fixes this, and it is not optional.
+
 ### 2.9 Per-user Durable Object as the sync backend (P3)
 
 Chosen over a shared D1 because it gives, for free: a monotonic per-user

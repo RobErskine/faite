@@ -36,6 +36,13 @@ should not do.
    `ws-protocol.ts`. Two of the traps listed there are invisible to the unit
    suite by construction.
 
+7. **If you are changing any entity's fields — adding, renaming, removing, or
+   adding a whole new kind — read `docs/SCHEMA-CHANGES.md` FIRST.** A field is
+   declared in four places and derived in three more, and the DO's storage
+   needs a real migration (`src/server/db/migrations.ts`) that
+   `bootstrap.ts` alone cannot provide. Skipping it breaks push permanently
+   for every account that already has data.
+
 `.ai/todo.md` carries the previous agent's own review of the P3 semantics
 work — worth skimming for the reasoning behind choices this doc only states.
 
@@ -115,7 +122,9 @@ src/lib/sync/
   backoff.ts         P4 reconnect ladder, pure
 src/server/
   db/user-schema.ts  Drizzle schema for the DO's SQLite
-  db/bootstrap.ts    hand-written DDL, run in the DO constructor
+  db/bootstrap.ts    hand-written DDL — the INITIAL schema only
+  db/migrations.ts   ordered, ledgered migrations — REQUIRED for any column
+                     added after an account already exists
   sync/apply-patch.ts applyIncomingPatch(clocks, patch, hlc) -> {apply, clockUpdates, conflicts}
   sync/validate.ts   parsePushRequest/clampPullArgs — shared by HTTP AND ws
   sync/ws-server.ts  USER_ID_HEADER + isAllowedWsOrigin (the CSWSH check)

@@ -89,17 +89,36 @@ Plan of record: `~/.claude/plans/please-check-this-image-starry-eich.md`
       hard delete) found in Rob's own two-browser test, fixed same
       session — see "Review — data-loss incident" below
 
-## P4 — Sync v1 ✅ (code) / ⏳ (two-machine confirmation)
+## P4 — Sync v1 ✅ shipped to production
 - [x] WebSocket push, hibernation, reconnect/backfill, multi-tab (EI-49)
   — see Review below. Transport swap only: `merge.ts`, `apply-patch.ts`,
   `hlc-core.ts`, `wire.ts`'s types and the `version` cursor all untouched.
 - [x] Phase 0 hardening found on the way in: `readFieldClocksBulk` exceeded
   SQLite's 100-bound-parameter limit; `wipe()` left the DO with no schema.
-- [ ] **Rob: two real browsers on two machines.** The smoke harnesses
-  (`scripts/sync-smoke/`) prove the protocol; they cannot prove the board.
+- [x] **Rob's two-browser acceptance test — passed.** That was the real bar;
+  the smoke harnesses only ever proved the protocol.
+- [x] Merged and deployed: `23675ce..3bed126` (15 commits — 8 P4 plus the 7
+  P3 data-loss fixes that had never reached production). Cloudflare version
+  17 (`3b7e83fa`), 2026-08-06 15:07 UTC. Live at https://myfaite.app
 
 ## P5 — API + docs
-- [ ] Zod → OpenAPI, tokens, rate limits
+- [ ] Zod → OpenAPI, tokens, rate limits (EI-50) — **read `docs/API.md`
+  first.** The load-bearing constraint: a REST/MCP write is not a database
+  write, it is a *push*. Skip `sync_meta`'s version allocation and no device
+  ever pulls the change; skip `field_clocks` and the next client push
+  silently overwrites it. Route through `user-do.ts`'s `push()` and P4's
+  live broadcast comes free.
+- [ ] Decide who stamps the HLC for a server-originated write — the DO needs
+  a stable server node id, which does not exist yet.
+- [ ] Ship read-only endpoints first; reads need no version and no clocks.
+
+### Schema/data-shape work (ongoing, alongside P5/P6)
+- [x] DO migration runner (`src/server/db/migrations.ts`) — ledgered,
+  transactional, ordered. Verified against a real DO that already had data.
+- [x] `docs/SCHEMA-CHANGES.md` — the seven files a field lives in.
+- [ ] **Every** field addition from here needs a migration entry. Adding a
+  column to `user-schema.ts` alone breaks push permanently for any account
+  that already has data.
 
 ## P6 — Fast follow
 - [ ] Projects + views · sub-tasks · recurrence (RRULE + exceptions)

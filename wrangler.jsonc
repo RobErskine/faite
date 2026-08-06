@@ -19,13 +19,27 @@
   // faite.bfmw-dev.workers.dev URL started returning 404 the moment the custom
   // domain landed.
   //
-  // `workers_dev: false` is deliberate: myfaite.app is the only origin auth
-  // works on, so a second live URL would just be a broken-sign-in trap.
+  // `workers_dev` and `preview_urls` are NOT independent, whatever the two
+  // separate flags suggest. Preview URLs are only ever served on the
+  // workers.dev subdomain ("You cannot currently configure Preview URLs to
+  // run on a subdomain other than workers.dev"), so with `workers_dev: false`
+  // the subdomain is disabled and every branch preview 404s at the edge —
+  // silently, with `previews_enabled: true` still reported by the API. This
+  // was `false` for P0-P4 and branch previews consequently never worked once;
+  // it read as "the build is broken" rather than as a config interaction.
   //
-  // `preview_urls: true` is load-bearing for CI/CD. Branch deploys run
-  // `opennextjs-cloudflare upload`, whose whole output is a preview URL — with
-  // this off, per-branch previews fail silently rather than loudly.
-  "workers_dev": false,
+  // Turning it on costs a second live URL for production
+  // (faite.bfmw-dev.workers.dev). The old objection to that — "myfaite.app is
+  // the only origin auth works on" — is stale: `createAuth(env, request)`
+  // derives its baseURL from the request origin, so email/password auth works
+  // on any origin. GitHub OAuth still won't, because a GitHub OAuth App
+  // accepts exactly one callback URL and it points at production. Sign in
+  // with email/password when testing a preview.
+  //
+  // NOTE: this file overrides the dashboard on every deploy. Toggling
+  // "Worker URL" in the Cloudflare UI works until the next push, then wrangler
+  // resets it to whatever is written here.
+  "workers_dev": true,
   "preview_urls": true,
 
   "assets": {

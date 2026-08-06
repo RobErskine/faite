@@ -11,6 +11,7 @@ import {
   WS_CLOSE_REAUTH_REQUIRED,
 } from "@/lib/sync/ws-protocol";
 import { BOOTSTRAP_STATEMENTS } from "./db/bootstrap";
+import { runUserDbMigrations } from "./db/migrations";
 import * as schema from "./db/user-schema";
 import type { FieldClockMap } from "./sync/apply-patch";
 import { COLUMNS_BY_KIND, rowFromSqlRow, TABLE_NAME_BY_KIND, toColumnValue } from "./sync/columns";
@@ -62,12 +63,16 @@ export class UserDurableObject extends DurableObject {
     this.db = drizzle(ctx.storage, { schema });
 
     // Runs before any other request to this DO instance is handled — see
-    // `blockConcurrencyWhile`'s contract. `IF NOT EXISTS`/`OR IGNORE` make
-    // re-running it on every cold start harmless (see bootstrap.ts).
+    // `blockConcurrencyWhile`'s contract. After the first cold start this is
+    // one CREATE TABLE IF NOT EXISTS plus one SELECT.
+    //
+    // NOT a plain bootstrap loop any more: `CREATE TABLE IF NOT EXISTS` can
+    // only ever deliver NEW TABLES, so an account that already has data would
+    // never receive a new COLUMN, and the first push carrying that field
+    // would throw `no such column` inside `push()` forever. See
+    // `migrations.ts` and `docs/SCHEMA-CHANGES.md`.
     ctx.blockConcurrencyWhile(async () => {
-      for (const statement of BOOTSTRAP_STATEMENTS) {
-        ctx.storage.sql.exec(statement);
-      }
+      runUserDbMigrations(ctx.storage.sql, (fn) => ctx.storage.transactionSync(fn));
     });
   }
 
