@@ -156,3 +156,42 @@ is a one-line, ten-second thing to verify in a REPL or a test — do it before
 writing the comment, and encode the verified direction as a regression test
 (`hlc.test.ts`'s `compareHlc(iso, realHlc) > 0` case here), not just prose.
 Prose drifts silently across copies; a red test doesn't.
+
+## A sentinel's "always loses" needs the comparison to implement it, not just a favorable sort position
+
+Same session as the lesson above, different failure shape — worth keeping
+separate because the fix for one would not have caught the other.
+
+I added `FLOOR_HLC`, a sentinel clock for server-synthesized placeholder
+values, documented as sorting below every real HLC — verified true, this
+time, unlike the ISO-stamp mistake above. But `mergeRecord`'s comparison was
+`localHlc === null || compareHlc(remote.hlc, localHlc) > 0` — an early-exit
+short-circuit that, when there's no pending local entry for a field, applies
+the remote value *without ever calling `compareHlc` at all*. `FLOOR_HLC`'s
+correct sort position was never consulted, because the code path that was
+supposed to consult it doesn't run when the left-hand side of `||` is
+already true. A live two-browser test caught it within a session: signing in
+on a second device renamed every list to "Untitled" and then, via an
+unrelated hard-delete elsewhere, deleted half of them.
+
+The general shape: **a sentinel value's safety property ("this always
+loses", "this is always caught", "this always wins") is a claim about a
+comparison *function's output*, not about the value in isolation.** Proving
+the value sorts correctly in a standalone check (what I actually did for
+`FLOOR_HLC`, and what would have caught the ISO-stamp bug too) is necessary
+but not sufficient — it doesn't prove every call site that's supposed to
+compare against it actually reaches the comparison. A short-circuit,
+an early return, a cached/memoized branch, a `??` fallback: any of these can
+route around the comparison entirely for exactly the input the sentinel
+depends on, and a sort-order check alone can't see that.
+
+**Rule:** when introducing a sentinel with a documented ordering guarantee,
+write the regression test at the level of the function that's supposed to
+enforce it (`mergeRecord`, not `compareHlc`), with the exact adversarial
+setup the guarantee needs to survive — here, "local already holds a real
+value, no pending entry, remote is the sentinel." Trace every early-exit
+branch between the caller and the comparison and ask whether the sentinel
+can reach each one. `merge.test.ts` had eleven tests and zero of them
+constructed this state, because all eleven predated the sentinel that made
+it dangerous — a sentinel added later needs its own pass through the
+existing decision tree, not just its own new test file.

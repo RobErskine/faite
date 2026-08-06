@@ -111,6 +111,18 @@ The shared transaction matters too: if the record write succeeded and the
 outbox write failed, the local store would be silently ahead of the change log
 and that edit would never sync.
 
+**"Every write" was aspirational until a P3 data-loss incident made it literal.**
+`seedIfEmpty()`/`ensureDefaultTab()` wrote their rows with raw Dexie `put()`
+calls, bypassing this entirely — those rows had no outbox entry, so their
+first-ever sync write was a *later*, partial patch that the server synthesized
+placeholder values for, and a merge bug let those placeholders overwrite real
+data (see `docs/SYNC.md`'s "Known traps"). Fixed with `seedWrite()`, a seed-
+specific sibling of `mutate()` that still writes an outbox entry, just at a
+sentinel clock (`SEED_HLC`) instead of a real one. `resetLocalDataForNewOwner`
+(account-switch wipe) is now the only deliberate exception — everything that
+creates or changes a row a person can see goes through `mutate()`/`create()`/
+`seedWrite()`.
+
 ### 2.6 Field-level LWW, not CRDTs
 
 Todo records are small scalar fields. Yjs/Automerge would be overkill, harder to
@@ -132,6 +144,19 @@ merge stays a plain field-level LWW with no special-casing for order.
 
 A hard delete leaves nothing to tell the other device the row is gone, so it
 would resurrect on the next pull. Tombstones (`deletedAt`) survive the merge.
+
+This held for user-facing deletes from day one, but a second, *internal*
+hard delete existed until a P3 data-loss incident forced its removal:
+`repairDuplicateLists()` ran on every boot and hard-deleted any two live
+lists sharing a name — a legitimate state (e.g. two lists both named
+"Groceries" on different tabs), not just the seeding race it was written
+for — with no tombstone and no outbox entry. Once a sync peer existed, the
+deletion never reached it, so the next pull resurrected the "duplicate" and
+the next boot deleted it again. It's gone now; nothing in this codebase
+hard-deletes a domain row anymore except the deliberate, sanctioned
+`resetLocalDataForNewOwner()` account-switch wipe. If a future "cleanup"
+routine wants to run on every boot and remove rows outside `mutate()`,
+that's the shape of the thing that already went wrong once.
 
 **Archiving is a separate axis, not a softer delete.** A list carries
 `archivedAt` alongside `deletedAt`, and the two mean different things:

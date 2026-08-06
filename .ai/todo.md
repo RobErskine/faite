@@ -84,6 +84,10 @@ Plan of record: `~/.claude/plans/please-check-this-image-starry-eich.md`
       `user.deleteUser.afterDelete` — the orphaned-DO trap from the P2/P3
       handoff doc, closed rather than deferred again
 - [x] `settings` field-level sync, allow-listed (EI-60) — see Review
+- [x] Data-loss incident (`FLOOR_HLC` overwriting real values via
+      raw-`put()` seed writes, finished off by `repairDuplicateLists`'
+      hard delete) found in Rob's own two-browser test, fixed same
+      session — see "Review — data-loss incident" below
 
 ## P4 — Sync v1
 - [ ] WebSocket push, hibernation, reconnect/backfill, multi-tab
@@ -435,3 +439,117 @@ via the `owner_id`-keyed branch with the version correctly incrementing;
 confirmed by re-querying the same live instance without restarting it
 (`wrangler dev` picked up the `src/lib`/`src/server` source fix live,
 since only `.open-next/worker.js` itself requires a full rebuild).
+
+## Review — data-loss incident (post-EI-60, same day)
+
+Rob two-browser-tested the finished P3 transport himself: created a todo in
+one browser, watched it sync to the other — then, ~30 seconds after signing
+in on the second browser, every list and the renamed "Personal Lists" tab
+were replaced by a single tab and list both named "Untitled". Five commits,
+each independently verified (typecheck × 2, full vitest suite, both build
+targets, `wrangler deploy --dry-run` for any `src/server` change), the first
+four in direct response to the report, the fifth this doc.
+
+### The chain, and why it's a regression from this session, not a pre-existing flaw
+
+`git log -S FLOOR_HLC` puts the sentinel's first appearance in `a9ba28f`
+(this session's Phase 1). `merge.ts` hadn't been touched since the original
+EI-47 work. The bug is the interaction between a sentinel added this
+session and a short-circuit that already existed in `merge.ts` — fixing it
+there is not a redesign of the pinned EI-47 semantics, it's making
+`FLOOR_HLC` behave the way its own docstring already claimed.
+
+1. `seedIfEmpty()`/`ensureDefaultTab()` wrote seed rows with raw Dexie
+   `put()`, bypassing `mutate()`/`create()` — no outbox entry, ever.
+2. Sign-in → `adoptLocalData()` enqueues `{ownerId, updatedAt}` →
+   `sanitizePatch` strips `ownerId` (server-only) → the server receives
+   `{updatedAt}` for a row it's never seen.
+3. `buildInsertColumns` synthesizes `name: "Untitled"`, `tabId: null`,
+   `isBacklog: false` — with no `field_clocks` row for any of them.
+4. Pull emits those under `FLOOR_HLC`. `merge.ts`'s `remoteWins =
+   localHlc === null || compareHlc(...) > 0` short-circuits on
+   `localHlc === null` *before comparing clocks at all* — a placeholder
+   designed to always lose won outright.
+5. Next boot, `repairDuplicateLists()` grouped the now-identically-"Untitled"
+   lists **by name only** and hard-deleted all but one, no tombstone, no
+   outbox entry — the step that actually matches the screenshot (one tab,
+   one list).
+
+### What landed, in commit order
+
+1. **`33531f8`** — `merge.ts`'s per-field guard: a `FLOOR_HLC` field may
+   populate a value the local row doesn't have, never overwrite one it does.
+   Keyed on `local[field] !== undefined` specifically — `Object.hasOwn`
+   would wrongly block the pre-tabs `tabId: undefined` populate case, and
+   `local !== undefined` alone would wrongly let a `FLOOR_HLC` `null`
+   clobber a real `tabId`. Confirmed a genuine regression test by reverting
+   `merge.ts` and re-running before trusting it.
+2. **`a14c301`** — root cause: `seedWrite()` (`mutate.ts`) gives every seed
+   row a real outbox entry at a new `SEED_HLC` sentinel — strictly above
+   `FLOOR_HLC`, strictly below every real HLC. Populates a genuinely fresh
+   account; loses every field to any real edit on an established one, so a
+   second browser's fresh seed can never again overwrite a renamed board.
+   `hydrateRemoteRow` also stops synthesizing `name`/`title` when genuinely
+   missing (fails closed instead) — belt-and-suspenders, since this path is
+   provably unreachable in normal operation once seeds push complete rows.
+3. **`012b780`** — `repairDuplicateLists` deleted outright, not gated. Its
+   own comment already said "safe to remove once no local database predates
+   the fix"; its own tests asserted the destruction it caused as intended.
+4. **`1545aa3`** — two adjacent hardening fixes found while diagnosing:
+   `planDrain` had no cap but `routes.ts` enforced one, so an outbox over
+   500 entries 400'd on every push, and push ran before pull with no
+   isolation, so the pull never ran either — sync silently dead in both
+   directions. `runSyncCycle` now chunks at `MAX_PUSH_ENTRIES` (moved into
+   `wire.ts` so client/server share one constant) and isolates a push
+   failure from the pull loop, except `SyncAuthError`, which still
+   short-circuits both. Also added the `console.error`/`console.warn` calls
+   that would have surfaced this incident in the console instead of only in
+   a screenshot a week later.
+5. **This commit** — `docs/SYNC.md`'s "Known traps" (the `FLOOR_HLC`
+   contract, `SEED_HLC`, the DO-reset-strands-every-cursor trap),
+   `ARCHITECTURE.md` §2.5/§2.8, and a `.ai/lessons.md` entry.
+
+### Decisions Rob made, verbatim reasoning
+
+- **Fix Phase 1 alone first, then re-test** — approved, then explicitly
+  waived once Phases 2-3 were also queued ("keep me abreast... continue
+  executing"), so all four landed in sequence without a pause between them.
+- **Delete `repairDuplicateLists` outright**, not gate it to pre-sync —
+  taken as given from the plan's recommendation.
+- **Don't recover the pre-fix data.** "It was all boilerplate test data
+  anyway... I just want to make sure that my new data... does not get
+  deleted or overwritten." This is why there's no `backfillSeedCreates()`
+  migration, no reset route, no DO wipe in this set of commits — recovery
+  was explicitly out of scope, which simplified Phase 2 considerably (no
+  need to repair rows that already exist server-side with no outbox
+  provenance).
+
+### Surprises worth keeping
+
+1. **A live two-browser test found a bug 393 passing tests didn't**, and
+   found it inside the same session the code shipped in. `merge.test.ts` had
+   eleven tests before this and zero of them constructed "local already has
+   a real value, no pending entry, remote is the sentinel" — every one of
+   them predated `FLOOR_HLC`. The `.ai/lessons.md` entry generalizes this:
+   a sentinel's ordering guarantee is a claim about what a *comparison
+   function* does with it, not about the value in isolation, and a
+   short-circuit can route around the comparison for exactly the input the
+   guarantee depends on.
+2. **The `SEED_HLC` design ties two of this session's earlier decisions
+   together in a way that only became visible once they collided.**
+   `DEFAULT_TAB_ID`/`seed:list:*` being deterministic constants (§2.10,
+   built for cross-device convergence) is what made the incident
+   *reproducible* on a second browser rather than a one-off — and it's also
+   exactly what makes `SEED_HLC` safe: two devices' fresh seeds carrying the
+   identical clock for the identical id is a feature (a guaranteed tie that
+   loses to any real edit), not a coincidence to work around.
+3. **`resolveEntityPush`'s per-hlc-group folding, built for EI-46, is what
+   let the `round-trip.test.ts` regression for this incident be a real
+   end-to-end test rather than a unit test in isolation.** Composing
+   `validateEntries` → `groupByEntity` → `resolveEntityPush` →
+   `buildInsertColumns` → `mergePages` against a fake store and then folding
+   the result through the real `mergeRecord` is what caught that my first
+   draft of the settings round-trip regression test (in the EI-60 session)
+   had the wrong expectation — and the same composition is what proved
+   `SEED_HLC` correct in both directions before it ever touched a real
+   Durable Object.

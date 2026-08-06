@@ -157,6 +157,57 @@ live smoke test against a real Durable Object confirmed.
 
 ### Known traps
 
+- **`FLOOR_HLC` must be populate-only, and the enforcement lives in
+  `merge.ts`, not in the sort order.** A live incident, found by Rob two-
+  browser testing this session, not caught by any test at the time: signing
+  in on a second browser renamed every list to `"Untitled"` and orphaned them
+  from their tab within ~30 seconds. `FLOOR_HLC` sorts below every real HLC
+  by construction, but `mergeRecord`'s `remoteWins` check
+  (`localHlc === null || compareHlc(...) > 0`) short-circuits on
+  `localHlc === null` *before ever comparing clocks* — so "no pending local
+  entry" let a `FLOOR_HLC` placeholder win outright, with zero HLC comparison
+  involved. `merge.ts` now special-cases `remote.hlc === FLOOR_HLC`
+  explicitly: it may fill in a field the local row doesn't already have a
+  value for (`local[field] !== undefined`, not `Object.hasOwn`, not
+  `local !== undefined` alone — a pre-tabs row's `undefined` `tabId` must
+  still populate, and a present `null` must not be clobbered), never
+  overwrite one it does. **If you ever add another sentinel HLC, it needs
+  the same explicit carve-out — a low sort position alone is not a
+  "loses to everything" guarantee**, since `mergeRecord`'s "no pending entry"
+  branch never reaches the comparison at all.
+- **The root cause was `seedIfEmpty()`/`ensureDefaultTab()` writing seed rows
+  outside `mutate()`, with raw `db.put()` calls — now fixed.** Those rows had
+  no outbox entry, ever, so their first-ever sync write was
+  `adoptLocalData`'s later `{ownerId, updatedAt}` patch, which the server
+  received as a genuinely partial create and synthesized `"Untitled"`
+  placeholders for. `seedWrite()` (`src/lib/store/mutate.ts`) is the fix: one
+  Dexie `put` plus one full-row outbox entry stamped at `SEED_HLC` — a new
+  sentinel, strictly above `FLOOR_HLC` and strictly below every real HLC by
+  construction. That means a fresh seed populates a genuinely empty server
+  (`buildInsertColumns` never reached) and loses every field to any real
+  edit on an established account — a second browser's fresh seed can never
+  overwrite a renamed board. Verified in `round-trip.test.ts` against the
+  real server pipeline. §2.5's "every write goes through `mutate()`, from
+  day one" is now true in fact, not just intent — `resetLocalDataForNewOwner`
+  is the one remaining, deliberate exception.
+- **`repairDuplicateLists` is gone.** It hard-deleted (no tombstone, no
+  outbox entry) any two live lists sharing a name — an ordinary, legal state,
+  not just the seeding race it was written for — and its own tests asserted
+  that destruction as intended behavior. It's what finished off the lists in
+  the incident above, after the `FLOOR_HLC` bug had already renamed several
+  to the same `"Untitled"` name. If you ever feel the pull to write a
+  "cleanup pass" that runs on every boot and deletes rows outside `mutate()`,
+  read this entry again first.
+- **A wiped-in-place DO is a trap, not a recovery tool.** `ctx.storage.
+  deleteAll()` resets `sync_meta.next_version` to 1, so every client's
+  persisted `faite:sync-cursor:*` sits *above* every new version and sync
+  goes silently dead on all devices. The same applies to clearing a device's
+  IndexedDB without also clearing that localStorage key — the client is left
+  stranded at a high watermark, believes it's synced, and never pulls again.
+  If you ever need to reset an account's sync state, clear the cursor
+  everywhere it's synced *before* or *as part of* whatever reset you run, or
+  just use a new account (a new user id addresses a different, empty DO for
+  free).
 - **`settings` is device-local and excluded from ownerId adoption** (§2.12) —
   that part is permanent, not a P3 gap. Its Dexie primary key *is* `ownerId`,
   hardcoded to `LOCAL_OWNER_ID` app-wide, and always will be.
