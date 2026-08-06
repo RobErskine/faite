@@ -1,6 +1,5 @@
-import { z } from "zod";
-import { DEFAULT_PULL_LIMIT, MAX_PULL_LIMIT, MAX_PUSH_ENTRIES, SYNC_KINDS, SYNC_PROTOCOL_VERSION } from "@/lib/sync/wire";
 import { createAuth, TRUSTED_ORIGINS } from "../auth";
+import { clampPullArgs, parsePushRequest } from "./validate";
 
 /**
  * `/api/sync/*` — the transport for EI-46/EI-48. Same seam as `/api/auth/*`
@@ -12,19 +11,6 @@ import { createAuth, TRUSTED_ORIGINS } from "../auth";
  * true of the BOARD, which never calls this. A request that reaches this
  * file without a session is unauthenticated, full stop: 401, never a nag.
  */
-
-const pushEntrySchema = z.object({
-  id: z.string().min(1),
-  kind: z.enum(SYNC_KINDS),
-  entityId: z.string().min(1),
-  patch: z.record(z.string(), z.unknown()),
-  hlc: z.string().min(1),
-});
-
-const pushRequestSchema = z.object({
-  protocol: z.literal(SYNC_PROTOCOL_VERSION),
-  entries: z.array(pushEntrySchema).max(MAX_PUSH_ENTRIES),
-});
 
 function corsHeaders(origin: string | null): HeadersInit {
   if (!origin || !TRUSTED_ORIGINS.includes(origin)) return {};
@@ -64,22 +50,22 @@ export async function handleSyncRequest(request: Request, env: CloudflareEnv): P
     const stub = env.USER_DO.get(env.USER_DO.idFromName(userId));
 
     if (url.pathname === "/api/sync/push" && request.method === "POST") {
-      const parsed = pushRequestSchema.safeParse(await request.json());
-      if (!parsed.success) return json({ error: "invalid-request" }, 400, headers);
-      const result = await stub.push(userId, parsed.data);
+      // `parsePushRequest`/`clampPullArgs` are shared with the WebSocket
+      // handler in `user-do.ts` — one implementation, not two that mirror
+      // each other. See `validate.ts`.
+      const parsed = parsePushRequest(await request.json());
+      if (!parsed) return json({ error: "invalid-request" }, 400, headers);
+      const result = await stub.push(userId, parsed);
       return json(result, 200, headers);
     }
 
     if (url.pathname === "/api/sync/pull" && request.method === "GET") {
-      const cursor = Number(url.searchParams.get("since") ?? "0");
-      if (!Number.isFinite(cursor) || cursor < 0) {
-        return json({ error: "invalid-cursor" }, 400, headers);
-      }
-      const requestedLimit = Number(url.searchParams.get("limit") ?? String(DEFAULT_PULL_LIMIT));
-      const limit = Number.isFinite(requestedLimit) && requestedLimit > 0
-        ? Math.min(requestedLimit, MAX_PULL_LIMIT)
-        : DEFAULT_PULL_LIMIT;
-      const result = await stub.pull(cursor, limit);
+      const args = clampPullArgs(
+        url.searchParams.get("since") ?? undefined,
+        url.searchParams.get("limit") ?? undefined,
+      );
+      if (!args) return json({ error: "invalid-cursor" }, 400, headers);
+      const result = await stub.pull(args.cursor, args.limit);
       return json(result, 200, headers);
     }
 

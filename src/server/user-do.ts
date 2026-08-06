@@ -2,6 +2,7 @@ import { DurableObject } from "cloudflare:workers";
 import { drizzle, type DrizzleSqliteDODatabase } from "drizzle-orm/durable-sqlite";
 import type { PullResponse, PushRequest, PushResponse } from "@/lib/sync/wire";
 import { SETTINGS_ENTITY_ID, SYNC_KINDS, SYNC_PROTOCOL_VERSION } from "@/lib/sync/wire";
+import { WS_CLOSE_ACCOUNT_DELETED } from "@/lib/sync/ws-protocol";
 import { BOOTSTRAP_STATEMENTS } from "./db/bootstrap";
 import * as schema from "./db/user-schema";
 import type { FieldClockMap } from "./sync/apply-patch";
@@ -29,13 +30,6 @@ import { buildInsertColumns } from "./sync/upsert";
  * P4's WebSocket upgrade — which can only arrive there — gets a clean file to
  * extend, not a router.
  */
-/**
- * RFC 6455 §7.4.2 application close code — "policy violation". Used when the
- * account behind a socket is deleted out from under it. Moves to
- * `ws-protocol.ts` in P4 phase 1, once the client needs to read it too.
- */
-const WS_CLOSE_ACCOUNT_DELETED = 1008;
-
 export class UserDurableObject extends DurableObject {
   db: DrizzleSqliteDODatabase<typeof schema>;
 
