@@ -3,8 +3,8 @@ import type { OutboxEntry } from "@/lib/schema";
 import type { ApplyPlan } from "./apply-plan";
 import { createSyncRunner, runSyncCycle, type SyncStore } from "./engine";
 import { encodeHlc } from "./hlc-core";
-import { SyncAuthError, type SyncTransport } from "./transport";
-import type { PullResponse, PushResponse } from "./wire";
+import { SyncAuthError, SyncHttpError, type SyncTransport } from "./transport";
+import { MAX_PUSH_ENTRIES, type PullResponse, type PushRequest, type PushResponse } from "./wire";
 
 const NODE_A = "device-a";
 
@@ -122,6 +122,89 @@ describe("runSyncCycle", () => {
     const outcome = await runSync();
 
     expect(outcome).toEqual({ status: "unauthenticated" });
+  });
+
+  it(`an outbox larger than MAX_PUSH_ENTRIES pushes in ${MAX_PUSH_ENTRIES}-sized ascending-hlc chunks, all acked`, async () => {
+    const total = MAX_PUSH_ENTRIES * 2 + 200;
+    const entries = Array.from({ length: total }, (_, i) =>
+      outboxEntry({ id: `outbox-${i}`, hlc: encodeHlc({ phys: 1000 + i, counter: 0, nodeId: NODE_A }) }),
+    );
+    const store = fakeStore({ getPendingOutbox: async () => entries });
+
+    const requestSizes: number[] = [];
+    const firstHlcPerRequest: string[] = [];
+    const transport: SyncTransport = {
+      push: async (request: PushRequest) => {
+        requestSizes.push(request.entries.length);
+        firstHlcPerRequest.push(request.entries[0].hlc);
+        return {
+          acked: request.entries.map((e) => e.id),
+          rejected: [],
+          highestVersion: 1,
+          conflicts: [],
+        };
+      },
+      pull: async (cursor) => emptyPull(cursor),
+    };
+
+    const outcome = await runSyncCycle(transport, store);
+
+    expect(requestSizes).toEqual([MAX_PUSH_ENTRIES, MAX_PUSH_ENTRIES, 200]);
+    // Chunk N+1's first entry has a strictly higher hlc than chunk N's —
+    // the already-sorted batch is sliced in order, not reshuffled.
+    for (let i = 1; i < firstHlcPerRequest.length; i++) {
+      expect(firstHlcPerRequest[i] > firstHlcPerRequest[i - 1]).toBe(true);
+    }
+    expect(store.deletedIds).toHaveLength(total);
+    expect(outcome).toEqual({ status: "ok", pushed: total, pulled: 0 });
+  });
+
+  it(
+    "REGRESSION: a failing push does not prevent the pull — sync is two independent " +
+      "directions, and a wedged upload must never also wedge download",
+    async () => {
+      let cursor = 0;
+      let pullCalled = false;
+      const store = fakeStore({
+        getPendingOutbox: async () => [outboxEntry()],
+        getCursor: () => cursor,
+        setCursor: (c) => {
+          cursor = c;
+        },
+      });
+      const transport: SyncTransport = {
+        push: async () => {
+          throw new SyncHttpError(400, "invalid-request");
+        },
+        pull: async (since) => {
+          pullCalled = true;
+          return { protocol: 1, changes: [], cursor: since + 1, hasMore: false };
+        },
+      };
+
+      const outcome = await runSyncCycle(transport, store);
+
+      expect(pullCalled).toBe(true);
+      expect(cursor).toBe(1); // the pull still advanced the cursor
+      expect(outcome.status).toBe("error");
+    },
+  );
+
+  it("a 401 from push still classifies as unauthenticated and does NOT run the pull", async () => {
+    let pullCalled = false;
+    const store = fakeStore({ getPendingOutbox: async () => [outboxEntry()] });
+    const transport: SyncTransport = {
+      push: async () => {
+        throw new SyncAuthError();
+      },
+      pull: async (cursor) => {
+        pullCalled = true;
+        return emptyPull(cursor);
+      },
+    };
+
+    await expect(runSyncCycle(transport, store)).rejects.toBeInstanceOf(SyncAuthError);
+    expect(pullCalled).toBe(false);
   });
 });
 

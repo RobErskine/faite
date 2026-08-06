@@ -70,6 +70,17 @@ export const SETTINGS_SYNCED_FIELDS: ReadonlySet<string> = new Set([
 export const SYNC_PROTOCOL_VERSION = 1 as const;
 
 /**
+ * Shared between `routes.ts` (enforces it via `z.array().max()`) and
+ * `engine.ts` (chunks a push into batches no larger than this). One constant
+ * so the two ends can't drift — they used to each declare their own copy of
+ * this and the two pull-limit constants below, with nothing keeping them in
+ * sync.
+ */
+export const MAX_PUSH_ENTRIES = 500;
+export const DEFAULT_PULL_LIMIT = 100;
+export const MAX_PULL_LIMIT = 200;
+
+/**
  * Sorts below every real HLC (`compareHlc(FLOOR_HLC, anything real) < 0`) —
  * the clock a puller assigns to a column with no `field_clocks` row. That
  * happens only for server-synthesized NOT NULL placeholders on a partial

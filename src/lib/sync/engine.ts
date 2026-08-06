@@ -2,7 +2,7 @@ import type { OutboxEntry } from "@/lib/schema";
 import type { ApplyPlan } from "./apply-plan";
 import { planDrain } from "./drain";
 import { SyncAuthError, type SyncTransport } from "./transport";
-import { SYNC_PROTOCOL_VERSION } from "./wire";
+import { DEFAULT_PULL_LIMIT, MAX_PUSH_ENTRIES, SYNC_PROTOCOL_VERSION } from "./wire";
 import type { PullResponse, PushRequest, PushResponse, WireChange } from "./wire";
 
 /**
@@ -21,8 +21,6 @@ import type { PullResponse, PushRequest, PushResponse, WireChange } from "./wire
  *    no decisions left to get wrong once the layers below it are right;
  *    covered by the two-browser smoke test instead.
  */
-
-const DEFAULT_PULL_LIMIT = 100;
 
 export interface SyncStore {
   getPendingOutbox(): Promise<OutboxEntry[]>;
@@ -47,6 +45,15 @@ export type SyncOutcome =
  * `applyPulledChanges` for that same page has resolved — the other order
  * risks losing whatever an interrupted apply missed, where this order only
  * risks a harmless re-pull.
+ *
+ * The push half is chunked at `MAX_PUSH_ENTRIES` (`routes.ts` enforces the
+ * same limit server-side) and isolated from the pull half: a failing push
+ * — a >500-entry outbox, a transient 5xx, a poison entry — records the error
+ * and still runs the pull loop, rather than throwing before the pull ever
+ * starts. Sync is two independent directions; a wedged upload must never
+ * also wedge download. `SyncAuthError` is the one exception — it propagates
+ * immediately without attempting the pull, since an unauthenticated session
+ * can't pull either, and retrying either half is pointless until sign-in.
  */
 export async function runSyncCycle(transport: SyncTransport, store: SyncStore): Promise<SyncOutcome> {
   const pending = await store.getPendingOutbox();
@@ -54,15 +61,28 @@ export async function runSyncCycle(transport: SyncTransport, store: SyncStore): 
   if (drop.length > 0) await store.deleteOutboxEntries(drop.map((entry) => entry.id));
 
   let pushed = 0;
-  if (batch.length > 0) {
-    const request: PushRequest = { protocol: SYNC_PROTOCOL_VERSION, entries: batch };
-    const result: PushResponse = await transport.push(request);
-    // "Processed", not "applied" — a rejected entry is also permanently
-    // deleted (retrying it can never help; see RejectReason), an acked one
-    // because the server has it whether it won or lost the LWW comparison.
-    const toDelete = [...result.acked, ...result.rejected.map((r) => r.id)];
-    if (toDelete.length > 0) await store.deleteOutboxEntries(toDelete);
-    pushed = result.acked.length;
+  let pushError: unknown = null;
+
+  for (let offset = 0; offset < batch.length; offset += MAX_PUSH_ENTRIES) {
+    const chunk = batch.slice(offset, offset + MAX_PUSH_ENTRIES);
+    const request: PushRequest = { protocol: SYNC_PROTOCOL_VERSION, entries: chunk };
+    try {
+      const result: PushResponse = await transport.push(request);
+      // "Processed", not "applied" — a rejected entry is also permanently
+      // deleted (retrying it can never help; see RejectReason), an acked
+      // one because the server has it whether it won or lost the LWW
+      // comparison.
+      const toDelete = [...result.acked, ...result.rejected.map((r) => r.id)];
+      if (toDelete.length > 0) await store.deleteOutboxEntries(toDelete);
+      pushed += result.acked.length;
+    } catch (error) {
+      if (error instanceof SyncAuthError) throw error;
+      // Stop pushing further chunks (a systemic failure blasting the rest
+      // is more likely to pile up errors than succeed), but still pull —
+      // that's the whole point of isolating this from the pull loop below.
+      pushError = error;
+      break;
+    }
   }
 
   let pulled = 0;
@@ -79,6 +99,7 @@ export async function runSyncCycle(transport: SyncTransport, store: SyncStore): 
     hasMore = page.hasMore;
   }
 
+  if (pushError) return { status: "error", error: pushError };
   return { status: "ok", pushed, pulled };
 }
 

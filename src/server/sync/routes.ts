@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { SYNC_KINDS, SYNC_PROTOCOL_VERSION } from "@/lib/sync/wire";
+import { DEFAULT_PULL_LIMIT, MAX_PULL_LIMIT, MAX_PUSH_ENTRIES, SYNC_KINDS, SYNC_PROTOCOL_VERSION } from "@/lib/sync/wire";
 import { createAuth, TRUSTED_ORIGINS } from "../auth";
 
 /**
@@ -12,10 +12,6 @@ import { createAuth, TRUSTED_ORIGINS } from "../auth";
  * true of the BOARD, which never calls this. A request that reaches this
  * file without a session is unauthenticated, full stop: 401, never a nag.
  */
-
-const MAX_PUSH_ENTRIES = 500;
-const DEFAULT_PULL_LIMIT = 100;
-const MAX_PULL_LIMIT = 200;
 
 const pushEntrySchema = z.object({
   id: z.string().min(1),
