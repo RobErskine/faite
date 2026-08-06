@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { encodeHlc } from "./hlc";
 import { mergeRecord } from "./merge";
+import { FLOOR_HLC } from "./wire";
 import type { OutboxEntry } from "@/lib/schema";
 
 const NODE_A = "aaaa1111";
@@ -158,4 +159,80 @@ describe("mergeRecord", () => {
     expect(result.apply).toEqual({ title: "Remote" });
     expect(result.conflicts).toEqual([]);
   });
+});
+
+describe("FLOOR_HLC — populate-only, never an overwrite", () => {
+  it(
+    "REGRESSION: a FLOOR_HLC change never overwrites a value the local row already has " +
+      "(the live bug: a synthesized placeholder renamed a real list to \"Untitled\")",
+    () => {
+      const local = { id: TODO_ID, name: "Personal Lists" };
+      const remote = { entityId: TODO_ID, patch: { name: "Untitled" }, hlc: FLOOR_HLC };
+
+      const result = mergeRecord(local, [], remote);
+
+      expect(result.apply).toEqual({});
+      // Not a conflict either — there's no pending entry to re-push. A
+      // FLOOR_HLC field the local row already holds is simply a no-op.
+      expect(result.conflicts).toEqual([]);
+    },
+  );
+
+  it("still populates a field the local row is genuinely missing", () => {
+    const local = { id: TODO_ID, title: "Existing" };
+    const remote = { entityId: TODO_ID, patch: { position: "a0" }, hlc: FLOOR_HLC };
+
+    const result = mergeRecord(local, [], remote);
+
+    expect(result.apply).toEqual({ position: "a0" });
+  });
+
+  it("populates a field whose local value is undefined (the pre-tabs tabId case)", () => {
+    // `ensureDefaultTab`'s own comment: legacy rows read a field back
+    // `undefined`, not `null` — Object.hasOwn would wrongly treat this as
+    // "already has a value" and block the populate.
+    const local = { id: TODO_ID, tabId: undefined };
+    const remote = { entityId: TODO_ID, patch: { tabId: "seed:tab:my-lists" }, hlc: FLOOR_HLC };
+
+    const result = mergeRecord(local, [], remote);
+
+    expect(result.apply).toEqual({ tabId: "seed:tab:my-lists" });
+  });
+
+  it("does not overwrite a local null with a synthesized value — null is meaningful here", () => {
+    // tabId: null means "pinned into every tab" (Backlog). A FLOOR_HLC
+    // placeholder must not silently turn that into some other tab id.
+    const local = { id: TODO_ID, tabId: null };
+    const remote = { entityId: TODO_ID, patch: { tabId: "seed:tab:my-lists" }, hlc: FLOOR_HLC };
+
+    const result = mergeRecord(local, [], remote);
+
+    expect(result.apply).toEqual({});
+  });
+
+  it("applies in full when the local row does not exist — the hydrate path is unaffected", () => {
+    const remote = {
+      entityId: TODO_ID,
+      patch: { name: "Untitled", position: "a0" },
+      hlc: FLOOR_HLC,
+    };
+
+    const result = mergeRecord(undefined, [], remote);
+
+    expect(result.apply).toEqual({ name: "Untitled", position: "a0" });
+  });
+
+  it(
+    "ANTI-TEST: the lowest possible REAL hlc still beats a synced local value — " +
+      "proves we special-cased the sentinel, not \"low clocks\" in general",
+    () => {
+      const local = { id: TODO_ID, name: "Personal Lists" };
+      const lowestReal = encodeHlc({ phys: 0, counter: 0, nodeId: "0" });
+      const remote = { entityId: TODO_ID, patch: { name: "Renamed" }, hlc: lowestReal };
+
+      const result = mergeRecord(local, [], remote);
+
+      expect(result.apply).toEqual({ name: "Renamed" });
+    },
+  );
 });

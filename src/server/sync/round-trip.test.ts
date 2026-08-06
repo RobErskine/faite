@@ -213,4 +213,87 @@ describe("round trip: two devices editing different fields", () => {
     // it must not appear in ANY change, synthesized group included.
     expect(pull.changes.every((c) => !("activeTabId" in c.patch))).toBe(true);
   });
+
+  it(
+    "REGRESSION: a partial first write (adoptLocalData's {ownerId, updatedAt}, sanitized to " +
+      "{updatedAt}) synthesizes a placeholder name, which must not overwrite a device's real " +
+      "one — the exact live bug: a real list's name became \"Untitled\"",
+    () => {
+      const server = new FakeServer();
+      const LIST_ID = "seed:list:backlog";
+
+      // adoptLocalData enqueues {ownerId, updatedAt} for every seed row;
+      // sanitizePatch strips ownerId (SERVER_ONLY_FIELDS) server-side, so
+      // this is the actual patch shape that reaches the server for a row it
+      // has never seen — a genuinely partial first write, on the ordinary
+      // sign-in path (see upsert.ts's corrected reachability note).
+      const partialHlc = encodeHlc({ phys: 1000, counter: 0, nodeId: "device-b" });
+      const push = server.push(USER_ID, {
+        protocol: SYNC_PROTOCOL_VERSION,
+        entries: [
+          {
+            id: "b-adopt",
+            kind: "list",
+            entityId: LIST_ID,
+            patch: { updatedAt: "2026-01-01T00:00:00.000Z" },
+            hlc: partialHlc,
+          },
+        ],
+      });
+      expect(push.acked).toEqual(["b-adopt"]);
+
+      const pull = server.pull(0, 100);
+      // Confirm the placeholder really was synthesized server-side — this
+      // assertion is what proves the test would have caught the live bug,
+      // not just that nothing changed.
+      const nameChange = pull.changes.find((c) => "name" in c.patch);
+      expect(nameChange?.patch.name).toBe("Untitled");
+
+      // Device A already has this row locally with its real name, fully
+      // synced (no pending outbox entry for `name`) — exactly the state a
+      // device is in moments after a fresh device's adoption push lands.
+      let local: Record<string, unknown> = { id: LIST_ID, name: "Personal Lists" };
+      for (const change of pull.changes) {
+        const result = mergeRecord(local, [], change);
+        local = { ...local, ...result.apply };
+      }
+
+      expect(local.name).toBe("Personal Lists");
+    },
+  );
+
+  it(
+    "REGRESSION (settings): a partial first write does not reset a device's real font/avatar " +
+      "choice to the synthesized default",
+    () => {
+      const server = new FakeServer();
+
+      // Only `theme` is a real edit; fontPairing/avatarKind are NOT NULL
+      // with no SQL default, so a first-ever settings write missing them
+      // gets FIELD_DEFAULTS' synthesized values — same mechanism as `name`
+      // above, different entity kind.
+      const hlc = encodeHlc({ phys: 1000, counter: 0, nodeId: "device-b" });
+      const push = server.push(USER_ID, {
+        protocol: SYNC_PROTOCOL_VERSION,
+        entries: [
+          { id: "b-settings", kind: "settings", entityId: "local-user", patch: { theme: "dark" }, hlc },
+        ],
+      });
+      expect(push.acked).toEqual(["b-settings"]);
+
+      const pull = server.pull(0, 100);
+      const fontChange = pull.changes.find((c) => "fontPairing" in c.patch);
+      expect(fontChange?.patch.fontPairing).toBe("hyperlegible"); // confirms synthesis fired
+
+      // Device A already has a real font choice, fully synced.
+      let local: Record<string, unknown> = { ownerId: "local-user", fontPairing: "editorial" };
+      for (const change of pull.changes) {
+        const result = mergeRecord(local, [], change);
+        local = { ...local, ...result.apply };
+      }
+
+      expect(local.fontPairing).toBe("editorial");
+      expect(local.theme).toBe("dark"); // the real edit still applies
+    },
+  );
 });

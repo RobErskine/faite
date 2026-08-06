@@ -73,10 +73,17 @@ export const SYNC_PROTOCOL_VERSION = 1 as const;
  * Sorts below every real HLC (`compareHlc(FLOOR_HLC, anything real) < 0`) —
  * the clock a puller assigns to a column with no `field_clocks` row. That
  * happens only for server-synthesized NOT NULL placeholders on a partial
- * create (`src/server/sync/upsert.ts`), so a floor clock is correct by
- * construction: it loses to any pending local edit, and a field with no
- * pending edit was never locally unsynced, so adopting the server's
- * synthesized value is right either way.
+ * create (`src/server/sync/upsert.ts`).
+ *
+ * **Populate-only, enforced in `merge.ts`, not just by sort order.** A low
+ * sort order alone is not a "loses to everything" guarantee — `mergeRecord`'s
+ * ordinary rule is "no pending local entry -> remote wins outright", with no
+ * clock comparison at all, which let a `FLOOR_HLC` placeholder overwrite an
+ * already-synced local value with nothing to compare it against. `merge.ts`
+ * now special-cases `remote.hlc === FLOOR_HLC` explicitly: it may fill in a
+ * field the local row doesn't have, never overwrite one it does. Found live —
+ * a fresh device's placeholder-synthesizing partial create renamed an
+ * established board's lists to "Untitled".
  */
 export const FLOOR_HLC = "000000000000:0000:server";
 

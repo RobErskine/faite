@@ -26,20 +26,27 @@ const FIELD_DEFAULTS: Record<string, () => unknown> = {
 /**
  * Fills in the columns a bare INSERT needs beyond what a patch supplied.
  *
- * Reachability: within one device, a create outbox entry always precedes its
- * updates (HLC is monotone per node) and the drain preserves that order.
- * Across devices, device B can only reference a row it pulled, which means
- * device A already pushed the full-row create for it. So a genuinely partial
- * first write is pathological — a corrupted outbox, a previously rejected
- * entry, or a bug — not a normal path. Given that, this synthesizes rather
- * than rejects: never lose data, never 500, leave the row self-healing.
+ * Reachability — corrected after a live incident: the original comment here
+ * claimed a partial first write was "pathological" (a corrupted outbox, a
+ * previously rejected entry, or a bug). It was not. `seedIfEmpty`/
+ * `ensureDefaultTab` (`src/lib/store/repositories.ts`) wrote seed rows
+ * directly to Dexie, bypassing `mutate()`/`create()` entirely, so those rows
+ * had NO create outbox entry — only `adoptLocalData`'s later `{ownerId,
+ * updatedAt}` patch, which `sanitizePatch` reduces further to `{updatedAt}`.
+ * That is a genuinely partial first write, on the ordinary sign-in path, on
+ * every device that has ever run the app. `src/lib/sync/merge.ts`'s
+ * `FLOOR_HLC` carve-out (populate-only, never overwrite) is what makes
+ * synthesizing here safe regardless of how this is reached; do not remove
+ * that guard on the assumption that this function is now unreachable with a
+ * partial patch — `seedWrite` (`mutate.ts`) closes the *known* source, not
+ * the general case a client is free to retry into.
  *
  * Synthesized columns intentionally get no `field_clocks` row (the caller
  * only writes clocks for keys present in the incoming patch, via
  * `applyIncomingPatch`'s `clockUpdates`) — so on the next pull they group
  * under `FLOOR_HLC` (`wire.ts`) and the first real value from any device
- * overwrites the placeholder. The pathological case repairs itself with no
- * special case anywhere else in the pipeline.
+ * overwrites the placeholder, without ever touching a value a device that
+ * already has this row is holding.
  */
 export function buildInsertColumns(
   kind: SyncKind,
@@ -59,11 +66,24 @@ export function buildInsertColumns(
     ...patchFields,
   };
 
+  const synthesized: string[] = [];
   for (const [field, meta] of Object.entries(columns)) {
     if (!meta.notNull || meta.hasDefault) continue;
     if (row[field] !== undefined && row[field] !== null) continue;
     const fallback = FIELD_DEFAULTS[field];
-    if (fallback) row[field] = fallback();
+    if (fallback) {
+      row[field] = fallback();
+      synthesized.push(field);
+    }
+  }
+
+  if (synthesized.length > 0) {
+    // A partial first write for this entity — see the reachability note
+    // above. Not an error, but worth a trace: it's the signal that a create
+    // is missing an outbox entry somewhere upstream of this push.
+    console.warn(
+      `[faite] synthesized placeholder(s) for ${kind}/${entityId} on a partial create: ${synthesized.join(", ")}`,
+    );
   }
 
   // `settings` has neither `id` nor `createdAt` columns (singleton, keyed by

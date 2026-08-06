@@ -87,6 +87,11 @@ async function runOnce(transport: SyncTransport, store: SyncStore): Promise<Sync
     return await runSyncCycle(transport, store);
   } catch (error) {
     if (error instanceof SyncAuthError) return { status: "unauthenticated" };
+    // Every prior failure here was silent — `trigger()` calls `runSync()`
+    // with `void`, and the whole cycle could 400 every 30s for a week with
+    // nothing in the console. One line is the difference between "caught in
+    // five minutes" and "caught by a screenshot a week later".
+    console.error("[faite] sync cycle failed", error);
     return { status: "error", error };
   }
 }
