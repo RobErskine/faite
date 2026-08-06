@@ -19,7 +19,11 @@ should not do.
    database** from production, `npm run preview` does **not** hot-reload, and
    emails log to the terminal rather than sending. All three have already
    caused false bug hunts.
-4. `AGENTS.md` loads automatically via `CLAUDE.md`. Heed it: this is Next.js
+4. **`docs/AUTH.md`** — only if you are touching the auth seam. Sync routes
+   sit next to it in `worker.ts` and reuse `createAuth(env, request)` for the
+   session, so its "what a request actually does" section is the closest
+   working example of the pattern you are about to copy.
+5. `AGENTS.md` loads automatically via `CLAUDE.md`. Heed it: this is Next.js
    16 with real breaking changes, and `node_modules/next/dist/docs/` is the
    source of truth over anything remembered.
 

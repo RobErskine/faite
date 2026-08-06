@@ -257,6 +257,10 @@ adding it is not a change in behaviour.
 
 ### 2.12 Auth lives in the Worker, not a Next route (P2)
 
+> For the file map, request flow, and operational recipes, see
+> `docs/AUTH.md`. This section and §2.13 carry the reasoning; AUTH.md
+> deliberately does not repeat it.
+
 The obvious place for Better Auth is `app/api/auth/[...all]/route.ts` — that is
 what its own docs show. It does not work here: `output: export` (§6, the
 Capacitor build target CI has kept green since P0) forbids Route Handlers that
