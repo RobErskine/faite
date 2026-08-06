@@ -165,11 +165,28 @@ export interface SyncEngineOptions {
    * dialog is still open; syncing then would push one account's board into
    * another's Durable Object. */
   isActive(): boolean;
-  intervalMs?: number;
+  /**
+   * Accepts a thunk so the cadence can follow the transport: it is read
+   * fresh before every tick, not once at construction. With a live
+   * WebSocket the interval stops being the mechanism and becomes a backstop
+   * against the socket lying about being open — see `LIVE_PUSH_INTERVAL_MS`.
+   */
+  intervalMs?: number | (() => number);
   debounceMs?: number;
 }
 
-const DEFAULT_INTERVAL_MS = 30_000;
+/** No live push: the interval IS the sync mechanism. */
+export const DEFAULT_INTERVAL_MS = 30_000;
+
+/**
+ * Live push is connected, so this is only a safety net for the case where
+ * the socket believes it is open and isn't (and `pending-requests`' timeout
+ * hasn't noticed yet). Deliberately not "off": every tab runs its own
+ * interval, and three tabs at 30s wake the Durable Object ~6x a minute
+ * between them to pull nothing.
+ */
+export const LIVE_PUSH_INTERVAL_MS = 120_000;
+
 const DEFAULT_DEBOUNCE_MS = 2_000;
 const JITTER_RATIO = 0.2;
 
@@ -211,10 +228,14 @@ export function createSyncEngine(
   options: SyncEngineOptions,
 ): SyncEngine {
   const runner = createSyncRunner(transport, store);
-  const intervalMs = options.intervalMs ?? DEFAULT_INTERVAL_MS;
   const debounceMs = options.debounceMs ?? DEFAULT_DEBOUNCE_MS;
 
-  let intervalId: ReturnType<typeof setInterval> | null = null;
+  function resolveIntervalMs(): number {
+    const configured = options.intervalMs ?? DEFAULT_INTERVAL_MS;
+    return typeof configured === "function" ? configured() : configured;
+  }
+
+  let intervalId: ReturnType<typeof setTimeout> | null = null;
   let debounceId: ReturnType<typeof setTimeout> | null = null;
   let started = false;
 
@@ -234,14 +255,26 @@ export function createSyncEngine(
 
   function clearInterval_(): void {
     if (intervalId !== null) {
-      clearInterval(intervalId);
+      clearTimeout(intervalId);
       intervalId = null;
     }
   }
 
+  /**
+   * A self-rescheduling timeout rather than `setInterval`, for two reasons:
+   * the cadence is re-read before every tick (so connecting a socket
+   * actually relaxes it, instead of waiting for the next visibility change
+   * to re-arm), and the jitter is recomputed per tick rather than once per
+   * arming — with `setInterval` a tab that drew a low jitter kept that same
+   * offset for its whole lifetime.
+   */
   function armInterval(): void {
     clearInterval_();
-    intervalId = setInterval(trigger, jitteredInterval(intervalMs));
+    intervalId = setTimeout(() => {
+      intervalId = null;
+      trigger();
+      if (started && document.visibilityState === "visible") armInterval();
+    }, jitteredInterval(resolveIntervalMs()));
   }
 
   function handleVisibilityChange(): void {

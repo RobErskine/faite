@@ -89,8 +89,14 @@ Plan of record: `~/.claude/plans/please-check-this-image-starry-eich.md`
       hard delete) found in Rob's own two-browser test, fixed same
       session — see "Review — data-loss incident" below
 
-## P4 — Sync v1
-- [ ] WebSocket push, hibernation, reconnect/backfill, multi-tab
+## P4 — Sync v1 ✅ (code) / ⏳ (two-machine confirmation)
+- [x] WebSocket push, hibernation, reconnect/backfill, multi-tab (EI-49)
+  — see Review below. Transport swap only: `merge.ts`, `apply-patch.ts`,
+  `hlc-core.ts`, `wire.ts`'s types and the `version` cursor all untouched.
+- [x] Phase 0 hardening found on the way in: `readFieldClocksBulk` exceeded
+  SQLite's 100-bound-parameter limit; `wipe()` left the DO with no schema.
+- [ ] **Rob: two real browsers on two machines.** The smoke harnesses
+  (`scripts/sync-smoke/`) prove the protocol; they cannot prove the board.
 
 ## P5 — API + docs
 - [ ] Zod → OpenAPI, tokens, rate limits
@@ -553,3 +559,116 @@ there is not a redesign of the pinned EI-47 semantics, it's making
    had the wrong expectation — and the same composition is what proved
    `SEED_HLC` correct in both directions before it ever touched a real
    Durable Object.
+
+## Review — P4 (EI-49, WebSocket live push)
+
+Six commits on `rob/ei-49-websocket-live-push-with-hibernation`, each
+independently verified. **504 tests passing** (376 baseline + 128 new), both
+build targets green, `wrangler deploy --dry-run` green on every commit that
+touched `src/server`, same single pre-existing lint error.
+
+### What landed
+
+- **Phase 0 (`528e33f`)** — two latent defects P4 would have inherited.
+  `readFieldClocksBulk` built one `IN (?, …)` over the union of six kinds'
+  pages: up to 600 bound parameters against SQLite's documented ceiling of
+  **100**. Latent only because the account is small, and it would have fired
+  first on a `since=0` or long-offline catch-up — the exact pull reconnect
+  depends on. And `wipe()` called `deleteAll()` and stopped, leaving the
+  object alive with no schema, since the constructor's bootstrap has already
+  run and won't re-run until a cold start. Latent pre-P4 because the D1 user
+  row was gone and nothing could get back in; **a live socket is precisely
+  what removes that protection.**
+- **Phase 1 (`12c5ba3`)** — `ws-protocol.ts` (envelope, DOM-free, no zod),
+  `validate.ts` (`parsePushRequest`/`clampPullArgs` lifted out of
+  `routes.ts`), `backoff.ts`. No behaviour change.
+- **Phase 2 (`42a2998`)** — `/api/sync/ws` + the DO's `fetch()` upgrade and
+  three hibernation handlers. Driven end-to-end by a node harness before any
+  client code existed.
+- **Phase 3 (`80e8562`)** — `ws-transport.ts`, `pending-requests.ts`,
+  `fallback-transport.ts`, `notifyRemoteChange()`, provider wiring.
+- **Phase 4 (`3cee615`)** — broadcast on write. The actual point.
+- **Phase 5** — adaptive interval, docs, `scripts/sync-smoke/`.
+
+### Surprises worth keeping
+
+1. **A WebSocket handshake bypasses CORS entirely.** It is sent with cookies
+   and no preflight; `Access-Control-Allow-Origin` doesn't gate whether the
+   connection is established. On `/api/sync/push` the origin check is
+   effectively decoration because CORS already stops a cross-site `fetch`
+   from reading the response; on `/api/sync/ws` the identical-looking code is
+   the *only* thing between evil.com and a signed-in board. Nothing in the
+   repo did this job already, precisely because every prior sync request went
+   through `fetch`. **And the obvious implementation is wrong**: rejecting
+   anything off `TRUSTED_ORIGINS` would silently 403 every branch preview
+   (`*-faite.bfmw-dev.workers.dev` is deliberately absent from that list)
+   while HTTP sync kept working — which presents as "hibernation is broken".
+   It has to be same-origin **OR** the allow-list.
+2. **`docs/SYNC.md`'s pre-written plan was right about the shape and wrong
+   in five specifics**, each caught by an adversarial review before any code
+   was written. Notably: it said to extract shared `push`/`pull` bodies (the
+   wrong layer — they're ordinary methods, so the WS handler just calls them;
+   what actually needed sharing was `routes.ts`'s *validation*, without which
+   the socket path hands `pull()` an unclamped `LIMIT` across six kinds), and
+   to wire `onRemoteChange` to `runner.runSync()` (which bypasses both the
+   `isActive()` gate and the `faite:sync` Web Lock — `trigger()` keeps both
+   and drops only the debounce, which is the part that should be dropped).
+3. **A fast two-tab test cannot see hibernation.** Idle eviction is a
+   **70–140s window**, so "edit here, watch it appear there" proves the
+   broadcast path and nothing about whether `deserializeAttachment` restores
+   `userId` after the constructor re-runs. `hibernate.mjs` idles 170s and
+   then pushes, because `owner_id` on that insert can only have come from the
+   attachment. It passed — but nothing else in the repo could have told us.
+4. **A throw out of `webSocketMessage` is not a local failure.** It can break
+   the stub for *every* socket on the object, so one tab's malformed frame
+   could disconnect a different device. The assertion that matters in
+   `smoke.mjs` is therefore not "the socket survived" but "a *second,
+   concurrent* socket survived".
+5. **A request timeout has to close the socket, not just fail the call.** A
+   zombie socket keeps `readyState === OPEN` long after a laptop sleeps.
+   Treating a timeout as one failed call leaves every later push and pull
+   paying the full timeout inside `runSyncCycle`'s `while (hasMore)` loop.
+6. **`setInterval` cannot re-read its own delay.** Relaxing the poll interval
+   when a socket connects required converting to a self-rescheduling
+   `setTimeout` — which incidentally fixed a pre-existing quirk where a tab
+   that drew a low jitter value kept that same offset for its whole lifetime.
+
+### Verified live, against a real Durable Object
+
+Isolated `wrangler dev` on port **8790** (`lsof`-checked first; both 8787 and
+8790 were free, so nothing of Rob's was disturbed; only the spawned PID was
+killed). Harnesses kept at `scripts/sync-smoke/`.
+
+- `smoke.mjs` — **18/18.** Handshake guards (401 unauthenticated, 403 hostile
+  origin, 426 non-upgrade, absent origin allowed), push/pull round trips
+  matching the HTTP shapes, shared validation (bad protocol, negative cursor,
+  clamped absurd limit, 501-entry batch rejected), and a barrage of malformed
+  and binary frames leaving both sockets serving.
+- `broadcast.mjs` — **12/12.** Write on A reaches B and C but not A; the frame
+  carries the causing version; a no-op push broadcasts nothing; an HTTP push
+  notifies all three; and after abruptly terminating one socket, a further
+  push still acks and still reaches the survivor.
+- `hibernate.mjs` — **passed.** 170s idle, then push and pull on the same
+  socket, with the pre-hibernation row still present.
+
+### What it could NOT reach
+
+- **Two real browsers.** The harnesses prove the protocol, not the board —
+  no Dexie, no `mergeRecord`, no React. That is Rob's test.
+- **`wipe()` end-to-end**, still. Same blocker as P3: the `/delete-user`
+  endpoint's CSRF Origin check rejects a non-`TRUSTED_ORIGINS` port. The
+  Phase 0 change to it (close sockets → delete → re-bootstrap) is therefore
+  reasoned, reviewed, and unexercised.
+- **Capacitor.** The `WebSocket` constructor has no `credentials` option, so
+  cookies follow SameSite with no override and `capacitor://localhost` →
+  `myfaite.app` is cross-site. Very likely stays on the HTTP fallback; not
+  verified, and a P7 question.
+
+### Open follow-ups
+
+- [ ] Two-machine confirmation (Rob).
+- [ ] Verify `wipe()` once against `myfaite.app` or a branch preview with a
+  disposable account — carried over from P3, now with more to check.
+- [ ] Decide whether `MAX_SOCKET_AGE_MS` (1h) is the right ceiling once
+  there's real usage data. It bounds, but does not eliminate, the window in
+  which a socket outlives the session that authorised it.

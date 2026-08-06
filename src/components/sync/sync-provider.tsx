@@ -8,7 +8,12 @@ import { getDb } from "@/lib/store/db";
 import { normalizeOutboxHlcs } from "@/lib/store/normalize-outbox";
 import { getBoundOwnerId, getCurrentOwnerId } from "@/lib/store/owner";
 import { getSyncCursor, setSyncCursor } from "@/lib/sync/cursor";
-import { createSyncEngine, type SyncEngine } from "@/lib/sync/engine";
+import {
+  createSyncEngine,
+  DEFAULT_INTERVAL_MS,
+  LIVE_PUSH_INTERVAL_MS,
+  type SyncEngine,
+} from "@/lib/sync/engine";
 import { createFallbackTransport } from "@/lib/sync/fallback-transport";
 import { getNodeId } from "@/lib/sync/hlc";
 import { httpTransport } from "@/lib/sync/transport";
@@ -81,7 +86,14 @@ export function SyncProvider() {
         setCursor: (cursor) => setSyncCursor(getCurrentOwnerId(), cursor),
         getNodeId,
       },
-      { isActive },
+      {
+        isActive,
+        // Read fresh before every tick. With a socket up, live push catches
+        // everything and the interval is only a backstop for a socket that
+        // claims to be open and isn't; without one it is still the whole
+        // mechanism.
+        intervalMs: () => (connection.isReady() ? LIVE_PUSH_INTERVAL_MS : DEFAULT_INTERVAL_MS),
+      },
     );
 
     engineRef.current = engine;

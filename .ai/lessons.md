@@ -195,3 +195,94 @@ can reach each one. `merge.test.ts` had eleven tests and zero of them
 constructed this state, because all eleven predated the sentinel that made
 it dangerous — a sentinel added later needs its own pass through the
 existing decision tree, not just its own new test file.
+
+---
+
+## A protocol that bypasses CORS bypasses every guard you built on CORS
+
+Adding `/api/sync/ws` next to the existing `/api/sync/push` and
+`/api/sync/pull` looked like adding a fourth branch to a router that already
+had auth handled: the session check runs before the branch, so the upgrade
+inherits it, and `corsHeaders` was already there for cross-origin.
+
+That reasoning is wrong in a way that is invisible from the code. **A
+WebSocket handshake is not subject to CORS at all.** The browser sends it
+with cookies attached and no preflight, and `Access-Control-Allow-Origin`
+does not gate whether the connection is established — it isn't consulted.
+On `/api/sync/push` the `Origin` check is effectively decoration, because
+CORS already stops a cross-site `fetch` from reading the response. On
+`/api/sync/ws` the identical-looking code is the *only* thing between
+evil.com and a signed-in user's entire board: any page could have opened a
+socket to the DO and pushed and pulled at will.
+
+Nothing in the repo did this job already, precisely *because* every prior
+sync request went through `fetch`. The guard didn't exist because it had
+never needed to.
+
+The second half of the lesson is what "correct" turned out to mean. The
+obvious implementation — reject anything not on `TRUSTED_ORIGINS` — would
+have shipped and then silently failed on every branch preview, because
+previews live at `*-faite.bfmw-dev.workers.dev` and are deliberately absent
+from that list (`createAuth` derives `baseURL` from the request origin
+instead). HTTP sync would keep working while the socket 403'd, which reads
+as "hibernation is broken", not "the origin check is too strict" — a bug you
+would chase in entirely the wrong file. The check has to accept
+**same-origin OR the allow-list**.
+
+**Rule:** when adding a protocol alongside an existing one, do not assume the
+guards on the existing one apply. Ask specifically which of them are enforced
+by the *browser* rather than by your code — CORS, SameSite, preflight,
+mixed-content — and check whether the new protocol is subject to each. Then
+check the new guard against every deployment target you actually have
+(production, branch preview, localhost, `next dev`), not just the one in
+front of you.
+
+---
+
+## "It works" and "it works after the platform reclaims it" are different tests
+
+The riskiest thing in the WebSocket work was never the message handling — it
+was whether a socket still functions after the Durable Object hibernates,
+because on wake the constructor re-runs and every in-memory field is gone.
+Only `serializeAttachment` survives, and `userId` lives there.
+
+The natural test is "open two tabs, edit in one, watch the other". It passes
+in about a second and proves the broadcast path. It proves **nothing** about
+hibernation, because idle eviction is a **70–140 second window** — the object
+was never reclaimed, so the constructor never re-ran, so the attachment was
+never actually deserialized from anywhere. A test that completes in 1s
+structurally cannot observe a 70s state transition.
+
+What works: idle >150s untouched, then push. `owner_id` on that insert can
+only have come from `deserializeAttachment()`. It takes three minutes of
+wall-clock and is the only test in the repo that can see this contract break.
+
+The same shape applies to anything with a platform-managed lifecycle —
+hibernation, eviction, cold starts, connection pool recycling, token refresh,
+cache TTLs. The dangerous window is always the one longer than your test.
+
+**Rule:** when a platform reclaims something on a timer, look up the actual
+timer and make the test outlast it, even if that makes the test slow. Write
+the wait down in the test itself with the number and its source, so nobody
+"optimizes" it back to 5 seconds. And assert on something that could *only*
+have come through the restored state — not merely that the call succeeded.
+
+---
+
+## Two smaller ones, both from the same session
+
+**A query whose `?` count comes from an array length is a latent limit bug.**
+`readFieldClocksBulk` built one `IN (?, …)` over the union of six kinds'
+pages — up to 600 bound parameters against SQLite's documented ceiling of
+100. It had never fired because the account is small, and it would have
+fired first on a `since=0` catch-up pull: the largest, least recoverable
+request the system makes, and the one the reconnect path depends on. Grep for
+`.map(() => "?")` after any change to how rows are batched.
+
+**curl writes httpOnly cookies with a literal `#HttpOnly_` prefix** on the
+domain field of its cookie jar. Filtering out lines starting with `#` — the
+obvious way to skip comments — drops exactly the session cookie you need, and
+every request then 401s. Fifteen minutes lost to what looked like an auth
+bug in the code under test rather than a parsing bug in the test harness.
+When a brand-new harness fails its very first auth check, suspect the harness
+before the server.

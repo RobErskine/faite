@@ -26,12 +26,15 @@ should not do.
 5. `AGENTS.md` loads automatically via `CLAUDE.md`. Heed it: this is Next.js
    16 with real breaking changes, and `node_modules/next/dist/docs/` is the
    source of truth over anything remembered.
-6. **If you're picking up P4 (EI-49)**: the `durable-objects` skill and
-   `developers.cloudflare.com/durable-objects/best-practices/websockets/` —
-   the hibernation API's exact method signatures are already verified and
-   quoted in "P4 (EI-49) implementation plan" below, but re-verify against
-   live docs before writing code anyway; training data on this API is
-   commonly stale.
+6. **If you're touching the WebSocket path (P4/EI-49)**: read
+   "P4 (EI-49) — WebSocket live push, shipped" below, then
+   `scripts/sync-smoke/README.md`. The hibernation API has moved since most
+   models' cutoffs — re-verify against
+   `developers.cloudflare.com/durable-objects/best-practices/websockets/`
+   rather than trusting training data, and re-run all three smoke harnesses
+   after any change to `user-do.ts`, `routes.ts`, `ws-server.ts`, or
+   `ws-protocol.ts`. Two of the traps listed there are invisible to the unit
+   suite by construction.
 
 `.ai/todo.md` carries the previous agent's own review of the P3 semantics
 work — worth skimming for the reasoning behind choices this doc only states.
@@ -51,18 +54,22 @@ work — worth skimming for the reasoning behind choices this doc only states.
 | Outbox drain + `since=version` pull loop | EI-48 | ✅ done |
 | DO wipe on account deletion | — | ✅ done |
 | Settings sync | EI-60 | ✅ done |
-| **WebSocket push + hibernation** | EI-49 (P4) | ❌ **not started — see "P4 (EI-49) implementation plan" below** |
+| WebSocket live push + hibernation | EI-49 (P4) | ✅ done — see "P4 (EI-49) — WebSocket live push, shipped" |
+| Bound-param chunking + `wipe()` hardening | — (P4 phase 0) | ✅ done |
 
 **P3 (EI-46/EI-48) is done, including transport — see `.ai/todo.md`'s
 "Review — P3 transport" for the phase-by-phase breakdown, what a live smoke
 test against a real Durable Object confirmed, and what it couldn't reach
-locally.** `UserDurableObject.fetch()` remains a stub — RPC (`push`/`pull`)
-is the transport, and `fetch()` is deliberately left clean for P4's WebSocket
-upgrade, which can only arrive there.
+locally.** `UserDurableObject.fetch()` is no longer a stub — it is where P4's
+WebSocket upgrade arrives, and the only thing it does. `push`/`pull` remain
+RPC, because the worker already owns HTTP.
 
-The merge-semantics-before-transport split was deliberate and held: the
-transport built on top of `mergeRecord`/`applyIncomingPatch` without needing
-to touch either. **Still do not redesign them for P4.** If a transport
+The merge-semantics-before-transport split was deliberate and held twice
+over: P3's transport built on `mergeRecord`/`applyIncomingPatch` without
+touching either, and **P4 then swapped the transport again — to WebSockets —
+with those files, `wire.ts`'s types, and the `version` cursor all completely
+untouched.** That was the real test of the conflict model, and it passed.
+**Still do not redesign them.** If a transport
 decision seems to require changing merge semantics, that is a signal the
 transport is wrong, not the semantics.
 
@@ -100,11 +107,21 @@ src/lib/sync/
   hlc-core.ts        pure HLC math, no globals — importable by worker code
   hlc.ts             re-exports hlc-core + getNodeId() (localStorage)
   merge.ts           mergeRecord(local, pending, remote) -> {apply, conflicts}
+  wire.ts            push/pull wire types, DOM-free
+  ws-protocol.ts     P4 socket envelope + close codes, DOM-free
+  pending-requests.ts P4 request/response correlation + timeout policy
+  ws-transport.ts    P4 SyncConnection over a browser WebSocket
+  fallback-transport.ts  per-call routing: socket when open, HTTP otherwise
+  backoff.ts         P4 reconnect ladder, pure
 src/server/
   db/user-schema.ts  Drizzle schema for the DO's SQLite
   db/bootstrap.ts    hand-written DDL, run in the DO constructor
   sync/apply-patch.ts applyIncomingPatch(clocks, patch, hlc) -> {apply, clockUpdates, conflicts}
-  user-do.ts         DO class; schema bootstrapped, fetch() still a stub
+  sync/validate.ts   parsePushRequest/clampPullArgs — shared by HTTP AND ws
+  sync/ws-server.ts  USER_ID_HEADER + isAllowedWsOrigin (the CSWSH check)
+  sync/sql-limits.ts chunkForInClause — SQLite's 100-bound-param ceiling
+  user-do.ts         DO class; RPC push/pull + WebSocket upgrade + broadcast
+scripts/sync-smoke/  node harnesses: real DO, real socket, real hibernation
 ```
 
 `hlc-core.ts` is split from `hlc.ts` for a real reason: `tsc` typechecks an
@@ -285,218 +302,154 @@ not sufficient.
 
 ---
 
-## P4 (EI-49) implementation plan
+## P4 (EI-49) — WebSocket live push, shipped
 
-Not started. This section is a concrete, actionable plan, not just
-intent — written so a fresh agent with no memory of the P3 session can
-execute it without re-deriving the design. It assumes you've read the
-"Read first" list above, especially the P3 data-loss incident review in
-`.ai/todo.md` — this work sits directly on top of `engine.ts`, `wire.ts`,
-and `user-do.ts`, all of which that incident touched.
+Live push works: a write on one device reaches the others in about a second,
+over a hibernatable WebSocket to the per-user Durable Object, with HTTP
+polling kept as a live fallback.
 
-**The one rule that must hold at every step: this is a transport swap
-against unchanged P3 semantics.** Same HLC, same `mergeRecord`, same
-`applyIncomingPatch`, same `version` cursor, same `SyncTransport` interface
-if at all possible. If implementing this seems to require changing merge
-semantics, the merge semantics are not the problem — the transport design
-is. Keep the polling path working as a fallback for blocked WebSockets
-(corporate proxies, some VPNs); don't rip it out.
+It held to the rule it was given — **a transport swap against unchanged P3
+semantics**. Nothing in `merge.ts`, `apply-patch.ts`, `hlc-core.ts`,
+`wire.ts`'s types, or the `version` cursor changed. `SyncTransport` is still
+the same two methods. `runSyncCycle` is byte-identical. That was the test of
+whether P3 got the conflict model right, and it passed.
 
-### Current API, verified against live Cloudflare docs (2026-08)
+### What landed
 
-Do not trust training data here — the hibernation API has moved since most
-models' cutoffs. Confirmed via `developers.cloudflare.com/durable-objects/
-best-practices/websockets/` and the `durable-objects` skill this session:
-
-```ts
-// In the DO's fetch(), accepting a hibernatable socket (NOT ws.accept()):
-async fetch(request: Request): Promise<Response> {
-  if (request.headers.get("Upgrade") !== "websocket") { /* existing behavior */ }
-  const pair = new WebSocketPair();
-  this.ctx.acceptWebSocket(pair[1]); // hibernation-eligible — accept(), not this, would hold the DO in memory
-  return new Response(null, { status: 101, webSocket: pair[0] });
-}
-
-// Called when the DO wakes from hibernation to handle a message —
-// in-memory state (including `this.db`'s connection-scoped anything) is
-// reset; the constructor reruns before this fires.
-async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void>;
-async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean): Promise<void>;
-async webSocketError(ws: WebSocket, error: unknown): Promise<void>;
-
-// All currently-connected sockets for this DO, survives hibernation:
-this.ctx.getWebSockets(): WebSocket[];
-
-// Per-connection state that survives hibernation (in-memory fields do not).
-// Structured-cloneable, 16,384 byte cap. This is how the DO remembers
-// which authenticated user a given socket belongs to after waking up.
-ws.serializeAttachment(value: unknown): void;
-ws.deserializeAttachment(): unknown;
+```
+src/lib/sync/
+  ws-protocol.ts        envelope types + encode/decode, DOM-free, no zod
+  pending-requests.ts   request/response correlation, timeout policy
+  ws-transport.ts       SyncConnection: the socket, reconnect, isReady()
+  fallback-transport.ts per-call routing between socket and HTTP
+  backoff.ts            nextDelay/shouldPause/nextAttempt, pure
+src/server/sync/
+  ws-server.ts          USER_ID_HEADER, isAllowedWsOrigin (the CSWSH check)
+  validate.ts           parsePushRequest/clampPullArgs, shared by BOTH paths
+  sql-limits.ts         chunkForInClause + the 100-bound-param ceiling
+scripts/sync-smoke/     node harnesses driving a real DO over a real socket
 ```
 
-Ping/pong is handled by the runtime automatically and does **not** wake the
-DO or invoke `webSocketMessage` — no custom keepalive protocol needed.
-`wrangler.jsonc`'s `compatibility_date` (currently `2026-08-01`) already
-clears the `2026-04-07` threshold for auto-reply-to-close; no bump needed.
+Modified: `user-do.ts` (`fetch()` upgrade, the three hibernation handlers,
+broadcast in `push()`, `wipe()` hardening), `routes.ts` (`/api/sync/ws`),
+`engine.ts` (`notifyRemoteChange()`, adaptive interval),
+`sync-provider.tsx` (wiring).
 
-### Architecture: reuse `SyncTransport`, add one new capability
+### Decisions that differ from the pre-implementation plan
 
-`engine.ts`'s `runSyncCycle` depends only on the `SyncTransport` interface
-(`push(request)`, `pull(cursor, limit)`) — it has no idea whether that's
-backed by `fetch()` or a socket. That's the seam. Plan:
+The plan this section replaces was written before the work started. Five
+things changed once the code was real. All five are argued in the source; the
+short version:
 
-1. **`src/lib/sync/ws-transport.ts`** (new) — a second `SyncTransport`
-   implementation over a `WebSocket`, sending/receiving the *exact same*
-   `PushRequest`/`PushResponse`/pull equivalents from `wire.ts`, wrapped in a
-   small envelope so multiple message shapes can share one socket:
-   ```ts
-   type ClientMessage =
-     | { id: string; type: "push"; payload: PushRequest }
-     | { id: string; type: "pull"; payload: { cursor: number; limit: number } };
-   type ServerMessage =
-     | { id: string; type: "push-response"; payload: PushResponse }
-     | { id: string; type: "pull-response"; payload: PullResponse }
-     | { type: "changed" }; // unsolicited — no id, see below
-   ```
-   `id` correlates a response to its request (a `crypto.randomUUID()` per
-   call, resolved via a `Map<string, {resolve, reject}>` — `runSyncCycle`
-   never issues two concurrent push/pull calls itself, per `engine.ts`'s own
-   coalescing, but the client shouldn't assume that invariant this deep in
-   the stack). `push()`/`pull()` reject on socket close/error so the caller
-   (`runSyncCycle`) sees a normal thrown error and its existing fault
-   handling (this session's Phase 4 fix) applies unchanged.
-2. **The one genuinely new capability: server-initiated push.** After a
-   `push()` call causes a write, other devices connected right now should
-   pull immediately, not wait up to 30s. In `user-do.ts`'s `push()`, after
-   the `transactionSync` commits, iterate `ctx.getWebSockets()` and
-   `ws.send(JSON.stringify({type: "changed"}))` to every socket **except**
-   the one that just pushed (compare `ws.deserializeAttachment()`'s
-   connection id, or simply exclude by object identity if the push itself
-   arrived over this same socket — see the dual-path note below).
-   `ws-transport.ts` exposes this as an `onRemoteChange` callback;
-   `engine.ts`/`sync-provider.tsx` wires it to `runner.runSync()` directly
-   (a stronger trigger than the existing debounced `notifyLocalChange`,
-   since this one has no local write of its own to explain away).
+1. **`userId` reaches the DO as a request header** (`X-Faite-User-Id`), not a
+   signed URL token and not an `init(userId)` RPC. The `USER_DO` namespace is
+   reachable only from this Worker, so a header the Worker sets is exactly as
+   trustworthy as an RPC argument, and it costs no extra round trip.
+2. **`push`/`pull` were NOT extracted into shared internal functions.** They
+   are ordinary methods; RPC is merely an additional exposure, so
+   `webSocketMessage` calls `this.push(...)` directly. The thing that
+   genuinely needed sharing was `routes.ts`'s **validation** — that is
+   `validate.ts`, and without it the socket path would have handed `pull()`
+   an unclamped `LIMIT` across six kinds.
+3. **`onRemoteChange` goes through `trigger()`, not `runner.runSync()`.**
+   `runSync()` bypasses both the `isActive()` gate and the `faite:sync` Web
+   Lock, and both still apply to a remote change. Only the debounce should
+   not.
+4. **`changed` carries a `version`.** Sibling tabs share one IndexedDB, so
+   without it every push costs a redundant pull per open tab.
+5. **An `Origin` check on the upgrade.** The original plan had none. See
+   below — this is the important one.
 
-### Server-side plan
+### Traps found doing this work
 
-- **`worker.ts`** — add `/api/sync/ws` (or branch inside the existing
-  `/api/sync` prefix on the `Upgrade` header) *before* the pull/push routes.
-  Authenticate exactly like `routes.ts` already does
-  (`createAuth(env, request).api.getSession()`), 401 on failure — a
-  WebSocket upgrade request is still an ordinary HTTP request until the 101
-  response, so the existing session-cookie check works unchanged. On
-  success, forward via `stub.fetch(request)` — `DurableObjectStub` supports
-  `.fetch()` alongside RPC methods; this is how the upgrade actually reaches
-  the DO. **Do not try to authenticate inside the DO** — it has no route to
-  Better Auth's D1-backed session store, and shouldn't need one; the worker
-  is where auth already lives (ARCHITECTURE §2.12).
-- **`user-do.ts`** — `fetch()` stops being a stub:
-  - Branch on `Upgrade: websocket`. On accept, immediately
-    `ws.serializeAttachment({ userId })` — the userId comes from... it
-    doesn't, not directly. `stub.fetch(request)` doesn't carry the
-    worker's already-verified `userId` through to the DO's `fetch()`
-    automatically. Pass it explicitly: either a short-lived signed token in
-    the upgrade URL's query string (`/api/sync/ws?token=...`) that the DO
-    can't itself verify but doesn't need to (the DO trusts whatever
-    `idFromName(userId)` already scoped it to — the DO *is* already
-    user-scoped by construction, it just needs the value for `owner_id` on
-    inserts), or — simpler — since the DO is already addressed by
-    `idFromName(session.user.id)`, the DO can resolve its **own** identity
-    by storing `userId` once via a tiny `init(userId)` RPC call the worker
-    makes on first connect, alongside or instead of threading it through
-    the URL. Decide this early; it affects both `webSocketMessage`'s access
-    to `userId` and whether `push()`'s existing `userId` parameter can be
-    dropped in favor of a stored one. (`push`/`pull`'s RPC signatures
-    currently take `userId` as an explicit argument specifically because
-    the DO doesn't otherwise know it — same question applies here.)
-  - `webSocketMessage(ws, message)` — parse the envelope, dispatch to the
-    **existing** `push()`/`pull()` method bodies (refactor them so the RPC
-    methods and the WS handler both call the same internal function — do
-    not duplicate the push/pull logic between the RPC path and the
-    WebSocket path, that's exactly the kind of drift this session's
-    incident review warns about). Reply with the correlated `id`.
-  - After a successful `push()` with real writes, broadcast `{type:
-    "changed"}` to every other open socket (see above).
-  - `webSocketClose`/`webSocketError` — no state to clean up beyond
-    whatever bookkeeping the attachment held; sockets are removed from
-    `ctx.getWebSockets()` automatically.
+- **A WebSocket handshake bypasses CORS completely.** It is sent with
+  cookies, with no preflight, and `Access-Control-Allow-Origin` has no say in
+  whether it is established. So `/api/sync/ws` needs its own `Origin` check
+  (`isAllowedWsOrigin`), and that check is the only thing between evil.com
+  and a signed-in board — nothing else in the codebase does this job, because
+  until P4 every sync request went through `fetch`, which CORS does govern.
+  It accepts **same-origin OR `TRUSTED_ORIGINS`**: the same-origin clause is
+  not a convenience, it is what stops branch previews
+  (`*-faite.bfmw-dev.workers.dev`, deliberately absent from the allow-list)
+  from 403ing their socket while HTTP sync keeps working — a failure that
+  presents as "hibernation is broken".
+- **SQLite in a DO allows only 100 bound parameters per query**, and
+  `readFieldClocksBulk` built one `IN (?, …)` over the union of every kind's
+  page — up to 600 at `DEFAULT_PULL_LIMIT`, 1200 at `MAX_PULL_LIMIT`. It was
+  latent only because the account is small, and it would have fired first on
+  a `since=0` or long-offline catch-up: precisely what reconnect depends on.
+  Fixed in `sql-limits.ts`. **Rule: if the number of `?`s in a query depends
+  on an array's length, it must be chunked.**
+- **`wipe()` used to leave the object alive with no schema.** `deleteAll()`
+  drops the tables, but the constructor's `blockConcurrencyWhile` bootstrap
+  has already run and will not run again until a cold start. Latent before
+  P4 because the D1 user row was gone by then and nothing could authenticate
+  back in — a live socket is exactly what removes that protection. `wipe()`
+  now closes sockets, deletes, and re-bootstraps.
+- **A throw out of `webSocketMessage` is not a local failure.** It can leave
+  the stub broken for *every* socket attached to the object, so one tab's
+  malformed frame can disconnect a different device. `webSocketMessage` is
+  total by construction, and `decodeClient`/`decodeServer` return `null`
+  rather than throwing. `smoke.mjs` pins this with a second concurrent
+  socket, which is the assertion that actually matters.
+- **A timeout has to close the socket, not just fail the call.** A zombie
+  socket keeps `readyState === OPEN` long after a laptop sleeps or a phone
+  changes network. Treating a timeout as one failed call leaves every later
+  push and pull paying the full timeout inside `runSyncCycle`'s
+  `while (hasMore)` loop — a wedged engine, not a fallback.
+- **"Give up and stay on polling for the session" is too brittle.** A closed
+  lid, a subway ride, or a `wrangler deploy` (which disconnects every socket
+  on every DO) burns the whole retry ladder in seconds against a network
+  that isn't there. `shouldPause` stops the *timer loop*; `online` and
+  `visibilitychange` reset the ladder and re-arm.
+- **Idle DO eviction is a 70–140s window.** "Open two tabs and edit" proves
+  broadcast and proves nothing about hibernation. `hibernate.mjs` idles 170s
+  and then pushes, because `owner_id` on that insert can only come from
+  `deserializeAttachment()` after the constructor re-ran.
+- **`setInterval` cannot re-read its own delay.** The engine's interval is
+  now a self-rescheduling `setTimeout`, so connecting a socket actually
+  relaxes the cadence (30s → 120s) instead of waiting for the next
+  visibility change, and the jitter is recomputed per tick rather than once
+  per arming.
+- **curl writes httpOnly cookies with a `#HttpOnly_` prefix.** Filtering out
+  lines starting with `#` — the obvious way to skip comments in a cookie jar
+  — drops exactly the session cookie, and every request 401s in a way that
+  looks like an auth bug. Cost 15 minutes in the smoke harness.
 
-### Client-side plan
+### Known limits, deliberately accepted
 
-- **`src/lib/sync/ws-transport.ts`** (new) — connects to `/api/sync/ws`
-  (relative URL, same pattern as `transport.ts`'s `httpTransport` — cookies
-  ride along on the WebSocket handshake automatically for same-origin;
-  verify this holds for the cross-origin dev/Capacitor case, since the
-  native `WebSocket` constructor has no `credentials` option the way
-  `fetch()` does). Implements `SyncTransport`. Reconnects with backoff on
-  close/error; after N consecutive failures (a small, explicit constant —
-  don't let this creep past a few seconds total), stops retrying for this
-  session and lets the caller fall back to polling.
-- **`engine.ts`** — `createSyncEngine` picks `ws-transport` when connected,
-  `httpTransport` otherwise; `runSyncCycle` itself needs **zero changes**
-  if the interface boundary held. The visible-only jittered interval
-  (currently 30s) can relax to a much longer safety-net cadence once a
-  WebSocket is live — live push should catch everything, the interval
-  becomes a "just in case the socket lied about being open" backstop, not
-  the primary mechanism. Wire the new `onRemoteChange` callback to an
-  immediate `runner.runSync()`, not through the existing debounced
-  `notifyLocalChange` (that debounce exists to coalesce *local* writes
-  before pushing; a remote-change signal has no local write to wait for).
-- **`sync-provider.tsx`** — construct whichever transport(s) the engine
-  needs and pass them through; otherwise unchanged. The `isActive()` gate
-  (`getBoundOwnerId() === session.user.id`) applies identically — do not
-  let a WebSocket connect before that gate passes, for the same reason
-  polling doesn't: it would leak one account's writes into another's DO
-  during the account-switch confirmation window.
+- **A socket authenticates once, at the handshake.** The HTTP path
+  re-authenticates on every request. `MAX_SOCKET_AGE_MS` (1 hour) bounds the
+  window in which a socket outlives a sign-out elsewhere or a session
+  expiry; the DO is `idFromName(userId)`-scoped, so the worst case is the
+  same user's stale credential writing to their own board, never a
+  cross-account leak. Bounded rather than eliminated, on purpose — a
+  per-message session check would mean a D1 round trip per frame.
+- **`next dev` cannot use the socket**, exactly as `/api/sync/*` already
+  404s there. The fallback covers it. This is why give-up must be quiet.
+- **Capacitor (P7) will stay on HTTP.** The `WebSocket` constructor has no
+  `credentials` option, so cookies follow SameSite with no override, and
+  `capacitor://localhost` → `myfaite.app` is cross-site. Unverified but very
+  likely; the fallback makes it a non-event either way.
+- **One socket per tab**, no SharedWorker and no leader election.
+  SharedWorker is unavailable in iOS Safari and would be dead weight for
+  P7. Sockets are cheap (32,768 per DO, no duration billing while
+  hibernating), the `faite:sync` Web Lock already dedupes cycles, and the
+  `version` on `changed` removes the redundant-pull cost that made per-tab
+  sockets look expensive.
 
 ### Testing
 
-Same discipline as P3, and for the same reason: `@cloudflare/vitest-pool-
-workers` stays banned, so a real hibernating DO and a real browser
-`WebSocket` are both untestable in plain vitest. Split accordingly:
+Same split as P3, same reason. `@cloudflare/vitest-pool-workers` stays
+banned, so everything decidable was pushed into pure modules and unit-tested
+(the envelope, the correlation map and its timeout policy, the backoff
+ladder, the origin check, the validators, the chunker), and what remains —
+a real hibernating DO, a real socket — is covered by `scripts/sync-smoke/`.
+See that directory's README; re-run all three after touching `user-do.ts`,
+`routes.ts`, `ws-server.ts`, or `ws-protocol.ts`.
 
-- **Pure and unit-testable**: the envelope encode/decode, the
-  request-id correlation map, the reconnect/backoff state machine (as a
-  pure function of `(attempt, lastError) -> delay | "give up"`, not
-  entangled with a real socket), and — if `push()`/`pull()`'s bodies get
-  extracted into shared internal functions as recommended above — nothing
-  new to test there, since `push.ts`/`pull.ts`'s existing pure functions
-  already cover the logic regardless of which transport invoked them.
-- **Needs a live two-browser test, not a unit test**: the actual hibernation
-  round trip (does a message arriving after real hibernation correctly
-  rehydrate `userId` via `deserializeAttachment`?), the broadcast-on-write
-  reaching a second real tab within the same session, and reconnect
-  behavior against a real dropped connection (DevTools → Network →
-  offline/online, same pattern as the P3 smoke test). Do this on an
-  isolated `wrangler dev` port, `ps`-checked first, never touching a
-  developer's already-running instance — see `.ai/lessons.md` and the P3
-  smoke-test commits for the exact pattern to repeat.
-- Verification bar unchanged: `npm run typecheck` (both projects),
-  `npx vitest run`, `npm run build && npm run build:static`,
-  `npx wrangler deploy --dry-run` for any `src/server` change (this phase
-  touches `worker.ts` and `user-do.ts`, so every commit needs it).
-
-### Suggested phase/commit breakdown
-
-Mirrors the P3 pattern: small, independently-verified commits, in this
-order because each depends on the previous one existing:
-
-1. Wire envelope types (`wire.ts` additions) + the shared internal
-   push/pull functions `user-do.ts`'s RPC methods and the future WS handler
-   will both call — no behavior change yet, RPC still the only caller.
-2. `user-do.ts`'s `fetch()` upgrade + `webSocketMessage`/`webSocketClose`/
-   `webSocketError`, `worker.ts`'s `/api/sync/ws` route. No client changes
-   yet — verify with a manual WS client (`wscat`, or a scratch script) 
-   before writing any browser code.
-3. `ws-transport.ts` + `engine.ts` dual-transport wiring + reconnect/
-   backoff. This is the phase that needs the two-browser live test.
-4. Broadcast-on-write + the `onRemoteChange` immediate-trigger path. Live
-   two-browser test again — this is the actual point of P4, verify it
-   directly (edit on device A, watch it arrive on device B without
-   touching device B).
-5. Relax the polling interval now that live push is proven; docs update.
-
+**Still Rob's to confirm:** two real browsers on two machines. The harnesses
+prove the protocol; they cannot prove the board.
 ---
 
 ## Environment as of this handoff
