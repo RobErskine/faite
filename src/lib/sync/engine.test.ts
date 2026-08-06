@@ -109,6 +109,44 @@ describe("runSyncCycle", () => {
     expect(cursor).toBe(20);
   });
 
+  /**
+   * The recovery path for a server whose storage was wiped out from under
+   * this device (`PullResponse.reset`, see `user-do.ts`). Deliberately NOT a
+   * special case in the loop: the server hands back `cursor: 0, hasMore:
+   * true`, and the ordinary `hasMore` machinery re-reads from the beginning.
+   *
+   * This test exists because that generic handling is precisely what makes it
+   * easy to break later — someone tidying the loop has no local signal that
+   * a whole recovery mode rides on it. Before this behaviour existed, a
+   * stranded device pulled nothing, forever, silently.
+   */
+  it("re-pulls from 0 when the server reports its storage was reset", async () => {
+    let cursor = 87;
+    const store = fakeStore({
+      getCursor: () => cursor,
+      setCursor: (c) => {
+        cursor = c;
+      },
+    });
+    const since: number[] = [];
+    const transport: SyncTransport = {
+      push: async () => ({ acked: [], rejected: [], highestVersion: 0, conflicts: [] }),
+      pull: async (from) => {
+        since.push(from);
+        if (from >= 1) return { protocol: 1, changes: [], cursor: 0, hasMore: true, reset: true };
+        return { protocol: 1, changes: [], cursor: 3, hasMore: false };
+      },
+    };
+
+    const result = await runSyncCycle(transport, store);
+
+    // Asked from its stale watermark, was told to start over, then actually
+    // did — and terminated rather than looping on the reset signal.
+    expect(since).toEqual([87, 0]);
+    expect(cursor).toBe(3);
+    expect(result.status).toBe("ok");
+  });
+
   it("classifies a 401 as unauthenticated, not a generic error", async () => {
     const store = fakeStore({ getPendingOutbox: async () => [outboxEntry()] });
     const transport: SyncTransport = {

@@ -90,6 +90,16 @@ export async function runSyncCycle(transport: SyncTransport, store: SyncStore): 
   let hasMore = true;
   while (hasMore) {
     const page: PullResponse = await transport.pull(cursor, DEFAULT_PULL_LIMIT);
+    if (page.reset) {
+      // The server's storage was wiped since this device last synced. The
+      // generic loop below already recovers on its own — `cursor` comes back
+      // 0 with `hasMore` true — so there is deliberately no special-case
+      // handling here beyond saying so out loud. A reset that healed in
+      // silence would be indistinguishable from one that didn't.
+      console.warn(
+        `[faite] server storage was reset; re-pulling from 0 (was at cursor ${cursor})`,
+      );
+    }
     if (page.changes.length > 0) {
       const plan = await store.applyPulledChanges(page.changes);
       pulled += plan.writes.length;

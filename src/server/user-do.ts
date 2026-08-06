@@ -10,7 +10,6 @@ import {
   WS_CLOSE_ACCOUNT_DELETED,
   WS_CLOSE_REAUTH_REQUIRED,
 } from "@/lib/sync/ws-protocol";
-import { BOOTSTRAP_STATEMENTS } from "./db/bootstrap";
 import { runUserDbMigrations } from "./db/migrations";
 import * as schema from "./db/user-schema";
 import type { FieldClockMap } from "./sync/apply-patch";
@@ -35,6 +34,20 @@ interface SocketAttachment {
   userId: string;
   /** `Date.now()` at handshake. Drives `MAX_SOCKET_AGE_MS`. */
   connectedAt: number;
+}
+
+/**
+ * What `schemaInfo()` reports. Purely diagnostic — nothing in the sync path
+ * reads this, which is why it lives here rather than in `wire.ts` (that file
+ * is the push/pull contract and should stay that).
+ */
+export interface SchemaInfo {
+  /** The ledger, in order. The last id is the schema version this DO is on. */
+  migrations: Array<{ id: number; name: string; appliedAt: string }>;
+  /** Physical table name -> its actual columns and row count. */
+  tables: Record<string, { columns: string[]; rows: number }>;
+  /** `sync_meta`'s allocator. A client's cursor above this means a reset happened. */
+  nextVersion: number;
 }
 
 /**
@@ -241,12 +254,21 @@ export class UserDurableObject extends DurableObject {
    *    WebSocket is precisely the thing that removes that protection.
    * 2. `deleteAll()` — on a SQLite-backed DO this drops SQL tables *and*
    *    key-value data.
-   * 3. **Re-run the bootstrap.** The constructor's `blockConcurrencyWhile`
-   *    already ran for this instance and will not run again until a cold
-   *    start, so without this the object is left alive with no schema at
-   *    all. Leaving it empty-and-valid instead of broken means a
-   *    re-registration on the same user id gets a clean board rather than a
-   *    DO that throws on first contact.
+   * 3. **Re-run the MIGRATION LEDGER — not `BOOTSTRAP_STATEMENTS`.** The
+   *    constructor's `blockConcurrencyWhile` already ran for this instance
+   *    and will not run again until a cold start, so without this the object
+   *    is left alive with no schema at all.
+   *
+   *    It has to be the full ledger, and this is not a stylistic preference.
+   *    `deleteAll()` drops `schema_migrations` along with everything else, so
+   *    replaying only the v1 bootstrap leaves the object on the v1 schema
+   *    with no ledger — while `COLUMNS_BY_KIND` (derived from
+   *    `user-schema.ts`) still names every column added since. The next push
+   *    then throws `no such column` inside `push()`'s `transactionSync`, and
+   *    keeps throwing until a cold start happens to heal it. That was latent
+   *    while `wipe()` ran only on account deletion — nothing could
+   *    authenticate back in afterwards — and stops being latent the moment a
+   *    live account can reset itself (`/api/sync/reset`).
    */
   async wipe(): Promise<void> {
     for (const ws of this.ctx.getWebSockets()) {
@@ -258,9 +280,71 @@ export class UserDurableObject extends DurableObject {
       }
     }
     await this.ctx.storage.deleteAll();
-    for (const statement of BOOTSTRAP_STATEMENTS) {
-      this.ctx.storage.sql.exec(statement);
+    runUserDbMigrations(this.ctx.storage.sql, (fn) => this.ctx.storage.transactionSync(fn));
+  }
+
+  /**
+   * Read-only introspection of this object's own storage, for
+   * `GET /api/sync/schema` (see `routes.ts`) and `npm run schema:info`.
+   *
+   * A Durable Object's SQLite has **no external query endpoint** — unlike D1,
+   * which is reachable through the Cloudflare API. So after deploying a
+   * migration there is otherwise no way to confirm it actually applied to a
+   * real account short of shipping a change and watching `wrangler tail`.
+   * That is the entire reason this exists.
+   *
+   * Columns come from `SELECT * … LIMIT 0` and the cursor's `columnNames`
+   * rather than `PRAGMA table_info`, deliberately: `migrations.ts` already
+   * avoids depending on which PRAGMAs Cloudflare's SQLite happens to permit,
+   * and this does not need to be the place that finds out.
+   */
+  async schemaInfo(): Promise<SchemaInfo> {
+    const migrations = this.ctx.storage.sql
+      .exec<{ id: number; name: string; applied_at: string }>(
+        "SELECT id, name, applied_at FROM schema_migrations ORDER BY id",
+      )
+      .toArray()
+      .map((row) => ({ id: Number(row.id), name: row.name, appliedAt: row.applied_at }));
+
+    // Read the table list from `sqlite_master` rather than from
+    // `TABLE_NAME_BY_KIND`, so this reports what the storage ACTUALLY holds.
+    // Deriving it from our own constants would make the output agree with the
+    // code by construction and hide the exact discrepancy the caller is
+    // looking for — a table a migration was supposed to create and didn't.
+    //
+    // `sqlite_%` is SQLite's own bookkeeping, `_cf_%` is Cloudflare's, and
+    // `__miniflare_%` is local-dev-only (it shows up under `wrangler dev` and
+    // not in production — confirmed live, so filtering it here is what makes
+    // local and production output comparable at a glance).
+    const tableNames = this.ctx.storage.sql
+      .exec<{ name: string }>(
+        `SELECT name FROM sqlite_master
+         WHERE type = 'table'
+           AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\'
+           AND name NOT LIKE '\\_cf\\_%' ESCAPE '\\'
+           AND name NOT LIKE '\\_\\_miniflare\\_%' ESCAPE '\\'
+         ORDER BY name`,
+      )
+      .toArray()
+      .map((row) => row.name);
+
+    const tables: SchemaInfo["tables"] = {};
+    for (const tableName of tableNames) {
+      const cursor = this.ctx.storage.sql.exec(`SELECT * FROM "${tableName}" LIMIT 0`);
+      // `columnNames` is only populated once the cursor has been consumed;
+      // on a LIMIT 0 that is free.
+      cursor.toArray();
+      const count = this.ctx.storage.sql
+        .exec<{ n: number }>(`SELECT COUNT(*) AS n FROM "${tableName}"`)
+        .one();
+      tables[tableName] = { columns: [...cursor.columnNames].sort(), rows: Number(count.n) };
     }
+
+    const meta = this.ctx.storage.sql
+      .exec<{ next_version: number }>("SELECT next_version FROM sync_meta WHERE id = 1")
+      .one();
+
+    return { migrations, tables, nextVersion: Number(meta.next_version) };
   }
 
   /**
@@ -355,6 +439,27 @@ export class UserDurableObject extends DurableObject {
 
   /** `since=version` pull across every sync kind — see `pull.ts`'s `mergePages`. */
   async pull(cursor: number, limit: number): Promise<PullResponse> {
+    // Every row's `version` is allocated from `sync_meta` and is therefore
+    // strictly below `next_version`, so a legitimate cursor can never reach
+    // it. `cursor >= next_version` is provably only possible when this
+    // object's storage was wiped out from under a client that had already
+    // synced — `wipe()` resets the counter to 1 while the client keeps its
+    // old watermark.
+    //
+    // Left undetected, that client asks for "everything above 42" forever,
+    // gets nothing, and concludes it is up to date. Silently. On every device
+    // at once. Telling it to start over is a three-line fix for the worst
+    // failure mode in this codebase; see `PullResponse.reset`.
+    const nextVersion = this.ctx.storage.sql
+      .exec<{ next_version: number }>("SELECT next_version FROM sync_meta WHERE id = 1")
+      .one().next_version;
+    if (cursor >= nextVersion) {
+      console.warn(
+        `[faite] pull cursor ${cursor} is above next_version ${nextVersion} — storage was reset; telling the client to re-pull from 0`,
+      );
+      return { protocol: SYNC_PROTOCOL_VERSION, changes: [], cursor: 0, hasMore: true, reset: true };
+    }
+
     const pages: KindPage[] = SYNC_KINDS.map((kind) => {
       const tableName = TABLE_NAME_BY_KIND[kind];
       const sqlRows = this.ctx.storage.sql
