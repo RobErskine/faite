@@ -188,6 +188,21 @@ export interface SyncEngine extends SyncRunner {
   /** Debounced trigger for a local write — see `sync-provider.tsx`'s
    * `useLiveQuery(() => outbox.count())`. */
   notifyLocalChange(): void;
+  /**
+   * Undebounced trigger for a REMOTE change (P4): a `changed` frame from the
+   * Durable Object, or a socket (re)connecting after a gap.
+   *
+   * Deliberately routed through `trigger()` rather than calling
+   * `runner.runSync()` directly, which is what `docs/SYNC.md`'s original P4
+   * sketch suggested. `runSync()` bypasses BOTH `isActive()` — the gate that
+   * stops one account's board being pushed into another's Durable Object
+   * during the account-switch window — and the `faite:sync` Web Lock, which
+   * is what stops N tabs all pulling the same broadcast at once. Both still
+   * apply to a remote change; only the 2s debounce should not, since that
+   * exists to coalesce *local* writes and a remote signal has no local write
+   * to wait for.
+   */
+  notifyRemoteChange(): void;
 }
 
 export function createSyncEngine(
@@ -272,5 +287,5 @@ export function createSyncEngine(
     }, debounceMs);
   }
 
-  return { runSync: runner.runSync, start, stop, notifyLocalChange };
+  return { runSync: runner.runSync, start, stop, notifyLocalChange, notifyRemoteChange: trigger };
 }
