@@ -690,51 +690,12 @@ export async function ensureDefaultTab(): Promise<number> {
   return orphaned.length;
 }
 
-/**
- * Repair duplicate lists left behind by the seeding race described above.
- *
- * Groups surviving lists by name, keeps the oldest, moves any todos off the
- * duplicates, and hard-deletes them. Hard deletion is correct here precisely
- * because this only runs pre-sync: the duplicates never left this device, so
- * there is no peer that needs a tombstone.
- *
- * Safe to remove once no local database predates the fix.
- */
-export async function repairDuplicateLists(): Promise<number> {
-  const db = getDb();
-  let removed = 0;
-
-  await db.transaction("rw", db.lists, db.todos, async () => {
-    const lists = (await db.lists.toArray()).filter((l) => !l.deletedAt);
-
-    const byName = new Map<string, List[]>();
-    for (const list of lists) {
-      const group = byName.get(list.name) ?? [];
-      group.push(list);
-      byName.set(list.name, group);
-    }
-
-    for (const group of byName.values()) {
-      if (group.length < 2) continue;
-
-      // Prefer the deterministic seed row, then the oldest, as the survivor.
-      group.sort((a, b) => {
-        const aSeed = a.id.startsWith("seed:") ? 0 : 1;
-        const bSeed = b.id.startsWith("seed:") ? 0 : 1;
-        return aSeed - bSeed || a.createdAt.localeCompare(b.createdAt);
-      });
-
-      const [keeper, ...duplicates] = group;
-      for (const duplicate of duplicates) {
-        const orphans = await db.todos.where("listId").equals(duplicate.id).toArray();
-        for (const todo of orphans) {
-          await db.todos.update(todo.id, { listId: keeper.id });
-        }
-        await db.lists.delete(duplicate.id);
-        removed++;
-      }
-    }
-  });
-
-  return removed;
-}
+// `repairDuplicateLists` was removed here (see the commit that deleted it).
+// It hard-deleted any two live lists sharing a name — an ordinary, legal
+// state (e.g. "Groceries" on a Personal tab and "Groceries" on a Work tab) —
+// with no tombstone and no outbox entry, so the deletion never reached other
+// devices and the *next* pull could resurrect the "duplicate" only for the
+// next boot to delete it again. The race it existed to guard against
+// (StrictMode's double-invoked effect racing two `seedIfEmpty()` calls past
+// the emptiness check) is already prevented by that check running INSIDE
+// the transaction, combined with `seedIfEmpty`'s deterministic ids.

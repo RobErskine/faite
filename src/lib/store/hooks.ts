@@ -6,12 +6,7 @@ import type { Label, List, Project, Settings, Tab, Todo } from "@/lib/schema";
 import { byPosition } from "@/lib/ordering";
 import { contextFromSettings, type PlacementContext } from "@/lib/scheduling";
 import { canUseDb, getDb } from "./db";
-import {
-  ensureDefaultTab,
-  LOCAL_OWNER_ID,
-  repairDuplicateLists,
-  seedIfEmpty,
-} from "./repositories";
+import { ensureDefaultTab, LOCAL_OWNER_ID, seedIfEmpty } from "./repositories";
 
 /**
  * Reactive reads.
@@ -26,8 +21,12 @@ import {
  * Seeds default lists on first run, repairs the store, and reports readiness.
  *
  * `ensureDefaultTab` runs last and on every boot, not just the first: it is
- * what puts pre-tabs databases onto a tab. Ordering matters — it has to see the
- * lists seeding created and the survivors the duplicate repair chose.
+ * what puts pre-tabs databases onto a tab.
+ *
+ * No longer calls `repairDuplicateLists` — that function hard-deleted any
+ * two live lists sharing a name (an ordinary, legal state: "Groceries" on a
+ * Personal tab and "Groceries" on a Work tab), with no tombstone and no
+ * outbox entry. See `repositories.ts`'s removal commit for the incident.
  */
 export function useBootstrap(): boolean {
   const [ready, setReady] = useState(false);
@@ -35,13 +34,7 @@ export function useBootstrap(): boolean {
   useEffect(() => {
     if (!canUseDb()) return;
     seedIfEmpty()
-      .then(repairDuplicateLists)
-      .then((removed) => {
-        if (removed > 0) {
-          console.info(`[faite] removed ${removed} duplicate list(s)`);
-        }
-        return ensureDefaultTab();
-      })
+      .then(ensureDefaultTab)
       .then((assigned) => {
         if (assigned > 0) {
           console.info(`[faite] moved ${assigned} list(s) onto the default tab`);

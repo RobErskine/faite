@@ -14,7 +14,6 @@ import {
   deleteList,
   deleteTab,
   ensureDefaultTab,
-  repairDuplicateLists,
   seedIfEmpty,
   unarchiveList,
   unarchiveTab,
@@ -167,42 +166,27 @@ describe("archiveList", () => {
   });
 });
 
-describe("repairDuplicateLists", () => {
-  it("removes duplicates and rehomes their todos", async () => {
-    await seedIfEmpty();
-    const db = getDb();
+describe("no more duplicate-list repair", () => {
+  it(
+    "REGRESSION: two lists sharing a name (an ordinary, legal state — e.g. the same name on " +
+      "two different tabs) both survive a bootstrap, with their own todos intact — " +
+      "repairDuplicateLists used to hard-delete one of these with no tombstone",
+    async () => {
+      await seedIfEmpty();
+      const db = getDb();
 
-    // Simulate the pre-fix state: a second "Grocery List" with a random id.
-    const duplicateId = await createList("Grocery List");
-    const todoId = await createTodo({ title: "Milk", listId: duplicateId });
+      const secondId = await createList("Grocery List");
+      const todoId = await createTodo({ title: "Milk", listId: secondId });
 
-    expect(await db.lists.count()).toBe(6);
+      expect(await db.lists.count()).toBe(6);
 
-    const removed = await repairDuplicateLists();
-    expect(removed).toBe(1);
-    expect(await db.lists.count()).toBe(5);
+      await ensureDefaultTab();
 
-    // The todo survives, reassigned to the surviving list.
-    const todo = await db.todos.get(todoId);
-    const survivor = (await db.lists.toArray()).find(
-      (l) => l.name === "Grocery List",
-    )!;
-    expect(todo?.listId).toBe(survivor.id);
-    expect(survivor.id.startsWith("seed:")).toBe(true);
-  });
-
-  it("is a no-op when there are no duplicates", async () => {
-    await seedIfEmpty();
-    expect(await repairDuplicateLists()).toBe(0);
-    expect(await getDb().lists.count()).toBe(5);
-  });
-
-  it("leaves distinctly named lists alone", async () => {
-    await seedIfEmpty();
-    await createList("Weekend");
-    expect(await repairDuplicateLists()).toBe(0);
-    expect(await getDb().lists.count()).toBe(6);
-  });
+      expect(await db.lists.count()).toBe(6);
+      expect((await db.lists.get(secondId))?.deletedAt).toBeFalsy();
+      expect((await db.todos.get(todoId))?.listId).toBe(secondId);
+    },
+  );
 });
 
 describe("seeding tabs", () => {
