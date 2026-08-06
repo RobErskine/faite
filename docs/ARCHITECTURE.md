@@ -241,6 +241,45 @@ on an existing table. The column then appears in `COLUMNS_BY_KIND`, passes
 for that account while pulls keep working**. `src/server/db/migrations.ts` is
 the ledgered `ALTER` path that fixes this, and it is not optional.
 
+**`src/server/db/schema-parity.test.ts` now enforces all of this
+mechanically** — it replays the migration ledger and asserts the result equals
+what `user-schema.ts` declares, so a missing migration is a red test rather
+than a permanently broken account. `npm run schema:check` is the fast loop, and
+`docs/SCHEMA-OPS.md` is the procedure for both outcomes.
+
+### 2.8e References between entities are advisory
+
+`listId`, `projectId`, `tabId`, `archivedWithTabId`, `labelIds[]`, `parentId`,
+`recurrenceParentId` — none of these are enforced by a foreign key, in SQLite
+or in Dexie, and none ever will be.
+
+**A dangling id is a legal, expected state, not corruption.** Two devices, one
+deletes a list while the other assigns a to-do to it: field-level LWW (§2.6)
+resolves each field independently and has no notion of a cross-row invariant,
+so it cannot prevent that pairing and was never meant to. Adding FKs would
+turn an ordinary offline edit into a write that fails on sync.
+
+So the rule is at the read end, not the write end:
+
+1. **Resolve through one helper**, which returns `undefined` for an id that is
+   missing, soft-deleted, or archived.
+2. **Render a neutral fallback.** Never crash, never invent a name.
+3. **Never a boot-time pass that deletes rows** to "clean up" dangling
+   references. That is precisely the shape of `repairDuplicateLists` (§2.8),
+   which cost real data.
+
+Two classes of reference, and the difference is a design decision to make
+deliberately when adding one:
+
+|  | cleared when the target dies | example |
+| --- | --- | --- |
+| **live** | yes — `deleteList` rehomes to Backlog, `deleteProject` nulls it | `listId`, `projectId` |
+| **provenance** | no — it deliberately outlives the target | `archivedWithTabId` |
+
+A provenance reference is *supposed* to point at something gone; that is its
+job. Getting the class wrong is not a bug you find later — it is a data model
+that quietly means the wrong thing.
+
 ### 2.9 Per-user Durable Object as the sync backend (P3)
 
 Chosen over a shared D1 because it gives, for free: a monotonic per-user
@@ -433,6 +472,64 @@ been built) is trivially bypassed from devtools — acceptable only because
 there is nothing behind it yet: all data lives in the visitor's own IndexedDB.
 Real enforcement arrives at P3, when the per-user Durable Object holds the data
 and authenticates every sync request server-side.
+
+### 2.14 Derive unless the fact is historical
+
+§2.2 already says overflow is derived and never stored. That was always the
+general rule; it had only ever been written down for one case.
+
+Before adding a field, three questions:
+
+1. **Does it change when its inputs change?** Then derive it. A stored copy is
+   a cache with no invalidation, and under §2.6 it is a cache that two devices
+   can disagree about.
+2. **Must it survive its source being deleted, moved, or renamed?** Then
+   persist it — and make it a *provenance* reference (§2.8e).
+3. **Is it a decision or a consequence?** Decisions persist. Consequences
+   derive.
+
+Worked examples, both real, both of which looked like new columns and turned
+out to be new selectors:
+
+- *"Which tab is this to-do under?"* — `listId → list.tabId → tab`. Derived,
+  so moving a list between tabs updates every to-do in it for free (EI-62).
+- *"Which list did this come from?"* — already answered by `listId`, which
+  `scheduleTodo` deliberately preserves while `moveTodoToList` re-files. A
+  second immutable column would freeze a fact the user expects to be able to
+  change (EI-61).
+
+Two cases derive to *nothing*, and that is a real answer rather than a gap: a
+Backlog to-do has no tab (`List.tabId === null` means "pinned into every tab",
+§2.8b) and an unfiled to-do has no list. Both render blank. Do not invent a
+placeholder for a fact that legitimately does not exist.
+
+The payoff: the cheapest schema change is the one you don't make.
+
+### 2.15 The data model is resettable, for now
+
+Faite has one user, so a schema change that would be awkward to migrate can
+instead be resolved by throwing the data away — `npm run schema:reset`.
+
+This is a deliberate, bounded position, not a lack of rigour. It buys freedom
+to keep changing the model while the right shape is still being found, and it
+expires on a single event: **a second real account.** You cannot reset data
+that isn't yours.
+
+Two things make it safe rather than reckless:
+
+1. **`schema-parity.test.ts`** makes "I forgot a file" a red test instead of a
+   permanently broken account (§2.8c).
+2. **`pull()` detects a stranded cursor.** Wiping a Durable Object resets its
+   version counter, and a device holding a higher watermark would otherwise
+   believe it was caught up forever — silently, on every device at once. Since
+   every row's `version` is allocated below `sync_meta.next_version`, a cursor
+   at or above it is provably only reachable after a wipe, so the server
+   returns `reset: true` and the ordinary pull loop re-reads from 0.
+
+Everything locked mode needs — a client backfill ledger, the three-deploy
+retirement ladder, bundle telemetry — is specified and deliberately unbuilt.
+See "Not built yet, and why" in `docs/SCHEMA-CHANGES.md`, and
+`docs/SCHEMA-OPS.md` for the procedure in both modes.
 
 ---
 
