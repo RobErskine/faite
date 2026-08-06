@@ -10,12 +10,62 @@ import type { EntityKind } from "@/lib/schema";
  * anywhere in this module would poison every `src/server` importer.
  */
 
-/** `settings` is excluded from P3 sync — see docs/SYNC.md's "Known traps". */
-export type SyncKind = Exclude<EntityKind, "settings">;
+/**
+ * Every kind that syncs, `settings` included (EI-60). `settings` is a
+ * singleton with no `id` column — its Drizzle/Dexie primary key is
+ * `ownerId` itself, and the client's Dexie row is *permanently* pinned to
+ * `LOCAL_OWNER_ID` (never adopted into a real account, see
+ * ARCHITECTURE §2.12) — so it needs two things the other five kinds don't:
+ * `SETTINGS_ENTITY_ID` as a wire-level stand-in for "the one settings row",
+ * and `SETTINGS_SYNCED_FIELDS` to keep device-local fields (`activeTabId`)
+ * off the wire entirely.
+ */
+export type SyncKind = EntityKind;
 
 // `as const` (not just `readonly SyncKind[]`) so consumers that need a
 // literal tuple — `z.enum(SYNC_KINDS)` in `routes.ts` — get one without a cast.
-export const SYNC_KINDS = ["todo", "list", "label", "project", "tab"] as const satisfies readonly SyncKind[];
+export const SYNC_KINDS = [
+  "todo",
+  "list",
+  "label",
+  "project",
+  "tab",
+  "settings",
+] as const satisfies readonly SyncKind[];
+
+/**
+ * Fixed stand-in `entityId` for all settings wire traffic. Settings has no
+ * natural per-row id (there's exactly one row per Durable Object), so the
+ * server overrides whatever `entityId` a push entry carries to this
+ * constant, and emits it on pull — see `src/server/sync/push.ts` and
+ * `src/server/user-do.ts`'s `pull()`. Neither side needs to know or agree
+ * on the *client's* internal `LOCAL_OWNER_ID` value; this is purely a wire
+ * sentinel, resolved to each side's own local identity independently
+ * (`LOCAL_OWNER_ID` in Dexie, the authenticated session user in the DO).
+ */
+export const SETTINGS_ENTITY_ID = "settings";
+
+/**
+ * The only settings fields that sync. `activeTabId` is deliberately
+ * excluded, permanently: it's device view-state (which tab this browser
+ * has open), not account state, and it's the highest-frequency writer
+ * (`board.tsx` writes it on every tab switch) — keeping it off the wire is
+ * what keeps a tab switch from ever touching the outbox at all.
+ */
+export const SETTINGS_SYNCED_FIELDS: ReadonlySet<string> = new Set([
+  "timezone",
+  "workdaysOnly",
+  "workdays",
+  "overflowAfterDays",
+  "visibleDays",
+  "fontPairing",
+  "theme",
+  "displayName",
+  "avatarKind",
+  "avatarInitials",
+  "avatarEmoji",
+  "avatarImage",
+]);
 
 export const SYNC_PROTOCOL_VERSION = 1 as const;
 
@@ -123,6 +173,13 @@ export interface PullResponse {
  * `src/server/sync/upsert.ts`) are grouped under `FLOOR_HLC` rather than
  * omitted — omitting would make a remote create arrive at a device without
  * the row, missing fields, and unhydratable.
+ *
+ * For `settings`, also enforces `SETTINGS_SYNCED_FIELDS` on the way OUT, not
+ * just `sanitizePatch`'s enforcement on the way in. Without this,
+ * `activeTabId` — a real column that's simply never written server-side —
+ * would ride along in every pull as `null` (via `FLOOR_HLC`, since it has no
+ * clock), and once a device's local pending edit for it clears, `null`
+ * would win the merge outright and silently reset which tab is showing.
  */
 export function changesFromRow(
   kind: SyncKind,
@@ -134,6 +191,7 @@ export function changesFromRow(
 
   for (const field of Object.keys(row)) {
     if (SERVER_ONLY_FIELDS.has(field)) continue;
+    if (kind === "settings" && !SETTINGS_SYNCED_FIELDS.has(field)) continue;
     const hlc = clocks[field] ?? FLOOR_HLC;
     const group = groups.get(hlc);
     if (group) {

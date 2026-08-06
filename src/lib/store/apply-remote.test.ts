@@ -1,11 +1,12 @@
 import "fake-indexeddb/auto";
 import { beforeEach, describe, expect, it } from "vitest";
 import { encodeHlc } from "@/lib/sync/hlc-core";
-import { todoSchema } from "@/lib/schema";
-import type { WireChange } from "@/lib/sync/wire";
+import { settingsSchema, todoSchema } from "@/lib/schema";
+import { SETTINGS_ENTITY_ID, type WireChange } from "@/lib/sync/wire";
 import { applyPulledChanges } from "./apply-remote";
 import { getDb, resetDbForTests } from "./db";
 import { create, now } from "./mutate";
+import { LOCAL_OWNER_ID } from "./owner";
 
 beforeEach(async () => {
   await resetDbForTests();
@@ -88,5 +89,36 @@ describe("applyPulledChanges", () => {
     const row = await getDb().todos.get(id);
     expect(row?.title).toBe("Original");
     expect(plan.conflicts).toEqual([{ entityId: id, fields: ["title"] }]);
+  });
+
+  it("settings: a remote create lands at LOCAL_OWNER_ID, not the wire's entityId", async () => {
+    const changes: WireChange[] = [
+      { kind: "settings", entityId: SETTINGS_ENTITY_ID, patch: { theme: "dark" }, hlc: hlc(1000) },
+    ];
+
+    await applyPulledChanges(changes);
+
+    const row = await getDb().settings.get(LOCAL_OWNER_ID);
+    expect(row?.theme).toBe("dark");
+    // Never written under the literal wire sentinel string.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(await (getDb().settings as any).get(SETTINGS_ENTITY_ID)).toBeUndefined();
+  });
+
+  it("settings: an update targets the existing LOCAL_OWNER_ID row, and leaves the outbox untouched", async () => {
+    await getDb().settings.add(
+      settingsSchema.parse({ ownerId: LOCAL_OWNER_ID, fontPairing: "hyperlegible", updatedAt: now() }),
+    );
+    const outboxBefore = await getDb().outbox.count();
+
+    const changes: WireChange[] = [
+      { kind: "settings", entityId: SETTINGS_ENTITY_ID, patch: { theme: "dark" }, hlc: hlc(1000) },
+    ];
+    await applyPulledChanges(changes);
+
+    const row = await getDb().settings.get(LOCAL_OWNER_ID);
+    expect(row?.theme).toBe("dark");
+    expect(row?.fontPairing).toBe("hyperlegible"); // untouched field survives
+    expect(await getDb().outbox.count()).toBe(outboxBefore);
   });
 });

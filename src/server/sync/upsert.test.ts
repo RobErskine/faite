@@ -48,4 +48,24 @@ describe("buildInsertColumns", () => {
     expect(row.status).toBeUndefined();
     expect(row.labelIds).toBeUndefined();
   });
+
+  it("settings: synthesizes fontPairing/theme/avatarKind and drops id/createdAt entirely", () => {
+    const row = buildInsertColumns("settings", "settings", "user-1", {}, NOW, 1);
+
+    expect(row.fontPairing).toBe("hyperlegible");
+    expect(row.theme).toBe("system");
+    expect(row.avatarKind).toBe("initials");
+    expect(row.ownerId).toBe("user-1");
+    expect(row.updatedAt).toBe(NOW);
+    expect(row.version).toBe(1);
+    // settings has neither column — must not appear at all, or the SQL
+    // builder in user-do.ts would crash looking up their column metadata.
+    expect(row).not.toHaveProperty("id");
+    expect(row).not.toHaveProperty("createdAt");
+  });
+
+  it("settings: leaves a fully-supplied patch's fields untouched", () => {
+    const row = buildInsertColumns("settings", "settings", "user-1", { fontPairing: "precision" }, NOW, 1);
+    expect(row.fontPairing).toBe("precision");
+  });
 });

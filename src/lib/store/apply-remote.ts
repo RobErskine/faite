@@ -3,7 +3,7 @@ import { type ApplyPlan, planApply } from "@/lib/sync/apply-plan";
 import type { WireChange } from "@/lib/sync/wire";
 import { getDb } from "./db";
 import { now } from "./mutate";
-import { getCurrentOwnerId } from "./owner";
+import { getCurrentOwnerId, LOCAL_OWNER_ID } from "./owner";
 
 /**
  * Writes a pulled page locally WITHOUT touching the outbox — the whole point
@@ -15,15 +15,26 @@ import { getCurrentOwnerId } from "./owner";
  * than once per row, and so a crash can't leave the page half-applied.
  */
 
-type RecordTable = "todos" | "lists" | "labels" | "projects" | "tabs";
+type RecordTable = "todos" | "lists" | "labels" | "projects" | "tabs" | "settings";
 
-const TABLE_BY_KIND: Record<Exclude<EntityKind, "settings">, RecordTable> = {
+const TABLE_BY_KIND: Record<EntityKind, RecordTable> = {
   todo: "todos",
   list: "lists",
   label: "labels",
   project: "projects",
   tab: "tabs",
+  settings: "settings",
 };
+
+/**
+ * Settings' Dexie primary key is permanently `LOCAL_OWNER_ID` (never
+ * adopted into a real account, ARCHITECTURE §2.12) — the wire's `entityId`
+ * for settings is just a shared sentinel (`SETTINGS_ENTITY_ID`, see
+ * `wire.ts`), never a real Dexie key.
+ */
+function dexieKeyFor(kind: EntityKind, entityId: string): string {
+  return kind === "settings" ? LOCAL_OWNER_ID : entityId;
+}
 
 export async function applyPulledChanges(changes: WireChange[]): Promise<ApplyPlan> {
   const db = getDb();
@@ -31,7 +42,7 @@ export async function applyPulledChanges(changes: WireChange[]): Promise<ApplyPl
 
   return db.transaction(
     "rw",
-    [db.todos, db.lists, db.labels, db.projects, db.tabs, db.outbox],
+    [db.todos, db.lists, db.labels, db.projects, db.tabs, db.settings, db.outbox],
     async () => {
       // Read-only: this is the local field clock every pulled change merges
       // against, but nothing here is ever added to, updated, or deleted.
@@ -41,8 +52,9 @@ export async function applyPulledChanges(changes: WireChange[]): Promise<ApplyPl
       for (const change of changes) {
         if (locals.has(change.entityId)) continue;
         const table = TABLE_BY_KIND[change.kind];
+        const key = dexieKeyFor(change.kind, change.entityId);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const row = await (db[table] as any).get(change.entityId);
+        const row = await (db[table] as any).get(key);
         locals.set(change.entityId, row);
       }
 
@@ -50,12 +62,13 @@ export async function applyPulledChanges(changes: WireChange[]): Promise<ApplyPl
 
       for (const write of plan.writes) {
         const table = TABLE_BY_KIND[write.kind];
+        const key = dexieKeyFor(write.kind, write.entityId);
         if (write.op === "put") {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           await (db[table] as any).put(write.row);
         } else {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await (db[table] as any).update(write.entityId, write.changes);
+          await (db[table] as any).update(key, write.changes);
         }
       }
 

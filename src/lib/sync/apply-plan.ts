@@ -1,4 +1,5 @@
 import type { OutboxEntry } from "@/lib/schema";
+import { LOCAL_OWNER_ID } from "@/lib/store/owner";
 import { hydrateRemoteRow } from "./hydrate";
 import { mergeRecord } from "./merge";
 import type { SyncKind, WireChange } from "./wire";
@@ -79,7 +80,11 @@ export function planApply(
     if (Object.keys(apply).length === 0) continue;
 
     if (local === undefined) {
-      const hydrated = hydrateRemoteRow(kind, entityId, apply, ctx);
+      // Settings is permanently pinned to LOCAL_OWNER_ID (never adopted
+      // into a real account, ARCHITECTURE §2.12) — the signed-in user's id
+      // in `ctx.ownerId` would be wrong here.
+      const hydrateCtx = kind === "settings" ? { ownerId: LOCAL_OWNER_ID, now: ctx.now } : ctx;
+      const hydrated = hydrateRemoteRow(kind, entityId, apply, hydrateCtx);
       if (!hydrated.ok) {
         skipped.push({ entityId, reason: hydrated.reason });
         continue;

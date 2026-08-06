@@ -1,7 +1,7 @@
 import { getTableColumns, getTableName } from "drizzle-orm";
 import type { SyncKind } from "@/lib/sync/wire";
-import { SERVER_ONLY_FIELDS } from "@/lib/sync/wire";
-import { labels, lists, projects, tabs, todos } from "../db/user-schema";
+import { SERVER_ONLY_FIELDS, SETTINGS_SYNCED_FIELDS } from "@/lib/sync/wire";
+import { labels, lists, projects, settings, tabs, todos } from "../db/user-schema";
 
 /**
  * Whitelists and JS↔SQLite coercion for the sync tables, derived from the
@@ -10,7 +10,14 @@ import { labels, lists, projects, tabs, todos } from "../db/user-schema";
  * not by a list someone has to remember to update.
  */
 
-const TABLES = { todo: todos, list: lists, label: labels, project: projects, tab: tabs } as const;
+const TABLES = {
+  todo: todos,
+  list: lists,
+  label: labels,
+  project: projects,
+  tab: tabs,
+  settings,
+} as const;
 
 export const TABLE_NAME_BY_KIND: Record<SyncKind, string> = Object.fromEntries(
   Object.entries(TABLES).map(([kind, table]) => [kind, getTableName(table)]),
@@ -38,7 +45,7 @@ export interface ColumnMeta {
  * bypasses drizzle's query builder for the dynamic, whitelisted upsert
  * anyway (see `upsert.ts`).
  */
-const JSON_ENCODED_FIELDS = new Set(["labelIds"]);
+const JSON_ENCODED_FIELDS = new Set(["labelIds", "workdays"]);
 
 function buildColumnsByKind(): Record<SyncKind, Record<string, ColumnMeta>> {
   const result = {} as Record<SyncKind, Record<string, ColumnMeta>>;
@@ -82,6 +89,11 @@ const SQL_TO_TS_BY_KIND: Record<SyncKind, Record<string, string>> = buildSqlToTs
  * client-writable — `id` is identity (the caller already has `entityId`),
  * `ownerId` is set from the authenticated session at INSERT time only (see
  * `upsert.ts`), and `version` is the server's own allocator.
+ *
+ * For `settings`, also enforces `SETTINGS_SYNCED_FIELDS` — `activeTabId` is
+ * a real column (so it'd otherwise pass the whitelist check above) but must
+ * never sync, and enforcing that here rather than only in the client's
+ * `drain.ts` means a stale client can't leak it through.
  */
 export function sanitizePatch(
   kind: SyncKind,
@@ -92,6 +104,7 @@ export function sanitizePatch(
   for (const key of Object.keys(patch)) {
     if (SERVER_ONLY_FIELDS.has(key)) continue;
     if (!Object.hasOwn(columns, key)) continue;
+    if (kind === "settings" && !SETTINGS_SYNCED_FIELDS.has(key)) continue;
     result[key] = patch[key];
   }
   return result;

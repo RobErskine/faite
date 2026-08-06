@@ -9,6 +9,7 @@ describe("TABLE_NAME_BY_KIND / COLUMNS_BY_KIND", () => {
       label: "labels",
       project: "projects",
       tab: "tabs",
+      settings: "settings",
     });
   });
 
@@ -26,6 +27,17 @@ describe("TABLE_NAME_BY_KIND / COLUMNS_BY_KIND", () => {
       notNull: true,
       hasDefault: true,
     });
+  });
+
+  it("settings has no id column, and workdays is JSON-encoded", () => {
+    expect(COLUMNS_BY_KIND.settings.id).toBeUndefined();
+    expect(COLUMNS_BY_KIND.settings.ownerId).toEqual({
+      sqlName: "owner_id",
+      dataType: "string",
+      notNull: true,
+      hasDefault: false,
+    });
+    expect(COLUMNS_BY_KIND.settings.workdays.dataType).toBe("json");
   });
 });
 
@@ -52,6 +64,16 @@ describe("sanitizePatch", () => {
     const patch = { id: "x", title: "A", status: "open", labelIds: ["l1"], position: "a0" };
     const result = sanitizePatch("todo", patch);
     expect(result).toEqual({ title: "A", status: "open", labelIds: ["l1"], position: "a0" });
+  });
+
+  it("drops activeTabId for settings even though it's a real column", () => {
+    const result = sanitizePatch("settings", { fontPairing: "hyperlegible", activeTabId: "tab-1" });
+    expect(result).toEqual({ fontPairing: "hyperlegible" });
+  });
+
+  it("keeps every allow-listed settings field", () => {
+    const patch = { timezone: "America/Chicago", theme: "dark", displayName: "Rob" };
+    expect(sanitizePatch("settings", patch)).toEqual(patch);
   });
 });
 

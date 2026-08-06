@@ -16,18 +16,57 @@ function entry(overrides: Partial<OutboxEntry> & Pick<OutboxEntry, "hlc" | "crea
 }
 
 describe("planDrain", () => {
-  it("routes settings entries to drop, everything else to batch", () => {
+  it("pushes settings entries through the batch like any other kind", () => {
     const pending: OutboxEntry[] = [
-      entry({ kind: "settings", hlc: encodeHlc({ phys: 1000, counter: 0, nodeId: NODE }), createdAt: "2026-08-04T00:00:00.000Z" }),
-      entry({ hlc: encodeHlc({ phys: 1000, counter: 0, nodeId: NODE }), createdAt: "2026-08-04T00:00:00.000Z" }),
+      entry({
+        kind: "settings",
+        entityId: "local-user",
+        patch: { fontPairing: "precision" },
+        hlc: encodeHlc({ phys: 1000, counter: 0, nodeId: NODE }),
+        createdAt: "2026-08-04T00:00:00.000Z",
+      }),
     ];
 
     const plan = planDrain(pending, NODE);
 
-    expect(plan.drop).toHaveLength(1);
-    expect(plan.drop[0].kind).toBe("settings");
+    expect(plan.drop).toEqual([]);
     expect(plan.batch).toHaveLength(1);
-    expect(plan.batch[0].kind).toBe("todo");
+    expect(plan.batch[0].kind).toBe("settings");
+    expect(plan.batch[0].patch).toEqual({ fontPairing: "precision" });
+  });
+
+  it("drops a settings entry whose patch is empty after the allow-list filter", () => {
+    const pending: OutboxEntry[] = [
+      entry({
+        kind: "settings",
+        entityId: "local-user",
+        patch: { activeTabId: "tab-1" },
+        hlc: encodeHlc({ phys: 1000, counter: 0, nodeId: NODE }),
+        createdAt: "2026-08-04T00:00:00.000Z",
+      }),
+    ];
+
+    const plan = planDrain(pending, NODE);
+
+    expect(plan.batch).toEqual([]);
+    expect(plan.drop).toHaveLength(1);
+  });
+
+  it("filters activeTabId out of a mixed settings patch, keeping the rest", () => {
+    const pending: OutboxEntry[] = [
+      entry({
+        kind: "settings",
+        entityId: "local-user",
+        patch: { activeTabId: "tab-1", theme: "dark" },
+        hlc: encodeHlc({ phys: 1000, counter: 0, nodeId: NODE }),
+        createdAt: "2026-08-04T00:00:00.000Z",
+      }),
+    ];
+
+    const plan = planDrain(pending, NODE);
+
+    expect(plan.drop).toEqual([]);
+    expect(plan.batch[0].patch).toEqual({ theme: "dark" });
   });
 
   it("normalizes a legacy ISO stamp still sitting in the outbox on the fly", () => {

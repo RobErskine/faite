@@ -98,4 +98,24 @@ describe("changesFromRow", () => {
       expect(rowMaxResult.apply.title).toBe("B's old title");
     },
   );
+
+  it(
+    "REGRESSION: never emits activeTabId for settings, even though it's a real, clockless column " +
+      "that `SELECT *` naturally includes",
+    () => {
+      // A live smoke test caught this: activeTabId always exists in a real
+      // settings row and is never written server-side, so with no filter it
+      // rides along as `null` under FLOOR_HLC on every pull — and once a
+      // device's local pending edit for it clears, that `null` wins the
+      // merge outright and silently resets which tab is showing.
+      const row = { theme: "dark", activeTabId: null };
+      const clocks = { theme: hlc(1000) };
+
+      const changes = changesFromRow("settings", "settings", row, clocks);
+
+      for (const change of changes) {
+        expect(Object.hasOwn(change.patch, "activeTabId")).toBe(false);
+      }
+    },
+  );
 });

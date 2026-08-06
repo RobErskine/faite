@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { encodeHlc } from "@/lib/sync/hlc-core";
 import { mergeRecord } from "@/lib/sync/merge";
-import { SYNC_KINDS, SYNC_PROTOCOL_VERSION } from "@/lib/sync/wire";
+import { SETTINGS_ENTITY_ID, SYNC_KINDS, SYNC_PROTOCOL_VERSION } from "@/lib/sync/wire";
 import type { PullResponse, PushRequest, PushResponse, SyncKind } from "@/lib/sync/wire";
 import type { FieldClockMap } from "./apply-patch";
 import { type KindPage, mergePages } from "./pull";
@@ -63,7 +63,11 @@ class FakeServer {
       const rows = Array.from(table.values())
         .filter((row) => row.version > cursor)
         .sort((a, b) => a.version - b.version)
-        .slice(0, limit);
+        .slice(0, limit)
+        // Mirrors user-do.ts's pull(): settings rows carry no `id` column
+        // (buildInsertColumns strips it), so stand in with the same
+        // sentinel push() normalizes entityId to.
+        .map((row) => (kind === "settings" ? { ...row, id: SETTINGS_ENTITY_ID } : row));
       return { kind, rows, exhausted: rows.length === limit };
     });
 
@@ -172,5 +176,41 @@ describe("round trip: two devices editing different fields", () => {
 
     const pullAfterSecond = server.pull(pullAfterFirst.cursor, 100);
     expect(pullAfterSecond.changes).toEqual([]);
+  });
+
+  it("settings: pushes under any client entityId, pulls back under the shared sentinel, activeTabId never leaves the device", () => {
+    const server = new FakeServer();
+    const hlc = encodeHlc({ phys: 1000, counter: 0, nodeId: "device-a" });
+
+    // The client always sends its own Dexie PK ("local-user") — the server
+    // must not depend on that value.
+    const push = server.push(USER_ID, {
+      protocol: SYNC_PROTOCOL_VERSION,
+      entries: [
+        {
+          id: "a-settings",
+          kind: "settings",
+          entityId: "local-user",
+          patch: { theme: "dark", activeTabId: "tab-1" },
+          hlc,
+        },
+      ],
+    });
+    expect(push.acked).toEqual(["a-settings"]);
+
+    const pull = server.pull(0, 100);
+    // Two changes: the pushed field (theme, at the real hlc) and the
+    // synthesized NOT-NULL placeholders from the first-ever create
+    // (fontPairing/avatarKind/updatedAt — not in the patch, so no clock —
+    // grouped under FLOOR_HLC), same shape as any other kind's create.
+    expect(pull.changes).toContainEqual({
+      kind: "settings",
+      entityId: SETTINGS_ENTITY_ID,
+      patch: { theme: "dark" },
+      hlc,
+    });
+    // activeTabId was stripped server-side (sanitizePatch's allow-list) —
+    // it must not appear in ANY change, synthesized group included.
+    expect(pull.changes.every((c) => !("activeTabId" in c.patch))).toBe(true);
   });
 });

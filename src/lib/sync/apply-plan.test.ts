@@ -119,4 +119,24 @@ describe("planApply", () => {
     const write = plan.writes[0];
     expect(write.op === "update" && write.changes).not.toHaveProperty("id");
   });
+
+  it("hydrates a new settings row with LOCAL_OWNER_ID, not the signed-in user's real id from ctx", () => {
+    const changes: WireChange[] = [
+      { kind: "settings", entityId: "settings", patch: { theme: "dark" }, hlc: hlc(1000) },
+    ];
+    const locals = new Map([["settings", undefined]]);
+
+    // CTX.ownerId is "user-1" — a real signed-in user — but settings must
+    // always land under the device-local placeholder regardless.
+    const plan = planApply(changes, [], locals, CTX);
+
+    expect(plan.writes).toEqual([
+      {
+        op: "put",
+        kind: "settings",
+        entityId: "settings",
+        row: expect.objectContaining({ ownerId: "local-user", theme: "dark" }),
+      },
+    ]);
+  });
 });

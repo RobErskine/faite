@@ -1,7 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { drizzle, type DrizzleSqliteDODatabase } from "drizzle-orm/durable-sqlite";
 import type { PullResponse, PushRequest, PushResponse } from "@/lib/sync/wire";
-import { SYNC_KINDS, SYNC_PROTOCOL_VERSION } from "@/lib/sync/wire";
+import { SETTINGS_ENTITY_ID, SYNC_KINDS, SYNC_PROTOCOL_VERSION } from "@/lib/sync/wire";
 import { BOOTSTRAP_STATEMENTS } from "./db/bootstrap";
 import * as schema from "./db/user-schema";
 import type { FieldClockMap } from "./sync/apply-patch";
@@ -97,8 +97,8 @@ export class UserDurableObject extends DurableObject {
 
         const version = this.allocateVersion();
         const tableName = TABLE_NAME_BY_KIND[group.kind];
-        if (this.rowExists(tableName, group.entityId)) {
-          this.updateRow(group.kind, tableName, group.entityId, resolution.apply, version);
+        if (this.rowExists(group.kind, tableName, group.entityId, userId)) {
+          this.updateRow(group.kind, tableName, group.entityId, resolution.apply, version, userId);
         } else {
           const row = buildInsertColumns(group.kind, group.entityId, userId, resolution.apply, nowIso, version);
           this.insertRow(group.kind, tableName, row);
@@ -123,9 +123,14 @@ export class UserDurableObject extends DurableObject {
       const sqlRows = this.ctx.storage.sql
         .exec(`SELECT * FROM ${tableName} WHERE version > ? ORDER BY version LIMIT ?`, cursor, limit)
         .toArray();
-      const rows = sqlRows.map(
-        (sqlRow) => rowFromSqlRow(kind, sqlRow) as Record<string, unknown> & { id: string; version: number },
-      );
+      const rows = sqlRows.map((sqlRow) => {
+        const row = rowFromSqlRow(kind, sqlRow) as Record<string, unknown> & { id?: string; version: number };
+        // `settings` rows carry no `id` column — stand in with the same wire
+        // sentinel `push()` uses, so field_clocks lookups (keyed the same
+        // way on write) actually match on read.
+        if (kind === "settings") row.id = SETTINGS_ENTITY_ID;
+        return row as Record<string, unknown> & { id: string; version: number };
+      });
       return { kind, rows, exhausted: sqlRows.length === limit };
     });
 
@@ -144,7 +149,16 @@ export class UserDurableObject extends DurableObject {
     return row.next_version;
   }
 
-  private rowExists(tableName: string, entityId: string): boolean {
+  /**
+   * `settings` has no `id` column — it's a singleton keyed by `owner_id`,
+   * so its existence/update lookups key off the authenticated session user
+   * instead of `entityId` (which is only ever the shared wire sentinel for
+   * this kind — see `push.ts`).
+   */
+  private rowExists(kind: (typeof SYNC_KINDS)[number], tableName: string, entityId: string, userId: string): boolean {
+    if (kind === "settings") {
+      return this.ctx.storage.sql.exec(`SELECT 1 FROM ${tableName} WHERE owner_id = ?`, userId).toArray().length > 0;
+    }
     return (
       this.ctx.storage.sql.exec(`SELECT 1 FROM ${tableName} WHERE id = ?`, entityId).toArray().length > 0
     );
@@ -171,15 +185,18 @@ export class UserDurableObject extends DurableObject {
     entityId: string,
     apply: Record<string, unknown>,
     version: number,
+    userId: string,
   ): void {
     const columns = COLUMNS_BY_KIND[kind];
     const fields = Object.keys(apply);
     const setClauses = [...fields.map((field) => `${columns[field].sqlName} = ?`), "version = ?"];
     const values = [...fields.map((field) => toColumnValue(kind, field, apply[field])), version];
+    const whereColumn = kind === "settings" ? "owner_id" : "id";
+    const whereValue = kind === "settings" ? userId : entityId;
     this.ctx.storage.sql.exec(
-      `UPDATE ${tableName} SET ${setClauses.join(", ")} WHERE id = ?`,
+      `UPDATE ${tableName} SET ${setClauses.join(", ")} WHERE ${whereColumn} = ?`,
       ...values,
-      entityId,
+      whereValue,
     );
   }
 

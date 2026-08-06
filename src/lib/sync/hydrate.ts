@@ -1,5 +1,8 @@
-import { labelSchema, listSchema, projectSchema, tabSchema, todoSchema } from "@/lib/schema";
+import { labelSchema, listSchema, projectSchema, settingsSchema, tabSchema, todoSchema } from "@/lib/schema";
+import { DEFAULT_FONT_PAIRING } from "@/lib/fonts";
 import { positionAtEnd } from "@/lib/ordering";
+import { DEFAULT_AVATAR_KIND } from "@/lib/profile";
+import { DEFAULT_THEME_MODE } from "@/lib/theme";
 import type { SyncKind } from "./wire";
 
 /**
@@ -16,6 +19,7 @@ const SCHEMA_BY_KIND = {
   label: labelSchema,
   project: projectSchema,
   tab: tabSchema,
+  settings: settingsSchema,
 };
 
 /**
@@ -25,12 +29,17 @@ const SCHEMA_BY_KIND = {
  * are somehow incomplete — normally every field lands in the same pull
  * response, since `changesFromRow` partitions one row's fields across
  * changes but never drops any (see `wire.ts`). Mirrors `upsert.ts`'s
- * `FIELD_DEFAULTS` on the server side for the same reason.
+ * `FIELD_DEFAULTS` on the server side for the same reason — `fontPairing`/
+ * `theme`/`avatarKind` reuse the exact same default constants so a
+ * synthesized settings row can't disagree with a brand-new local one.
  */
 const REQUIRED_FALLBACKS: Record<string, () => unknown> = {
   title: () => "",
   name: () => "Untitled",
   position: () => positionAtEnd(null),
+  fontPairing: () => DEFAULT_FONT_PAIRING,
+  theme: () => DEFAULT_THEME_MODE,
+  avatarKind: () => DEFAULT_AVATAR_KIND,
 };
 
 export type HydrateResult =

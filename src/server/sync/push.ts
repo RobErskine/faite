@@ -1,5 +1,11 @@
 import { isHlc } from "@/lib/sync/hlc-core";
-import { SYNC_KINDS, type PushEntry, type RejectReason, type SyncKind } from "@/lib/sync/wire";
+import {
+  SETTINGS_ENTITY_ID,
+  SYNC_KINDS,
+  type PushEntry,
+  type RejectReason,
+  type SyncKind,
+} from "@/lib/sync/wire";
 import { applyIncomingPatch, type FieldClockMap } from "./apply-patch";
 import { sanitizePatch } from "./columns";
 
@@ -57,7 +63,12 @@ export function validateEntries(entries: PushEntry[]): {
       rejected.push({ id: entry.id, reason: "empty-patch" });
       continue;
     }
-    accepted.push({ id: entry.id, kind: entry.kind, entityId: entry.entityId, hlc: entry.hlc, patch });
+    // Settings has no natural per-row id (there's exactly one row per DO) —
+    // override whatever the client sent to the shared wire sentinel, so
+    // every device's settings entries group and key `field_clocks` under
+    // the same identity regardless of what the client's own Dexie PK is.
+    const entityId = entry.kind === "settings" ? SETTINGS_ENTITY_ID : entry.entityId;
+    accepted.push({ id: entry.id, kind: entry.kind, entityId, hlc: entry.hlc, patch });
   }
 
   return { accepted, rejected };

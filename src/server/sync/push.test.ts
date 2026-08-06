@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { encodeHlc } from "@/lib/sync/hlc-core";
-import type { PushEntry } from "@/lib/sync/wire";
+import { SETTINGS_ENTITY_ID, type PushEntry } from "@/lib/sync/wire";
 import { applyIncomingPatch } from "./apply-patch";
 import { groupByEntity, resolveEntityPush, validateEntries } from "./push";
 
@@ -23,7 +23,7 @@ describe("validateEntries", () => {
 
   it("rejects an unknown kind", () => {
     const entries = [
-      { id: "e1", kind: "settings", entityId: "t1", patch: { title: "x" }, hlc: hlc(1000) },
+      { id: "e1", kind: "bogus-kind", entityId: "t1", patch: { title: "x" }, hlc: hlc(1000) },
     ] as unknown as PushEntry[];
     const { rejected } = validateEntries(entries);
     expect(rejected).toEqual([{ id: "e1", reason: "unknown-kind" }]);
@@ -35,6 +35,30 @@ describe("validateEntries", () => {
     ];
     const { rejected } = validateEntries(entries);
     expect(rejected).toEqual([{ id: "e1", reason: "empty-patch" }]);
+  });
+
+  it("rejects a settings patch that sanitizes to empty (activeTabId only)", () => {
+    const entries: PushEntry[] = [
+      { id: "e1", kind: "settings", entityId: "local-user", patch: { activeTabId: "tab-1" }, hlc: hlc(1000) },
+    ];
+    const { rejected } = validateEntries(entries);
+    expect(rejected).toEqual([{ id: "e1", reason: "empty-patch" }]);
+  });
+
+  it("overrides entityId to the shared sentinel for settings, regardless of what the client sent", () => {
+    const entries: PushEntry[] = [
+      { id: "e1", kind: "settings", entityId: "local-user", patch: { theme: "dark" }, hlc: hlc(1000) },
+    ];
+    const { accepted } = validateEntries(entries);
+    expect(accepted).toEqual([
+      { id: "e1", kind: "settings", entityId: SETTINGS_ENTITY_ID, hlc: hlc(1000), patch: { theme: "dark" } },
+    ]);
+  });
+
+  it("does not touch entityId for non-settings kinds", () => {
+    const entries: PushEntry[] = [{ id: "e1", kind: "todo", entityId: "todo-1", patch: { title: "x" }, hlc: hlc(1000) }];
+    const { accepted } = validateEntries(entries);
+    expect(accepted[0].entityId).toBe("todo-1");
   });
 
   it("accepts and sanitizes a valid entry, one bad entry doesn't affect a good one", () => {

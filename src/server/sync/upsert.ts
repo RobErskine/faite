@@ -1,4 +1,7 @@
+import { DEFAULT_FONT_PAIRING } from "@/lib/fonts";
 import { positionAtEnd } from "@/lib/ordering";
+import { DEFAULT_AVATAR_KIND } from "@/lib/profile";
+import { DEFAULT_THEME_MODE } from "@/lib/theme";
 import type { SyncKind } from "@/lib/sync/wire";
 import { COLUMNS_BY_KIND } from "./columns";
 
@@ -7,12 +10,17 @@ import { COLUMNS_BY_KIND } from "./columns";
  * can't be synthesized generically from `dataType` alone (an empty string is
  * a reasonable `title`, but not a reasonable `position`). Only reached when
  * the field is genuinely missing from every prior write — see the reachability
- * note on `buildInsertColumns`.
+ * note on `buildInsertColumns`. `fontPairing`/`theme`/`avatarKind` reuse the
+ * exact constants the client's own Zod schema defaults to, so a synthesized
+ * settings row can't disagree with what a brand-new local one looks like.
  */
 const FIELD_DEFAULTS: Record<string, () => unknown> = {
   title: () => "",
   name: () => "Untitled",
   position: () => positionAtEnd(null),
+  fontPairing: () => DEFAULT_FONT_PAIRING,
+  theme: () => DEFAULT_THEME_MODE,
+  avatarKind: () => DEFAULT_AVATAR_KIND,
 };
 
 /**
@@ -58,5 +66,9 @@ export function buildInsertColumns(
     if (fallback) row[field] = fallback();
   }
 
-  return row;
+  // `settings` has neither `id` nor `createdAt` columns (singleton, keyed by
+  // `ownerId`) — filtering to known columns here, rather than special-casing
+  // which base fields to set per kind above, means every kind's INSERT is
+  // built from exactly the columns it actually has, generically.
+  return Object.fromEntries(Object.entries(row).filter(([field]) => field in columns));
 }

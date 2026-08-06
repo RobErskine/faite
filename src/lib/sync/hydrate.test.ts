@@ -64,4 +64,24 @@ describe("hydrateRemoteRow", () => {
       expect(value).not.toBeUndefined();
     }
   });
+
+  it("hydrates settings, silently dropping the stray id/createdAt the generic candidate sets", () => {
+    const result = hydrateRemoteRow("settings", "settings", { fontPairing: "editorial" }, CTX);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected ok");
+    expect(result.row.ownerId).toBe("user-1");
+    expect(result.row.fontPairing).toBe("editorial");
+    // settingsSchema has no `id`/`createdAt` fields — zod strips them.
+    expect(result.row).not.toHaveProperty("id");
+    expect(result.row).not.toHaveProperty("createdAt");
+  });
+
+  it("synthesizes fontPairing/theme/avatarKind for a bare settings create", () => {
+    const result = hydrateRemoteRow("settings", "settings", {}, CTX);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected ok");
+    expect(result.row.fontPairing).toBe("hyperlegible");
+    expect(result.row.theme).toBe("system");
+    expect(result.row.avatarKind).toBe("initials");
+  });
 });
