@@ -1,5 +1,6 @@
 import { createAuth, TRUSTED_ORIGINS } from "../auth";
 import { clampPullArgs, parsePushRequest } from "./validate";
+import { isAllowedWsOrigin, isWebSocketUpgrade, USER_ID_HEADER } from "./ws-server";
 
 /**
  * `/api/sync/*` — the transport for EI-46/EI-48. Same seam as `/api/auth/*`
@@ -48,6 +49,28 @@ export async function handleSyncRequest(request: Request, env: CloudflareEnv): P
 
   try {
     const stub = env.USER_DO.get(env.USER_DO.idFromName(userId));
+
+    // Before push/pull: an upgrade is still an ordinary HTTP request until
+    // the 101, so it has already passed the same session check above.
+    if (url.pathname === "/api/sync/ws") {
+      if (!isWebSocketUpgrade(request.headers.get("Upgrade"))) {
+        return json({ error: "expected-websocket-upgrade" }, 426, headers);
+      }
+      // A WebSocket handshake bypasses CORS entirely — this check, not
+      // `corsHeaders`, is what keeps evil.com off a logged-in board. See
+      // `ws-server.ts`.
+      if (!isAllowedWsOrigin(request.headers.get("Origin"), request.url)) {
+        return json({ error: "forbidden-origin" }, 403, headers);
+      }
+      const doHeaders = new Headers(request.headers);
+      doHeaders.set(USER_ID_HEADER, userId);
+      // The 101 is returned VERBATIM, and is the one branch here that skips
+      // `corsHeaders`: a Response carrying a `webSocket` cannot be rebuilt
+      // (constructing a new Response drops the socket), and a handshake has
+      // no use for CORS headers anyway. Do not "normalise" this to match the
+      // branches below.
+      return await stub.fetch(new Request(request, { headers: doHeaders }));
+    }
 
     if (url.pathname === "/api/sync/push" && request.method === "POST") {
       // `parsePushRequest`/`clampPullArgs` are shared with the WebSocket

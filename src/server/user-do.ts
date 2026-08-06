@@ -2,7 +2,14 @@ import { DurableObject } from "cloudflare:workers";
 import { drizzle, type DrizzleSqliteDODatabase } from "drizzle-orm/durable-sqlite";
 import type { PullResponse, PushRequest, PushResponse } from "@/lib/sync/wire";
 import { SETTINGS_ENTITY_ID, SYNC_KINDS, SYNC_PROTOCOL_VERSION } from "@/lib/sync/wire";
-import { WS_CLOSE_ACCOUNT_DELETED } from "@/lib/sync/ws-protocol";
+import type { ServerMessage } from "@/lib/sync/ws-protocol";
+import {
+  decodeClient,
+  encode,
+  MAX_SOCKET_AGE_MS,
+  WS_CLOSE_ACCOUNT_DELETED,
+  WS_CLOSE_REAUTH_REQUIRED,
+} from "@/lib/sync/ws-protocol";
 import { BOOTSTRAP_STATEMENTS } from "./db/bootstrap";
 import * as schema from "./db/user-schema";
 import type { FieldClockMap } from "./sync/apply-patch";
@@ -11,6 +18,23 @@ import { type KindPage, mergePages } from "./sync/pull";
 import { groupByEntity, resolveEntityPush, validateEntries } from "./sync/push";
 import { chunkForInClause } from "./sync/sql-limits";
 import { buildInsertColumns } from "./sync/upsert";
+import { clampPullArgs, parsePushRequest } from "./sync/validate";
+import { isWebSocketUpgrade, USER_ID_HEADER } from "./sync/ws-server";
+
+/**
+ * Per-connection state that survives hibernation. In-memory fields do not —
+ * the constructor re-runs when the object wakes — so anything a socket needs
+ * to be served correctly after a wake-up has to live here.
+ *
+ * Structured-cloneable, 16,384-byte cap. Both fields are tiny; do not grow
+ * this into a cache.
+ */
+interface SocketAttachment {
+  /** Verified by the worker at handshake time, never by this object. */
+  userId: string;
+  /** `Date.now()` at handshake. Drives `MAX_SOCKET_AGE_MS`. */
+  connectedAt: number;
+}
 
 /**
  * Per-user Durable Object. Authoritative store for one user's todos/lists/labels
@@ -47,11 +71,149 @@ export class UserDurableObject extends DurableObject {
     });
   }
 
-  async fetch(): Promise<Response> {
-    return Response.json(
-      { ok: true, phase: "P3", note: "Storage schema only; sync protocol not wired yet" },
-      { status: 200 },
-    );
+  /**
+   * The WebSocket upgrade seam (P4/EI-49). This is the only thing `fetch()`
+   * is for — push/pull remain RPC, because the worker already owns HTTP.
+   *
+   * `this.ctx.acceptWebSocket(server)`, NOT `server.accept()`: the former
+   * makes the socket hibernation-eligible, so an idle connection costs
+   * nothing and does not pin this object in memory. The latter would hold
+   * the DO resident for as long as any tab is open anywhere.
+   *
+   * Ping/pong is handled by the runtime and does not wake us, so there is no
+   * keepalive protocol here and there should never be one.
+   */
+  async fetch(request: Request): Promise<Response> {
+    if (!isWebSocketUpgrade(request.headers.get("Upgrade"))) {
+      return Response.json(
+        { ok: true, note: "This Durable Object speaks RPC (push/pull) and WebSocket upgrades only" },
+        { status: 200 },
+      );
+    }
+
+    // Set by the worker on every upgrade it forwards (`ws-server.ts`), which
+    // is the only way a request can reach this object at all. Absent means a
+    // bug in our own routing, not a hostile client — fail loudly.
+    const userId = request.headers.get(USER_ID_HEADER);
+    if (!userId) {
+      console.error("[faite] upgrade reached the DO with no user id header");
+      return new Response("missing user id", { status: 500 });
+    }
+
+    const pair = new WebSocketPair();
+    const [client, server] = Object.values(pair);
+    this.ctx.acceptWebSocket(server);
+    // In-memory fields do not survive hibernation; the attachment does
+    // (structured-cloneable, 16 KiB cap). This is how the object remembers
+    // whose socket this is after waking up, and when it was authenticated.
+    server.serializeAttachment({ userId, connectedAt: Date.now() } satisfies SocketAttachment);
+
+    return new Response(null, { status: 101, webSocket: client });
+  }
+
+  /**
+   * Dispatches one framed request from a socket.
+   *
+   * **This function is total by design — it must never throw.** An uncaught
+   * exception out of a Durable Object handler can leave the stub in a broken
+   * state, and a broken stub takes down every OTHER socket attached to this
+   * object too. One tab sending a truncated frame must not be able to
+   * disconnect a different device, so every failure path here ends in either
+   * a correlated `error` reply or a silent drop.
+   *
+   * Requests are routed through the SAME validators the HTTP route uses
+   * (`validate.ts`). Calling `this.push`/`this.pull` directly is safe — they
+   * are ordinary methods and RPC is merely an additional exposure — but
+   * their guards live in `routes.ts`, not in them, so skipping the
+   * validators would hand a socket an unclamped `LIMIT` and an uncapped
+   * batch size.
+   */
+  async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
+    let requestId: string | null = null;
+    try {
+      const attachment = this.readAttachment(ws);
+      if (!attachment) {
+        // Should be unreachable: `fetch()` attaches before returning the 101.
+        // A socket we can't identify is one we must not serve.
+        ws.close(WS_CLOSE_REAUTH_REQUIRED, "no-attachment");
+        return;
+      }
+
+      // The HTTP path re-authenticates on every request; this socket was
+      // authenticated once, at the handshake. Bound how long that stays
+      // good — the reconnect goes back through the worker, which re-checks
+      // the session cookie. See `MAX_SOCKET_AGE_MS`.
+      if (Date.now() - attachment.connectedAt > MAX_SOCKET_AGE_MS) {
+        ws.close(WS_CLOSE_REAUTH_REQUIRED, "reauth");
+        return;
+      }
+
+      const decoded = decodeClient(message);
+      // Undecodable: drop silently. There is no id to correlate an error to,
+      // and replying to noise only invites more of it. The sender's own
+      // request timeout is what surfaces this.
+      if (!decoded) return;
+      requestId = decoded.id;
+
+      if (decoded.type === "push") {
+        const parsed = parsePushRequest(decoded.payload);
+        if (!parsed) {
+          this.reply(ws, { id: requestId, type: "error", payload: { message: "invalid-request" } });
+          return;
+        }
+        const result = await this.push(attachment.userId, parsed);
+        this.reply(ws, { id: requestId, type: "push-response", payload: result });
+        return;
+      }
+
+      const args = clampPullArgs(decoded.payload.cursor, decoded.payload.limit);
+      if (!args) {
+        this.reply(ws, { id: requestId, type: "error", payload: { message: "invalid-cursor" } });
+        return;
+      }
+      const result = await this.pull(args.cursor, args.limit);
+      this.reply(ws, { id: requestId, type: "pull-response", payload: result });
+    } catch (error) {
+      console.error("[faite] webSocketMessage failed", error);
+      if (requestId) {
+        this.reply(ws, { id: requestId, type: "error", payload: { message: "internal-error" } });
+      }
+    }
+  }
+
+  async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean): Promise<void> {
+    // Nothing to clean up: the attachment dies with the socket and
+    // `getWebSockets()` stops returning it automatically. `close()` is not
+    // called back — `web_socket_auto_reply_to_close` handles the close frame
+    // at our compatibility date (>= 2026-04-07; wrangler.jsonc is
+    // 2026-08-01).
+    console.log(`[faite] socket closed code=${code} clean=${wasClean} reason=${reason}`);
+  }
+
+  async webSocketError(ws: WebSocket, error: unknown): Promise<void> {
+    console.error("[faite] socket error", error);
+  }
+
+  /**
+   * `send()` throws on a socket that closed since we last looked. Never let
+   * that escape: on the reply path it would turn one dead peer into a failed
+   * push for the peer that is still alive.
+   */
+  private reply(ws: WebSocket, message: ServerMessage): void {
+    try {
+      ws.send(encode(message));
+    } catch (error) {
+      console.warn("[faite] failed to reply on a socket", error);
+    }
+  }
+
+  private readAttachment(ws: WebSocket): SocketAttachment | null {
+    const raw: unknown = ws.deserializeAttachment();
+    if (typeof raw !== "object" || raw === null) return null;
+    const { userId, connectedAt } = raw as Record<string, unknown>;
+    if (typeof userId !== "string" || userId.length === 0) return null;
+    if (typeof connectedAt !== "number" || !Number.isFinite(connectedAt)) return null;
+    return { userId, connectedAt };
   }
 
   /**
