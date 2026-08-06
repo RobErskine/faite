@@ -8,6 +8,7 @@ import type { FieldClockMap } from "./sync/apply-patch";
 import { COLUMNS_BY_KIND, rowFromSqlRow, TABLE_NAME_BY_KIND, toColumnValue } from "./sync/columns";
 import { type KindPage, mergePages } from "./sync/pull";
 import { groupByEntity, resolveEntityPush, validateEntries } from "./sync/push";
+import { chunkForInClause } from "./sync/sql-limits";
 import { buildInsertColumns } from "./sync/upsert";
 
 /**
@@ -28,6 +29,13 @@ import { buildInsertColumns } from "./sync/upsert";
  * P4's WebSocket upgrade — which can only arrive there — gets a clean file to
  * extend, not a router.
  */
+/**
+ * RFC 6455 §7.4.2 application close code — "policy violation". Used when the
+ * account behind a socket is deleted out from under it. Moves to
+ * `ws-protocol.ts` in P4 phase 1, once the client needs to read it too.
+ */
+const WS_CLOSE_ACCOUNT_DELETED = 1008;
+
 export class UserDurableObject extends DurableObject {
   db: DrizzleSqliteDODatabase<typeof schema>;
 
@@ -60,9 +68,37 @@ export class UserDurableObject extends DurableObject {
    * re-registration on the same email would otherwise inherit the previous
    * account's board (`idFromName(userId)` addresses the same DO again). See
    * docs/SYNC.md's "Known traps".
+   *
+   * Three steps, in this order, and the order matters:
+   *
+   * 1. **Close every live socket first.** `deleteAll()` drops the tables but
+   *    does nothing to connections. A socket accepted before the wipe
+   *    survives it, and its next message lands on `no such table: todos`.
+   *    Before P4 this was latent — the D1 user row is gone, so nothing could
+   *    authenticate back in before the instance was evicted. A live
+   *    WebSocket is precisely the thing that removes that protection.
+   * 2. `deleteAll()` — on a SQLite-backed DO this drops SQL tables *and*
+   *    key-value data.
+   * 3. **Re-run the bootstrap.** The constructor's `blockConcurrencyWhile`
+   *    already ran for this instance and will not run again until a cold
+   *    start, so without this the object is left alive with no schema at
+   *    all. Leaving it empty-and-valid instead of broken means a
+   *    re-registration on the same user id gets a clean board rather than a
+   *    DO that throws on first contact.
    */
   async wipe(): Promise<void> {
+    for (const ws of this.ctx.getWebSockets()) {
+      try {
+        ws.close(WS_CLOSE_ACCOUNT_DELETED, "account-deleted");
+      } catch {
+        // Already closing or closed. `getWebSockets()` omits disconnected
+        // sockets, but there is no lock between that call and this one.
+      }
+    }
     await this.ctx.storage.deleteAll();
+    for (const statement of BOOTSTRAP_STATEMENTS) {
+      this.ctx.storage.sql.exec(statement);
+    }
   }
 
   /**
@@ -209,18 +245,28 @@ export class UserDurableObject extends DurableObject {
     return clocks;
   }
 
+  /**
+   * Chunked at `IN_CLAUSE_CHUNK`, not because the id list is large in
+   * practice, but because it is UNBOUNDED BY CONSTRUCTION: `pull()` unions up
+   * to `limit` rows from each of the six `SYNC_KINDS`, so a `DEFAULT_PULL_
+   * LIMIT` pull can reach 600 ids against SQLite's documented 100-bound-
+   * parameter ceiling. See `sql-limits.ts` for the full reasoning; it fires
+   * first on a long-offline catch-up pull, which is exactly the path P4's
+   * reconnect story depends on.
+   */
   private readFieldClocksBulk(entityIds: string[]): Record<string, FieldClockMap> {
-    if (entityIds.length === 0) return {};
-    const placeholders = entityIds.map(() => "?").join(", ");
-    const rows = this.ctx.storage.sql
-      .exec<{ entity_id: string; field: string; hlc: string }>(
-        `SELECT entity_id, field, hlc FROM field_clocks WHERE entity_id IN (${placeholders})`,
-        ...entityIds,
-      )
-      .toArray();
     const result: Record<string, FieldClockMap> = {};
-    for (const row of rows) {
-      (result[row.entity_id] ??= {})[row.field] = row.hlc;
+    for (const batch of chunkForInClause(entityIds)) {
+      const placeholders = batch.map(() => "?").join(", ");
+      const rows = this.ctx.storage.sql
+        .exec<{ entity_id: string; field: string; hlc: string }>(
+          `SELECT entity_id, field, hlc FROM field_clocks WHERE entity_id IN (${placeholders})`,
+          ...batch,
+        )
+        .toArray();
+      for (const row of rows) {
+        (result[row.entity_id] ??= {})[row.field] = row.hlc;
+      }
     }
     return result;
   }
