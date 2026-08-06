@@ -1,4 +1,5 @@
 import { getTableColumns, getTableName } from "drizzle-orm";
+import type { SQLiteTable } from "drizzle-orm/sqlite-core";
 import type { SyncKind } from "@/lib/sync/wire";
 import { SERVER_ONLY_FIELDS, SETTINGS_SYNCED_FIELDS } from "@/lib/sync/wire";
 import { labels, lists, projects, settings, tabs, todos } from "../db/user-schema";
@@ -10,14 +11,22 @@ import { labels, lists, projects, settings, tabs, todos } from "../db/user-schem
  * not by a list someone has to remember to update.
  */
 
-const TABLES = {
+/**
+ * Explicitly typed `Record<SyncKind, …>` rather than a bare literal: the
+ * `as Record<SyncKind, string>` cast below would otherwise swallow a missing
+ * kind entirely, so adding one to `SYNC_KINDS` would compile and then fail at
+ * runtime on the first push of that kind. `mutate.ts` and `apply-remote.ts`
+ * already get this for free from their own annotations; this file was the one
+ * dispatch table that didn't.
+ */
+const TABLES: Record<SyncKind, SQLiteTable> = {
   todo: todos,
   list: lists,
   label: labels,
   project: projects,
   tab: tabs,
   settings,
-} as const;
+};
 
 export const TABLE_NAME_BY_KIND: Record<SyncKind, string> = Object.fromEntries(
   Object.entries(TABLES).map(([kind, table]) => [kind, getTableName(table)]),
