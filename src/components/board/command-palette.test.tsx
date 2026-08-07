@@ -78,6 +78,10 @@ const settings: Settings = {
   avatarEmoji: "",
   avatarImage: "",
   activeTabId: null,
+  backlogWidth: null,
+  backlogCollapsed: false,
+  overflowWidth: null,
+  overflowCollapsed: false,
   updatedAt: "2026-08-03T00:00:00.000Z",
 };
 

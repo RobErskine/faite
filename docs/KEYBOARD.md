@@ -34,6 +34,7 @@ planning session never needs the mouse.
 | `list-info-dialog.tsx` | `Enter` saves the list name |
 | `todo-sheet.tsx` | `Enter` blurs the title (commit-on-blur does the write) |
 | `todo-card.tsx` | dnd-kit's keyboard drag activator, on the grip |
+| `rail-handle.tsx` | `←`/`→` resizes the rail 16px, `Enter`/`Space` collapses it, double-click resets to the CSS default |
 
 **Owned by libraries — do not re-bind:**
 

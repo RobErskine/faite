@@ -48,6 +48,9 @@ handle mid-drag.
 | `src/components/board/create-list-column.tsx` | End-of-track "Create list" slot. Column-sized, deliberately **not** a droppable (§5.6) |
 | `src/components/board/use-day-track.ts` | Pure scroll-position/jump math for the day track (anchor index, jump clamping) — not itself drag-and-drop, but shares the track dnd-kit measures |
 | `src/components/board/date-nav.tsx` | Week/Month/Quarter jump buttons + calendar date picker above the day track |
+| `src/components/board/use-rail-resize.ts` | Pure resize/collapse math (§4.12) plus the pointer/keyboard hook for a pinned panel's handle; disabled during any drag so it cannot race dnd-kit's cached rects |
+| `src/components/board/rail-handle.tsx` | The draggable seam on a pinned panel's right edge — one per rail, resizing independently (§4.12) |
+| `src/lib/rail.ts` | `RAIL_MIN`/`RAIL_MAX`/`RAIL_COLLAPSE_THRESHOLD`/etc. — shared so `schema.ts` can bound the stored width without importing a component |
 | `src/app/globals.css` | `--column-min` / `--column-max` / `--list-column-min`, and the `column-track` utility (§4.12) |
 | `src/lib/board.ts` | Column grouping, id codecs, `preferPreciseTarget()`, `planListDrop()` |
 | `src/lib/drop-animation.ts` | Drop animation: `readLandingRect()`, `landingTransform()`, `runLandingDropAnimation()` |
@@ -221,7 +224,7 @@ Writes, by target kind:
 `position` is a fractional index string sorting lexicographically. A reorder
 writes **one field on one record**, never a renumbering.
 
-This matters for sync (P3, not yet built): two devices reordering the same list
+This matters for sync (P3, shipped): two devices reordering the same list
 offline generate different keys instead of fighting over integers, so the merge
 stays a plain field-level last-writer-wins.
 
@@ -529,17 +532,28 @@ as a bug rather than as an affordance. If the day-count toggle ever changes,
 that number is the thing to recompute.
 
 **The planning half's wider floor is set on the outer row, not on each
-column.** `BoardColumn` reads `--column-min`; the planning row overrides that
-one property, so every column inside — including the create-list slot —
-widens without a size prop threaded through the component.
+column.** `BoardColumn` reads `--column-min`; the planning track overrides
+that one property, so every column inside — including the create-list slot —
+widens without a size prop threaded through the component. Backlog's panel
+(below) carries the same override, so it lands at this width too even though
+it is no longer a child of this row.
 
 **Overflow and Backlog are pinned — fixed-width siblings outside the scroll
-track, not part of the fits-at-168px arithmetic above.** `BoardColumn`'s
-`pinned` prop renders a column at `w-(--column-min) shrink-0` next to the
-`.column-track` div, rather than as a `flex-1` child inside it: `[pinned
-column][scrolling track]`, both inside a non-scrolling outer row that carries
-the shared background and padding. They stay reachable however far the track
-scrolls — the point of pinning them, per the P1 feedback that prompted this.
+track, not part of the fits-at-168px arithmetic above — and each gets its own
+raised panel, `PINNED_PANEL` in `board.tsx`.** `BoardColumn`'s `pinned` prop
+renders a column at `w-(--column-min) min-h-0 flex-1 overflow-y-auto` inside
+that panel: `flex-1` sizes it on the panel's main axis (height, filling the
+panel edge to edge) while the fixed width holds regardless. The panel itself
+is the fixed-width sibling of the `.column-track` div — `[panel][scrolling
+track]`, both inside a non-scrolling outer row/half that carries the shared
+background. This is deliberately the one place a column is not transparent:
+`PINNED_PANEL` sets `bg-card`, a `border-r`, and a rightward shadow, so pinning
+*reads* as pinning rather than just behaving like it — the flat look was P1
+feedback in its own right, once the columns were reachable but visually
+indistinguishable from the scrolling ones beside them. `bg-card` rather than
+`bg-background` because the two are identical in light mode but `bg-card` is
+lighter than the page background in dark mode, so "raised" holds in both
+themes without a theme-conditional class.
 
 `position: sticky` was considered and rejected. dnd-kit caches each
 droppable's rect at drag start and corrects it by the scroll delta of its
@@ -547,9 +561,45 @@ scrollable ancestors (see §4.2); a `sticky` element does not move with that
 scroll, so its corrected rect drifts off screen and a drop "on" the visually
 pinned column silently resolves to whatever is underneath it instead — exactly
 the gesture pinning exists to fix. A sibling outside the scroller has no such
-drift, needs no opaque background or z-index (columns are transparent; the
-outer row's background shows through every gap, pinned or not), and does not
-interact with dnd-kit's auto-scroll.
+drift and does not interact with dnd-kit's auto-scroll. It does now need an
+opaque background and a `z-10`, unlike an ordinary column — see above — so its
+shadow paints over the scrolling track's columns rather than a transparent gap
+showing them through.
+
+**Overflow and Backlog resize independently, each via its own `RailHandle`
+(`rail-handle.tsx`) on the panel's right edge.** Deliberately not coupled to
+one shared width: a full Backlog next to an empty Overflow is the normal case,
+and forcing them to match would mean either a cramped Backlog or an Overflow
+that is mostly wasted space. Both still *start* at the same width, because
+both read `--list-column-min` from `PINNED_PANEL` until a real drag overrides
+it — resizing one for the first time measures its own `BoardColumn` section,
+not the panel div (whose rendered width also includes the panel's `px-4`
+padding), or the very first drag would jump the width by ~32px.
+
+The drag itself writes `--column-min` straight onto the panel DOM node on
+every `pointermove` (`use-rail-resize.ts`), the same reasoning as
+`use-day-track.ts`'s direct `track.scrollTo`: a per-pixel value has no business
+in React state, which would re-render on every pixel of drag for no visual
+gain a synchronous DOM write doesn't already give for free. Only the release
+value is committed, once, to `settings.backlogWidth`/`overflowWidth` (nullable
+— null means "never resized," so the CSS default stays declared in exactly one
+place rather than duplicated as a number that could drift from it). Dragging
+narrower than `RAIL_COLLAPSE_THRESHOLD` (`lib/rail.ts`) snaps to a 40px
+collapsed strip instead of clamping at `RAIL_MIN` — the VS Code gesture, so
+collapsing needs no separate affordance to discover. `RailHandle` is not
+rendered at all while its column is collapsed; `BoardColumn`'s collapsed strip
+(vertical label, a `{todos.length}` count, `role="button"`) is itself the way
+back to expanded.
+
+Both handles go `disabled` (inert, `tabIndex={-1}`) whenever a card or column
+drag is active, for the same reason pinning is not `sticky`: resizing mid-drag
+would invalidate every droppable rect dnd-kit cached at drag start.
+
+Rail width and collapse state are settings fields, but deliberately excluded
+from `SETTINGS_SYNCED_FIELDS` (`lib/sync/wire.ts`) — same treatment as
+`activeTabId`. The right width for a laptop is not the right width for a wide
+monitor on the same account, so syncing it would fight the user on every
+device switch.
 
 **The day track now genuinely scrolls through more than a week, starting on
 first load.** `Board` renders `DEFAULT_RENDERED_DAYS` (30) day columns from
@@ -830,7 +880,7 @@ list — see §4.7 and §4.9.)
 
 ```bash
 npm run dev        # http://localhost:3000 (or the next free port if taken)
-npm test           # vitest run — 119 tests
+npm test           # vitest run — 559 tests (see ARCHITECTURE.md §8)
 npm run verify     # typecheck + lint + tests + BOTH builds; run before commit
 ```
 
@@ -945,6 +995,25 @@ Layout, but every item here changes what a drag has to reach.
 34. Drag a card over the create-list card and release. It must land in the
     nearest real list, **never** on the button, and nothing may be created.
 35. Drag a list column over it. No column highlights, no write, no crash.
+
+**Manual checklist — the pinned rail (§4.12)**
+
+36. Drag Backlog's handle wider, then Overflow's. Each panel moves
+    independently — resizing one must not move the other, or shift the day
+    track's width.
+37. Reload after resizing both. Both widths persist, and land at exactly what
+    was dragged, not off by the panel's padding (this is the first-drag
+    measurement bug the panel-vs-section distinction above exists to avoid).
+38. Drag a handle past the left edge until it snaps to a 40px collapsed strip.
+    Release — the strip shows a vertical label and (if non-empty) a count.
+    Click anywhere on it to expand back to the width it had before collapsing.
+39. Tab to a handle: arrow keys nudge 16px, Enter/Space collapses, focus ring
+    is visible. Double-click resets to the CSS default (218px).
+40. Start a card drag, then try to grab a handle mid-drag — inert, no cursor
+    change, no resize. Drop the card; the handle works again immediately.
+41. Drag a card onto a **collapsed** Backlog — it must still land at the end
+    of the column (Backlog stays droppable while collapsed). Try the same onto
+    a collapsed Overflow — still refused, same as expanded.
 
 ### A caution
 

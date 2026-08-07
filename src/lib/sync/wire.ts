@@ -51,6 +51,12 @@ export const SETTINGS_ENTITY_ID = "settings";
  * has open), not account state, and it's the highest-frequency writer
  * (`board.tsx` writes it on every tab switch) — keeping it off the wire is
  * what keeps a tab switch from ever touching the outbox at all.
+ *
+ * `backlogWidth`/`backlogCollapsed`/`overflowWidth`/`overflowCollapsed` are
+ * excluded for the same reason as `activeTabId`, but for a different flavour
+ * of "device, not account": the right rail width for a laptop is not the
+ * right rail width for a wide monitor signed into the same account, so a
+ * synced value would fight the user on every device switch.
  */
 export const SETTINGS_SYNCED_FIELDS: ReadonlySet<string> = new Set([
   "timezone",

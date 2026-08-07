@@ -639,6 +639,10 @@ export async function seedIfEmpty(): Promise<void> {
         avatarEmoji: "",
         avatarImage: "",
         activeTabId: DEFAULT_TAB_ID,
+        backlogWidth: null,
+        backlogCollapsed: false,
+        overflowWidth: null,
+        overflowCollapsed: false,
         updatedAt: timestamp,
       },
     });

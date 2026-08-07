@@ -187,15 +187,17 @@ like a persistent bug.
 
 ## Not built
 
-- **Account deletion.** Better Auth can delete the D1 rows, but a user's
-  Durable Object is addressed by `idFromName(userId)` and has no foreign key to
-  anything — its storage would persist, unreachable and billed, and a
-  re-registration on the same email would inherit the old board. Needs an
-  explicit DO wipe. See `docs/SYNC.md`.
-- **Magic link** (Linear EI-58) and **passkeys**.
+- **Account deletion.** Better Auth's `user.deleteUser.afterDelete` now calls
+  `UserDurableObject.wipe()`, closing the orphaned-DO trap this section used to
+  describe. **Still open: unverified end-to-end** — a CSRF origin check
+  blocked local testing of the full delete → wipe round trip. See
+  `docs/SYNC.md:281-291` and Linear EI-80.
+- **Magic link** (Linear EI-66) and **passkeys**. Google OAuth shipped in P2
+  (EI-58).
 - **Capacitor OAuth** (P7, EI-51) — a WebView needs custom-scheme deep links;
   `capacitor://localhost` is already in `trustedOrigins` so it is not designed
   out.
-- **Authorization.** Nothing server-side gates data yet, because no server-side
-  data exists. The client-side nudges secure nothing. Real enforcement arrives
-  with P3's sync routes.
+- **Authorization.** P3's sync routes shipped and are the real enforcement
+  point: `/api/sync/*` requires an authenticated session, and each user's
+  Durable Object is addressed by `idFromName(session.user.id)`, so a request
+  can only ever read or write its own account's data.

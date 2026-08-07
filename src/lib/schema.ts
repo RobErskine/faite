@@ -2,6 +2,7 @@ import { z } from "zod";
 import { DEFAULT_FONT_PAIRING, FONT_PAIRING_IDS } from "./fonts";
 import { DEFAULT_THEME_MODE, THEME_MODE_IDS } from "./theme";
 import { AVATAR_KIND_IDS, DEFAULT_AVATAR_KIND } from "./profile";
+import { RAIL_MAX, RAIL_MIN } from "./rail";
 
 /**
  * Single source of truth for Faite's data model.
@@ -244,6 +245,21 @@ export const settingsSchema = z.object({
    * archived or deleted.
    */
   activeTabId: idSchema.nullable().default(null),
+  /**
+   * Backlog and Overflow's rail widths, resized independently (one can hold a
+   * lot while the other holds nothing, so they are never coupled). Null means
+   * "never resized" — the CSS default (`--list-column-min`) applies, which
+   * keeps that default declared in exactly one place rather than duplicated
+   * here as a number that could drift from it.
+   *
+   * Device-local like `activeTabId` above, not synced: the right width for a
+   * laptop screen is not the right width for a wide monitor on the same
+   * account. See `SETTINGS_SYNCED_FIELDS` in `lib/sync/wire.ts`.
+   */
+  backlogWidth: z.number().int().min(RAIL_MIN).max(RAIL_MAX).nullable().default(null),
+  backlogCollapsed: z.boolean().default(false),
+  overflowWidth: z.number().int().min(RAIL_MIN).max(RAIL_MAX).nullable().default(null),
+  overflowCollapsed: z.boolean().default(false),
   updatedAt: z.string(),
 });
 export type Settings = z.infer<typeof settingsSchema>;

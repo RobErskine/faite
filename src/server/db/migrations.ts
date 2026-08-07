@@ -71,6 +71,16 @@ export const USER_DB_MIGRATIONS: readonly UserDbMigration[] = [
     name: "initial-schema",
     statements: BOOTSTRAP_STATEMENTS,
   },
+  {
+    id: 2,
+    name: "settings-add-rail-layout",
+    statements: [
+      "ALTER TABLE settings ADD COLUMN backlog_width integer",
+      "ALTER TABLE settings ADD COLUMN backlog_collapsed integer DEFAULT false NOT NULL",
+      "ALTER TABLE settings ADD COLUMN overflow_width integer",
+      "ALTER TABLE settings ADD COLUMN overflow_collapsed integer DEFAULT false NOT NULL",
+    ],
+  },
   // Add new migrations here. Never edit one above this line.
   //
   // Example — adding a nullable column (the safe, ordinary case):

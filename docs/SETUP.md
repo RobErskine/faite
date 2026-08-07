@@ -360,5 +360,5 @@ like a bug that "won't go away", so restart before diagnosing.
 
 `npm run verify` currently fails on one **pre-existing** lint error in
 `src/components/board/use-day-track.ts:156` (`react-hooks/set-state-in-effect`),
-unrelated to auth or setup. Typecheck, all 282 tests, and both build targets
+unrelated to auth or setup. Typecheck, all 559 tests, and both build targets
 are green. Don't read a red `verify` here as "something I just did broke it."

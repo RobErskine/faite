@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -100,6 +101,8 @@ import { ColumnInfoButton } from "./column-info-button";
 import { CreateListColumn } from "./create-list-column";
 import { DateNav } from "./date-nav";
 import { ListInfoDialog } from "./list-info-dialog";
+import { RailCollapseButton } from "./rail-collapse-button";
+import { RailHandle } from "./rail-handle";
 import {
   archiveListWithUndo,
   deleteListWithUndo,
@@ -150,6 +153,26 @@ const LOAD_MORE_STEP = 30;
  * this constant grows it to match — see `cap` state below.
  */
 const DEFAULT_DAY_CAP = 365;
+
+/**
+ * Wraps Overflow and Backlog: the one place a column gets its own opaque
+ * surface rather than the shared transparent-column-over-tinted-half look.
+ * Both are pinned fixed-width siblings of a scrolling track (`pinned` on
+ * BoardColumn) — the border + shadow are what make that pinning *read*,
+ * rather than just behave.
+ *
+ * `bg-card` over `bg-background`: identical to the page background in light
+ * mode, but lighter than it in dark mode (see globals.css), so "raised" holds
+ * in both themes without a variant. `--column-min` is scoped here rather than
+ * left to inherit, so Overflow (calendar half) and Backlog (planning half)
+ * land at the same width even though their halves set different floors for
+ * everything else inside them.
+ */
+const PINNED_PANEL = cn(
+  "relative z-10 flex shrink-0 flex-col bg-card px-4",
+  "border-r border-border shadow-[2px_0_6px_-2px_rgb(0_0_0/0.08)]",
+  "[--column-min:var(--list-column-min)]",
+);
 
 /**
  * Resolve the drop target from the POINTER, not the dragged element's box.
@@ -511,6 +534,22 @@ export function Board() {
 
   /** The day track's scroll container, threaded into `useDayTrack` below. */
   const dayTrackRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * The two pinned panels, resized independently — see `PINNED_PANEL` and
+   * `RailHandle` below. Read with a `null` fallback rather than a numeric
+   * default so the CSS default (`--list-column-min`) stays the single source
+   * of what "not yet resized" looks like.
+   */
+  const overflowPanelRef = useRef<HTMLDivElement>(null);
+  const backlogPanelRef = useRef<HTMLDivElement>(null);
+  const overflowWidth = settings?.overflowWidth ?? null;
+  const overflowCollapsed = settings?.overflowCollapsed ?? false;
+  const backlogWidth = settings?.backlogWidth ?? null;
+  const backlogCollapsed = settings?.backlogCollapsed ?? false;
+  // Resizing mid-drag would invalidate every droppable rect dnd-kit cached at
+  // drag start (§4.2 of DRAG-AND-DROP.md) — same reasoning as `rejectsDrop`.
+  const railDisabled = !!activeTodo || !!activeList;
 
   const {
     anchorIndex,
@@ -1078,99 +1117,121 @@ export function Board() {
           sticky column's corrected rect would drift off screen and a drop
           "on" Overflow would silently resolve to whatever is underneath it.
         */}
-        <div className="flex flex-1 gap-px border-b bg-border/40 px-4 pt-4">
-          <BoardColumn
-            id={board.overflow.id}
-            title="Overflow"
-            subtitle="Put off too long"
-            todos={board.overflow.todos}
-            labels={labels}
-            ctx={ctx}
-            onToggle={handleToggle}
-            onOpen={(todo) => setOpenTodoId(todo.id)}
-            onQuickAdd={() => {}}
-            emphasis
-            isDragActive={!!activeTodo}
-            overTodoId={overTodoId}
-            landingTodoId={landingTodoId}
-            rejectsDrop
-            pinned
-          />
-          <div ref={dayTrackRef} className="column-track flex flex-1 gap-px">
-            {board.days.map((column) => {
-              const { weekday, label } = formatDay(column.day);
-              const isToday = column.day === ctx.today;
-              return (
-                <BoardColumn
-                  key={column.id}
-                  id={column.id}
-                  title={weekday}
-                  // `subtitle` also carries prose on other columns, so the
-                  // numeral face is applied here rather than in BoardColumn.
-                  subtitle={<span className="num">{label}</span>}
-                  todos={column.todos}
-                  labels={labels}
-                  ctx={ctx}
-                  emphasis={isToday}
-                  onToggle={handleToggle}
-                  onOpen={(todo) => setOpenTodoId(todo.id)}
-                  onQuickAdd={(title) => void handleQuickAdd(title, { day: column.day })}
-                  isDragActive={!!activeTodo}
-                  overTodoId={overTodoId}
-                  landingTodoId={landingTodoId}
+        <div className="flex flex-1 border-b bg-border/40">
+          <div
+            ref={overflowPanelRef}
+            className={cn(PINNED_PANEL, "pt-4")}
+            style={
+              overflowWidth != null
+                ? ({ "--column-min": `${overflowWidth}px` } as CSSProperties)
+                : undefined
+            }
+          >
+            <BoardColumn
+              id={board.overflow.id}
+              title="Overflow"
+              subtitle="Put off too long"
+              todos={board.overflow.todos}
+              labels={labels}
+              ctx={ctx}
+              onToggle={handleToggle}
+              onOpen={(todo) => setOpenTodoId(todo.id)}
+              onQuickAdd={() => {}}
+              emphasis
+              isDragActive={!!activeTodo}
+              overTodoId={overTodoId}
+              landingTodoId={landingTodoId}
+              rejectsDrop
+              pinned
+              collapsed={overflowCollapsed}
+              onExpand={() => void mutateSettings(LOCAL_OWNER_ID, { overflowCollapsed: false })}
+              actions={
+                <RailCollapseButton
+                  label="Overflow"
+                  onCollapse={() => void mutateSettings(LOCAL_OWNER_ID, { overflowCollapsed: true })}
                 />
-              );
-            })}
-            {/*
-              A tile at the end of whatever is currently loaded, exactly like
-              CreateListColumn at the end of the planning track — growth is
-              always an explicit click, never silent, so it never surprises a
-              user mid-scroll with columns that weren't there a second ago.
-              Gone once `cap` is reached; there is nothing further to load
-              until the user picks a date past it (see `cap`'s definition).
-            */}
-            {renderedDays < cap && (
-              <button
-                type="button"
-                onClick={loadMoreDays}
-                className={cn(
-                  "flex flex-1 flex-col items-center justify-center rounded-md",
-                  "min-w-(--column-min) max-w-(--column-max) border border-dashed border-border",
-                  "px-2 text-center text-xs text-muted-foreground transition-colors",
-                  "hover:border-foreground/30 hover:bg-background/60 hover:text-foreground",
-                  "focus-visible:outline-2 focus-visible:outline-ring",
-                )}
-              >
-                Load {LOAD_MORE_STEP} more days
-              </button>
+              }
+            />
+            {!overflowCollapsed && (
+              <RailHandle
+                label="Overflow"
+                panelRef={overflowPanelRef}
+                storedWidth={overflowWidth}
+                disabled={railDisabled}
+                onWidthChange={(width) =>
+                  void mutateSettings(LOCAL_OWNER_ID, { overflowWidth: width })
+                }
+                onCollapsedChange={(collapsed) =>
+                  void mutateSettings(LOCAL_OWNER_ID, { overflowCollapsed: collapsed })
+                }
+              />
             )}
+          </div>
+          <div className="flex min-w-0 flex-1 gap-px px-4 pt-4">
+            <div ref={dayTrackRef} className="column-track flex flex-1 gap-px">
+              {board.days.map((column) => {
+                const { weekday, label } = formatDay(column.day);
+                const isToday = column.day === ctx.today;
+                return (
+                  <BoardColumn
+                    key={column.id}
+                    id={column.id}
+                    title={weekday}
+                    // `subtitle` also carries prose on other columns, so the
+                    // numeral face is applied here rather than in BoardColumn.
+                    subtitle={<span className="num">{label}</span>}
+                    todos={column.todos}
+                    labels={labels}
+                    ctx={ctx}
+                    emphasis={isToday}
+                    onToggle={handleToggle}
+                    onOpen={(todo) => setOpenTodoId(todo.id)}
+                    onQuickAdd={(title) => void handleQuickAdd(title, { day: column.day })}
+                    isDragActive={!!activeTodo}
+                    overTodoId={overTodoId}
+                    landingTodoId={landingTodoId}
+                  />
+                );
+              })}
+              {/*
+                A tile at the end of whatever is currently loaded, exactly like
+                CreateListColumn at the end of the planning track — growth is
+                always an explicit click, never silent, so it never surprises a
+                user mid-scroll with columns that weren't there a second ago.
+                Gone once `cap` is reached; there is nothing further to load
+                until the user picks a date past it (see `cap`'s definition).
+              */}
+              {renderedDays < cap && (
+                <button
+                  type="button"
+                  onClick={loadMoreDays}
+                  className={cn(
+                    "flex flex-1 flex-col items-center justify-center rounded-md",
+                    "min-w-(--column-min) max-w-(--column-max) border border-dashed border-border",
+                    "px-2 text-center text-xs text-muted-foreground transition-colors",
+                    "hover:border-foreground/30 hover:bg-background/60 hover:text-foreground",
+                    "focus-visible:outline-2 focus-visible:outline-ring",
+                  )}
+                >
+                  Load {LOAD_MORE_STEP} more days
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
         {/* Planning half */}
-        <div className="flex flex-[0.8] flex-col bg-muted/30">
-          <TabStrip
-            tabs={tabs}
-            activeTabId={activeTabId}
-            archivedCount={archivedLists.length + archivedTabs.length}
-            infoTabId={infoTabId}
-            drop={tabDrop}
-            isCardDragActive={!!activeTodo}
-            onSelect={selectTab}
-            onOpenInfo={setInfoTabId}
-            onCreate={(name) => void handleCreateTab(name)}
-            onOpenArchive={() => setArchivedOpen(true)}
-          />
-          <Separator />
-          {/*
-            The wider floor is set on the outer row, not on each column: every
-            column inside reads `--column-min`, so overriding it here widens
-            the whole half without threading a size prop through BoardColumn.
-            Backlog sits outside the scrolling track — same reasoning as
-            Overflow above, and for the same reason it is not sticky.
-          */}
-          <div className="flex flex-1 gap-px bg-border/40 px-4 pt-3 [--column-min:var(--list-column-min)]">
-            {backlogColumn && (
+        <div className="flex flex-[0.8] bg-muted/30">
+          {backlogColumn && (
+            <div
+              ref={backlogPanelRef}
+              className={cn(PINNED_PANEL, "pt-3")}
+              style={
+                backlogWidth != null
+                  ? ({ "--column-min": `${backlogWidth}px` } as CSSProperties)
+                  : undefined
+              }
+            >
               <BoardColumn
                 id={backlogColumn.id}
                 title={backlogColumn.list.name}
@@ -1189,51 +1250,97 @@ export function Board() {
                 landingTodoId={landingTodoId}
                 // Pinned leftmost, so it gets no reorder handle.
                 reservesGripSlot
-                // Backlog has nothing to offer here either: it cannot be
-                // renamed, archived, or deleted, and a button whose every
-                // action is disabled is worse than no button.
+                // Backlog cannot be renamed, archived, or deleted, so its one
+                // real action is collapsing the rail — see RailCollapseButton.
                 isColumnDragActive={!!activeList}
                 // Backlog belongs to no tab, so it stays neutral while the
                 // columns around it carry the current tab's colour. That
                 // difference is also the clearest signal that it is shared.
                 accentColor={null}
                 pinned
+                collapsed={backlogCollapsed}
+                onExpand={() => void mutateSettings(LOCAL_OWNER_ID, { backlogCollapsed: false })}
+                actions={
+                  <RailCollapseButton
+                    label="Backlog"
+                    onCollapse={() => void mutateSettings(LOCAL_OWNER_ID, { backlogCollapsed: true })}
+                  />
+                }
               />
-            )}
-            <div className="column-track flex flex-1 gap-px">
-              {otherListColumns.map((column) => (
-                <BoardColumn
-                  key={column.id}
-                  id={column.id}
-                  title={column.list.name}
-                  todos={column.todos}
-                  labels={labels}
-                  ctx={ctx}
-                  awayTodoIds={board.awayTodoIds}
-                  onToggle={handleToggle}
-                  onOpen={(todo) => setOpenTodoId(todo.id)}
-                  onQuickAdd={(title) =>
-                    void handleQuickAdd(title, { listId: column.list.id })
+              {!backlogCollapsed && (
+                <RailHandle
+                  label="Backlog"
+                  panelRef={backlogPanelRef}
+                  storedWidth={backlogWidth}
+                  disabled={railDisabled}
+                  onWidthChange={(width) =>
+                    void mutateSettings(LOCAL_OWNER_ID, { backlogWidth: width })
                   }
-                  minRows={5}
-                  isDragActive={!!activeTodo}
-                  overTodoId={overTodoId}
-                  landingTodoId={landingTodoId}
-                  reorderListId={column.list.id}
-                  reservesGripSlot
-                  actions={
-                    <ColumnInfoButton
-                      listName={column.list.name}
-                      isOpen={infoListId === column.list.id}
-                      onOpen={() => setInfoListId(column.list.id)}
-                    />
+                  onCollapsedChange={(collapsed) =>
+                    void mutateSettings(LOCAL_OWNER_ID, { backlogCollapsed: collapsed })
                   }
-                  isColumnDropTarget={columnDropTargetId === column.list.id}
-                  isColumnDragActive={!!activeList}
-                  accentColor={activeTabRecord?.color}
                 />
-              ))}
-              <CreateListColumn tabId={activeTabId} />
+              )}
+            </div>
+          )}
+          <div className="flex min-w-0 flex-1 flex-col">
+            <TabStrip
+              tabs={tabs}
+              activeTabId={activeTabId}
+              archivedCount={archivedLists.length + archivedTabs.length}
+              infoTabId={infoTabId}
+              drop={tabDrop}
+              isCardDragActive={!!activeTodo}
+              onSelect={selectTab}
+              onOpenInfo={setInfoTabId}
+              onCreate={(name) => void handleCreateTab(name)}
+              onOpenArchive={() => setArchivedOpen(true)}
+            />
+            <Separator />
+            {/*
+              The wider floor is set on the outer row, not on each column:
+              every column inside reads `--column-min`, so overriding it here
+              widens the whole track without threading a size prop through
+              BoardColumn. Backlog carries the same override via
+              PINNED_PANEL, so it lands at this width too even though it now
+              sits in its own panel rather than this row.
+            */}
+            <div className="flex flex-1 gap-px bg-border/40 px-4 pt-3 [--column-min:var(--list-column-min)]">
+              <div className="column-track flex flex-1 gap-px">
+                {otherListColumns.map((column) => (
+                  <BoardColumn
+                    key={column.id}
+                    id={column.id}
+                    title={column.list.name}
+                    todos={column.todos}
+                    labels={labels}
+                    ctx={ctx}
+                    awayTodoIds={board.awayTodoIds}
+                    onToggle={handleToggle}
+                    onOpen={(todo) => setOpenTodoId(todo.id)}
+                    onQuickAdd={(title) =>
+                      void handleQuickAdd(title, { listId: column.list.id })
+                    }
+                    minRows={5}
+                    isDragActive={!!activeTodo}
+                    overTodoId={overTodoId}
+                    landingTodoId={landingTodoId}
+                    reorderListId={column.list.id}
+                    reservesGripSlot
+                    actions={
+                      <ColumnInfoButton
+                        listName={column.list.name}
+                        isOpen={infoListId === column.list.id}
+                        onOpen={() => setInfoListId(column.list.id)}
+                      />
+                    }
+                    isColumnDropTarget={columnDropTargetId === column.list.id}
+                    isColumnDragActive={!!activeList}
+                    accentColor={activeTabRecord?.color}
+                  />
+                ))}
+                <CreateListColumn tabId={activeTabId} />
+              </div>
             </div>
           </div>
         </div>

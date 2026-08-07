@@ -72,6 +72,16 @@ interface BoardColumnProps {
    * shares the track that provided one.
    */
   pinned?: boolean;
+  /**
+   * Shrinks to a 40px strip with a vertical label and a count, in place of
+   * the ordinary body — only meaningful alongside `pinned`. Stays a real
+   * droppable (a collapsed Backlog still accepts a card, landing at the end
+   * of the column); Overflow already refuses drops regardless, via
+   * `rejectsDrop`.
+   */
+  collapsed?: boolean;
+  /** Expands a collapsed column. Clicking anywhere on the strip triggers it. */
+  onExpand?: () => void;
 }
 
 export function BoardColumn({
@@ -98,6 +108,8 @@ export function BoardColumn({
   isColumnDropTarget,
   accentColor,
   pinned,
+  collapsed,
+  onExpand,
 }: BoardColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id });
   const [draft, setDraft] = useState("");
@@ -157,15 +169,38 @@ export function BoardColumn({
   return (
     <section
       ref={setNodeRef}
-      aria-label={typeof title === "string" ? title : undefined}
+      aria-label={
+        collapsed
+          ? `Expand the ${typeof title === "string" ? title : "column"}`
+          : typeof title === "string"
+            ? title
+            : undefined
+      }
+      role={collapsed ? "button" : undefined}
+      tabIndex={collapsed ? 0 : undefined}
+      onClick={collapsed ? onExpand : undefined}
+      onKeyDown={
+        collapsed
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onExpand?.();
+              }
+            }
+          : undefined
+      }
       className={cn(
         "group/column relative flex flex-col rounded-md transition-all",
-        pinned
-          ? // Fixed-width sibling of the track, not a flex child of it — it
-            // keeps its own vertical scroll since the track no longer gives
-            // it one.
-            "w-(--column-min) shrink-0 overflow-y-auto"
-          : // Grows to fill the half, but between a floor and a ceiling. The
+        collapsed && "w-10 min-h-0 flex-1 shrink-0 cursor-pointer items-center",
+        pinned && !collapsed
+          ? // Fixed-width child of PINNED_PANEL's flex column, not of the
+            // scrolling track — `flex-1` sizes it on the panel's main axis
+            // (height, so it fills the panel top to bottom) while the fixed
+            // width holds; `min-h-0` is what lets its own vertical scroll
+            // engage instead of the panel just growing to fit its content.
+            "w-(--column-min) min-h-0 flex-1 overflow-y-auto"
+          : !pinned &&
+            // Grows to fill the half, but between a floor and a ceiling. The
             // floor is what pushes the half into horizontal scroll once the
             // columns stop fitting; see --column-min in globals.css.
             "flex-1 min-w-(--column-min) max-w-(--column-max)",
@@ -206,135 +241,165 @@ export function BoardColumn({
         */
         onPointerDown={startPointerDrag}
         className={cn(
-          "flex items-baseline justify-between gap-2 px-2 pb-1",
+          // Relative regardless of branch: harmless when nothing inside is
+          // absolutely positioned, and it's what lets RailCollapseButton (in
+          // the `actions` slot) anchor to the heading's own box rather than
+          // the whole column when it's passed for Overflow/Backlog.
+          "relative",
+          collapsed
+            ? "flex flex-1 flex-col items-center gap-2 px-1 py-2"
+            : "flex items-baseline justify-between gap-2 px-2 pb-1",
           // Stated rather than inherited, so the header advertises the gesture
           // across its whole width and not just over the grip.
           dragListName !== null && "cursor-grab active:cursor-grabbing",
           // Only drawn when the tab has a colour, so an uncoloured tab keeps
           // the original headers rather than gaining a grey rule.
-          accentColor && "border-b-2",
+          accentColor && !collapsed && "border-b-2",
         )}
-        style={accentColor ? { borderColor: edge(accentColor) } : undefined}
+        style={accentColor && !collapsed ? { borderColor: edge(accentColor) } : undefined}
       >
-        <div className="min-w-0">
-          {subtitle && (
-            <p className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">
-              {subtitle}
-            </p>
-          )}
-          {/*
-            Grip sits immediately left of the name, matching a todo row. The
-            empty slot on Backlog is deliberate: it cannot be reordered, but
-            without the reserved space its title would sit flush left while
-            every neighbouring column's title was indented past a grip.
-
-            The header drags on its own now, so the grip is no longer the only
-            way in — but it stays a real control for the same two reasons it
-            does on a card: it is the keyboard activator, and it is the only
-            surface carrying `touch-none`, so on touch it remains the drag
-            surface while the track keeps its scrolling.
-          */}
-          <div className="flex min-w-0 items-center gap-1.5">
-            {dragListName !== null ? (
-              <DragGrip
-                aria-label={`Drag to reorder the ${dragListName} list`}
-                className={cn(
-                  // Visible at rest, not hover-only, so the affordance is
-                  // discoverable without sweeping the header.
-                  "group-hover/column:text-muted-foreground",
-                  isDragging && "opacity-40",
-                )}
-                {...dragAttributes}
-                onKeyDown={startKeyboardDrag}
-              />
-            ) : (
-              reservesGripSlot && <span className="size-3 shrink-0" aria-hidden />
+        {collapsed ? (
+          <>
+            {todos.length > 0 && (
+              <span className="num text-2xs font-medium text-muted-foreground">
+                {todos.length}
+              </span>
             )}
             <h2
               className={cn(
                 "truncate font-heading text-lg font-bold uppercase tracking-tight",
+                "[writing-mode:vertical-rl] rotate-180",
                 emphasis && "text-primary",
               )}
             >
               {title}
             </h2>
-          </div>
-        </div>
-        {actions}
+          </>
+        ) : (
+          <>
+            <div className="min-w-0">
+              {subtitle && (
+                <p className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+                  {subtitle}
+                </p>
+              )}
+              {/*
+                Grip sits immediately left of the name, matching a todo row. The
+                empty slot on Backlog is deliberate: it cannot be reordered, but
+                without the reserved space its title would sit flush left while
+                every neighbouring column's title was indented past a grip.
+
+                The header drags on its own now, so the grip is no longer the only
+                way in — but it stays a real control for the same two reasons it
+                does on a card: it is the keyboard activator, and it is the only
+                surface carrying `touch-none`, so on touch it remains the drag
+                surface while the track keeps its scrolling.
+              */}
+              <div className="flex min-w-0 items-center gap-1.5">
+                {dragListName !== null ? (
+                  <DragGrip
+                    aria-label={`Drag to reorder the ${dragListName} list`}
+                    className={cn(
+                      // Visible at rest, not hover-only, so the affordance is
+                      // discoverable without sweeping the header.
+                      "group-hover/column:text-muted-foreground",
+                      isDragging && "opacity-40",
+                    )}
+                    {...dragAttributes}
+                    onKeyDown={startKeyboardDrag}
+                  />
+                ) : (
+                  reservesGripSlot && <span className="size-3 shrink-0" aria-hidden />
+                )}
+                <h2
+                  className={cn(
+                    "truncate font-heading text-lg font-bold uppercase tracking-tight",
+                    emphasis && "text-primary",
+                  )}
+                >
+                  {title}
+                </h2>
+              </div>
+            </div>
+            {actions}
+          </>
+        )}
       </header>
 
-      <div className="flex flex-1 flex-col">
-        <SortableContext items={todos.map((t) => t.id)} strategy={verticalListSortingStrategy}>
-          {todos.map((todo) => (
-            <TodoCard
-              key={todo.id}
-              todo={todo}
-              labels={labels}
-              ctx={ctx}
-              isAway={awayTodoIds?.has(todo.id)}
-              showInsertionLine={!rejectsDrop && overTodoId === todo.id}
-              isLanding={landingTodoId === todo.id}
-              onToggle={onToggle}
-              onOpen={onOpen}
+      {!collapsed && (
+        <div className="flex flex-1 flex-col">
+          <SortableContext items={todos.map((t) => t.id)} strategy={verticalListSortingStrategy}>
+            {todos.map((todo) => (
+              <TodoCard
+                key={todo.id}
+                todo={todo}
+                labels={labels}
+                ctx={ctx}
+                isAway={awayTodoIds?.has(todo.id)}
+                showInsertionLine={!rejectsDrop && overTodoId === todo.id}
+                isLanding={landingTodoId === todo.id}
+                onToggle={onToggle}
+                onOpen={onOpen}
+              />
+            ))}
+          </SortableContext>
+
+          {/*
+            Hovering the column itself rather than a specific card means the item
+            lands at the end, so show the indicator there instead.
+
+            `!isColumnDragActive` matters: `isOver` is dnd-kit's own per-droppable
+            state and knows nothing about which kind of drag is in flight, so
+            without this a column drag hovering here would ALSO light up this
+            card-drop dot — a stray card-drop indicator bleeding into a column
+            drag, which is a different bug from, but the same shape as, the
+            reason `isColumnDropTarget` exists above.
+          */}
+          {isOver && !rejectsDrop && !overTodoId && !isColumnDragActive && (
+            <span
+              aria-hidden
+              data-drop-indicator
+              className="relative block h-0.5 rounded-full bg-primary"
+            >
+              <span className="absolute -left-0.5 -top-[3px] size-2 rounded-full bg-primary" />
+            </span>
+          )}
+
+          {/* Quick add sits directly under the last item, like the reference UI. */}
+          <div className="group relative flex items-center border-b border-border/60">
+            <Plus
+              className="pointer-events-none absolute left-2 size-3 text-muted-foreground/40 opacity-0 group-focus-within:opacity-100"
+              aria-hidden
             />
-          ))}
-        </SortableContext>
-
-        {/*
-          Hovering the column itself rather than a specific card means the item
-          lands at the end, so show the indicator there instead.
-
-          `!isColumnDragActive` matters: `isOver` is dnd-kit's own per-droppable
-          state and knows nothing about which kind of drag is in flight, so
-          without this a column drag hovering here would ALSO light up this
-          card-drop dot — a stray card-drop indicator bleeding into a column
-          drag, which is a different bug from, but the same shape as, the
-          reason `isColumnDropTarget` exists above.
-        */}
-        {isOver && !rejectsDrop && !overTodoId && !isColumnDragActive && (
-          <span
-            aria-hidden
-            data-drop-indicator
-            className="relative block h-0.5 rounded-full bg-primary"
-          >
-            <span className="absolute -left-0.5 -top-[3px] size-2 rounded-full bg-primary" />
-          </span>
-        )}
-
-        {/* Quick add sits directly under the last item, like the reference UI. */}
-        <div className="group relative flex items-center border-b border-border/60">
-          <Plus
-            className="pointer-events-none absolute left-2 size-3 text-muted-foreground/40 opacity-0 group-focus-within:opacity-100"
-            aria-hidden
-          />
-          <input
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                commit();
+            <input
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  commit();
+                }
+                if (e.key === "Escape") setDraft("");
+              }}
+              onBlur={commit}
+              placeholder="Add a to-do"
+              aria-label={
+                typeof title === "string" ? `Add a to-do to ${title}` : "Add a to-do"
               }
-              if (e.key === "Escape") setDraft("");
-            }}
-            onBlur={commit}
-            placeholder="Add a to-do"
-            aria-label={
-              typeof title === "string" ? `Add a to-do to ${title}` : "Add a to-do"
-            }
-            className={cn(
-              "w-full bg-transparent px-2 py-1.5 text-sm outline-none",
-              "placeholder:text-transparent focus:placeholder:text-muted-foreground/60",
-              "group-focus-within:pl-6",
-            )}
-          />
-        </div>
+              className={cn(
+                "w-full bg-transparent px-2 py-1.5 text-sm outline-none",
+                "placeholder:text-transparent focus:placeholder:text-muted-foreground/60",
+                "group-focus-within:pl-6",
+              )}
+            />
+          </div>
 
-        {/* Ruled filler lines. Decorative only. */}
-        {Array.from({ length: fillerRows }, (_, i) => (
-          <div key={i} className="h-8 border-b border-border/40" aria-hidden />
-        ))}
-      </div>
+          {/* Ruled filler lines. Decorative only. */}
+          {Array.from({ length: fillerRows }, (_, i) => (
+            <div key={i} className="h-8 border-b border-border/40" aria-hidden />
+          ))}
+        </div>
+      )}
     </section>
   );
 }

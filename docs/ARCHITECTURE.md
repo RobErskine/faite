@@ -6,7 +6,7 @@ recoverable later without re-deriving it.
 **Faite** ("done" in French) is a weekly-planner todo app. The double meaning is
 the point: you control your fate by getting things done.
 
-Status at time of writing: **P0, P1 and P2 shipped.** Live at
+Status at time of writing: **P0 through P4 shipped.** Live at
 https://myfaite.app — custom domain, D1, Cloudflare Email Sending, and
 GitHub/Google OAuth all wired and verified against production. Deploys run
 from Workers Builds on push to `main`.
@@ -17,9 +17,11 @@ signup → email → verify → sign-in loop confirmed end to end (verified user
 token consumed, session issued). Email verification is required in production
 and off in local dev — see "P2 is live" in §7.
 
-**P3 is half done:** the sync *semantics* (HLC, field-level LWW, DO storage
-schema) are built and tested; none of the *transport* exists yet. Start at
-`docs/SYNC.md`, not here.
+**P3 is done, including transport:** the sync semantics (HLC, field-level LWW,
+DO storage schema) *and* the authenticated `/api/sync/*` push/pull RPC and
+outbox-drain pull loop are built, tested, and verified on two real browsers.
+**P4 is shipped and live:** WebSocket push with hibernation replaced the
+polling transport, unchanged semantics. Start at `docs/SYNC.md`, not here.
 
 ---
 
@@ -505,6 +507,14 @@ placeholder for a fact that legitimately does not exist.
 
 The payoff: the cheapest schema change is the one you don't make.
 
+**Projects is retired in favour of labels**, decided 2026-08-06. The first
+worked example above (tab-from-list) is what made this legible: once "which
+tab" is a derived selector rather than a stored field, a `project` entity
+whose only real job was cross-cutting grouping is redundant with a `label` —
+multi-assign, already synced, already has UI. EI-53 ("Projects +
+cross-cutting project views") is cancelled; EI-62 does the retirement.
+Revivable later if the need reappears, but not before a real use case does.
+
 ### 2.15 The data model is resettable, for now
 
 Faite has one user, so a schema change that would be awkward to migrate can
@@ -548,7 +558,7 @@ See "Not built yet, and why" in `docs/SCHEMA-CHANGES.md`, and
 | Auth storage | D1 + Drizzle (`@better-auth/drizzle-adapter`) | auth tables only; todo data stays in the DO |
 | Email | Cloudflare Email Service (`send_email` binding) | password reset + verification, see §2.12 |
 | Validation | Zod | source of truth for Drizzle, OpenAPI, MCP |
-| Tests | Vitest (+ fake-indexeddb, Testing Library) | 239 tests |
+| Tests | Vitest (+ fake-indexeddb, Testing Library) | 559 tests |
 
 ---
 
@@ -701,22 +711,26 @@ that build fails immediately instead of at P7 when it would be a rewrite.
 | P0 | Scaffold + deploy | done |
 | P1 | Local main loop, no backend | done |
 | P2 | Better Auth on D1 — email/password, GitHub + Google OAuth | **shipped and live** |
-| P3 | Sync v0 — per-user DO, HLC LWW, polling | **semantics done; transport not started** — see `docs/SYNC.md` |
-| P4 | Sync v1 — WebSocket push, hibernation | |
-| P5 | API + OpenAPI docs | |
-| P6 | Fast follow (see below) | |
-| P7 | Capacitor + MCP | |
+| P3 | Sync v0 — per-user DO, HLC LWW, polling | **done, including transport** — see `docs/SYNC.md` |
+| P4 | Sync v1 — WebSocket push, hibernation | **shipped and live** |
+| P5 | API + OpenAPI docs | next up (EI-50) |
+| P6 | Fast follow (see below) | in progress |
+| P7 | Capacitor + MCP | not started |
 
-**P3 is the milestone that matters most** — it is when the app syncs between a
-work and a personal machine. Acceptance is real-world use for a week, not a
-passing test.
+**P3 was the milestone that mattered most** — the app syncs between a work and
+a personal machine, verified on two real browsers. P4 then swapped the
+transport to WebSockets against the same semantics, also verified live.
 
-**P6 fast-follow, in priority order:** projects + views, sub-tasks, recurrence
-(RRULE template + lazily materialized occurrences + exceptions table), priority,
-markdown descriptions, location, search/saved views, icon upload, magic-link
-auth (Google moved into P2 — see §2.12).
+**Projects is retired in favour of labels** as the cross-cutting organizing
+primitive (see §2.14, EI-62) — no longer part of P6 scope.
 
-List tabs were pulled forward out of P6 and shipped — see §2.8b.
+**P6 fast-follow, in priority order:** sub-tasks, recurrence (RRULE template +
+lazily materialized occurrences + exceptions table), markdown descriptions,
+locations library, saved views, icon upload, magic-link auth (Google moved
+into P2 — see §2.12).
+
+List tabs, priority, and location were pulled forward out of P6 and shipped —
+see §2.8b.
 
 ### P2 is live
 
@@ -766,7 +780,9 @@ npm run verify   # typecheck (app + worker), lint, tests, both builds
 npm test         # vitest run
 ```
 
-239 tests. The load-bearing ones:
+559 tests (45 files), verified 2026-08-06 via `npm run test -- --run`,
+including the schema-ops work in flight on `rob/ei-64-schema-ops`. The
+load-bearing ones:
 
 - **`scheduling.test.ts`** — timezone boundaries, DST, roll thresholds,
   workday rollover, deadline independence. The most heavily tested file, for

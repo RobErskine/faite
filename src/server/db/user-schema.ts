@@ -110,6 +110,11 @@ export const settings = sqliteTable("settings", {
   avatarEmoji: text("avatar_emoji").notNull().default(""),
   avatarImage: text("avatar_image").notNull().default(""),
   activeTabId: text("active_tab_id"),
+  /** Nullable: null means "never resized", the CSS default applies. */
+  backlogWidth: integer("backlog_width"),
+  backlogCollapsed: integer("backlog_collapsed", { mode: "boolean" }).notNull().default(false),
+  overflowWidth: integer("overflow_width"),
+  overflowCollapsed: integer("overflow_collapsed", { mode: "boolean" }).notNull().default(false),
   updatedAt: text("updated_at").notNull(),
   version: integer("version").notNull(),
 });
