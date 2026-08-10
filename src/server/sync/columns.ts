@@ -54,7 +54,7 @@ export interface ColumnMeta {
  * bypasses drizzle's query builder for the dynamic, whitelisted upsert
  * anyway (see `upsert.ts`).
  */
-const JSON_ENCODED_FIELDS = new Set(["labelIds", "workdays"]);
+const JSON_ENCODED_FIELDS = new Set(["labelIds", "workdays", "visibleStatuses"]);
 
 function buildColumnsByKind(): Record<SyncKind, Record<string, ColumnMeta>> {
   const result = {} as Record<SyncKind, Record<string, ColumnMeta>>;

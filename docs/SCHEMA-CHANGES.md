@@ -56,6 +56,48 @@ without a migration entry is the single easiest way to break sync.
 
 ---
 
+## The other thing that will bite you
+
+**A column must never appear in BOTH `bootstrap.ts` and an `ALTER` migration.**
+
+The two files look independent. They are not:
+
+```ts
+// src/server/db/migrations.ts
+{ id: 1, name: "initial-schema", statements: BOOTSTRAP_STATEMENTS },
+```
+
+Migration 1's statements **are** the live `BOOTSTRAP_STATEMENTS` constant — not
+a frozen copy taken when it shipped. Editing `bootstrap.ts` therefore rewrites
+migration 1 retroactively, and the two paths diverge:
+
+- **Existing account** — migration 1 already ran and never runs again. It picks
+  the column up from the `ALTER`. Fine.
+- **Fresh account** — migration 1 runs *now*, creating the table with the
+  column already present. Then the `ALTER` runs and throws `duplicate column
+  name`. `runUserDbMigrations` executes raw `sql.exec` with no such-column
+  tolerance and no try/catch, so **the DO fails to boot. Every new sign-up is
+  broken, and your own account keeps working**, which is the worst possible
+  way to find out.
+
+So `bootstrap.ts` is effectively **the frozen initial schema**, and the ledger
+carries everything since. Confirmation in the repo: migration 2 added the four
+rail-layout columns, and `bootstrap.ts` does not contain them.
+
+Two exceptions, both safe:
+
+- **A whole new table.** Bootstrap statements are `CREATE TABLE IF NOT EXISTS`,
+  which is idempotent, so the same `CREATE` may live in both.
+- **Reset mode.** While you are still the only account (see `docs/SCHEMA-OPS.md`
+  on tinker vs locked mode), editing `bootstrap.ts` and running
+  `npm run schema:reset` — *with no migration entry at all* — is the intended
+  path. The rule above only concerns pairing an edit with an `ALTER`.
+
+`npm run schema:check` fingerprints `bootstrap.ts` precisely so that touching it
+is a deliberate decision rather than an accident.
+
+---
+
 ## Where a field lives
 
 | # | File | What it declares | Miss it and… |
@@ -63,8 +105,8 @@ without a migration entry is the single easiest way to break sync.
 | 1 | `src/lib/schema.ts` | Zod type + `EntityKind` | Type errors; caught at build |
 | 2 | `src/lib/store/db.ts` | Dexie **indexes only** | Nothing, unless you need to query by it |
 | 3 | `src/server/db/user-schema.ts` | Drizzle schema for DO SQLite | Field is stripped by `sanitizePatch`, never syncs |
-| 4 | `src/server/db/bootstrap.ts` | Hand-written DDL for **new** DOs | New accounts lack the column |
-| 5 | **`src/server/db/migrations.ts`** | Ledgered `ALTER` for **existing** DOs | **Push breaks permanently for anyone with data** |
+| 4 | `src/server/db/bootstrap.ts` | The **frozen initial** DDL — migration 1 *is* this constant | Edit it alongside an `ALTER` and **every new account fails to boot** |
+| 5 | **`src/server/db/migrations.ts`** | Ledgered `ALTER`, for existing **and new** DOs alike | **Push breaks permanently for anyone with data** |
 | 6 | `src/server/sync/columns.ts` | Derived: whitelist + JS↔SQL coercion | Booleans/JSON round-trip wrong |
 | 7 | `src/lib/sync/wire.ts` | `SYNC_KINDS`, `SETTINGS_SYNCED_FIELDS`, `SERVER_ONLY_FIELDS` | Field never crosses the wire, or crosses when it shouldn't |
 
@@ -79,8 +121,10 @@ This is safe and you should reach for it by default.
 
 1. **`src/lib/schema.ts`** — add to the Zod object, optional or nullable.
 2. **`src/server/db/user-schema.ts`** — add the Drizzle column, **nullable**.
-3. **`src/server/db/bootstrap.ts`** — add it to that table's `CREATE TABLE`,
-   so new accounts get it directly.
+3. **`src/server/db/bootstrap.ts`** — **do not touch it.** See the warning
+   below; a column that appears both here and in an `ALTER` breaks every new
+   account. New accounts get the column from the migration in step 4, which
+   runs on a fresh object too.
 4. **`src/server/db/migrations.ts`** — append a migration. **Never edit or
    renumber an existing one**; it has already run on real objects and will
    not run again.

@@ -81,6 +81,17 @@ export const USER_DB_MIGRATIONS: readonly UserDbMigration[] = [
       "ALTER TABLE settings ADD COLUMN overflow_collapsed integer DEFAULT false NOT NULL",
     ],
   },
+  {
+    id: 3,
+    name: "settings-add-view-prefs",
+    statements: [
+      // NOT NULL with a DEFAULT, matching the Zod defaults: every existing row
+      // must come out of this ALTER with the behaviour it had before the
+      // setting existed — open-only, weekends shown.
+      `ALTER TABLE settings ADD COLUMN visible_statuses text DEFAULT '["open"]' NOT NULL`,
+      "ALTER TABLE settings ADD COLUMN show_weekends integer DEFAULT true NOT NULL",
+    ],
+  },
   // Add new migrations here. Never edit one above this line.
   //
   // Example — adding a nullable column (the safe, ordinary case):

@@ -26,7 +26,17 @@ import { createTabWithUndo, deleteTabWithUndo } from "./tab-actions";
 import { DEFAULT_FONT_PAIRING, FONT_PAIRINGS } from "@/lib/fonts";
 import { formatShortDate } from "@/lib/scheduling";
 import { searchTodos } from "@/lib/search";
-import type { List, Settings, Tab, Todo } from "@/lib/schema";
+import type { List, Settings, Tab, Todo, TodoStatus } from "@/lib/schema";
+
+/**
+ * The status filter, in the same order and wording as the DateNav control —
+ * one vocabulary for one setting, whichever surface you reach it through.
+ */
+const STATUS_FILTERS: ReadonlyArray<{ value: TodoStatus; label: string }> = [
+  { value: "open", label: "todo items" },
+  { value: "done", label: "completed items" },
+  { value: "dropped", label: "items marked as won't do" },
+];
 
 interface CommandPaletteProps {
   open: boolean;
@@ -420,6 +430,45 @@ export function CommandPalette({
                   {settings?.visibleDays === days ? " (current)" : ""}
                 </CommandItem>
               ))}
+              {/*
+                Mirrors the status checkboxes in the DateNav's ViewSettings.
+                Same guard, too: the last remaining status cannot be turned
+                off, because an empty board looks broken rather than filtered.
+              */}
+              {STATUS_FILTERS.map((option) => {
+                const current = settings?.visibleStatuses ?? ["open"];
+                const on = current.includes(option.value);
+                return (
+                  <CommandItem
+                    key={option.value}
+                    disabled={on && current.length <= 1}
+                    onSelect={async () => {
+                      const next = on
+                        ? current.filter((s) => s !== option.value)
+                        : STATUS_FILTERS.filter(
+                            (o) => o.value === option.value || current.includes(o.value),
+                          ).map((o) => o.value);
+                      if (next.length === 0) return;
+                      await mutateSettings(LOCAL_OWNER_ID, { visibleStatuses: next });
+                      close();
+                    }}
+                  >
+                    {on ? "Hide" : "Show"} {option.label}
+                  </CommandItem>
+                );
+              })}
+              <CommandItem
+                onSelect={async () => {
+                  const next = !(settings?.showWeekends ?? true);
+                  await mutateSettings(LOCAL_OWNER_ID, { showWeekends: next });
+                  toast.success(
+                    next ? "Weekends shown" : "Weekends collapsed into a strip",
+                  );
+                  close();
+                }}
+              >
+                {settings?.showWeekends === false ? "Show weekends" : "Hide weekends"}
+              </CommandItem>
               <CommandItem
                 onSelect={async () => {
                   await mutateSettings(LOCAL_OWNER_ID, {

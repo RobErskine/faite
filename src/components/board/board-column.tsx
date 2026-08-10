@@ -145,6 +145,17 @@ interface BoardColumnProps {
   collapsed?: boolean;
   /** Expands a collapsed column. Clicking anywhere on the strip triggers it. */
   onExpand?: () => void;
+  /**
+   * Tags this as a full-width column in the scrolling day track, via
+   * `data-day-column`.
+   *
+   * Read only by `measurePitch` in use-day-track.ts, which needs one column of
+   * the track's REPEATING width to turn `scrollLeft` into a day index. It used
+   * to take the track's first child, which stopped being safe once a collapsed
+   * weekend strip could sort first and hand it 40px instead of 168 — every
+   * jump would then land several days short of where it said it would.
+   */
+  dayTrackColumn?: boolean;
 }
 
 export function BoardColumn({
@@ -180,6 +191,7 @@ export function BoardColumn({
   pinned,
   collapsed,
   onExpand,
+  dayTrackColumn,
 }: BoardColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id });
   const [draft, setDraft] = useState("");
@@ -344,6 +356,7 @@ export function BoardColumn({
           "bg-destructive/5 outline outline-2 outline-offset-[-2px] outline-destructive/60",
       )}
       data-drop-indicator={isColumnDragActive && isColumnDropTarget ? "" : undefined}
+      data-day-column={dayTrackColumn ? "" : undefined}
     >
       <header
         ref={setDragRef}

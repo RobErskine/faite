@@ -77,3 +77,28 @@ export function byPriorityThenPosition(a: Todo, b: Todo): number {
   const rank = priorityRank(a.priority) - priorityRank(b.priority);
   return rank !== 0 ? rank : byPosition(a, b);
 }
+
+/**
+ * Unfinished work first; everything settled sinks below it.
+ *
+ * Wrapped around the two real comparators rather than folded into them,
+ * because the tiebreaker differs by half — the calendar half orders by
+ * priority, the planning half by hand (see the block comment in
+ * `buildBoard`) — and only the leading status term is shared.
+ *
+ * `done` and `dropped` rank together. Once a card is off the list, whether it
+ * was finished or abandoned changes how it READS, not where it sits; splitting
+ * them into two tiers would put a card in a different place depending on which
+ * way you dismissed it.
+ */
+const statusRank = (todo: Pick<Todo, "status">): number =>
+  todo.status === "open" ? 0 : 1;
+
+export function openFirst(
+  tiebreak: (a: Todo, b: Todo) => number,
+): (a: Todo, b: Todo) => number {
+  return (a, b) => {
+    const rank = statusRank(a) - statusRank(b);
+    return rank !== 0 ? rank : tiebreak(a, b);
+  };
+}

@@ -851,3 +851,163 @@ overridden.
 - [ ] Priority sub-headers were deliberately not built. `TodoGroup` carries
       `key`/`name`/`color` rather than a `List`, so a priority grouping mode is
       filling three fields if it is ever wanted.
+
+### CI now runs the test suite
+
+`.github/workflows/ci.yml` gains a `Tests` step (`npm test`), placed **before**
+Lint rather than after it as `npm run verify` does.
+
+The divergence is deliberate. `npm run lint` has a pre-existing failure at
+`use-day-track.ts:156` that SCHEMA-OPS.md and SYNC.md both record as the known
+baseline, and a failed step halts a GitHub Actions job by default — so a test step
+ordered after lint would never have executed. Tests also belong ahead of the
+builds on their own merits: vitest is seconds, the two Next builds are minutes.
+
+Test-count figures corrected to 687 tests / 52 files (ARCHITECTURE §8 twice,
+DRAG-AND-DROP §8, SETUP known-failing baseline).
+
+### Found while doing it
+
+**Both build steps have been unreachable in CI for at least 5 commits.** The last
+five runs on `main` all failed, the lint baseline halts the job at that step, and
+everything after it is skipped — including `build:static`, the Capacitor guard the
+workflow's own comment says "must stay green every phase". Nobody has been getting
+that signal.
+
+- [ ] Resolve the lint baseline so the builds run again. Either fix
+      `pendingTarget` properly (make it a monotonic `{index, seq}` request so the
+      layout effect never has to clear it — needs a browser check on the day-track
+      jump buttons) or take a scoped `eslint-disable-next-line` with the one-shot
+      -signal reasoning, matching the `exhaustive-deps` disable already two lines
+      below it.
+- [ ] Run `npm run build && npm run build:static` locally at least once to confirm
+      the current tree actually builds — it has not been checked this session.
+
+### The lint baseline is fixed
+
+`use-day-track.ts` no longer calls `setState` from inside a layout effect, so
+`npm run lint` is clean — the first green lint in at least five commits, and the
+end of a "known baseline; don't fix it" note that had propagated into three docs.
+
+- [x] `pendingTarget: number | null` → `jump: {target, seq} | null`. The old shape
+      was cleared by the effect purely so a repeat jump to the same index still
+      registered as a state change; a monotonic `seq` gives each request its own
+      identity, so the effect only reads.
+- [x] `handledSeq` ref makes the effect idempotent per request — nothing clears
+      `jump` any more, so without it a re-run for any unrelated reason would
+      re-scroll to a stale target. Deliberately not recorded when `pitch <= 0`,
+      since that means the request has not been served yet.
+- [x] Five tests for the hook, which previously had none — only its pure helpers
+      were covered. The load-bearing one is "serves a repeat jump to the same
+      index": that is exactly what breaks if `seq` is dropped or the request gets
+      memoised on `target`.
+- [x] `npm test` 692/692, `npm run lint` clean.
+- [x] Stale baseline notes corrected in SETUP.md, SCHEMA-OPS.md, SYNC.md; test
+      counts bumped to 692 in ARCHITECTURE §8 (x2) and DRAG-AND-DROP §8.
+
+### Found while stubbing the hook test
+
+`measurePitch` did `parseFloat(getComputedStyle(track).columnGap || "0")`. But
+`columnGap` computes to the KEYWORD `normal` on a flex container with no gap, and
+`parseFloat("normal")` is NaN — which poisons the pitch and makes `pitch > 0`
+false, silently disabling every jump button and the date picker. Unreachable today
+because the track carries `gap-px` (board.tsx:1430), but removing that class would
+have broken date navigation with no error and the cause three steps from the
+symptom. Now guarded with `Number.isFinite`.
+
+### Open
+
+- [ ] `npm run build && npm run build:static` — now reachable in CI again, but
+      still never run this session. Worth confirming locally before the push.
+
+### Production login outage: a dev env var baked into the bundle
+
+Reported after `npm run deploy`: sign-in on https://myfaite.app posted to
+`http://localhost:8787` and failed CORS preflight. Cause was not the server —
+`.env.local` held `NEXT_PUBLIC_AUTH_URL=http://localhost:8787`, Next loads that file
+in every environment, and `NEXT_PUBLIC_*` is inlined at build time. Confirmed in the
+deployed artefact: `.open-next/assets/_next/static/chunks/0-orptxolhrm5.js` contained
+the string, and that is the exact chunk the browser console named.
+
+- [x] Moved the override to the `dev` script in `package.json`, matching the
+      `NEXT_PUBLIC_AGENTATION=1` convention already there. Command scope, not
+      machine scope — no build can see it.
+- [x] `.env.local` emptied of variables, left with a comment explaining why nothing
+      `NEXT_PUBLIC_*` may go back in. (It held exactly this one var, no secrets.)
+- [x] `resolveAuthBaseURL()` in `src/lib/auth-client.ts` — a localhost target is
+      discarded when the page is served from a real domain, with a console warning.
+      Capacitor is unaffected: `capacitor://localhost` is itself a local hostname.
+      Extracted as a pure function taking `(configured, hostname)`, because the
+      Better Auth client is a Proxy that turns unknown property reads into HTTP
+      requests — my first attempt at asserting `authClient.options.baseURL` fired
+      real fetches at `/api/auth/options/base-url/name/to-string`.
+- [x] 7 tests in `src/lib/auth-client.test.ts`, including the outage itself and
+      that `localhost.evil.com` is not mistaken for a local host.
+- [x] `npm test` 699/699. `next build` re-run and the fresh client chunks contain no
+      `localhost:8787`.
+- [x] Documented in ARCHITECTURE §2.12 and AUTH.md's gotchas, both stating that the
+      fix for "deployed page calls localhost" is a rebuild, never a worker env var.
+
+### Open
+
+- [ ] **`npm run deploy` still needs to run** — production is serving the old bundle,
+      so login is down for everyone until it does.
+- [ ] `npm run build:static` still never verified this session.
+
+### Board view settings: statuses, day count, weekend strip (feat/board-view-settings)
+
+Three controls centred in `DateNav`, which previously had no centre region — it was
+`[range label][ml-auto jump cluster]`. Now three flex tracks, so the controls stay
+centred on the bar as jump buttons appear and disappear.
+
+**The constraint that shaped the whole design:** `deriveColumn` (scheduling.ts) decides
+whether a day is rendered with an O(1) offset check, `daysBetween(today, day) >=
+visibleWindow.length`, which is only correct because the window is contiguous from
+today. Punching Sat/Sun out of it would not hide the weekend — it would silently exile
+every Saturday-scheduled todo to the planning half as an away-card. So weekend days stay
+in the window and the collapse is purely a rendering concern (`weekend-runs.ts`).
+
+- [x] Schema: `visibleStatuses` (JSON text, `workdays`' precedent) + `showWeekends`.
+      Migration 3 `settings-add-view-prefs`. `bootstrap.ts` deliberately untouched —
+      it is migration 1's frozen snapshot, which is why it lacks the rail columns too.
+      Both fields sync; they are account-level like `visibleDays`.
+- [x] `visibleDays` re-specified: counts VISIBLE COLUMNS, not calendar days. With
+      weekends collapsed, 5 on a Friday spans 7 days (`calendarSpanFor`), which always
+      ends on a working day so no trailing strip is left dangling.
+- [x] Settled todos (`done`/`dropped`) take a separate placement path, `placeSettled` —
+      no rollover, never Overflow, out-of-window renders nowhere rather than as an
+      away-card. `openFirst()` sinks them below live work in both halves.
+- [x] `weekend:` id space — in `isDropZoneId`, deliberately NOT in `parseColumnId`.
+      "The weekend" is not a date; the strip opens on a 600ms drag dwell and the real
+      day columns take the drop. Mid-drag mounting is safe only because DndContext
+      already measures with `MeasuringStrategy.Always`.
+- [x] `strip` on `NavColumnInput` — without it the arrow keys step Friday → Monday and
+      the strip is mouse-only. `defaults.calendar` now picks the first REAL day.
+- [x] `measurePitch` reads `[data-day-column]`, not `firstElementChild`: a 40px strip
+      sorting first deflated the pitch 4x and made every jump land days short.
+- [x] `dropped` cards dim without a strike-through — a strike claims credit for work
+      that was abandoned, which is the distinction `todoStatusSchema` refuses to collapse.
+
+- [x] `npm run verify` green end to end: typecheck (app + worker), eslint, **741/741
+      tests across 55 files**, `next build` and `build:static`. Suite went 699 → 741.
+- [x] `schema-parity.test.ts` passes with **no snapshot re-baseline needed**. Predicted
+      and confirmed: the bootstrap fingerprint is unchanged because `bootstrap.ts` is
+      migration 1's frozen snapshot and only the ledger gained statements.
+      `migrations.test.ts` shows `applied user-db migrations: 1, 2, 3`.
+- [x] Weekends button relabelled after review — states what you are LOOKING AT, not
+      what the click does: `CalendarRange` + "Weekends" / `CalendarOff` + "Weekends
+      hidden". `CalendarDays` would be the literal `calendar4-week` equivalent but is
+      already on the date picker at the other end of the same bar. The command palette
+      keeps ACTION wording ("Hide weekends") — a palette lists commands, not state.
+
+### Open
+
+- [ ] Never opened in a browser. Every claim about drag-dwell expansion, the centred
+      layout at real widths, and keyboard traversal of the strip is inferred from the
+      code and the unit tests, not observed.
+- [ ] Known limitation, deliberate: with strips present, `scrollLeft → day index` is
+      nonlinear, so Week/Month/Quarter jumps land within ~1 column. Exact scrolling
+      needs cumulative per-slot offsets.
+- [ ] Not committed. Branch `feat/board-view-settings` also carries unrelated
+      pre-existing edits from earlier work (docs, ci.yml, auth-client) — worth
+      splitting before a PR.

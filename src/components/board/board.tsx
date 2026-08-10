@@ -32,6 +32,7 @@ import {
   parseListDragId,
   parseTabDragId,
   parseTabDropId,
+  parseWeekendColumnId,
   planListDrop,
   planTabDrop,
   preferPreciseTarget,
@@ -55,6 +56,13 @@ import {
 } from "@/lib/column-nav";
 import { positionForIndex } from "@/lib/ordering";
 import { OVERFLOW, daysBetween, formatDay, todayIn } from "@/lib/scheduling";
+import {
+  calendarSpanFor,
+  groupWeekendRuns,
+  weekendDaysFrom,
+  type TrackSlot,
+} from "./weekend-runs";
+import { WeekendColumn } from "./weekend-column";
 import { FONT_STORAGE_KEY } from "@/lib/fonts";
 import {
   DARK_CLASS,
@@ -144,6 +152,18 @@ import { useDayTrack } from "./use-day-track";
  * gesture is only discoverable once it fires, so erring long would hide it.
  */
 const TAB_FOCUS_DWELL_MS = 600;
+
+/**
+ * How long a card must hover a collapsed weekend strip before it opens.
+ *
+ * Deliberately the same number as the tab dwell above, and for the same
+ * reason: both are "hovering here reveals somewhere else to drop", and two
+ * different delays for one idea would teach the hand two timings.
+ */
+const WEEKEND_EXPAND_DWELL_MS = TAB_FOCUS_DWELL_MS;
+
+/** `settingsSchema.workdays`' default, for reads that land before Dexie does. */
+const DEFAULT_WORKDAYS = [1, 2, 3, 4, 5];
 
 /**
  * How many days the calendar half renders on first load, before any scroll,
@@ -534,6 +554,28 @@ export function Board() {
     return furthest ? daysBetween(todayCivil, furthest) + 1 : 0;
   }, [visibleTodos, todayCivil]);
 
+  /**
+   * Which weekday numbers the weekend strip collapses, and how long a window
+   * has to be to show `visibleDays` real columns.
+   *
+   * `visibleDays` counts COLUMNS YOU CAN SEE, not calendar days (see its
+   * comment in lib/schema.ts). With weekends collapsed a strip is not a
+   * column, so asking for 5 on a Friday needs a seven-day window: Fri, the
+   * strip, then Mon–Thu. Weekend days stay IN that window — the strip hides
+   * them from the eye, never from `buildBoard`, which is what keeps a
+   * Saturday-scheduled todo on Saturday instead of exiling it to its list.
+   */
+  const weekendDays = useMemo(
+    () => weekendDaysFrom(settings?.workdays ?? DEFAULT_WORKDAYS),
+    [settings?.workdays],
+  );
+  const collapsingWeekends = settings?.showWeekends === false;
+  const minDays = useMemo(() => {
+    const wanted = settings?.visibleDays ?? 7;
+    if (!collapsingWeekends || !todayCivil) return wanted;
+    return calendarSpanFor(todayCivil, wanted, weekendDays);
+  }, [settings?.visibleDays, collapsingWeekends, todayCivil, weekendDays]);
+
   const [horizon, setHorizon] = useState(DEFAULT_RENDERED_DAYS);
   /**
    * The rendering ceiling. Starts at `DEFAULT_DAY_CAP` and only ever grows —
@@ -559,6 +601,12 @@ export function Board() {
    * transition is Dexie's initial load resolving, not a user action, and
    * firing on it would collapse the default 30-day view down to 7 before
    * the user ever touched anything.
+   *
+   * Keyed on `visibleDays` and NOT on `minDays`, even though it now sets the
+   * latter. Toggling weekends off changes the span (5 columns need 7 days on
+   * a Friday) but is not a request to collapse a 30-day track back down to a
+   * week — and `renderedDays` below already takes the max, so the window
+   * grows to fit the new span on its own without this effect touching it.
    */
   const prevVisibleDaysRef = useRef<number | undefined>(undefined);
   useEffect(() => {
@@ -566,10 +614,13 @@ export function Board() {
     const prev = prevVisibleDaysRef.current;
     prevVisibleDaysRef.current = settings.visibleDays;
     if (prev === undefined) return; // Dexie's initial load, not a user action.
-    if (settings.visibleDays !== prev) setHorizon(settings.visibleDays);
+    if (settings.visibleDays !== prev) setHorizon(minDays);
+    // `minDays` is read, not tracked: it is derived from the very value this
+    // effect watches, and listing it would re-fire the collapse on a weekend
+    // toggle — exactly what the note above says must not happen.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings?.visibleDays]);
 
-  const minDays = settings?.visibleDays ?? 7;
   const renderedDays = todayCivil
     ? Math.min(cap, Math.max(minDays, horizon, furthestScheduledOffset))
     : minDays;
@@ -652,9 +703,13 @@ export function Board() {
     [lists, activeTabId],
   );
 
+  const visibleStatuses = settings?.visibleStatuses;
   const board = useMemo(
-    () => (ctx ? buildBoard(visibleTodos, tabLists, ctx, hiddenLists) : null),
-    [visibleTodos, tabLists, ctx, hiddenLists],
+    () =>
+      ctx
+        ? buildBoard(visibleTodos, tabLists, ctx, hiddenLists, { visibleStatuses })
+        : null,
+    [visibleTodos, tabLists, ctx, hiddenLists, visibleStatuses],
   );
 
   /**
@@ -681,6 +736,48 @@ export function Board() {
       return next;
     });
   }, []);
+
+  /**
+   * Weekend strips the user has opened, by `weekendColumnId`.
+   *
+   * Unpersisted, like `collapsedGroups` above and for the same reason — and
+   * additionally because opening one is a peek, not a preference: the setting
+   * that survives a reload is `showWeekends`, and a strip that stayed open
+   * would quietly make that setting a lie.
+   *
+   * Nothing ever REMOVES an id here, including on drag end. A column vanishing
+   * from under a card the moment you release it is indistinguishable from the
+   * drop having gone somewhere unexpected; re-collapsing is the strip's own
+   * job, via the toggle.
+   */
+  const [expandedWeekends, setExpandedWeekends] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+
+  const expandWeekend = useCallback((id: string) => {
+    setExpandedWeekends((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
+  }, []);
+
+  /**
+   * The day track as it is actually laid out: real columns, plus one slot per
+   * collapsed weekend run.
+   *
+   * An EXPANDED run flattens back into ordinary day slots rather than carrying
+   * an `expanded` flag, so everything downstream — the render below, the nav
+   * grid, the pitch measurement — sees exactly what it sees when weekends are
+   * shown, and none of them needs to know this feature exists.
+   */
+  const trackSlots = useMemo<TrackSlot[]>(() => {
+    if (!board) return [];
+    if (!collapsingWeekends) {
+      return board.days.map((column) => ({ kind: "day" as const, column }));
+    }
+    return groupWeekendRuns(board.days, weekendDays).flatMap((slot) =>
+      slot.kind === "weekend" && expandedWeekends.has(slot.id)
+        ? slot.columns.map((column) => ({ kind: "day" as const, column }))
+        : [slot],
+    );
+  }, [board, collapsingWeekends, weekendDays, expandedWeekends]);
 
   /**
    * Backlog rendered as a pinned sibling of the planning track, split out
@@ -727,7 +824,18 @@ export function Board() {
           board && !overflowCollapsed
             ? { id: board.overflow.id, items: groupedItems(board.overflow) }
             : null,
-        days: board?.days.map((c) => ({ id: c.id, items: groupedItems(c) })) ?? [],
+        /*
+          Slots, not `board.days`: a collapsed strip is a real thing on screen
+          and has to be in the grid, or `→` steps from Friday to Monday past a
+          control the user can see and never reaches it. It contributes one
+          stop — itself — and no quick-add, since there is no single day it
+          would add to.
+        */
+        days: trackSlots.map((slot) =>
+          slot.kind === "day"
+            ? { id: slot.column.id, items: groupedItems(slot.column) }
+            : { id: slot.id, items: [], strip: true },
+        ),
         hasLoadMore: renderedDays < cap,
         backlog:
           backlogColumn && !backlogCollapsed
@@ -740,6 +848,7 @@ export function Board() {
       }),
     [
       board,
+      trackSlots,
       overflowCollapsed,
       renderedDays,
       cap,
@@ -750,6 +859,18 @@ export function Board() {
     ],
   );
 
+  /**
+   * Every day column's id in DAY order, including ones hidden inside a
+   * collapsed strip.
+   *
+   * `useColumnNav` uses `indexOf` on this to decide whether a focus target is
+   * off screen and needs a jump, and `jumpToIndex` is day-indexed — so this
+   * has to stay the full contiguous list rather than following `trackSlots`,
+   * or every jump past a collapsed weekend would land short. A strip's own
+   * key is not in here at all; `indexOf` returns -1 and the caller falls
+   * through to `scrollIntoView`, which is the right behaviour for something
+   * whose position is not a day.
+   */
   const dayIds = useMemo(() => board?.days.map((c) => c.id) ?? [], [board]);
 
   /**
@@ -874,6 +995,31 @@ export function Board() {
     const timer = window.setTimeout(() => selectTab(hovered), TAB_FOCUS_DWELL_MS);
     return () => window.clearTimeout(timer);
   }, [activeTodo, overId, activeTabId, selectTab]);
+
+  /**
+   * Hovering a collapsed weekend strip with a card in hand opens it.
+   *
+   * Without this, scheduling something for Saturday while weekends are hidden
+   * means dropping the card somewhere, toggling weekends, dragging again, and
+   * toggling back. The strip cannot simply accept the drop itself: it spans
+   * two days and "the weekend" is not a date, so it reveals the real columns
+   * and lets the user say which.
+   *
+   * Mounting a droppable mid-drag is only safe because `DndContext` measures
+   * with `MeasuringStrategy.Always` (see below) — dnd-kit re-measures on every
+   * move, so the two day columns that appear here are immediately valid
+   * targets for the card already in flight. Same dwell, and the same
+   * cancel-on-leave teardown, as the tab effect above.
+   */
+  useEffect(() => {
+    if (!activeTodo || !overId) return;
+    if (parseWeekendColumnId(overId) === null) return;
+    const timer = window.setTimeout(
+      () => expandWeekend(overId),
+      WEEKEND_EXPAND_DWELL_MS,
+    );
+    return () => window.clearTimeout(timer);
+  }, [activeTodo, overId, expandWeekend]);
 
   /**
    * Where the dragged column would land, recomputed as the pointer moves.
@@ -1349,6 +1495,7 @@ export function Board() {
         />
 
         <DateNav
+          settings={settings}
           today={ctx.today}
           anchorIndex={anchorIndex}
           visibleCount={visibleCount}
@@ -1428,13 +1575,30 @@ export function Board() {
           </div>
           <div className="flex min-w-0 flex-1 gap-px px-4 pt-4">
             <div ref={dayTrackRef} className="column-track flex flex-1 gap-px">
-              {board.days.map((column) => {
+              {trackSlots.map((slot) => {
+                if (slot.kind === "weekend") {
+                  return (
+                    <WeekendColumn
+                      key={slot.id}
+                      id={slot.id}
+                      columns={slot.columns}
+                      isDragActive={!!activeTodo}
+                      onExpand={() => expandWeekend(slot.id)}
+                      onNavigate={navigate}
+                    />
+                  );
+                }
+                const { column } = slot;
                 const { weekday, label } = formatDay(column.day);
                 const isToday = column.day === ctx.today;
                 return (
                   <BoardColumn
                     key={column.id}
                     id={column.id}
+                    // Marks this as a full-width day column for `measurePitch`
+                    // in use-day-track.ts, which must not measure a 40px
+                    // weekend strip that happens to sort first.
+                    dayTrackColumn
                     title={weekday}
                     // `subtitle` also carries prose on other columns, so the
                     // numeral face is applied here rather than in BoardColumn.

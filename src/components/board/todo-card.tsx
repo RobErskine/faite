@@ -322,7 +322,18 @@ export function TodoCard({
           // the title now, and a click still opens the sheet.
           "cursor-grab active:cursor-grabbing",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded",
-          todo.status !== "open" && "text-muted-foreground line-through",
+          /*
+            Two settled statuses, two different reads — worth the extra branch
+            now that the "Marked as won't do" filter can put them side by side.
+
+            A strike-through means "this got done"; wearing it, `dropped` would
+            claim credit for work that was abandoned, which is the exact
+            distinction `todoStatusSchema` refuses to collapse. Both dim, since
+            neither is live work; only `done` is struck.
+          */
+          todo.status !== "open" && "text-muted-foreground",
+          todo.status === "done" && "line-through",
+          todo.status === "dropped" && "opacity-70",
         )}
       >
         {/*

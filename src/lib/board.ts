@@ -1,7 +1,14 @@
-import type { CivilDate, List, Tab, Todo } from "@/lib/schema";
+import type { CivilDate, List, Tab, Todo, TodoStatus } from "@/lib/schema";
 import { byPosition, positionForIndex, type Position } from "@/lib/ordering";
-import { byPriorityThenPosition } from "@/lib/priority";
-import { OVERFLOW, deriveColumn, type PlacementContext } from "@/lib/scheduling";
+import { byPriorityThenPosition, openFirst } from "@/lib/priority";
+import {
+  OVERFLOW,
+  PLANNING,
+  daysBetween,
+  deriveColumn,
+  type Placement,
+  type PlacementContext,
+} from "@/lib/scheduling";
 
 /**
  * Turns a flat todo list into the two-half board layout.
@@ -80,6 +87,29 @@ export function parseDayGroupId(
   return { day: rest.slice(0, sep), key: rest.slice(sep + 1) };
 }
 
+/**
+ * Droppable id for a COLLAPSED weekend strip, keyed by the run's first day.
+ *
+ * A sixth id space, and the only one that is a drop target without being a
+ * drop destination: nothing ever lands in the strip. It registers a droppable
+ * purely so a card hovering over it can be detected and the strip opened after
+ * a dwell (see `WEEKEND_EXPAND_DWELL_MS` in board.tsx), at which point the real day
+ * columns underneath become the actual targets.
+ *
+ * Deliberately NOT folded into `parseColumnId`: that function answering
+ * anything for a weekend id would give `handleDragEnd` a column to write to,
+ * and "scheduled for the weekend" is not a date. It MUST, however, be in
+ * `isDropZoneId` below — an id that parses as neither a column nor a drop zone
+ * is treated as a CARD everywhere, so leaving it out makes the strip's hover
+ * resolve to a todo lookup that silently finds nothing.
+ */
+export const weekendColumnId = (firstDay: CivilDate) => `weekend:${firstDay}`;
+
+/** The first day behind a weekend strip droppable, or null if this is not one. */
+export function parseWeekendColumnId(id: string): CivilDate | null {
+  return id.startsWith("weekend:") ? id.slice(8) : null;
+}
+
 export type DropTarget =
   | { kind: "day"; day: CivilDate }
   | { kind: "overflow" }
@@ -114,10 +144,17 @@ export function isColumnId(id: string): boolean {
  * failure: `preferPreciseTarget` would classify the group id as a card,
  * `handleDragEnd` would look it up in `todos`, find nothing, and return — a drop
  * that does nothing at all, with no error anywhere.
+ *
+ * A collapsed weekend strip is the fourth kind, and the same rule applies for
+ * the same reason — see `weekendColumnId` above for why it belongs here but
+ * deliberately not in `parseColumnId`.
  */
 export function isDropZoneId(id: string): boolean {
   return (
-    isColumnId(id) || parseTabDropId(id) !== null || parseDayGroupId(id) !== null
+    isColumnId(id) ||
+    parseTabDropId(id) !== null ||
+    parseDayGroupId(id) !== null ||
+    parseWeekendColumnId(id) !== null
   );
 }
 
@@ -391,17 +428,55 @@ function groupTodosByList(
       name: list.name,
       color: list.color,
       sortKey: listSortKey(list.name),
-      todos: bucket.sort(byPriorityThenPosition),
+      todos: bucket.sort(openFirst(byPriorityThenPosition)),
     }))
     .sort(byListGroup);
+}
+
+/** What `buildBoard` filters to when no `visibleStatuses` is given. */
+const DEFAULT_VISIBLE_STATUSES: readonly TodoStatus[] = ["open"];
+
+/**
+ * Where a settled (`done`/`dropped`) todo renders. Null means "nowhere".
+ *
+ * Deliberately NOT `deriveColumn`. Every rule that function applies is about
+ * work you still owe — rolling a miss forward to today, dropping it into
+ * Overflow once it has been put off too long, surfacing it in its list when it
+ * falls outside the window. Run any of them on a finished todo and the result
+ * is nonsense: a task you completed last Tuesday reappearing in "Put off too
+ * long" reads as an accusation, and it would push genuinely stale work down
+ * the column to make room.
+ *
+ * So the rule here is the simple one — a settled todo sits on the day it was
+ * scheduled for, or in its list if it never was.
+ *
+ * Out-of-window settled work returns null rather than the planning half's
+ * `awayDate` treatment. That fallback exists to keep a todo you still have to
+ * do reachable; applying it here would pour months of finished cards into the
+ * lists, which is the one place they would drown live work.
+ */
+function placeSettled(
+  todo: Pick<Todo, "scheduledDate">,
+  ctx: PlacementContext,
+): Placement | null {
+  if (!todo.scheduledDate) return { half: PLANNING, awayDate: null };
+  const offset = daysBetween(ctx.today, todo.scheduledDate);
+  if (offset < 0 || offset >= ctx.visibleWindow.length) return null;
+  return { half: "calendar", day: todo.scheduledDate };
+}
+
+export interface BuildBoardOptions {
+  /** Which statuses render. Defaults to unfinished work only. */
+  visibleStatuses?: readonly TodoStatus[];
 }
 
 /**
  * Group todos into columns.
  *
- * Completed and dropped todos are excluded from the board. History and an
- * "show completed" toggle are P6 — for now finishing something removes it from
- * view, which is the behaviour the reference UI has.
+ * `visibleStatuses` decides which statuses reach the board at all, defaulting
+ * to `["open"]` — the behaviour this had unconditionally before it was a
+ * setting. Settled work (`done`/`dropped`) takes a DIFFERENT placement path:
+ * see `placeSettled` below for why it must not go through `deriveColumn`.
  *
  * `lists` is the columns to render: the active tab's lists plus Backlog.
  * `hiddenLists` is the live lists on OTHER tabs. The two are separate on
@@ -421,8 +496,10 @@ export function buildBoard(
   lists: List[],
   ctx: PlacementContext,
   hiddenLists: readonly List[] = [],
+  { visibleStatuses = DEFAULT_VISIBLE_STATUSES }: BuildBoardOptions = {},
 ): BoardModel {
-  const open = todos.filter((t) => t.status === "open");
+  const shown = new Set(visibleStatuses);
+  const visible = todos.filter((t) => shown.has(t.status));
   const hiddenListIds = new Set(hiddenLists.map((l) => l.id));
 
   const days: DayColumn[] = ctx.visibleWindow.map((day) => ({
@@ -449,8 +526,11 @@ export function buildBoard(
 
   const awayTodoIds = new Set<string>();
 
-  for (const todo of open) {
-    const placement = deriveColumn(todo, ctx);
+  for (const todo of visible) {
+    const placement =
+      todo.status === "open" ? deriveColumn(todo, ctx) : placeSettled(todo, ctx);
+
+    if (placement === null) continue;
 
     if (placement.half === "calendar") {
       if (placement.day === OVERFLOW) {
@@ -508,7 +588,7 @@ export function buildBoard(
     column.todos =
       column.groups.length > 0
         ? column.groups.flatMap((g) => g.todos)
-        : column.todos.sort(byPriorityThenPosition);
+        : column.todos.sort(openFirst(byPriorityThenPosition));
   };
 
   for (const day of days) applyGroups(day, day.day);
@@ -516,7 +596,7 @@ export function buildBoard(
   // stay unique against every real date. Nothing drops on them.
   applyGroups(overflow, OVERFLOW);
 
-  for (const column of listColumns) column.todos.sort(byPosition);
+  for (const column of listColumns) column.todos.sort(openFirst(byPosition));
 
   return { days, overflow, lists: listColumns, awayTodoIds };
 }

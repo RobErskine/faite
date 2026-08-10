@@ -6,14 +6,17 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import type { CivilDate } from "@/lib/schema";
+import type { CivilDate, Settings } from "@/lib/schema";
 import { addDays, formatShortDate } from "@/lib/scheduling";
+import { ViewSettings } from "./view-settings";
 
 const WEEK = 7;
 const MONTH = 30;
 const QUARTER = 90;
 
 interface DateNavProps {
+  /** Raw Dexie row, passed straight through to `ViewSettings`. */
+  settings: Settings | undefined;
   today: CivilDate;
   /** Day index at the track's left edge, from useDayTrack. */
   anchorIndex: number;
@@ -43,6 +46,7 @@ interface DateNavProps {
  * back button is hidden.
  */
 export function DateNav({
+  settings,
   today,
   anchorIndex,
   visibleCount,
@@ -60,10 +64,23 @@ export function DateNav({
       : `${formatShortDate(rangeStart)} – ${formatShortDate(rangeEnd)}`;
 
   return (
+    /*
+      Three tracks rather than the old `[label][ml-auto cluster]`, so the view
+      controls sit centred on the BAR rather than centred on whatever the range
+      label and the jump cluster leave over. `flex-1` on the outer two is what
+      does it: they claim equal space regardless of their content, which is why
+      the middle stays put as jump buttons appear and disappear (they render
+      conditionally — see the comment above this component). `min-w-0` lets the
+      label truncate instead of pushing the centre off-axis.
+    */
     <div className="flex items-center gap-2 px-4 py-2">
-      <span className="num text-xs text-muted-foreground">{range}</span>
+      <span className="num min-w-0 flex-1 truncate text-xs text-muted-foreground">
+        {range}
+      </span>
 
-      <div className="ml-auto flex items-center gap-1">
+      <ViewSettings settings={settings} />
+
+      <div className="flex min-w-0 flex-1 items-center justify-end gap-1">
         {canJumpBack(QUARTER) && (
           <JumpButton label="Quarter" direction="back" onClick={() => onJump(-QUARTER)} />
         )}

@@ -112,6 +112,71 @@ describe("buildNavGrid", () => {
     expect(grid.planning[0].key).toBe("list:overall");
   });
 
+  /**
+   * A COLLAPSED WEEKEND STRIP.
+   *
+   * The whole reason `strip` exists: the track renders one between Friday and
+   * Monday, and a rendered control that is not in this grid is unreachable by
+   * keyboard — `→` would step straight past it and there would be no way to
+   * open the weekend without a mouse.
+   */
+  describe("weekend strips", () => {
+    const withStrip = () =>
+      fixture({
+        days: [
+          { id: "day:2026-08-07", items: cardItems(["fri"]) },
+          { id: "weekend:2026-08-08", items: [], strip: true },
+          { id: "day:2026-08-10", items: [] },
+        ],
+      });
+
+    it("gives the strip one stop — itself — and no quick-add", () => {
+      const strip = withStrip().calendar[2];
+      expect(strip.key).toBe("weekend:2026-08-08");
+      expect(strip.stops).toEqual(["weekend:2026-08-08"]);
+      expect(strip.hasQuickAdd).toBe(false);
+    });
+
+    it("stops on the strip on the way from Friday to Monday", () => {
+      const grid = withStrip();
+      expect(resolveNavTarget(grid, addStop("day:2026-08-07"), "ArrowRight", NOWHERE)).toBe(
+        "weekend:2026-08-08",
+      );
+      expect(resolveNavTarget(grid, "weekend:2026-08-08", "ArrowRight", NOWHERE)).toBe(
+        addStop("day:2026-08-10"),
+      );
+    });
+
+    it("locates the strip as a calendar column", () => {
+      expect(stopLocation(withStrip(), "weekend:2026-08-08")).toEqual({
+        row: "calendar",
+        columnKey: "weekend:2026-08-08",
+      });
+    });
+
+    /**
+     * Opening the board on a Saturday puts a strip in slot 0. A cross-half
+     * move landing there would park focus on something you cannot type into,
+     * which is the one thing this default exists to avoid.
+     */
+    it("defaults the calendar row to the first REAL day, not a leading strip", () => {
+      const grid = fixture({
+        days: [
+          { id: "weekend:2026-08-08", items: [], strip: true },
+          { id: "day:2026-08-10", items: [] },
+        ],
+      });
+      expect(grid.defaults.calendar).toBe("day:2026-08-10");
+    });
+
+    it("falls back to the strip when there is no real day at all", () => {
+      const grid = fixture({
+        days: [{ id: "weekend:2026-08-08", items: [], strip: true }],
+      });
+      expect(grid.defaults.calendar).toBe("weekend:2026-08-08");
+    });
+  });
+
   it("interleaves group headers with the cards under them", () => {
     const grid = fixture({
       days: [

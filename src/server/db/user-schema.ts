@@ -102,6 +102,9 @@ export const settings = sqliteTable("settings", {
   workdays: text("workdays").notNull().default("[1,2,3,4,5]"),
   overflowAfterDays: integer("overflow_after_days").notNull().default(3),
   visibleDays: integer("visible_days").notNull().default(7),
+  /** JSON-encoded array of statuses — see `settingsSchema.visibleStatuses`. */
+  visibleStatuses: text("visible_statuses").notNull().default('["open"]'),
+  showWeekends: integer("show_weekends", { mode: "boolean" }).notNull().default(true),
   fontPairing: text("font_pairing").notNull(),
   theme: text("theme").notNull(),
   displayName: text("display_name").notNull().default(""),

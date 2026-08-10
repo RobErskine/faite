@@ -207,8 +207,35 @@ export const settingsSchema = z.object({
   workdays: z.array(z.number().int().min(0).max(6)).default([1, 2, 3, 4, 5]),
   /** How many days a missed todo rolls before dropping into Overflow. */
   overflowAfterDays: z.number().int().min(1).default(3),
-  /** Day columns visible in the calendar half: 1, 3, 5, or 7. */
+  /**
+   * Day columns VISIBLE in the calendar half: 1, 3, 5, or 7.
+   *
+   * Counts columns you can see, not calendar days. With `showWeekends` off a
+   * collapsed weekend strip is not a column, so 5 on a Friday means Fri, Mon,
+   * Tue, Wed, Thu — five working columns spanning seven calendar days. The
+   * span is derived by `calendarSpanFor` in components/board/weekend-runs.ts.
+   */
   visibleDays: z.number().int().min(1).max(7).default(7),
+  /**
+   * Which statuses render on the board. Defaults to unfinished work only,
+   * which is what the board did unconditionally before this was a setting.
+   *
+   * `done` and `dropped` are separate entries rather than one "show finished"
+   * flag for the same reason `todoStatusSchema` keeps them apart: abandoning
+   * something and completing it are different facts, and a user reviewing one
+   * rarely wants the other.
+   */
+  visibleStatuses: z.array(todoStatusSchema).default(["open"]),
+  /**
+   * When false, each run of consecutive non-working days collapses into a
+   * single expandable strip and stops counting toward `visibleDays`.
+   *
+   * WHICH days those are is derived from `workdays` above rather than
+   * hardcoded to Sat/Sun — one source of truth for "the weekend", and it
+   * follows a user who works Tue–Sat. Note this is independent of
+   * `workdaysOnly`, which governs rollover targets and nothing else.
+   */
+  showWeekends: z.boolean().default(true),
   /**
    * Typography pairing. Purely presentational, but stored (not localStorage)
    * so it syncs with the rest of the user's settings across devices.

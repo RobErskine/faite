@@ -70,6 +70,8 @@ const settings: Settings = {
   workdays: [1, 2, 3, 4, 5],
   overflowAfterDays: 3,
   visibleDays: 7,
+  visibleStatuses: ["open"],
+  showWeekends: true,
   fontPairing: "hyperlegible",
   theme: "system",
   displayName: "",

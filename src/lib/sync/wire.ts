@@ -64,6 +64,8 @@ export const SETTINGS_SYNCED_FIELDS: ReadonlySet<string> = new Set([
   "workdays",
   "overflowAfterDays",
   "visibleDays",
+  "visibleStatuses",
+  "showWeekends",
   "fontPairing",
   "theme",
   "displayName",

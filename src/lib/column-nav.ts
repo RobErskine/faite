@@ -109,6 +109,18 @@ export interface NavColumnInput {
    * return false, and the arrow key dies silently mid-column.
    */
   items: NavItem[];
+  /**
+   * A COLLAPSED WEEKEND STRIP rather than a real column: one stop, which is
+   * the strip itself, and no quick-add.
+   *
+   * Without an entry here the strip is mouse-only — `buildNavGrid` walks
+   * `days` to lay out the row, so a rendered thing that is not in it does not
+   * exist to the arrow keys, and `→` would step from Friday straight to Monday
+   * past a control the user can see. The `nav:` sentinels solve the same
+   * problem for "Create list" and "Load more days"; this is the third case,
+   * and the only one whose id is a real droppable.
+   */
+  strip?: boolean;
 }
 
 export interface BuildNavGridInput {
@@ -143,7 +155,9 @@ export function buildNavGrid(input: BuildNavGridInput): NavGrid {
     type into it.
   */
   if (input.overflow) calendar.push(toColumn(input.overflow, false));
-  for (const day of input.days) calendar.push(toColumn(day, true));
+  for (const day of input.days) {
+    calendar.push(day.strip ? sentinel(day.id) : toColumn(day, true));
+  }
   if (input.hasLoadMore) calendar.push(sentinel(NAV_LOAD_MORE));
 
   const planning: NavColumn[] = [];
@@ -160,7 +174,11 @@ export function buildNavGrid(input: BuildNavGridInput): NavGrid {
       to Create list, the one planning stop that always exists.
     */
     defaults: {
-      calendar: input.days[0]?.id ?? null,
+      // First real day, not `days[0]`: opening the board on a Saturday with
+      // weekends collapsed puts a strip in that slot, and landing a cross-half
+      // move on a strip parks focus somewhere you cannot type — the one thing
+      // this default exists to avoid.
+      calendar: (input.days.find((d) => !d.strip) ?? input.days[0])?.id ?? null,
       planning: input.backlog?.id ?? input.lists[0]?.id ?? NAV_CREATE_LIST,
     },
   };

@@ -14,11 +14,13 @@ import {
   parseListDragId,
   parseTabDragId,
   parseTabDropId,
+  parseWeekendColumnId,
   planListDrop,
   planTabDrop,
   preferPreciseTarget,
   tabDragId,
   tabDropId,
+  weekendColumnId,
   type TodoGroup,
 } from "./board";
 import { OVERFLOW, buildWindow } from "./scheduling";
@@ -527,6 +529,143 @@ describe("isDropZoneId", () => {
     expect(isDropZoneId("list:abc")).toBe(true);
     expect(isDropZoneId(tabDropId("abc"))).toBe(true);
     expect(isDropZoneId("0192f3a1-7c2e-7000-8000-abcdef123456")).toBe(false);
+  });
+});
+
+describe("weekend strip ids", () => {
+  it("round-trips", () => {
+    expect(parseWeekendColumnId(weekendColumnId("2026-08-08"))).toBe("2026-08-08");
+    expect(parseWeekendColumnId("day:2026-08-08")).toBeNull();
+    expect(parseWeekendColumnId("nonsense")).toBeNull();
+  });
+
+  /**
+   * The two halves of the contract that make the strip work, and both fail
+   * SILENTLY if broken — see `weekendColumnId`'s comment.
+   *
+   * Out of `isDropZoneId`, a hover on the strip is classified as a card,
+   * looked up in the todo list, not found, and the drag does nothing at all.
+   * In `parseColumnId`, the strip becomes a drop destination and a card
+   * released on it gets scheduled to a day the user never picked.
+   */
+  it("is a drop zone but never a drop destination", () => {
+    const id = weekendColumnId("2026-08-08");
+    expect(isDropZoneId(id)).toBe(true);
+    expect(parseColumnId(id)).toBeNull();
+    expect(isColumnId(id)).toBe(false);
+  });
+});
+
+describe("buildBoard status filtering", () => {
+  const settled = [
+    todo({ id: "open", listId: "groceries", scheduledDate: "2026-08-05" }),
+    todo({
+      id: "done",
+      listId: "groceries",
+      scheduledDate: "2026-08-05",
+      status: "done",
+      completedAt: "2026-08-05T10:00:00Z",
+    }),
+    todo({
+      id: "dropped",
+      listId: "groceries",
+      scheduledDate: "2026-08-05",
+      status: "dropped",
+    }),
+  ];
+  const dayIds = (board: ReturnType<typeof buildBoard>, day: string) =>
+    board.days.find((d) => d.day === day)!.todos.map((t) => t.id);
+
+  it("shows only open todos by default", () => {
+    expect(dayIds(buildBoard(settled, LISTS, ctx), "2026-08-05")).toEqual(["open"]);
+  });
+
+  it("shows each settled status only when asked for", () => {
+    expect(
+      dayIds(buildBoard(settled, LISTS, ctx, [], { visibleStatuses: ["open", "done"] }), "2026-08-05"),
+    ).toEqual(["open", "done"]);
+    expect(
+      dayIds(buildBoard(settled, LISTS, ctx, [], { visibleStatuses: ["dropped"] }), "2026-08-05"),
+    ).toEqual(["dropped"]);
+  });
+
+  /**
+   * THE REGRESSION THIS BLOCK EXISTS FOR. Overflow means "you have put this
+   * off too long", which is a statement about work you still owe. Running a
+   * finished todo through `deriveColumn` would file last week's completed
+   * errand under an accusation, and push genuinely stale work down to fit.
+   */
+  it("never rolls a settled todo into Overflow, however stale", () => {
+    const stale = todo({
+      id: "stale",
+      // 10 days before TODAY, far past `overflowAfterDays: 3`.
+      scheduledDate: "2026-07-24",
+      status: "done",
+    });
+    const board = buildBoard([stale], LISTS, ctx, [], {
+      visibleStatuses: ["open", "done"],
+    });
+    expect(board.overflow.todos).toHaveLength(0);
+    // Outside the window entirely, so it renders nowhere — and specifically
+    // NOT as an away-card in its list, which is the live-work fallback.
+    expect(board.days.flatMap((d) => d.todos)).toHaveLength(0);
+    expect(board.lists.flatMap((c) => c.todos)).toHaveLength(0);
+    expect(board.awayTodoIds.size).toBe(0);
+  });
+
+  it("keeps a settled todo on the day it was scheduled for", () => {
+    const board = buildBoard(
+      [todo({ id: "d", scheduledDate: "2026-08-06", status: "done" })],
+      LISTS,
+      ctx,
+      [],
+      { visibleStatuses: ["done"] },
+    );
+    expect(dayIds(board, "2026-08-06")).toEqual(["d"]);
+  });
+
+  it("routes an unscheduled settled todo to its list", () => {
+    const board = buildBoard(
+      [todo({ id: "d", listId: "groceries", status: "done" })],
+      LISTS,
+      ctx,
+      [],
+      { visibleStatuses: ["done"] },
+    );
+    expect(board.lists.find((c) => c.list.id === "groceries")!.todos.map((t) => t.id)).toEqual(
+      ["d"],
+    );
+  });
+
+  it("sinks settled todos below open ones in a day column", () => {
+    const board = buildBoard(
+      [
+        todo({ id: "done-p1", scheduledDate: "2026-08-05", status: "done", priority: 1 }),
+        todo({ id: "open-p4", scheduledDate: "2026-08-05", priority: 4 }),
+      ],
+      LISTS,
+      ctx,
+      [],
+      { visibleStatuses: ["open", "done"] },
+    );
+    // P1 would sort first on priority alone; status wins.
+    expect(dayIds(board, "2026-08-05")).toEqual(["open-p4", "done-p1"]);
+  });
+
+  it("sinks settled todos below open ones in a list column", () => {
+    const board = buildBoard(
+      [
+        todo({ id: "done", listId: "groceries", status: "done", position: positions[0] }),
+        todo({ id: "open", listId: "groceries", position: positions[5] }),
+      ],
+      LISTS,
+      ctx,
+      [],
+      { visibleStatuses: ["open", "done"] },
+    );
+    expect(
+      board.lists.find((c) => c.list.id === "groceries")!.todos.map((t) => t.id),
+    ).toEqual(["open", "done"]);
   });
 });
 

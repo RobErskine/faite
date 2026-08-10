@@ -34,8 +34,17 @@ export const ACCENT_COLORS: readonly AccentColor[] = [
   { name: "Pink", value: "#d6409f" },
 ] as const;
 
-/** Alpha suffixes for the three tint strengths the UI uses. */
-const WASH_ALPHA = "1a"; // ~10% — a field behind a run of rows
+/**
+ * Alpha suffixes for the three tint strengths the UI uses.
+ *
+ * The three are a LADDER, and the gaps between them are the point: a rule at
+ * 35%, the header it underlines at 12%, and the field behind the cards at 5%.
+ * Wash and tint were 10% and 12% at first, two points apart, which is inside
+ * the noise — the header and the run below it read as one flat panel of colour
+ * rather than as a label above a field, and a 1px checkbox border sitting on
+ * the field had nothing to separate it from.
+ */
+const WASH_ALPHA = "0d"; // ~5%  — a field behind a run of rows
 const TINT_ALPHA = "20"; // ~12% — fills behind text
 const EDGE_ALPHA = "59"; // ~35% — borders and rules
 
@@ -66,9 +75,13 @@ export function edge(color: string | null | undefined): string | undefined {
  *
  * Weaker than `tint()` because it covers area rather than a chip. At 12% behind
  * five card rows a step-9 hue reads as a colored panel competing with the
- * priority rail for attention; at 10% it reads as membership, which is the whole
- * job. It also has to sit UNDER `hover:bg-accent/50` and still leave that hover
- * perceptible.
+ * priority rail for attention; the job is to say "these belong together", and
+ * membership needs far less colour than a label does.
+ *
+ * Two things constrain how faint it can go, and 5% clears both: it must sit
+ * UNDER `hover:bg-accent/50` and still leave that hover perceptible, and it
+ * must stay clearly dimmer than the header's `tint()` above it, or the two
+ * merge into one panel and the header stops reading as a header.
  */
 export function wash(color: string | null | undefined): string | undefined {
   return isTintableColor(color) ? `${color}${WASH_ALPHA}` : undefined;
