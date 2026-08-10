@@ -29,11 +29,12 @@ planning session never needs the mouse.
 | Where | Keys |
 |---|---|
 | `command-palette.tsx` | `Enter` submits an entry mode, `Escape` returns to root |
-| `board-column.tsx` | `Enter` commits a quick-add, `Escape` clears the draft |
-| `create-list-column.tsx` | `Enter` commits, `Escape` cancels |
+| `board-column.tsx` | `Enter` commits a quick-add, `Escape` clears the draft, `←→↑↓` navigate (§6) |
+| `create-list-column.tsx` | `Enter` commits, `Escape` cancels, `←→↑↓` navigate off the idle button (§6) |
 | `list-info-dialog.tsx` | `Enter` saves the list name |
 | `todo-sheet.tsx` | `Enter` blurs the title (commit-on-blur does the write) |
-| `todo-card.tsx` | dnd-kit's keyboard drag activator, on the grip |
+| `todo-card.tsx` | `←→↑↓` navigate (§6), `Enter` opens the sheet, `Space` toggles done; dnd-kit's keyboard drag activator, on the grip |
+| `board.tsx` load-more tile | `←→↑↓` navigate (§6) |
 | `rail-handle.tsx` | `←`/`→` resizes the rail 16px, `Enter`/`Space` collapses it, double-click resets to the CSS default |
 
 **Owned by libraries — do not re-bind:**
@@ -259,7 +260,7 @@ re-litigates them:
 
 ## 7. On `react-hotkeys-hook`
 
-**Adopted: `^5.3.3`.** Verified against the sources in §12 — published
+**Adopted: `^5.3.3`.** Verified against the sources in §13 — published
 2026-06-26, peer dep `react >=16.8.0`, actively maintained, no React 19
 constraint.
 
@@ -323,7 +324,7 @@ A shortcut nobody knows about is dead code. The registry carries `label` and
 - **Render chords with `formatCombo(combo, detectPlatform())`** — `⌘K` on
   macOS, `Ctrl+K` elsewhere, with macOS's `⌃⌥⇧⌘` modifier ordering.
 
-Neither consumer is built yet (§11). Until one exists, every new entry's `label`
+Neither consumer is built yet (§12). Until one exists, every new entry's `label`
 is a promise being deferred, not decoration.
 
 ---
@@ -364,7 +365,129 @@ Component-level tests only for wiring pure functions cannot reach, using the
 
 ---
 
-## 11. Open work
+## 11. Arrow-key navigation across the board
+
+The one large local shortcut, and the worked example for §2. It is what makes
+"a planning session never needs the mouse" true rather than aspirational: from
+a quick-add field you can reach every other quick-add field, every card, and
+both end-of-track tiles without touching Tab.
+
+### 11.1 The model — a grid of stops
+
+The board is two rows of columns (§ARCHITECTURE 1), and **every column is an
+ordered list of *stops* running top to bottom** — its to-do cards, then its
+quick-add field:
+
+```
+calendar   [ Overflow ] | [ today ] [ +1 ] [ +2 ] … [ Load N more days ]
+planning   [ Backlog  ] | [ list  ] [ list ] …      [ Create list      ]
+```
+
+| Column | Stops |
+|---|---|
+| Overflow | its cards only — **no quick-add**, so an empty Overflow has no stops |
+| day column | its cards, then its quick-add |
+| Backlog / list column | its cards, then its quick-add |
+| Load more / Create list | one stop each |
+
+A stop is a place you can **create or act on** something. That is why Overflow
+has none when it is empty: nothing can be scheduled *into* Overflow, only out of
+it, so a field there would discard whatever you typed. (It used to render one,
+wired to a no-op `onQuickAdd`. `onQuickAdd` is now optional and Overflow omits
+it.) A collapsed rail renders neither cards nor a quick-add, so it drops out of
+its row entirely.
+
+Four rules resolve a keypress, and they are all in `resolveNavTarget`:
+
+1. **`↑`/`↓` walk the column.** `↓` on a planning quick-add is the bottom of the
+   board; `↑` on a calendar column's first card is the top.
+2. **Past those ends, vertical crosses halves.** The target is the column you
+   were **last in** on that row, falling back to the row default — today going
+   up, Backlog going down — and then to the first column with any stops. Tried
+   in that order, not collapsed: a remembered column goes stale when a list is
+   archived or a day scrolls past the horizon, and falling straight through
+   would land on Overflow instead of today.
+3. **`←`/`→` move one column, no wrapping.** A column with no stops is a **wall,
+   not something to skip** — `←` from today with an empty Overflow does nothing
+   rather than vaulting over it.
+4. **Anchor preservation.** Leaving a quick-add lands on the target's quick-add;
+   leaving a card lands on the same card index, clamped. Without this, `→` out
+   of an empty column into a thirty-card one would dump you on card one instead
+   of the field you were typing in — which is the whole feature.
+
+### 11.2 Why this is not in the registry
+
+It is the clearest case §2 describes, and the reasons are worth stating so
+nobody "tidies" it into `board.tsx`'s table:
+
+- `hotkeys.tsx` sets `preventDefault: true` **unconditionally** for every entry.
+  A global arrow binding would therefore break caret motion in every text field
+  on the board, the rail handle's 16px nudge, dnd-kit's keyboard drag, and
+  cmdk's `↑ ↓` inside the palette — all four are in the §1 table.
+- §3 forbids bare-key globals for exactly this reason, and permits them locally.
+- The behaviour is meaningless without a focused stop, which is §2's test for
+  "local".
+
+The registry stays for chords that must work from anywhere. This is the other
+half of the map.
+
+### 11.3 The three guards that matter
+
+- **Empty draft only.** The quick-add has `onBlur={commit}`, so navigating away
+  mid-draft would **silently create the to-do you were still typing**. With text
+  in the field arrows move the caret as normal; `Enter` already clears the draft
+  and keeps focus, so type → `Enter` → `→` is the intended loop. This is a data
+  bug, not a focus bug, which is why `column-nav.test.tsx` guards it.
+- **Bare arrows only.** `navKeyOf` rejects any modified arrow, in the spirit of
+  `hasExactModifiers` (§4.4): `⌥←` is word-jump, `⌘←` is line-start, `⇧←`
+  extends a selection.
+- **Not during a drag.** `useColumnNav` bails while `dragging`, the same
+  reasoning as `railDisabled` — dnd-kit owns the arrows once a lift is active
+  and its cached droppable rects are live (§4.2).
+
+`onNavigate` returns a **boolean**, and callers only `preventDefault()` when it
+comes back true. A press that resolves to nowhere falls through untouched rather
+than being swallowed — §4.4's rule, applied to a local handler.
+
+### 11.4 Focus, and how the DOM is reached
+
+Every stop carries `data-nav-stop="<id>"`; the hook queries for it. A ref
+registry was the alternative and lost: four render groups across two halves
+would each have to thread a registration callback, versus one attribute per call
+site with nothing to clean up. Ids are `todo:<id>`, `add:<columnId>`,
+`nav:create-list`, `nav:load-more` — all generated ids, ISO dates or literals,
+so the quoted attribute selector needs no `CSS.escape`.
+
+To-do card rows are `tabIndex={-1}`: focusable **programmatically but not by
+Tab**, so the existing tab order (grip → checkbox → title) is unchanged and
+`todo-card.tsx`'s "no `role` on the row, or we nest interactive controls inside
+a button" constraint still holds. `Enter`/`Space` on a card are guarded by
+`e.target === e.currentTarget`, or a press on the checkbox or grip would fire
+twice as it bubbled through.
+
+Scrolling is deliberate, never native: the hook calls
+`focus({ preventScroll: true })`, then either `jumpToIndex` — when the target day
+falls outside `useDayTrack`'s `[anchorIndex, anchorIndex + visibleCount)` — or
+`scrollIntoView({ block: "nearest" })`. Letting the browser scroll the day track
+would land it between columns and fight the anchor the next `jumpBy` reads.
+
+### 11.5 Files
+
+| File | Role |
+|---|---|
+| `src/lib/column-nav.ts` | Pure: the grid, `resolveNavTarget`, `navKeyOf`, stop ids. No DOM. |
+| `src/lib/column-nav.test.ts` | The grid arithmetic — every edge, both anchors, the fallback chain. |
+| `src/components/board/use-column-nav.ts` | Finds the node, moves focus, scrolls. |
+| `src/components/board/column-nav.test.tsx` | happy-dom: the attributes reach the DOM, and a draft keeps its caret. |
+| `src/components/board/board.tsx` | Builds the grid and hands one `navigate` to every stop. |
+
+**When you add a column kind or an end-of-track tile, add it to
+`buildNavGrid`** — the failure is silent: the column simply cannot be reached,
+and nothing warns.
+
+---
+
+## 12. Open work
 
 - **No help sheet, no chord hints in the palette (§8).** The registry carries
   `label` and `group` for exactly this; nothing consumes them yet. This is the
@@ -378,10 +501,16 @@ Component-level tests only for wiring pure functions cannot reach, using the
 - **`hasExactModifiers` may become redundant** if a future version documents
   exact matching. It costs one comparison and removes a silent-failure mode, so
   it earns its keep either way.
+- **Navigation (§11) has no announcements.** Focus moves and the ring shows it,
+  but nothing tells a screen reader which column you landed in. §10 asks for
+  results to be announced rather than shown; a live region naming the column
+  would close it.
+- **No keyboard route to the tab strip or the rails.** §11's grid covers the two
+  column tracks only. Reaching a tab, or a rail handle, is still Tab.
 
 ---
 
-## 12. Sources
+## 13. Sources
 
 Verified August 2026. Re-check before changing §7 — the v4 → v5 migration
 changed matching behaviour, so version-specific claims go stale.

@@ -78,8 +78,8 @@ function TabInfoDialogContent({
           <DialogTitle>Tab settings</DialogTitle>
           <DialogDescription>
             {tab.isDefault
-              ? "Your default tab. It can be renamed and recoloured, but not put away — it is where lists from a deleted tab go."
-              : "Rename this tab, give it a colour, or put it away along with its lists."}
+              ? "Your default tab. It can be renamed and recolored, but not put away — it is where lists from a deleted tab go."
+              : "Rename this tab, give it a color, or put it away along with its lists."}
           </DialogDescription>
         </DialogHeader>
 
@@ -112,10 +112,18 @@ function TabInfoDialogContent({
         </div>
 
         <div className="space-y-1.5">
-          <Label>Colour</Label>
-          <div>
-            <ColorPicker value={color} onChange={setColor} label="Tab colour" />
+          <div className="flex items-center gap-2">
+            <Label htmlFor="tab-color">Color</Label>
+            <ColorPicker
+              id="tab-color"
+              value={color}
+              onChange={setColor}
+              label="Tab color"
+            />
           </div>
+          <p className="text-xs text-muted-foreground">
+            Used to differentiate this list as an accent.
+          </p>
         </div>
 
         <DialogFooter className="sm:justify-between">

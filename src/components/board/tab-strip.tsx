@@ -172,8 +172,8 @@ function TabPill({
         isFocusCandidate && "ring-2 ring-primary ring-offset-1 ring-offset-muted",
       )}
       style={
-        // The tab's own colour wins over the neutral active treatment, so an
-        // active coloured tab reads as itself rather than as "the active one".
+        // The tab's own color wins over the neutral active treatment, so an
+        // active colored tab reads as itself rather than as "the active one".
         isActive ? { backgroundColor: tint(tab.color) } : undefined
       }
     >
@@ -225,9 +225,9 @@ function TabPill({
       </Button>
 
       {/*
-        The colour underline, on every coloured tab rather than just the active
-        one. A colour you can only see by selecting the tab cannot be used to
-        find it, which is most of what a colour on a tab is for — so the strip
+        The color underline, on every colored tab rather than just the active
+        one. A color you can only see by selecting the tab cannot be used to
+        find it, which is most of what a color on a tab is for — so the strip
         shows all of them at once and lets selection be said by the background
         and weight instead.
       */}

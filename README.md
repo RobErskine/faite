@@ -31,17 +31,41 @@ no request is ever on the interaction path.
 
 ```bash
 npm install
-npm run dev
 ```
+
+### Running locally
+
+**You need both servers, in two terminals.** `next dev` serves the UI with hot
+reload, but it never runs the worker entry (`src/server/worker.ts`) — so
+`/api/auth/*` and `/api/sync/*` simply do not exist on :3000. Those only live
+under the real Workers runtime.
+
+```bash
+npm run preview   # terminal 1 — builds, then serves the worker on :8787
+npm run dev       # terminal 2 — UI with hot reload on :3000
+```
+
+Then open **http://localhost:3000**. `.env.local` points the auth client at
+:8787, so you get hot reload *and* a working login. Two things that will bite:
+
+- **`npm run preview` does not hot-reload.** It builds once at startup, so any
+  change under `src/server/` needs a full restart. A stale worker looks exactly
+  like a bug that won't go away.
+- **Local D1 is a different database from production.** Sign up fresh at
+  http://localhost:3000/signup; email verification is off on localhost.
+
+`npm run preview` also works standalone on http://localhost:8787 — no hot
+reload, but sync works there, which it does not on :3000. Full detail, including
+what does and doesn't work locally, is in **[docs/SETUP.md](docs/SETUP.md)**.
 
 ## Commands
 
 | Command | Does |
 |---|---|
-| `npm run dev` | Next dev server |
-| `npm test` | Vitest (64 tests) |
+| `npm run dev` | Next dev server on :3000 — UI only, no `/api/*` |
+| `npm run preview` | the real Workers runtime on :8787 — all of `/api/*` |
+| `npm test` | Vitest |
 | `npm run verify` | typecheck (app + worker), lint, tests, **both** build targets |
-| `npm run preview` | run the real Workers runtime locally |
 | `npm run deploy` | build and deploy to Cloudflare Workers |
 
 `npm run verify` is the gate to run before committing. It includes a static

@@ -71,7 +71,7 @@ creates its own DNS record — do **not** hand-add an A or CNAME:
 
 ```jsonc
 "routes": [{ "pattern": "myfaite.app", "custom_domain": true }],
-"workers_dev": false,
+"workers_dev": true,
 "preview_urls": true,
 ```
 
@@ -81,12 +81,15 @@ creates its own DNS record — do **not** hand-add an A or CNAME:
 > way:
 >
 > - `faite.bfmw-dev.workers.dev` started returning **404** the moment the
->   custom domain went live. That's fine here — `myfaite.app` is the only
->   origin auth works on, so `workers_dev: false` is deliberate rather than
->   accidental.
-> - **Preview URLs went off too**, which would have quietly broken the
->   per-branch previews in §8 — `opennextjs-cloudflare upload` produces nothing
->   else. Hence the explicit `preview_urls: true`.
+>   custom domain went live.
+> - **Preview URLs went off too**, which quietly broke the per-branch previews
+>   in §8 — they are only ever served on the workers.dev subdomain, so
+>   `workers_dev: false` disables them no matter what `preview_urls` says.
+>
+> Both flags are therefore `true`. This was `false` through P0–P4 on the
+> reasoning that "`myfaite.app` is the only origin auth works on" — stale since
+> `createAuth(env, request)` started deriving `baseURL` from the request origin.
+> See the comment block in `wrangler.jsonc` for the full account.
 
 ```bash
 npm run deploy
@@ -97,9 +100,11 @@ Verify with a real request, and **poll before diagnosing** — per
 `.ai/lessons.md`, a 404 immediately after a deploy was propagation lag, not a
 broken worker.
 
-> **Why this comes before §4:** `src/server/auth.ts` already hardcodes
-> `baseURL: "https://myfaite.app"` outside development. Register OAuth
-> callbacks against the workers.dev URL and you will be redoing them.
+> **Why this comes before §4:** an OAuth app accepts a fixed callback URL, and
+> that has to be the domain users actually land on. Register the callbacks
+> against the workers.dev URL and you will be redoing them. (`src/server/auth.ts`
+> does *not* hardcode `baseURL` — `createAuth` derives it per request, so the
+> API itself works on any origin. The OAuth providers are the fixed part.)
 
 ---
 

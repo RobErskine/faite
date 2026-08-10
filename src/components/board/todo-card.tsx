@@ -8,6 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { DragGrip } from "./drag-grip";
+import { cardStop, navKeyOf, type NavKey } from "@/lib/column-nav";
 import type { Label as LabelRecord, Todo } from "@/lib/schema";
 import {
   formatShortDate,
@@ -31,6 +32,11 @@ interface TodoCardProps {
   isLanding?: boolean;
   onToggle: (todo: Todo) => void;
   onOpen: (todo: Todo) => void;
+  /**
+   * Arrow-key navigation out of this row. Returns true when focus moved, so
+   * the handler only calls `preventDefault` for a press it actually consumed.
+   */
+  onNavigate?: (fromStopId: string, key: NavKey) => boolean;
 }
 
 export function TodoCard({
@@ -42,6 +48,7 @@ export function TodoCard({
   isLanding,
   onToggle,
   onOpen,
+  onNavigate,
 }: TodoCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: todo.id });
@@ -76,9 +83,37 @@ export function TodoCard({
         the checkbox and title behave exactly as before.
       */
       onPointerDown={startPointerDrag}
+      /*
+        A nav stop for the arrow keys (docs/KEYBOARD.md §11). `tabIndex={-1}`
+        makes the row focusable programmatically WITHOUT joining the tab order,
+        so Tab still walks the grip, checkbox and title exactly as before and
+        the `:65` reasoning above still holds — the row takes focus but never a
+        `role`, so no interactive control ends up nested inside a button.
+      */
+      tabIndex={-1}
+      data-nav-stop={cardStop(todo.id)}
+      onKeyDown={(e) => {
+        const key = navKeyOf(e);
+        if (key) {
+          if (onNavigate?.(cardStop(todo.id), key)) e.preventDefault();
+          return;
+        }
+        // Enter and Space belong to whichever control has focus. Only act when
+        // the row itself does, or a press on the checkbox, the title button or
+        // the drag grip would fire twice as it bubbled through here.
+        if (e.target !== e.currentTarget) return;
+        if (e.key === "Enter") {
+          e.preventDefault();
+          onOpen(todo);
+        } else if (e.key === " ") {
+          e.preventDefault();
+          onToggle(todo);
+        }
+      }}
       className={cn(
         "group relative flex items-start gap-2 border-b border-border/60 px-2 py-1.5",
         "cursor-grab active:cursor-grabbing",
+        "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring",
         // Opacity transitions alongside the background so the row fades in when
         // a landing completes rather than popping. Hover only changes the
         // background, so naming both properties loses nothing over

@@ -1,4 +1,5 @@
-import { createAuth, TRUSTED_ORIGINS } from "../auth";
+import { createAuth } from "../auth";
+import { corsHeaders, handleOptions } from "../cors";
 import { clampPullArgs, parsePushRequest } from "./validate";
 import { isAllowedWsOrigin, isWebSocketUpgrade, USER_ID_HEADER } from "./ws-server";
 
@@ -13,28 +14,8 @@ import { isAllowedWsOrigin, isWebSocketUpgrade, USER_ID_HEADER } from "./ws-serv
  * file without a session is unauthenticated, full stop: 401, never a nag.
  */
 
-function corsHeaders(origin: string | null): HeadersInit {
-  if (!origin || !TRUSTED_ORIGINS.includes(origin)) return {};
-  return {
-    "Access-Control-Allow-Origin": origin,
-    "Access-Control-Allow-Credentials": "true",
-    Vary: "Origin",
-  };
-}
-
 function json(body: unknown, status: number, headers: HeadersInit): Response {
   return Response.json(body, { status, headers });
-}
-
-function handleOptions(request: Request): Response {
-  return new Response(null, {
-    status: 204,
-    headers: {
-      ...corsHeaders(request.headers.get("Origin")),
-      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type",
-    },
-  });
 }
 
 export async function handleSyncRequest(request: Request, env: CloudflareEnv): Promise<Response> {

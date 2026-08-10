@@ -124,7 +124,7 @@ Plan of record: `~/.claude/plans/please-check-this-image-starry-eich.md`
 - [ ] Projects + views · sub-tasks · recurrence (RRULE + exceptions)
 - [x] Priority 1–4 — editable since P1/P2, now also visible on the card (chip,
       pulled forward as EI-56's tail)
-- [x] List tabs (pulled forward — grouping, colour, drag-sort, cross-tab carry)
+- [x] List tabs (pulled forward — grouping, color, drag-sort, cross-tab carry)
 - [x] Location — editable since P1/P2, now also visible on the card (chip)
 - [ ] Markdown descriptions — punted on purpose; dropped the "Markdown
       supported" placeholder promise instead of adding a dependency (EI-56,

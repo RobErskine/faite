@@ -5,6 +5,7 @@ import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { createList } from "@/lib/store/repositories";
+import { NAV_CREATE_LIST, navKeyOf, type NavKey } from "@/lib/column-nav";
 import { createUndoStep, pushUndo, undoById } from "@/lib/undo";
 
 /**
@@ -19,7 +20,14 @@ import { createUndoStep, pushUndo, undoById } from "@/lib/undo";
  * making it a drop target would mean answering what "drop a to-do on Create
  * list" does, and every answer is worse than not offering it.
  */
-export function CreateListColumn({ tabId }: { tabId: string }) {
+export function CreateListColumn({
+  tabId,
+  onNavigate,
+}: {
+  tabId: string;
+  /** Arrow-key navigation off the button. See docs/KEYBOARD.md §11. */
+  onNavigate?: (fromStopId: string, key: NavKey) => boolean;
+}) {
   /** `null` is idle. A string — including "" — means the field is open. */
   const [draft, setDraft] = useState<string | null>(null);
 
@@ -56,7 +64,14 @@ export function CreateListColumn({ tabId }: { tabId: string }) {
       {draft === null ? (
         <button
           type="button"
+          // Only the idle button is a nav stop: once the name field is open it
+          // is a text entry like any other, and Escape is the way back out.
+          data-nav-stop={NAV_CREATE_LIST}
           onClick={() => setDraft("")}
+          onKeyDown={(e) => {
+            const key = navKeyOf(e);
+            if (key && onNavigate?.(NAV_CREATE_LIST, key)) e.preventDefault();
+          }}
           className={cn(
             "flex flex-1 flex-col items-center justify-center gap-1.5 rounded-md",
             "border border-dashed border-border text-muted-foreground",

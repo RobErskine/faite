@@ -8,6 +8,7 @@ import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { edge } from "@/lib/colors";
 import { listDragId } from "@/lib/board";
+import { addStop, navKeyOf, type NavKey } from "@/lib/column-nav";
 import type { Label as LabelRecord, Todo } from "@/lib/schema";
 import type { PlacementContext } from "@/lib/scheduling";
 import { DragGrip } from "./drag-grip";
@@ -26,7 +27,16 @@ interface BoardColumnProps {
   actions?: React.ReactNode;
   onToggle: (todo: Todo) => void;
   onOpen: (todo: Todo) => void;
-  onQuickAdd: (title: string) => void;
+  /**
+   * Omit to drop the quick-add row entirely. Overflow does: nothing can be
+   * scheduled into it, so a field there would discard whatever you typed.
+   */
+  onQuickAdd?: (title: string) => void;
+  /**
+   * Arrow-key navigation out of this column's cards and quick-add. Returns
+   * true when focus moved. See docs/KEYBOARD.md §11.
+   */
+  onNavigate?: (fromStopId: string, key: NavKey) => boolean;
   /** Ruled lines fill the empty space, matching the reference UI's paper feel. */
   minRows?: number;
   /** True while any drag is in flight — used to outline candidate targets. */
@@ -61,7 +71,7 @@ interface BoardColumnProps {
    */
   isColumnDropTarget?: boolean;
   /**
-   * The owning tab's colour, tinting the header rule. Absent on day columns and
+   * The owning tab's color, tinting the header rule. Absent on day columns and
    * on Backlog, neither of which belongs to a tab.
    */
   accentColor?: string | null;
@@ -97,6 +107,7 @@ export function BoardColumn({
   onToggle,
   onOpen,
   onQuickAdd,
+  onNavigate,
   minRows = 8,
   isDragActive,
   overTodoId,
@@ -159,7 +170,7 @@ export function BoardColumn({
 
   const commit = () => {
     const title = draft.trim();
-    if (!title) return;
+    if (!title || !onQuickAdd) return;
     onQuickAdd(title);
     setDraft(""); // Keep focus so several todos can be typed in a row.
   };
@@ -252,7 +263,7 @@ export function BoardColumn({
           // Stated rather than inherited, so the header advertises the gesture
           // across its whole width and not just over the grip.
           dragListName !== null && "cursor-grab active:cursor-grabbing",
-          // Only drawn when the tab has a colour, so an uncoloured tab keeps
+          // Only drawn when the tab has a color, so an uncolored tab keeps
           // the original headers rather than gaining a grey rule.
           accentColor && !collapsed && "border-b-2",
         )}
@@ -340,6 +351,7 @@ export function BoardColumn({
                 isLanding={landingTodoId === todo.id}
                 onToggle={onToggle}
                 onOpen={onOpen}
+                onNavigate={onNavigate}
               />
             ))}
           </SortableContext>
@@ -366,33 +378,48 @@ export function BoardColumn({
           )}
 
           {/* Quick add sits directly under the last item, like the reference UI. */}
-          <div className="group relative flex items-center border-b border-border/60">
-            <Plus
-              className="pointer-events-none absolute left-2 size-3 text-muted-foreground/40 opacity-0 group-focus-within:opacity-100"
-              aria-hidden
-            />
-            <input
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  commit();
+          {onQuickAdd && (
+            <div className="group relative flex items-center border-b border-border/60">
+              <Plus
+                className="pointer-events-none absolute left-2 size-3 text-muted-foreground/40 opacity-0 group-focus-within:opacity-100"
+                aria-hidden
+              />
+              <input
+                data-nav-stop={addStop(id)}
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    commit();
+                  }
+                  if (e.key === "Escape") setDraft("");
+
+                  const key = navKeyOf(e);
+                  if (!key) return;
+                  /*
+                    Caret motion wins while there is text to move through — and
+                    more importantly, `onBlur` commits, so navigating away
+                    mid-draft would silently create the to-do you were still
+                    typing. Enter already clears the draft and keeps focus, so
+                    type → Enter → `→` is the intended loop.
+                  */
+                  if (draft !== "") return;
+                  if (onNavigate?.(addStop(id), key)) e.preventDefault();
+                }}
+                onBlur={commit}
+                placeholder="Add a to-do"
+                aria-label={
+                  typeof title === "string" ? `Add a to-do to ${title}` : "Add a to-do"
                 }
-                if (e.key === "Escape") setDraft("");
-              }}
-              onBlur={commit}
-              placeholder="Add a to-do"
-              aria-label={
-                typeof title === "string" ? `Add a to-do to ${title}` : "Add a to-do"
-              }
-              className={cn(
-                "w-full bg-transparent px-2 py-1.5 text-sm outline-none",
-                "placeholder:text-transparent focus:placeholder:text-muted-foreground/60",
-                "group-focus-within:pl-6",
-              )}
-            />
-          </div>
+                className={cn(
+                  "w-full bg-transparent px-2 py-1.5 text-sm outline-none",
+                  "placeholder:text-transparent focus:placeholder:text-muted-foreground/60",
+                  "group-focus-within:pl-6",
+                )}
+              />
+            </div>
+          )}
 
           {/* Ruled filler lines. Decorative only. */}
           {Array.from({ length: fillerRows }, (_, i) => (

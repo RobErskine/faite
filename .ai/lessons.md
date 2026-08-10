@@ -286,3 +286,36 @@ every request then 401s. Fifteen minutes lost to what looked like an auth
 bug in the code under test rather than a parsing bug in the test harness.
 When a brand-new harness fails its very first auth check, suspect the harness
 before the server.
+
+---
+
+## A comment claimed a behaviour that was never implemented
+
+`TRUSTED_ORIGINS` in `src/server/auth.ts` was documented as "also the CORS
+allow-list for `/api/sync/*`" — one list "so it can't drift between the two
+seams". Only one seam ever used it. `/api/sync/*` built its own
+`corsHeaders`/`handleOptions`; `/api/auth/*` handed the request straight to
+Better Auth and got nothing, because **`trustedOrigins` is a CSRF and
+redirect-target check that emits no CORS headers at all**. So the documented
+two-terminal local workflow (`next dev` on :3000 against `npm run preview` on
+:8787) could never log in: the preflight 404'd and the browser reported
+`TypeError: Failed to fetch` from the `signIn.email` call, pointing at the
+login page rather than at the server that refused it.
+
+Two things went wrong and they compound:
+
+The comment described an *intention* — the shared list — as though it were the
+mechanism. Nothing enforced it. A second seam was added later and simply did
+not opt in, and the comment kept asserting the invariant held. **If a comment
+says two call sites share something, the shared thing has to be the code they
+both call, not a constant they both could.**
+
+And the symptom surfaced three layers from the cause. `Failed to fetch` is what
+a browser says when it declines to send a request; curl on the same endpoint
+returned a healthy 401, because curl does not do CORS. **When a request fails
+in the browser but succeeds from curl, the difference IS the finding — stop
+reading application code and go read the preflight.**
+
+**Rule:** verify a cross-origin path with a real `OPTIONS` carrying `Origin`
+and `Access-Control-Request-Method`, not just the `POST`. A 404 on the
+preflight is invisible to every server-side test in the repo.

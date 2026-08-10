@@ -22,7 +22,7 @@ import { cn } from "@/lib/utils";
  * The expansion stops 2px short of the neighbouring control on a card, so
  * widening it further would start stealing clicks from the checkbox.
  *
- * Hover is a colour change, not a background: a filled box around a 12px icon
+ * Hover is a color change, not a background: a filled box around a 12px icon
  * would undo the point of making the mark small.
  */
 export function DragGrip({ className, ...props }: ComponentProps<"button">) {

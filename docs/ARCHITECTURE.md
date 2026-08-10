@@ -226,7 +226,7 @@ marker.
 
 The **default tab** ("My Lists", `isDefault`) cannot be archived or deleted,
 for the same reason Backlog cannot: it is the guaranteed destination that
-`deleteTab` rehomes lists to. Renaming and recolouring it are fine.
+`deleteTab` rehomes lists to. Renaming and recoloring it are fine.
 
 ### 2.8c Changing a field is a seven-file operation — see `docs/SCHEMA-CHANGES.md`
 
@@ -579,6 +579,7 @@ src/
     scheduling.ts             deriveColumn(), civil-date arithmetic, rollover
     ordering.ts               fractional index helpers
     board.ts                  groups todos into columns; drop-target id codec
+    column-nav.ts             arrow-key focus grid — see KEYBOARD.md §11
     auth-client.ts            createAuthClient(); NEXT_PUBLIC_AUTH_URL-aware
     auth-nudge.ts             useShouldShowAuthNudges() — see §2.13
     onboarding.ts             welcome-dialog/banner dismissal flags — §2.13

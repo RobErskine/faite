@@ -706,7 +706,7 @@ Three rules, and each has a failure mode if changed:
   On a card the expansion stops ~2px short of the checkbox, so **widening it
   further would start stealing clicks from that control.**
 
-Hover is a colour change, not a background fill — a filled box around a 12px
+Hover is a color change, not a background fill — a filled box around a 12px
 icon undoes the point of making the mark small.
 
 > `before:absolute`, `before:-inset-1.5` and `before:content-['']` were checked
@@ -872,7 +872,11 @@ list — see §4.7 and §4.9.)
    on a 1440pt display is enough.
 10. **The create-list slot is not keyboard-reachable mid-drag**, and does not
     need to be — it is not a droppable (§5.6). Noted only so it is not
-    "discovered" as a missing target later.
+    "discovered" as a missing target later. It *is* reachable outside a drag:
+    `→` off the last list column focuses it, via the arrow-key grid in
+    `docs/KEYBOARD.md` §11. That grid stands down entirely while a drag is in
+    flight, for the reason in §4.2 — dnd-kit owns the arrows once a lift is
+    active, and its cached rects are live.
 
 ---
 

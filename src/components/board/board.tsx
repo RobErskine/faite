@@ -41,6 +41,12 @@ import {
   runLandingDropAnimation,
 } from "@/lib/drop-animation";
 import { tint } from "@/lib/colors";
+import {
+  NAV_LOAD_MORE,
+  buildNavGrid,
+  navKeyOf,
+  type NavGrid,
+} from "@/lib/column-nav";
 import { positionForIndex } from "@/lib/ordering";
 import { OVERFLOW, daysBetween, formatDay, todayIn } from "@/lib/scheduling";
 import { FONT_STORAGE_KEY } from "@/lib/fonts";
@@ -120,6 +126,7 @@ import {
 } from "./tab-actions";
 import { TodoSheet } from "./todo-sheet";
 import { CommandPalette } from "./command-palette";
+import { useColumnNav } from "./use-column-nav";
 import { useDayTrack } from "./use-day-track";
 
 /**
@@ -625,6 +632,53 @@ export function Board() {
     () => board?.lists.filter((c) => !c.list.isBacklog) ?? [],
     [board],
   );
+
+  /**
+   * Every place the arrow keys can put focus, as a grid — see
+   * `lib/column-nav.ts` and docs/KEYBOARD.md §11.
+   *
+   * A collapsed rail contributes nothing: its column renders as a 40px strip
+   * with no cards and no quick-add, so there is nothing to focus in it.
+   */
+  const navGrid = useMemo<NavGrid>(
+    () =>
+      buildNavGrid({
+        overflow:
+          board && !overflowCollapsed
+            ? { id: board.overflow.id, todoIds: board.overflow.todos.map((t) => t.id) }
+            : null,
+        days: board?.days.map((c) => ({ id: c.id, todoIds: c.todos.map((t) => t.id) })) ?? [],
+        hasLoadMore: renderedDays < cap,
+        backlog:
+          backlogColumn && !backlogCollapsed
+            ? { id: backlogColumn.id, todoIds: backlogColumn.todos.map((t) => t.id) }
+            : null,
+        lists: otherListColumns.map((c) => ({
+          id: c.id,
+          todoIds: c.todos.map((t) => t.id),
+        })),
+      }),
+    [
+      board,
+      overflowCollapsed,
+      renderedDays,
+      cap,
+      backlogColumn,
+      backlogCollapsed,
+      otherListColumns,
+    ],
+  );
+
+  const dayIds = useMemo(() => board?.days.map((c) => c.id) ?? [], [board]);
+
+  const navigate = useColumnNav({
+    grid: navGrid,
+    dayIds,
+    dragging: !!activeTodo || !!activeList || !!activeTab,
+    anchorIndex,
+    visibleCount,
+    jumpToIndex,
+  });
 
   /**
    * `over` is either a column or a card. Only a card gives us a precise
@@ -1136,7 +1190,9 @@ export function Board() {
               ctx={ctx}
               onToggle={handleToggle}
               onOpen={(todo) => setOpenTodoId(todo.id)}
-              onQuickAdd={() => {}}
+              // No `onQuickAdd`, so no quick-add row: nothing can be scheduled
+              // INTO Overflow, only out of it.
+              onNavigate={navigate}
               emphasis
               isDragActive={!!activeTodo}
               overTodoId={overTodoId}
@@ -1187,6 +1243,7 @@ export function Board() {
                     onToggle={handleToggle}
                     onOpen={(todo) => setOpenTodoId(todo.id)}
                     onQuickAdd={(title) => void handleQuickAdd(title, { day: column.day })}
+                    onNavigate={navigate}
                     isDragActive={!!activeTodo}
                     overTodoId={overTodoId}
                     landingTodoId={landingTodoId}
@@ -1204,7 +1261,12 @@ export function Board() {
               {renderedDays < cap && (
                 <button
                   type="button"
+                  data-nav-stop={NAV_LOAD_MORE}
                   onClick={loadMoreDays}
+                  onKeyDown={(e) => {
+                    const key = navKeyOf(e);
+                    if (key && navigate(NAV_LOAD_MORE, key)) e.preventDefault();
+                  }}
                   className={cn(
                     "flex flex-1 flex-col items-center justify-center rounded-md",
                     "min-w-(--column-min) max-w-(--column-max) border border-dashed border-border",
@@ -1244,6 +1306,7 @@ export function Board() {
                 onQuickAdd={(title) =>
                   void handleQuickAdd(title, { listId: backlogColumn.list.id })
                 }
+                onNavigate={navigate}
                 minRows={5}
                 isDragActive={!!activeTodo}
                 overTodoId={overTodoId}
@@ -1254,7 +1317,7 @@ export function Board() {
                 // real action is collapsing the rail — see RailCollapseButton.
                 isColumnDragActive={!!activeList}
                 // Backlog belongs to no tab, so it stays neutral while the
-                // columns around it carry the current tab's colour. That
+                // columns around it carry the current tab's color. That
                 // difference is also the clearest signal that it is shared.
                 accentColor={null}
                 pinned
@@ -1321,6 +1384,7 @@ export function Board() {
                     onQuickAdd={(title) =>
                       void handleQuickAdd(title, { listId: column.list.id })
                     }
+                    onNavigate={navigate}
                     minRows={5}
                     isDragActive={!!activeTodo}
                     overTodoId={overTodoId}
@@ -1339,7 +1403,7 @@ export function Board() {
                     accentColor={activeTabRecord?.color}
                   />
                 ))}
-                <CreateListColumn tabId={activeTabId} />
+                <CreateListColumn tabId={activeTabId} onNavigate={navigate} />
               </div>
             </div>
           </div>

@@ -281,7 +281,7 @@ export const tabSchema = z.object({
   /**
    * The tab a user starts with. Cannot be archived or deleted — it is the
    * guaranteed destination for lists rehomed by `deleteTab`, the same role
-   * Backlog plays for todos. Renaming and recolouring it are fine.
+   * Backlog plays for todos. Renaming and recoloring it are fine.
    */
   isDefault: z.boolean().default(false),
   /**

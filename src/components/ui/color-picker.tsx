@@ -15,25 +15,27 @@ interface ColorPickerProps {
   /** Labels the trigger for assistive tech; the swatch alone says nothing. */
   label?: string;
   className?: string;
+  id?: string;
 }
 
 /**
- * Ten presets, a custom colour, and no colour.
+ * Ten presets, a custom color, and no color.
  *
- * Built here rather than pulled from a registry because shadcn/ui has no colour
+ * Built here rather than pulled from a registry because shadcn/ui has no color
  * picker, and the community one that gets called that is Radix-based — this app
  * is deliberately Base UI, so adopting it would mean a second primitive library
  * for one swatch. A saturation canvas would also be the wrong tool: this picks
- * an accent from a curated set, not an arbitrary colour from a gradient.
+ * an accent from a curated set, not an arbitrary color from a gradient.
  *
- * Custom colours go through the OS picker via `input[type=color]`, which is
+ * Custom colors go through the OS picker via `input[type=color]`, which is
  * free, keyboard accessible, and already familiar.
  */
 export function ColorPicker({
   value,
   onChange,
-  label = "Colour",
+  label = "color",
   className,
+  id,
 }: ColorPickerProps) {
   const selected = isTintableColor(value) ? value.toLowerCase() : null;
   const isPreset = ACCENT_COLORS.some((c) => c.value.toLowerCase() === selected);
@@ -42,6 +44,7 @@ export function ColorPicker({
   return (
     <Popover>
       <PopoverTrigger
+        id={id}
         aria-label={label}
         className={cn(
           "flex h-9 items-center gap-2 rounded-md border bg-transparent px-3 text-sm",
@@ -81,7 +84,7 @@ export function ColorPicker({
 
         <div className="flex items-center gap-1">
           {/*
-            The native input is the whole custom-colour affordance. It is
+            The native input is the whole custom-color affordance. It is
             visually a label-wrapped swatch so it matches the row, but the OS
             picker and its keyboard handling come for free.
           */}
@@ -92,7 +95,7 @@ export function ColorPicker({
             )}
           >
             <Pipette className="size-3.5 text-muted-foreground" aria-hidden />
-            {selected && !isPreset ? "Custom colour" : "Custom…"}
+            {selected && !isPreset ? "Custom color" : "Custom…"}
             <input
               type="color"
               value={selected ?? "#3e63dd"}
@@ -105,7 +108,7 @@ export function ColorPicker({
             type="button"
             onClick={() => onChange(null)}
             disabled={!selected}
-            aria-label="Clear colour"
+            aria-label="Clear color"
             className={cn(
               "flex size-7 items-center justify-center rounded-md text-muted-foreground outline-none",
               "hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40",
@@ -121,8 +124,8 @@ export function ColorPicker({
 
 function Swatch({ color }: { color: string | null }) {
   if (!color) {
-    // A ring rather than a filled circle: "no colour" should not look like a
-    // colour that happens to match the background.
+    // A ring rather than a filled circle: "no color" should not look like a
+    // color that happens to match the background.
     return <span className="size-4 rounded-full border border-dashed" aria-hidden />;
   }
   return (
