@@ -950,9 +950,12 @@ the string, and that is the exact chunk the browser console named.
 
 ### Open
 
-- [ ] **`npm run deploy` still needs to run** — production is serving the old bundle,
-      so login is down for everyone until it does.
-- [ ] `npm run build:static` still never verified this session.
+- [x] **Deployed.** Version `2278249b-4c19-4316-aaf6-67841bfe7e90`. Verified against
+      the live site rather than the build output: fetched all 14 chunks the login page
+      loads (1.3 MB) and grepped — **zero** occurrences of `localhost:8787`. Login is
+      fixed in production.
+- [x] `npm run build:static` verified — it runs as the last stage of `npm run verify`,
+      which is now green end to end.
 
 ### Board view settings: statuses, day count, weekend strip (feat/board-view-settings)
 
@@ -1000,11 +1003,19 @@ in the window and the collapse is purely a rendering concern (`weekend-runs.ts`)
       already on the date picker at the other end of the same bar. The command palette
       keeps ACTION wording ("Hide weekends") — a palette lists commands, not state.
 
+- [x] Shipped to main as `e7311b1` and deployed. Rob confirmed the status filter
+      (todo / completed / won't do) in the running app before merge.
+
 ### Open
 
-- [ ] Never opened in a browser. Every claim about drag-dwell expansion, the centred
-      layout at real widths, and keyboard traversal of the strip is inferred from the
-      code and the unit tests, not observed.
+- [ ] **Migration 3 has not been observed running against the production DO.**
+      `npm run schema:info -- --prod` needs a signed-in session cookie at
+      `/tmp/faite-prod/cookies.txt` that was not present, so the pre-flight check was
+      skipped. The migration is additive (`ALTER … ADD COLUMN` with `NOT NULL DEFAULT`)
+      and applies on the DO's next boot, so the expected outcome is a no-op the first
+      time the board is opened — but that should be confirmed, not assumed.
+- [ ] Drag-dwell weekend expansion and keyboard traversal of the strip were never
+      exercised in a browser — unit-tested and reasoned about only.
 - [ ] Known limitation, deliberate: with strips present, `scrollLeft → day index` is
       nonlinear, so Week/Month/Quarter jumps land within ~1 column. Exact scrolling
       needs cumulative per-slot offsets.
