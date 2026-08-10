@@ -691,3 +691,163 @@ killed). Harnesses kept at `scripts/sync-smoke/`.
 - [ ] Decide whether `MAX_SOCKET_AGE_MS` (1h) is the right ceiling once
   there's real usage data. It bounds, but does not eliminate, the window in
   which a socket outlives the session that authorised it.
+
+---
+
+## Card redesign — priority rail, wrapping title, inline location pin
+
+Feedback on `/board`: titles ran on one line and overflowed into neighbouring
+columns, the grip and the priority/location chips ate the width of a 168px
+column.
+
+- [x] `src/lib/priority.ts` + tests — `PRIORITY_RAILS`, 3/2/1/1px ·
+      `#e5484d` `#f76b15` `#3e63dd` `#00a2c7`. Two channels arranged so no two
+      levels share both width and colour; that invariant is a test.
+- [x] Sensors split: `MouseSensor {distance:4}` + `TouchSensor {delay:250,
+      tolerance:8}` + `KeyboardSensor`. Touch now lifts from anywhere on a row,
+      so nothing depends on `touch-action: none` any more.
+- [x] `todo-card.tsx`: priority rail (absolute span, not `border-l`), title
+      `line-clamp-3` with `min-w-0` + `wrap-break-word`, inline `MapPin` with a
+      hover tooltip and `sr-only` text, grip absolutely positioned in a 12px
+      gutter and revealed on hover/focus, priority + location chips removed.
+- [x] Drag overlay chip mirrors the rail and the pin.
+- [x] `todo-card.test.tsx` — 15 assertions, including the two invariants that
+      fail silently (grip hit area cannot overlap the checkbox; the tooltip
+      trigger stays a non-interactive `span` inside the title button).
+- [x] `docs/DRAG-AND-DROP.md` §3/§4.8/§4.9/§4.10/§4.11/§5.4/§5.5/§6/§7/§8 and
+      `docs/KEYBOARD.md` §1.
+
+### Review
+
+The reported bug was not `truncate`. The title button was `flex-1` with no
+`min-w-0`, so its automatic minimum size was the title's min-content width and
+the flex item refused to shrink — `truncate` only hid the overflow. `min-w-0` is
+the fix; the clamp is the design change.
+
+The sensor split had a trap: `useSortable`'s `listeners` map is keyed by whatever
+activators the bound sensors provide, so dropping `PointerSensor` renamed
+`onPointerDown` to `onMouseDown`/`onTouchStart`. Both `todo-card.tsx` and
+`board-column.tsx` cast that map, so nothing type-errored — the row and the
+column header would simply have stopped dragging. Now documented as a warning in
+§4.11.
+
+### Open
+
+- [ ] Suite not run in-session (the sandbox would not approve `npm test`).
+      Needs `npm run verify`.
+- [ ] Test-count figures in `docs/DRAG-AND-DROP.md` §8, `docs/ARCHITECTURE.md`
+      §8 and `docs/SETUP.md` still say 559 — update once the new count is known.
+- [ ] Manual checks 16–20 in `docs/DRAG-AND-DROP.md` §8, especially the pin's
+      baseline inside a `-webkit-box` in Safari, and P4's 1px cyan rail in light
+      theme.
+- [ ] Clamp depth as a local-only setting (`TITLE_CLAMP` is the seam).
+
+### Round 2 — sheet textarea, wrap under checkbox, overflow tooltip, deadlines
+
+- [x] `src/lib/title.ts` — `TITLE_LINES` / `TITLE_CLAMP_CLASS`, shared by the card
+      clamp and the sheet's title field so the two cannot drift.
+- [x] `todo-sheet.tsx` title is a `Textarea` (`field-sizing-content`, `rows={1}`,
+      max-height = `TITLE_LINES` lines). Enter still commits.
+- [x] Card row is no longer a flex container: the checkbox joins the grip as an
+      absolute in the left gutter, the title button is `block w-full`, and
+      `indent-6` clears the checkbox on line 1 only — so lines 2 and 3 run under
+      it. Works inside `line-clamp`'s `-webkit-box` because text-indent is
+      inherited by the anonymous block (CSS 2.1 §9.2.1.1).
+- [x] Full-title tooltip, gated on a `ResizeObserver` measurement rather than a
+      hover measurement (the hover version only opens on the *second* hover,
+      because the measurement is what enables the trigger).
+- [x] `formatDeadlineDue()` in `lib/scheduling.ts` + tests; inline `CalendarCheck`
+      marker for an upcoming deadline. A missed deadline keeps the destructive
+      badge and gets no marker — one fact, one indicator.
+- [x] `deadlineCounts` in `board.tsx` → `dueCount` on day columns → destructive
+      "N due" banner under the header. Counted across every open todo, since a
+      deadline is independent of placement.
+- [x] Checkbox `after:-inset-x-1`: the shadcn base's 12px expansion reached back
+      over the whole grip from `left-3`, so a click on the grip toggled done.
+- [x] Docs: DRAG-AND-DROP §6 card + column visual states, checklist 16 and 21–25.
+
+### Open
+
+- [ ] Still unrun in-session — the sandbox declines `npm test` / `npm run
+      typecheck`. Needs `npm run verify`.
+- [ ] No test for the due banner (needs a `board-column.test.tsx`); it is on the
+      manual checklist as item 24 instead.
+- [ ] Bootstrap's `calendar2-check` was substituted with lucide's `CalendarCheck`
+      rather than adding a second icon set for one glyph.
+
+---
+
+## Day columns group by originating list
+
+Cards scheduled onto a day lost all trace of where they came from. Day columns and
+Overflow are now a computed view: grouped by list, alphabetical on the list name
+with a leading "To " stripped, priority-ordered inside each group, collapsible.
+The planning half is unchanged — the thesis is "planning half by hand, calendar
+half computed".
+
+- [x] Per-list colours. `List.color` existed end to end (schema, DO table, sync)
+      with no writer; added `ColorPicker` to `list-info-dialog.tsx`,
+      `renameListWithUndo` → `updateListWithUndo(list, patch, label)`. A list's
+      colour now wins over its tab's accent on its own column header.
+- [x] `lib/colors.ts` `wash()` (~10%). `lib/priority.ts` `priorityRank` +
+      `byPriorityThenPosition`.
+- [x] `lib/board.ts`: `TodoGroup`, `listSortKey`, `byListGroup` (one hoisted
+      `Intl.Collator`, base sensitivity, numeric), `dayGroupId`/`parseDayGroupId`,
+      `isDropZoneId` + `preferPreciseTarget` extended to groups, `buildBoard`
+      grouping. **`hiddenListIds: Set<string>` → `hiddenLists: List[]`** — records,
+      not ids, or every other tab's scheduled cards group under Backlog and a drop
+      on that header rewrites their `listId`.
+- [x] `board-column.tsx`: `TodoGroupSection` (header + wash + group indicator),
+      `NO_SORTING`, `CARDS_NOT_DROPPABLE`, filler rows counting headers.
+- [x] `column-nav.ts`: `NavItem`/`cardItems`/`groupStop`; collapsed groups
+      contribute a header and no card stops.
+- [x] Drop gesture: `dayGroupPatch`/`moveTodoToDayGroup`, the `parseDayGroupId`
+      branch in `handleDragEnd`, `overGroupId`, and the day branch no longer
+      writing a position.
+- [x] Tests: board (sort key, group comparator, grouping, id space, precedence),
+      priority (rank + comparator), column-nav (grouped stops), new
+      `board-column.test.tsx`, plus the todo-card guard that the wash stays off
+      the row.
+- [x] Docs: DRAG-AND-DROP §3/§6/§8 + a new §4.13; KEYBOARD §1 and §11.1.
+
+### Review
+
+Three things the dnd-kit source decided, all verified in `node_modules`:
+`SortableContext`'s `disabled` reaches each card's `useDroppable`, so one prop
+makes day-column cards sources-not-targets; dnd-kit passes only enabled droppables
+to collision detection, so the per-card insertion line vanishes from that half for
+free; and `verticalListSortingStrategy` at `overIndex: -1` shifts every card above
+the dragged one, so a grouped column must pass a no-op strategy.
+
+Caught in self-review: branching the render on `groups` rather than
+`groups.length > 0` would have rendered zero cards in `buildBoard`'s degenerate
+no-lists fallback.
+
+### Verified
+
+`npm test` → **687/687 passing, 52 files.** Covers all three rounds of work (card
+redesign, deadline/sheet round, and this grouping feature).
+
+One real bug found by a new test, and it was worth writing: `tailwind-merge` does
+not treat `before:-inset-1.5` as conflicting with `before:-inset-y-1.5` /
+`before:inset-x-0`, so `DragGrip`'s base shorthand survived the card's override and
+which side won came down to CSS source order — an invisible 24px box over the
+checkbox, eating its clicks. Fixed at the source: `drag-grip.tsx` now states the
+expansion per axis (`before:-inset-x-1.5 before:-inset-y-1.5`) so a caller can
+override one axis, and the test asserts the base is merged away rather than merely
+overridden.
+
+### Open
+
+- [ ] `npm run typecheck`, `npm run lint` and both builds have NOT run — only
+      `npm test` was approved in the sandbox. `npm run verify` covers all of it.
+- [ ] Collapse state is `useState`, so it resets on reload. Persisting it is a
+      `settings.collapsedListGroups` field: seven-file schema op plus
+      `JSON_ENCODED_FIELDS`, and it needs a `pendingRef` guard because toggling
+      writes the whole array.
+- [ ] Existing hand-arranged day columns will visibly reshuffle on first load.
+      Nothing is destroyed (`position` becomes a tiebreaker) but there is no undo
+      for it — worth a release note.
+- [ ] Priority sub-headers were deliberately not built. `TodoGroup` carries
+      `key`/`name`/`color` rather than a `List`, so a priority grouping mode is
+      filling three fields if it is ever wanted.

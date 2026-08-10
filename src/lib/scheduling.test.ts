@@ -7,6 +7,7 @@ import {
   dayOfWeek,
   daysBetween,
   deriveColumn,
+  formatDeadlineDue,
   isDeadlineMissed,
   rolloverTarget,
   rollsElapsed,
@@ -280,6 +281,28 @@ describe("deadlines are independent of placement", () => {
       isDeadlineMissed({ deadline: "2026-08-01", status: "done" }, c),
     ).toBe(false);
     expect(isDeadlineMissed({ deadline: null, status: "open" }, c)).toBe(false);
+  });
+});
+
+describe("formatDeadlineDue", () => {
+  const today = "2026-08-03";
+
+  it("names today and tomorrow rather than counting them", () => {
+    expect(formatDeadlineDue("2026-08-03", today)).toBe("Due today: Aug 3");
+    expect(formatDeadlineDue("2026-08-04", today)).toBe("Due tomorrow: Aug 4");
+  });
+
+  it("counts days ahead", () => {
+    expect(formatDeadlineDue("2026-08-08", today)).toBe("Due in 5 days: Aug 8");
+  });
+
+  it("counts days late, and gets the singular right", () => {
+    expect(formatDeadlineDue("2026-08-02", today)).toBe("Overdue by 1 day: Aug 2");
+    expect(formatDeadlineDue("2026-07-31", today)).toBe("Overdue by 3 days: Jul 31");
+  });
+
+  it("crosses a month boundary without drifting", () => {
+    expect(formatDeadlineDue("2026-09-01", today)).toBe("Due in 29 days: Sep 1");
   });
 });
 

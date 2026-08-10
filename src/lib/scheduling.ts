@@ -315,6 +315,23 @@ export function isDeadlineMissed(
 }
 
 /**
+ * How a deadline reads on a card's inline marker: "Due in 5 days: Aug 14".
+ *
+ * Kept here rather than in the component because it is date arithmetic with a
+ * string on the end, and the plural/today/tomorrow boundaries are exactly the
+ * kind of thing that is worth a test.
+ */
+export function formatDeadlineDue(deadline: CivilDate, today: CivilDate): string {
+  const days = daysBetween(today, deadline);
+  const date = formatShortDate(deadline);
+  if (days === 0) return `Due today: ${date}`;
+  if (days === 1) return `Due tomorrow: ${date}`;
+  if (days > 1) return `Due in ${days} days: ${date}`;
+  const late = -days;
+  return `Overdue by ${late} ${late === 1 ? "day" : "days"}: ${date}`;
+}
+
+/**
  * The day a missed todo should land on when rescheduled forward.
  *
  * Honours the workday setting, so a Friday miss goes to Monday rather than

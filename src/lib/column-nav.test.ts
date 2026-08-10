@@ -4,7 +4,9 @@ import {
   NAV_LOAD_MORE,
   addStop,
   buildNavGrid,
+  cardItems,
   cardStop,
+  groupStop,
   navKeyOf,
   resolveNavTarget,
   stopLocation,
@@ -23,17 +25,17 @@ const NOWHERE: LastVisited = { calendar: null, planning: null };
 /** Three days, two lists, Backlog with one card, Overflow with two. */
 function fixture(over: Partial<BuildNavGridInput> = {}) {
   return buildNavGrid({
-    overflow: { id: "day:overflow", todoIds: ["o1", "o2"] },
+    overflow: { id: "day:overflow", items: cardItems(["o1", "o2"]) },
     days: [
-      { id: "day:2026-08-09", todoIds: ["d1"] },
-      { id: "day:2026-08-10", todoIds: [] },
-      { id: "day:2026-08-11", todoIds: [] },
+      { id: "day:2026-08-09", items: cardItems(["d1"]) },
+      { id: "day:2026-08-10", items: [] },
+      { id: "day:2026-08-11", items: [] },
     ],
     hasLoadMore: true,
-    backlog: { id: "list:backlog", todoIds: ["b1"] },
+    backlog: { id: "list:backlog", items: cardItems(["b1"]) },
     lists: [
-      { id: "list:overall", todoIds: ["a1", "a2"] },
-      { id: "list:days", todoIds: [] },
+      { id: "list:overall", items: cardItems(["a1", "a2"]) },
+      { id: "list:days", items: [] },
     ],
     ...over,
   });
@@ -100,7 +102,7 @@ describe("buildNavGrid", () => {
   });
 
   it("leaves an empty Overflow with no stops at all", () => {
-    const grid = fixture({ overflow: { id: "day:overflow", todoIds: [] } });
+    const grid = fixture({ overflow: { id: "day:overflow", items: [] } });
     expect(grid.calendar[0].stops).toEqual([]);
   });
 
@@ -108,6 +110,83 @@ describe("buildNavGrid", () => {
     const grid = fixture({ overflow: null, backlog: null });
     expect(grid.calendar[0].key).toBe("day:2026-08-09");
     expect(grid.planning[0].key).toBe("list:overall");
+  });
+
+  it("interleaves group headers with the cards under them", () => {
+    const grid = fixture({
+      days: [
+        {
+          id: "day:2026-08-09",
+          items: [
+            { kind: "group", id: "daygroup:2026-08-09|admin" },
+            ...cardItems(["a1", "a2"]),
+            { kind: "group", id: "daygroup:2026-08-09|buy" },
+            ...cardItems(["b1"]),
+          ],
+        },
+      ],
+    });
+    expect(grid.calendar[1].stops).toEqual([
+      groupStop("daygroup:2026-08-09|admin"),
+      cardStop("a1"),
+      cardStop("a2"),
+      groupStop("daygroup:2026-08-09|buy"),
+      cardStop("b1"),
+      addStop("day:2026-08-09"),
+    ]);
+  });
+
+  /*
+    A collapsed group's cards are not in the DOM. A stop for one resolves to a
+    `data-nav-stop` that does not exist, `useColumnNav` returns false, and the
+    arrow key dies silently mid-column — so the grid must not contain them.
+  */
+  it("gives a collapsed group its header and none of its cards", () => {
+    const grid = fixture({
+      days: [
+        {
+          id: "day:2026-08-09",
+          items: [
+            { kind: "group", id: "daygroup:2026-08-09|admin" },
+            { kind: "group", id: "daygroup:2026-08-09|buy" },
+            ...cardItems(["b1"]),
+          ],
+        },
+      ],
+    });
+    const day = grid.calendar[1];
+    // ↓ from the first header lands on the SECOND header, not on a card.
+    expect(day.stops[1]).toBe(groupStop("daygroup:2026-08-09|buy"));
+  });
+
+  it("keeps a column of nothing but headers reachable", () => {
+    // Headers are real stops, so such a column is not the wall an empty one is.
+    const grid = fixture({
+      days: [
+        {
+          id: "day:2026-08-09",
+          items: [{ kind: "group", id: "daygroup:2026-08-09|admin" }],
+        },
+      ],
+    });
+    expect(grid.calendar[1].stops.length).toBeGreaterThan(0);
+  });
+
+  it("keeps group stops out of the other stop namespaces", () => {
+    const id = "daygroup:2026-08-09|admin";
+    expect(groupStop(id)).not.toBe(cardStop(id));
+    expect(groupStop(id)).not.toBe(addStop(id));
+    expect(groupStop(id)).not.toBe(NAV_CREATE_LIST);
+    expect(groupStop(id)).not.toBe(NAV_LOAD_MORE);
+  });
+
+  it("cardItems reproduces the plain all-cards column", () => {
+    // A port test: the migration from `todoIds` to `items` must be behaviour
+    // preserving for every ungrouped column, which is the whole planning half.
+    expect(cardItems(["a1", "a2"])).toEqual([
+      { kind: "card", id: "a1" },
+      { kind: "card", id: "a2" },
+    ]);
   });
 
   it("omits the load-more tile once the cap is reached", () => {
@@ -249,7 +328,7 @@ describe("resolveNavTarget — horizontal", () => {
   });
 
   it("treats an empty Overflow as a wall rather than skipping it", () => {
-    const empty = fixture({ overflow: { id: "day:overflow", todoIds: [] } });
+    const empty = fixture({ overflow: { id: "day:overflow", items: [] } });
     expect(resolveNavTarget(empty, addStop("day:2026-08-09"), "ArrowLeft", NOWHERE)).toBeNull();
   });
 

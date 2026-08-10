@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import { TITLE_LINES } from "@/lib/title";
 import type {
   Label as LabelRecord,
   List,
@@ -97,7 +98,21 @@ function TodoSheetContent({
           <SheetDescription className="sr-only">
             Edit the details of this to-do item.
           </SheetDescription>
-          <Input
+          {/*
+            A textarea, not an input, so a long title is readable here rather
+            than scrolling sideways one line at a time — and it grows to exactly
+            the card's clamp (`TITLE_LINES`) so what the sheet shows in full is
+            what the card shows before cutting off.
+
+            `field-sizing-content` (from the Textarea base) does the growing with
+            no JS; `rows={1}` is the floor, and `max-h` the ceiling, past which it
+            scrolls. Where `field-sizing` is unsupported this degrades to a
+            one-row textarea, which is what an `<input>` was anyway.
+
+            Enter still commits rather than inserting a newline: a title is one
+            line of text, and `commitTitle` already runs on blur.
+          */}
+          <Textarea
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             onBlur={commitTitle}
@@ -107,8 +122,13 @@ function TodoSheetContent({
                 e.currentTarget.blur();
               }
             }}
+            rows={1}
+            style={{ maxHeight: `calc(${TITLE_LINES} * 1.5rem)` }}
             aria-label="Title"
-            className="border-0 px-0 text-base font-medium shadow-none focus-visible:ring-0"
+            className={cn(
+              "min-h-0 resize-none border-0 px-0 py-0 text-base font-medium leading-6",
+              "shadow-none focus-visible:border-0 focus-visible:ring-0",
+            )}
           />
         </SheetHeader>
 

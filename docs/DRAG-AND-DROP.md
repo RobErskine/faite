@@ -43,8 +43,10 @@ handle mid-drag.
 |---|---|
 | `src/components/board/board.tsx` | `DndContext`, sensors, collision detection, all drag handlers, `DragOverlay` |
 | `src/components/board/board-column.tsx` | `useDroppable` + `SortableContext`; `useDraggable` for column reorder; whole-header drag; drop-target visual states |
-| `src/components/board/todo-card.tsx` | `useSortable`; whole-row drag, grip, insertion line |
+| `src/components/board/todo-card.tsx` | `useSortable`; whole-row drag, out-of-flow grip, priority rail, inline location pin, insertion line |
 | `src/components/board/drag-grip.tsx` | The one grip affordance, shared by rows, columns and tabs |
+| `src/lib/priority.ts` | `PRIORITY_RAILS` — the width and colour of a card's priority rail, shared with the drag overlay chip; `byPriorityThenPosition`, which orders a group |
+| `src/lib/board.ts` | …plus `TodoGroup`, `listSortKey`, `byListGroup`, `dayGroupId` — the calendar half's computed grouping (§4.13) |
 | `src/components/board/create-list-column.tsx` | End-of-track "Create list" slot. Column-sized, deliberately **not** a droppable (§5.6) |
 | `src/components/board/use-day-track.ts` | Pure scroll-position/jump math for the day track (anchor index, jump clamping) — not itself drag-and-drop, but shares the track dnd-kit measures |
 | `src/components/board/date-nav.tsx` | Week/Month/Quarter jump buttons + calendar date picker above the day track |
@@ -296,33 +298,60 @@ and WAAPI, so it is not testable here — see the caution at the end of this doc
 ### 4.8 Sensors
 
 ```ts
-useSensor(PointerSensor, { activationConstraint: { distance: 4 } })
+useSensor(MouseSensor, { activationConstraint: { distance: 4 } })
+useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } })
 useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
 ```
 
-The 4px activation distance keeps clicks distinguishable from drags — without
-it, clicking a card's title to open the detail sheet starts a drag instead.
-**This is now load bearing**, not just a nicety: since the whole row is a drag
-surface (§4.9), that threshold is the only thing separating a tap on the
-checkbox or the title from a drag.
+The 4px activation distance keeps mouse clicks distinguishable from drags —
+without it, clicking a card's title to open the detail sheet starts a drag
+instead. **This is load bearing** for the mouse, not just a nicety: since the
+whole row is a drag surface (§4.9), that threshold is the only thing separating a
+click on the checkbox or the title from a lift. On touch the equivalent guard is
+the 250ms delay, not a distance.
+
+**Mouse and touch are two sensors, not one `PointerSensor`, and the split is
+deliberate.** `PointerSensor` also claims touch, and `pointerdown` fires before
+`touchstart` — so it activates first, `activeRef` is then non-null, and
+`bindActivatorToSensorInstantiator` bails out of every sensor bound after it. A
+`TouchSensor` added *alongside* a `PointerSensor` is unreachable code. Splitting
+them is the only way touch gets an activation rule of its own.
+
+That rule is a long press. Under 250ms, or a move of more than 8px inside it, the
+browser keeps the gesture and the column scrolls as before — which is why no
+element needs `touch-action: none` any more (§4.9). `TouchSensor.setup()`
+registers a non-passive `touchmove` listener so the sensor can `preventDefault`
+scrolling once it *does* activate; that listener is what the grip's `touch-none`
+used to stand in for, and it covers the whole row rather than one 12px control.
+
+The cost of the split: `MouseSensor` listens to `mousedown`, so a Windows stylus
+relies on mouse-compatibility events rather than pointer events. Untested on
+device, like the rest of touch (§7).
 
 ---
 
 ### 4.9 The whole row drags; the grip is still a real control
 
-Pointer drags start anywhere on the row — `onPointerDown` from `useSortable`'s
-listeners sits on the row element. Two things deliberately stay on the grip:
+Mouse and touch drags start anywhere on the row — `onMouseDown` and
+`onTouchStart` from `useSortable`'s listeners sit on the row element (the names
+follow the sensors; see the warning in §4.11). One thing deliberately stays on the
+grip:
 
 - **`attributes` and the keyboard activator (`onKeyDown`).** `attributes`
   carries `role="button"`, `tabIndex` and `aria-roledescription`. Putting those
   on the row would make a focusable button that *contains* a checkbox and
   another button — nested interactive content, which breaks both tab order and
   screen-reader semantics. The grip is already a real focusable control, so it
-  keeps them.
-- **`touch-none`.** `touch-action: none` is what stops the browser claiming a
-  touch gesture for scrolling before dnd-kit's 4px threshold is met. Putting it
-  on the row would cost the columns their touch scrolling entirely, so on touch
-  the grip remains the drag surface. Mouse and pen drag from anywhere.
+  keeps them, and `Space` on it still lifts.
+
+**`touch-none` used to be the second thing, and no longer is.** `touch-action:
+none` on the grip was what stopped the browser claiming a touch gesture before
+dnd-kit's distance threshold was met, which made the grip the only touch drag
+surface on a card — an asymmetry with the pointer path that was never good, only
+necessary. The `TouchSensor` long press (§4.8) replaces it: touch now drags from
+anywhere on the row, and nothing needs `touch-action: none` to make that work.
+The declaration is still in `drag-grip.tsx` and is now vestigial; it costs a
+touch-scroll start on top of a 12px control and nothing else.
 
 **Two objections that the old code was built around turn out to be dnd-kit's
 job, not ours** — worth knowing before "restoring" any of this:
@@ -357,12 +386,12 @@ change and no migration: a reorder is `updateList(id, {position})`, one field on
 one record, exactly like a todo reorder (§4.6).
 
 **Columns are dragged by their whole header, not by the grip alone.** Same
-bargain as a card's whole row (§4.9), scoped one level in: `onPointerDown` sits
-on the `<header>`, while `attributes` and the keyboard activator stay on the
-grip. It is the *header* rather than the whole `<section>` because a column's
-body is full of cards that are drag sources themselves — a pointerdown there
-has to mean "drag this card", not "drag its column". The header is the only
-surface in a column with no competing gesture.
+bargain as a card's whole row (§4.9), scoped one level in: `onMouseDown` and
+`onTouchStart` sit on the `<header>`, while `attributes` and the keyboard
+activator stay on the grip. It is the *header* rather than the whole `<section>`
+because a column's body is full of cards that are drag sources themselves — a
+press there has to mean "drag this card", not "drag its column". The header is the
+only surface in a column with no competing gesture.
 
 This was grip-only at first, on the theory that a header-wide drag surface
 would fight something. It does not, and the grip-only version had a visible
@@ -376,8 +405,8 @@ and the name legible, for free.
 columns. Hooks cannot be conditional and this header markup is shared by every
 column, so the alternative was two copies of it. A disabled draggable registers
 but can never activate — and dnd-kit withholds its `listeners` entirely, so the
-header of a day column gets no `onPointerDown` at all rather than a live one
-guarded by a flag.
+header of a day column gets no activator at all rather than a live one guarded by
+a flag.
 
 **Direction decides the side**, the way every sortable list does it:
 
@@ -497,8 +526,17 @@ takes the rect as a plain argument, and `board.tsx` reads the ref inside a
 
 Related: dnd-kit types its listeners as bare `Function`, which spreads onto an
 element fine but **cannot be assigned to a typed handler prop**. `todo-card.tsx`
-splits `onPointerDown` and `onKeyDown` across two different elements, so it
-casts the map once at the top rather than at each site.
+and `board-column.tsx` both split the pointer activators and `onKeyDown` across
+two different elements, so each casts the map once at the top rather than at each
+site.
+
+> **The listener map is named by the sensors, and getting it wrong fails
+> silently.** `listeners` contains one entry per bound sensor activator — with
+> `MouseSensor` + `TouchSensor` that is `onMouseDown` and `onTouchStart`, *not*
+> `onPointerDown`. Destructuring a name no sensor provides yields `undefined`,
+> which React accepts happily, and the result is an element that simply does not
+> drag. Nothing type-errors, because the cast asserts the shape. If you change the
+> sensors, grep for the activator names at the same time.
 
 ### 4.12 Columns have a floor and a ceiling, so the halves really scroll
 
@@ -654,6 +692,63 @@ now *reachable* and *unverified* — see the rewritten entries.
 
 ---
 
+### 4.13 The calendar half is computed, so its columns group instead of sorting
+
+**`position` means an order in the planning half and only a tiebreaker in the
+calendar half.** Day columns and Overflow partition their cards by originating
+list (`todo.listId`, which survives scheduling), sort the groups alphabetically on
+`listSortKey` — which strips a leading "To ", so "To Buy" files under B — and sort
+within each group by `byPriorityThenPosition`. List columns are untouched: they
+are still arranged by hand.
+
+`DayColumn.todos` is **derived** from `groups` via `flatMap`, never sorted
+independently. The arrow keys, the drop path, the filler arithmetic and
+`findColumn` all read it, and two arrays sorted by two comparators is exactly how
+"the eye sees one order and Tab walks another" gets shipped.
+
+Four facts from the dnd-kit source shape the implementation. All four are load
+bearing and none is obvious:
+
+- **`SortableContext` takes `disabled={{droppable: true}}`** and forwards it to
+  every `useSortable`'s `useDroppable` (`sortable.esm.js:297,315,480`). That one
+  prop makes a grouped column's cards drag *sources* without being *targets*, with
+  no fork of `TodoCard`.
+- **dnd-kit hands only ENABLED droppables to collision detection**
+  (`core.esm.js:2904,2989`), so those disabled card droppables vanish from
+  collisions entirely rather than being ignored afterwards. `overTodoId` can never
+  name a day-column card again, which is why the per-card insertion line
+  disappears from that half for free.
+- **`verticalListSortingStrategy` is actively wrong when `over` is a group.** It
+  is called with `overIndex: -1`, and at -1 its
+  `index < activeIndex && index >= overIndex` branch (`sortable.esm.js:245`) is
+  true for *every* card above the dragged one — so the default strategy shoves the
+  top of the column downwards for the whole drag. Grouped columns pass
+  `NO_SORTING`. This is the most likely "why does the column jump" bug here.
+- **`sortableKeyboardCoordinates` does not filter to sortables**
+  (`sortable.esm.js:677`), so a keyboard drag finds group droppables for free and
+  walks group-to-group.
+
+**Dropping on a group re-assigns the list** — "belongs to list X, still scheduled
+for D" — via `dayGroupPatch`. `moveTodoToList` cannot serve it: `listPatch` clears
+`scheduledDate` by design, because that *is* the meaning of a drop into a list
+column, and softening it would make the two gestures indistinguishable to undo.
+The date is rewritten even when it looks unchanged, because it often is not: a
+rolled-over todo renders in today's column while carrying an older date, so
+dropping it on its own group there is how it gets committed to today. Dropping a
+card on the group it already renders in, on that same date, is a **no-op** — order
+inside a group is computed, so there is no "move it up" for the gesture to mean.
+
+Group headers are arrow-key stops (`groupStop`), `tabIndex={-1}`. Tabbable headers
+would add 28 stops to a seven-day week with four lists, all of them ahead of the
+first quick-add. A **collapsed** group contributes its header and none of its
+cards: a stop for a card that is not in the DOM makes `useColumnNav` return false
+and the arrow key dies silently mid-column.
+
+Collapse is keyed by **list, across the whole calendar half**, not per (day, list):
+day columns are transient — 30 rendered against a 365 cap, and the track scrolls —
+so per-day state would be hundreds of entries needing garbage collection as
+`today` advances. It is not persisted yet, so it resets on reload.
+
 ## 5. Deliberate behaviours — do not "fix" these
 
 ### 5.1 Overflow refuses drops
@@ -697,14 +792,23 @@ Three rules, and each has a failure mode if changed:
   be reordered, renders an **empty slot of the same width** — without it, its
   title would sit flush left while every neighbouring column's title was
   indented past a grip. Day columns have no grips at all, so they reserve
-  nothing.
+  nothing. On a **card** the grip is still leftmost but is absolutely positioned
+  in the row's 12px left gutter (`pl-3`) rather than sitting in the flex flow —
+  same place to the eye, no width taken from the title (§5.5).
 - **12px icon.** Small enough to stay quiet next to the text it precedes.
 - **24×24 hit area**, the WCAG 2.2 "Target Size (Minimum)" floor, applied with
   an absolutely positioned `::before` rather than padding. Padding would have
   grown the button's box and pushed the title along with it; the pseudo-element
   costs nothing in layout, and pointer events on it still resolve to the button.
-  On a card the expansion stops ~2px short of the checkbox, so **widening it
-  further would start stealing clicks from that control.**
+  On a **column** the expansion stops ~2px short of the neighbouring control, so
+  **widening it further would start stealing clicks from it.** On a **card** the
+  horizontal expansion is switched off entirely (`before:-inset-y-1.5
+  before:inset-x-0`), because an out-of-flow grip's 24px box would sit over the
+  checkbox — and `opacity-0` elements still receive pointer events, so a hidden
+  grip would have eaten checkbox clicks with nothing on screen to explain it.
+  Cards can afford to give that up: the whole row is the mouse target and a long
+  press anywhere is the touch target (§4.8), so the grip is the keyboard route
+  and the affordance, not the primary hit area.
 
 Hover is a color change, not a background fill — a filled box around a 12px
 icon undoes the point of making the mark small.
@@ -712,16 +816,27 @@ icon undoes the point of making the mark small.
 > `before:absolute`, `before:-inset-1.5` and `before:content-['']` were checked
 > against the built CSS, per the warning at the end of §6. They emit.
 
-### 5.5 The grip is faintly visible at rest
+### 5.5 Visible at rest on columns; revealed on hover or focus on cards
 
-`text-muted-foreground/30`, darkening on hover — not hidden. A control that only
-exists on hover is undiscoverable until you happen to sweep over it. This was
-the original complaint that prompted the affordance work.
+On a **column header** the grip is `text-muted-foreground/30`, darkening on
+hover — not hidden. A control that only exists on hover is undiscoverable until
+you happen to sweep over it, and that was the original complaint that prompted
+the affordance work.
 
-It stayed after the whole row became draggable (§4.9). It is no longer the only
-way to start a pointer drag, but it is still the keyboard activator, still the
-touch drag surface, and still the thing that *advertises* that a row can be
-dragged at all — nothing else on the row does.
+On a **card** it is now `opacity-0`, revealed by `group-hover`,
+`group-focus-within` or its own `focus-visible`. The trade is deliberate and the
+arithmetic is the argument: in flow the grip cost 20px (12px icon + 8px gap) of a
+~108px title track at the `--column-min` floor, on every row, forever. Out of
+flow it costs nothing, and the row gains 8px net once the 12px gutter is counted.
+What is lost is self-advertisement, and three things soften that: the whole row is
+grabbable with a mouse, `group-focus-within` means arrowing onto a row reveals the
+grip (so the keyboard path teaches itself), and the grip-means-draggable
+vocabulary is still taught by columns and tabs — `tab-strip.tsx` has always
+revealed its grip on hover, so a card now matches a tab rather than inventing a
+third behaviour.
+
+It is still the keyboard activator and still a real focusable control carrying
+`aria-roledescription`. It is **no longer** the touch drag surface (§4.9).
 
 ### 5.6 The "Create list" card is column-shaped but is not a drop target
 
@@ -757,7 +872,50 @@ and toasts with an Undo action, the same shape the palette's creates use.
 **Card** (`todo-card.tsx`)
 - whole row is `cursor-grab` / `grabbing`; the checkbox overrides to
   `cursor-pointer` so it still reads as a control (§4.9)
-- `DragGrip` leftmost, faintly visible at rest → darker on hover (§5.4)
+- `DragGrip` leftmost but absolutely positioned in the row's 12px left gutter,
+  `opacity-0` until the row is hovered or anything in it takes focus (§5.5)
+- **the row is not a flex container.** The grip and the checkbox are both
+  absolutely positioned in the left gutter, so the title block spans the full
+  width and its second and third lines run *under* the checkbox rather than
+  stopping at a flex column edge. Only the first line clears the checkbox, via
+  `indent-6` — `text-indent` applies to the first line only, which is the whole
+  trick, and it inherits into the clamp's `-webkit-box` so it survives
+  `line-clamp`. The title button needs `block w-full` because a button is
+  inline-block by default and would otherwise shrink-wrap its text
+- **title wraps, then clamps at 3 lines**, and a tooltip carries the full title
+  when — and only when — the clamp is actually cutting it off. That is measured
+  with a `ResizeObserver`, not on hover: measuring on hover is what *enables* the
+  trigger, so it lands after the `mouseenter` Base UI would have opened on and the
+  tooltip only appears the second time you hover. `wrap-break-word` is separate
+  from the clamp and not decorative — one unbroken token longer than the track (a
+  pasted URL) has no break opportunity without it. The line count lives in
+  `lib/title.ts`, shared with the detail sheet's title field, and is the shape of
+  a future local-only preference
+- **priority is a rail, not a chip** — an `aria-hidden` span, `absolute inset-y-0
+  left-0`, 1–3px wide, width and colour from `lib/priority.ts`. Four reasons it
+  is not `border-l`: a left border would indent the checkbox and title per level
+  (`border-box`), mitre against `border-b` into a coloured wedge, shift where the
+  insertion line starts (its position is load bearing, below), and fuse a run of
+  same-priority cards into one continuous stripe instead of per-card ticks. The
+  level reaches screen readers as `sr-only` text inside the title button
+- **location is a pin, not a chip** — a 12px `MapPin` inline at the head of the
+  title, with the location in a hover tooltip and in `sr-only` text. The tooltip
+  trigger renders as a `span` so it stays non-interactive content inside the
+  title `<button>`; Base UI adds no role or tabIndex of its own. That also means
+  it is never focusable and `focusin` bubbles the wrong way, so the tooltip is a
+  pointer nicety and the `sr-only` text is the real channel. These are **nested**
+  tooltip triggers inside the title's own trigger; Base UI handles that by walking
+  up to the closest enabled trigger and suppressing the ancestor
+- **an upcoming deadline is a `CalendarCheck` marker** in the same inline run,
+  tooltip "Due in 5 days: Aug 14" from `formatDeadlineDue()`. A **missed** deadline
+  gets no marker — it keeps the loud destructive badge it always had, because two
+  indicators for one fact is the clutter this redesign is removing. Quiet marker
+  ahead of time, loud badge once it is blown
+- the checkbox's `after:-inset-x-1` is load bearing: the shadcn base expands 12px
+  horizontally, which from `left-3` reaches back across the whole grip, so a click
+  meant for the grip would toggle done. 4px keeps the target at the WCAG 2.2
+  24px minimum while stopping clear of the grip's glyph
+- badge row is now away-date, missed deadline and labels only
 - dragged source stays at **30% opacity** so the column does not collapse under
   the cursor
 - insertion line: 2px primary bar + leading dot, absolutely positioned at
@@ -783,6 +941,33 @@ isColumnDropTarget` for a column) that are mutually exclusive in practice,
 since the board never has both `activeTodo` and `activeList` set at once.
 
 All use `outline-offset-[-2px]` to draw inside the column bounds.
+
+**List group** (`board-column.tsx`, day columns and Overflow — §4.13)
+- header is `text-2xs` uppercase, chevron rotating on collapse, count shown only
+  when collapsed but always in the accessible name — a screen-reader user has no
+  "glance"
+- colour rides the header's `border-b` (`edge`) and a faint fill (`tint`), **never
+  the text**: a step-9 hue at `text-2xs` fails contrast in one theme or the other
+- the cards sit on a `wash()` (~10%) of the list colour, applied to a wrapper
+  **behind** them rather than to each row. An inline `style.backgroundColor` on a
+  row would beat `hover:bg-accent/50` outright, since inline always wins; behind
+  them the 50%-alpha hover simply composites over it
+- hovering a group outlines the whole group and puts `data-drop-indicator` at its
+  end. That **replaces** the per-card insertion line in this half — a drop means
+  "belongs to this list", which is a statement about the group, not about a slot
+- headers are **not** sticky. `.column-track` computes `overflow-y: auto` for the
+  whole track, so they would pin to the track's viewport and every column's would
+  pile up at once — and a sticky element inside a droppable moves relative to the
+  rect dnd-kit measured for it
+
+**Deadlines due (`board-column.tsx`, day columns only)** — a destructive-tinted
+strip directly under the header, `CalendarCheck` + a count, carrying
+`data-due-banner`. The count comes from `board.tsx`'s `deadlineCounts` map, built
+over **every** visible open todo rather than the column's own contents: a deadline
+is independent of placement, so something due Friday is usually scheduled for
+Tuesday, and the banner's job is to warn before Friday arrives. Loud on purpose —
+it is the one thing on the board that a plan can be wrong about while everything
+else still looks right.
 
 Hovering a column but no specific card renders an end-of-column dot instead of
 a per-card line — but only for a **card** drag (`!isColumnDragActive`). Without
@@ -824,6 +1009,11 @@ into the real row over the final 90 ms. See §4.7.
 > outline as an invisible no-op with everything still "passing". Verify new
 > utilities actually emit CSS:
 > `grep -oE "outline[a-z-]*:[^;]{0,30}" .next-static/_next/static/chunks/*.css | sort -u`
+>
+> The card redesign added three worth re-checking the same way, two of which are
+> arbitrary or newly-named utilities: `wrap-break-word`, `line-clamp-3` and
+> `align-[-0.1875em]` (the pin's baseline nudge — a bad arbitrary value leaves a
+> misaligned icon with every test still green).
 
 ---
 
@@ -848,13 +1038,13 @@ list — see §4.7 and §4.9.)
 3. ~~No cross-half scroll affordance.~~ Done, though not the way this entry
    meant: each half has its own persistently-drawn horizontal scrollbar
    (§4.12), so "there is more board this way" is visible without a drag.
-4. **Touch is untested, and now asymmetric.** Cards drag from anywhere with a
-   pointer but **only from the grip on touch** — `touch-action: none` on the row
-   would cost the columns their touch scrolling (§4.9). Columns are now the same
-   shape: header-wide with a pointer, grip-only on touch, for the same reason.
-   `activationConstraint: {distance: 4}` may need
-   `delay`+`tolerance` on touch so a drag does not fight page scroll. Matters
-   for Capacitor (P7), and is the most likely place this all falls over.
+4. **Touch is untested, but no longer asymmetric.** The grip-only-on-touch
+   asymmetry is gone: `TouchSensor` with `{delay: 250, tolerance: 8}` lifts from
+   anywhere on a row or column header, and nothing relies on `touch-action: none`
+   any more (§4.8, §4.9). What is untested is whether 250ms/8px is the right pair
+   on a real device — too eager and it fights column scrolling, too lazy and it
+   feels broken. Still matters for Capacitor (P7), and still the most likely place
+   this all falls over.
 5. **No multi-select drag.**
 6. **Overlay width vs. cursor.** The overlay is `max-w-xs`; on a narrow column
    it visually overhangs neighbours while only the cursor's column highlights.
@@ -902,11 +1092,12 @@ logic cannot be meaningfully tested there.
 
 **Manual checklist — cards**
 
-1. Hover a card — grip visible before hover, darkens on hover. It sits leftmost,
-   is a 12px mark, and its hit area extends ~6px past the icon in every
-   direction: press just outside the icon and the drag should still start.
-   Press on the checkbox and it must still toggle — that is the boundary the
-   expansion deliberately stops short of.
+1. Hover a card — the grip fades in, leftmost, in the row's left gutter, and
+   **nothing else moves**. Arrow onto a row and it appears the same way. Its hit
+   area extends ~6px above and below the icon but **not sideways**: press the
+   checkbox with the grip showing and it must still toggle. That is the whole
+   reason the horizontal expansion is off — an `opacity-0` grip still takes
+   pointer events, so at rest it would otherwise be eating clicks invisibly.
 2. **Drag from the title, the badges, the row padding — anywhere.** Then the
    three things the 4px threshold protects: a plain click on the title still
    opens the sheet; a click on the checkbox still toggles and does *not* open
@@ -932,6 +1123,54 @@ logic cannot be meaningfully tested there.
 14. macOS Reduce Motion on — the swap is instant, no flight, no invisible row.
 15. Drop, then immediately start and drop a second drag while the first is still
     in the air. Neither row is left invisible.
+16. **Narrow the window until the day track hits `--column-min`.** A ~60-character
+    title wraps to at most 3 lines and clamps after; no card crosses into a
+    neighbouring column. Repeat with a title that is one unbroken 60-character
+    token — that is what `wrap-break-word` is for, and it fails differently.
+    The second and third lines must run **under** the checkbox, not beside it.
+17. Four cards, P1 → P4, side by side. The rails differ by **both** thickness and
+    hue, and the left edges of all four titles line up. Check in light *and* dark
+    (`.dark` on `<html>`): P4 is a 1px cyan line and is meant to be quiet — if it
+    disappears against white, widen P4 before changing its hue.
+18. A card with a location shows a pin at the head of the title, tooltip on hover,
+    and **no location chip**. Check the pin's vertical alignment in Chrome and
+    Safari — it sits inside a `line-clamp` element, which is `-webkit-box`.
+19. Drag a P1 card: the insertion line still starts flush at the column's left
+    edge (the rail must not have pushed it in), and the overlay chip carries the
+    same rail and pin as the row.
+20. On a touch device or emulator: long-press a card → it lifts. A short swipe
+    scrolls the column instead. Same for a column header.
+21. Hover a **clamped** title: the tooltip shows it in full, **on the first
+    hover**. Hover a short one: no tooltip at all. Then narrow the column until a
+    fitting title starts clamping and hover again without reloading — the
+    `ResizeObserver` should have caught it.
+22. Click the grip on a card with the checkbox showing. It must **not** toggle
+    done — that is the `after:-inset-x-1` boundary.
+23. Give a to-do a deadline a few days out: an inline calendar marker appears with
+    "Due in N days", and `N` counts down correctly across a month boundary. Move
+    the deadline into the past: the marker goes and the destructive badge appears.
+24. Set deadlines on two to-dos for the same future day, scheduled on *different*
+    days. The banner under that day's header reads "2 due" even though neither
+    card is in that column. Mark one done — it drops to "1 due".
+25. In the detail sheet, paste a long title: the field grows to 3 lines and then
+    scrolls, and `Enter` commits rather than inserting a newline.
+26. Give two lists colours, then schedule cards from both onto one day. Two group
+    headers, alphabetical on the stripped name ("To Buy" under B), priority order
+    inside each so the rails run thick → thin, and a faint wash behind each run.
+27. Click a group header: it collapses, the count appears, and **the same list
+    collapses in every other day column too**. Click again to expand.
+28. Drag a card onto another group's header: its list changes, its date does not,
+    and the whole group highlights rather than a line appearing between two cards.
+    Drop a card on its own group → no-op, and it flies home.
+29. **Watch the top of the column during that drag.** If the cards above the
+    dragged one shift downwards, `NO_SORTING` is not wired — see §4.13.
+30. Drag inside a **list** column: it still reorders by hand, with the per-card
+    insertion line intact. That half did not change.
+31. Arrow down through a grouped column — headers are stops, `Enter` collapses one,
+    and the arrows keep working past a collapsed group rather than dying.
+32. Switch tabs, then look at a day holding a card from the *other* tab's list. It
+    must group under **that list's name**, not Backlog. This is what `hiddenLists`
+    passing records rather than ids buys.
 
 **Manual checklist — column reordering**
 

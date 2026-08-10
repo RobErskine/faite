@@ -34,7 +34,8 @@ export const ACCENT_COLORS: readonly AccentColor[] = [
   { name: "Pink", value: "#d6409f" },
 ] as const;
 
-/** Alpha suffixes for the two tint strengths the UI uses. */
+/** Alpha suffixes for the three tint strengths the UI uses. */
+const WASH_ALPHA = "1a"; // ~10% — a field behind a run of rows
 const TINT_ALPHA = "20"; // ~12% — fills behind text
 const EDGE_ALPHA = "59"; // ~35% — borders and rules
 
@@ -58,4 +59,17 @@ export function tint(color: string | null | undefined): string | undefined {
 /** A stronger wash, for borders and underlines. */
 export function edge(color: string | null | undefined): string | undefined {
   return isTintableColor(color) ? `${color}${EDGE_ALPHA}` : undefined;
+}
+
+/**
+ * The faintest of the three: a field behind a run of stacked rows.
+ *
+ * Weaker than `tint()` because it covers area rather than a chip. At 12% behind
+ * five card rows a step-9 hue reads as a colored panel competing with the
+ * priority rail for attention; at 10% it reads as membership, which is the whole
+ * job. It also has to sit UNDER `hover:bg-accent/50` and still leave that hover
+ * perceptible.
+ */
+export function wash(color: string | null | undefined): string | undefined {
+  return isTintableColor(color) ? `${color}${WASH_ALPHA}` : undefined;
 }

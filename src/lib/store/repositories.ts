@@ -95,8 +95,9 @@ export async function updateTodo(
  *
  * An undo entry is built by picking the forward patch's keys off the record as
  * it was before the write (see lib/undo.ts). That only works if the caller can
- * see the WHOLE patch — and two of these write a field the caller never passes:
- * `moveTodoToList` clears `scheduledDate`, `setTodoStatus` stamps `completedAt`.
+ * see the WHOLE patch — and three of these write a field the caller never passes
+ * explicitly: `moveTodoToList` clears `scheduledDate`, `setTodoStatus` stamps
+ * `completedAt`, and `moveTodoToDayGroup` writes both `listId` and the date.
  *
  * Hand-writing the patch at the call site would silently drop those, and the
  * failure is invisible: dragging a scheduled todo into a list and undoing would
@@ -120,6 +121,31 @@ export const listPatch = (listId: string | null, position?: string) => ({
   listId,
   // Moving into a list returns the todo to planning, so any schedule goes.
   scheduledDate: null,
+  ...(position ? { position } : {}),
+});
+
+/**
+ * Assign a list WITHOUT returning the todo to planning.
+ *
+ * The day-column group gesture: dropping a card on a group means "this belongs to
+ * list X, still scheduled for D". `listPatch` cannot serve it and must not be
+ * softened to — clearing the date is the correct meaning of a drop into a LIST
+ * COLUMN ("this comes back to planning"), and the two gestures would then be
+ * indistinguishable to undo.
+ *
+ * The date is written rather than left alone even when it looks unchanged, because
+ * it often IS changed: a rolled-over todo renders in TODAY's column while still
+ * carrying an older `scheduledDate`, so dropping it on a group there is exactly
+ * how it gets committed to today. Undo therefore has to reverse both fields, which
+ * is what sharing one patch shape with `inversePatch` guarantees.
+ */
+export const dayGroupPatch = (
+  listId: string | null,
+  scheduledDate: CivilDate,
+  position?: string,
+) => ({
+  listId,
+  scheduledDate,
   ...(position ? { position } : {}),
 });
 
@@ -149,6 +175,16 @@ export async function moveTodoToList(
   position?: string,
 ): Promise<void> {
   await mutate("todo", id, listPatch(listId, position));
+}
+
+/** Assign a list while keeping (or committing) a day. See `dayGroupPatch`. */
+export async function moveTodoToDayGroup(
+  id: string,
+  listId: string | null,
+  scheduledDate: CivilDate,
+  position?: string,
+): Promise<void> {
+  await mutate("todo", id, dayGroupPatch(listId, scheduledDate, position));
 }
 
 export async function reorderTodo(id: string, position: string): Promise<void> {

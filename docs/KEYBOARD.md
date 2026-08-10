@@ -34,6 +34,7 @@ planning session never needs the mouse.
 | `list-info-dialog.tsx` | `Enter` saves the list name |
 | `todo-sheet.tsx` | `Enter` blurs the title (commit-on-blur does the write) |
 | `todo-card.tsx` | `←→↑↓` navigate (§6), `Enter` opens the sheet, `Space` toggles done; dnd-kit's keyboard drag activator, on the grip |
+| `board-column.tsx` group header | `Enter`/`Space` collapses or expands the group, `←→↑↓` navigate (§11) |
 | `board.tsx` load-more tile | `←→↑↓` navigate (§6) |
 | `rail-handle.tsx` | `←`/`→` resizes the rail 16px, `Enter`/`Space` collapses it, double-click resets to the CSS default |
 
@@ -42,7 +43,11 @@ planning session never needs the mouse.
 - **cmdk** owns `↑ ↓ Enter` inside the palette list.
 - **Base UI** Dialog/Sheet own `Escape` to close, plus focus trap and restore.
 - **dnd-kit** owns `Space` to lift, arrows to move, `Space` to drop, `Escape` to
-  cancel — but only while a drag is active, and only from the grip.
+  cancel — but only while a drag is active, and only from the grip. On a card the
+  grip is now invisible until the row is hovered or something in it takes focus
+  (DRAG-AND-DROP §5.5), so Tab still reaches it and `Space` still lifts; it just
+  is not on screen until you go looking. Arrowing onto a row reveals it, which is
+  how the path stays discoverable from the keyboard.
 
 Binding a global chord any of these already claims is the most likely way to
 break something invisibly. Check this table first.
@@ -385,10 +390,18 @@ planning   [ Backlog  ] | [ list  ] [ list ] …      [ Create list      ]
 
 | Column | Stops |
 |---|---|
-| Overflow | its cards only — **no quick-add**, so an empty Overflow has no stops |
-| day column | its cards, then its quick-add |
+| Overflow | its group headers and the cards under expanded ones — **no quick-add**, so an empty Overflow has no stops |
+| day column | its group headers, the cards under expanded ones, then its quick-add |
 | Backlog / list column | its cards, then its quick-add |
 | Load more / Create list | one stop each |
+
+Group headers are stops because there is otherwise no keyboard route to collapsing
+one, and no way to skip a thirty-card group. They are deliberately **not** in the
+Tab order (`tabIndex={-1}`, like a card row): a seven-day week with four lists
+would add 28 Tab stops, all of them ahead of the first quick-add. A collapsed
+group contributes its header and **none of its cards** — a stop for a card that is
+not in the DOM makes `useColumnNav` find nothing, return false, and the arrow key
+die silently mid-column. See DRAG-AND-DROP §4.13.
 
 A stop is a place you can **create or act on** something. That is why Overflow
 has none when it is empty: nothing can be scheduled *into* Overflow, only out of

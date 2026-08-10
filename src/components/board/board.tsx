@@ -7,7 +7,8 @@ import {
   DragOverlay,
   KeyboardSensor,
   MeasuringStrategy,
-  PointerSensor,
+  MouseSensor,
+  TouchSensor,
   closestCorners,
   pointerWithin,
   useSensor,
@@ -19,7 +20,7 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
-import { GripVertical } from "lucide-react";
+import { GripVertical, MapPin } from "lucide-react";
 import { toast } from "sonner";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
@@ -27,12 +28,14 @@ import type { List, Tab, Todo } from "@/lib/schema";
 import {
   buildBoard,
   parseColumnId,
+  parseDayGroupId,
   parseListDragId,
   parseTabDragId,
   parseTabDropId,
   planListDrop,
   planTabDrop,
   preferPreciseTarget,
+  type TodoGroup,
 } from "@/lib/board";
 import {
   FLIGHT_MS,
@@ -41,11 +44,14 @@ import {
   runLandingDropAnimation,
 } from "@/lib/drop-animation";
 import { tint } from "@/lib/colors";
+import { priorityRail } from "@/lib/priority";
 import {
   NAV_LOAD_MORE,
   buildNavGrid,
+  cardItems,
   navKeyOf,
   type NavGrid,
+  type NavItem,
 } from "@/lib/column-nav";
 import { positionForIndex } from "@/lib/ordering";
 import { OVERFLOW, daysBetween, formatDay, todayIn } from "@/lib/scheduling";
@@ -74,7 +80,9 @@ import {
   LOCAL_OWNER_ID,
   createTodo,
   deleteTodo,
+  dayGroupPatch,
   listPatch,
+  moveTodoToDayGroup,
   moveTodoToList,
   schedulePatch,
   scheduleTodo,
@@ -103,16 +111,15 @@ import { WelcomeDialog } from "@/components/auth/welcome-dialog";
 import { SettingsSheet } from "@/components/settings/settings-sheet";
 import { ArchivedListsSheet } from "./archived-lists-sheet";
 import { BoardColumn } from "./board-column";
-import { ColumnInfoButton } from "./column-info-button";
 import { CreateListColumn } from "./create-list-column";
 import { DateNav } from "./date-nav";
-import { ListInfoDialog } from "./list-info-dialog";
+import { ListInfoDialog, type ListPatch } from "./list-info-dialog";
 import { RailCollapseButton } from "./rail-collapse-button";
 import { RailHandle } from "./rail-handle";
 import {
   archiveListWithUndo,
   deleteListWithUndo,
-  renameListWithUndo,
+  updateListWithUndo,
   restoreListWithUndo,
 } from "./list-actions";
 import { TabInfoDialog, type TabPatch } from "./tab-info-dialog";
@@ -311,6 +318,15 @@ export function Board() {
   /** The tab being dragged to reorder. The third mutually exclusive drag. */
   const [activeTab, setActiveTab] = useState<Tab | null>(null);
 
+  /**
+   * The dragged to-do's priority rail, mirrored onto the overlay chip.
+   *
+   * The chip is hand-built rather than a rendered `TodoCard` (§4.7), so anything
+   * the card shows has to be repeated here by hand or the lifted item stops
+   * looking like the row it came from.
+   */
+  const activeRail = priorityRail(activeTodo?.priority ?? null);
+
   /** Derived for the same reason as `openTodo` — a snapshot would go stale. */
   const infoTab = useMemo(
     () => tabs.find((t) => t.id === infoTabId) ?? null,
@@ -446,9 +462,30 @@ export function Board() {
   }, [themeMode]);
 
   const sensors = useSensors(
-    // A small activation distance keeps clicks and drags distinguishable, and
-    // makes touch dragging usable inside a Capacitor WebView later.
-    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    /*
+      MouseSensor rather than PointerSensor, and the split is load bearing.
+
+      PointerSensor claims touch too, and `pointerdown` fires before
+      `touchstart` — so it activates first, `activeRef` is then non-null, and
+      dnd-kit's activator binding bails out of every later sensor. A TouchSensor
+      added *alongside* a PointerSensor is unreachable code. Splitting them is
+      the only way touch gets an activation rule of its own.
+
+      4px keeps a mouse click distinguishable from a drag. Since the whole row
+      is a drag surface (DRAG-AND-DROP §4.9), that threshold is what separates a
+      click on a checkbox or a title from a lift.
+    */
+    useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
+    /*
+      Long-press to lift on touch. Under 250ms, or a move of more than 8px
+      inside it, the browser keeps the gesture and the column scrolls exactly as
+      before — which is why nothing needs `touch-action: none` any more.
+      TouchSensor.setup registers a non-passive `touchmove` so the sensor can
+      preventDefault scrolling once it *does* activate; that listener is what
+      the grip's `touch-none` used to stand in for, and it applies to the whole
+      row rather than to one 12px control.
+    */
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
@@ -604,19 +641,46 @@ export function Board() {
    * to Thursday belongs to Thursday no matter which tab is open. Archiving is
    * different — it removes a list from both halves — which is why that filter
    * stays above and this one does not.
+   *
+   * Records rather than ids, because day columns group by list: a card scheduled
+   * from another tab's list still shows on its day, and its group needs that
+   * list's name and colour. With ids alone it would group under Backlog — and a
+   * drop on that header would then rewrite its `listId`.
    */
-  const hiddenListIds = useMemo(
-    () =>
-      new Set(
-        lists.filter((l) => !l.isBacklog && l.tabId !== activeTabId).map((l) => l.id),
-      ),
+  const hiddenLists = useMemo(
+    () => lists.filter((l) => !l.isBacklog && l.tabId !== activeTabId),
     [lists, activeTabId],
   );
 
   const board = useMemo(
-    () => (ctx ? buildBoard(visibleTodos, tabLists, ctx, hiddenListIds) : null),
-    [visibleTodos, tabLists, ctx, hiddenListIds],
+    () => (ctx ? buildBoard(visibleTodos, tabLists, ctx, hiddenLists) : null),
+    [visibleTodos, tabLists, ctx, hiddenLists],
   );
+
+  /**
+   * List keys whose day-column groups are collapsed, across the WHOLE calendar
+   * half rather than per day.
+   *
+   * Day columns are transient — 30 rendered, a 365 cap, and the track scrolls —
+   * so per-(day, list) state would be hundreds of entries needing garbage
+   * collection as `today` advances. "Collapse To Buy" also reads as being about
+   * the list rather than about Tuesday. Each header still shows its own column's
+   * count, so one flag reads correctly everywhere.
+   *
+   * Not persisted yet: this resets on reload. Making it stick is a settings field
+   * and a schema migration, deliberately staged after the feature.
+   */
+  const [collapsedGroups, setCollapsedGroups] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+
+  const toggleGroup = useCallback((key: string) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
+  }, []);
 
   /**
    * Backlog rendered as a pinned sibling of the planning track, split out
@@ -639,23 +703,39 @@ export function Board() {
    *
    * A collapsed rail contributes nothing: its column renders as a 40px strip
    * with no cards and no quick-add, so there is nothing to focus in it.
+   *
+   * A grouped column's rows are its headers plus the cards under EXPANDED groups,
+   * in rendered order. A collapsed group's cards are not in the DOM, so a stop for
+   * one would resolve to a `data-nav-stop` that does not exist — `useColumnNav`
+   * returns false and the arrow key dies silently mid-column.
    */
+  const groupedItems = useCallback(
+    (column: { todos: Todo[]; groups: TodoGroup[] }): NavItem[] =>
+      column.groups.length > 0
+        ? column.groups.flatMap((g) => [
+            { kind: "group" as const, id: g.id },
+            ...(collapsedGroups.has(g.key) ? [] : cardItems(g.todos.map((t) => t.id))),
+          ])
+        : cardItems(column.todos.map((t) => t.id)),
+    [collapsedGroups],
+  );
+
   const navGrid = useMemo<NavGrid>(
     () =>
       buildNavGrid({
         overflow:
           board && !overflowCollapsed
-            ? { id: board.overflow.id, todoIds: board.overflow.todos.map((t) => t.id) }
+            ? { id: board.overflow.id, items: groupedItems(board.overflow) }
             : null,
-        days: board?.days.map((c) => ({ id: c.id, todoIds: c.todos.map((t) => t.id) })) ?? [],
+        days: board?.days.map((c) => ({ id: c.id, items: groupedItems(c) })) ?? [],
         hasLoadMore: renderedDays < cap,
         backlog:
           backlogColumn && !backlogCollapsed
-            ? { id: backlogColumn.id, todoIds: backlogColumn.todos.map((t) => t.id) }
+            ? { id: backlogColumn.id, items: cardItems(backlogColumn.todos.map((t) => t.id)) }
             : null,
         lists: otherListColumns.map((c) => ({
           id: c.id,
-          todoIds: c.todos.map((t) => t.id),
+          items: cardItems(c.todos.map((t) => t.id)),
         })),
       }),
     [
@@ -666,10 +746,29 @@ export function Board() {
       backlogColumn,
       backlogCollapsed,
       otherListColumns,
+      groupedItems,
     ],
   );
 
   const dayIds = useMemo(() => board?.days.map((c) => c.id) ?? [], [board]);
+
+  /**
+   * How many open to-dos are DUE on each date, keyed by civil date.
+   *
+   * Built from every visible todo rather than per column, because a deadline is
+   * independent of placement (`lib/scheduling.ts`): something due Friday is very
+   * often scheduled for Tuesday, and the day column's job here is to warn before
+   * Friday arrives. Done and dropped items are excluded — a met deadline is not
+   * a warning.
+   */
+  const deadlineCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const todo of visibleTodos) {
+      if (!todo.deadline || todo.status !== "open") continue;
+      counts.set(todo.deadline, (counts.get(todo.deadline) ?? 0) + 1);
+    }
+    return counts;
+  }, [visibleTodos]);
 
   const navigate = useColumnNav({
     grid: navGrid,
@@ -689,8 +788,36 @@ export function Board() {
    */
   const overTodoId = useMemo(() => {
     if (!overId || !activeTodo || overId === activeTodo.id) return null;
-    return parseColumnId(overId) ? null : overId;
+    if (parseColumnId(overId) || parseDayGroupId(overId)) return null;
+    return overId;
   }, [overId, activeTodo]);
+
+  /**
+   * The group a release would land in, or null.
+   *
+   * Two cases, and they have to resolve the SAME WAY the write does, or the drop
+   * animation flies the card to an indicator the write will not honour:
+   *
+   *   over is a group      → that group
+   *   over is a day column → the group matching the DRAGGED CARD'S OWN list,
+   *                          because that drop keeps the list and only sets the
+   *                          date, so the card lands inside that group rather
+   *                          than at the end of the column
+   *
+   * Null when the card's list has no group in that day yet — it is the first from
+   * that list to land there, so there is nothing to point at and the column's own
+   * end-of-column indicator stands. Honest: the group does not exist yet.
+   */
+  const overGroupId = useMemo(() => {
+    if (!activeTodo || !overId || !board) return null;
+    if (parseDayGroupId(overId)) return overId;
+
+    const target = parseColumnId(overId);
+    if (target?.kind !== "day") return null;
+    const column = board.days.find((d) => d.day === target.day);
+    const key = activeTodo.listId ?? backlogColumn?.list.id;
+    return column?.groups.find((g) => g.key === key)?.id ?? null;
+  }, [activeTodo, overId, board, backlogColumn]);
 
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {
@@ -898,6 +1025,65 @@ export function Board() {
       const todo = todos.find((t) => t.id === active.id);
       if (!todo) return;
 
+      /**
+       * DROPPED ON A GROUP: "this belongs to list X, still scheduled for D."
+       *
+       * Resolved before `parseColumnId` because a group is not a column. Falling
+       * through would take the append-to-a-day path and write only a date.
+       */
+      const dropped = parseDayGroupId(String(over.id));
+      if (dropped) {
+        // Overflow's groups register no droppable, so this is a guard rather than
+        // a live case: Overflow refuses drops (see the `else` branch below).
+        if (dropped.day === OVERFLOW) return;
+
+        const column = board.days.find((d) => d.day === dropped.day);
+        const group = column?.groups.find((g) => g.key === dropped.key);
+        if (!group) return;
+
+        /**
+         * A card already in this group, already on this date, has nowhere to go:
+         * order inside a group is COMPUTED, so there is no "move it up" for the
+         * gesture to mean. Returning leaves the landing rect null and dnd-kit
+         * flies the card home, which is the honest read for a no-op.
+         *
+         * `todo.scheduledDate === dropped.day` is the second half of the test and
+         * is NOT redundant: a rolled-over todo renders in today's column while
+         * still carrying last Friday's date, so dropping it on its own group there
+         * is exactly how a user commits it to today. Comparing the RENDERED group
+         * rather than `todo.listId` also handles a dangling listId, which renders
+         * under Backlog while pointing at a list that is gone.
+         */
+        const current = findColumn(board, todo.id);
+        if (
+          current?.groupKey === dropped.key &&
+          current.target.kind === "day" &&
+          current.target.day === dropped.day &&
+          todo.scheduledDate === dropped.day
+        ) {
+          return;
+        }
+
+        /*
+          Last within the group. `position` is only a TIEBREAKER in this half —
+          priority decides the band — but writing one keeps a dropped card off the
+          middle of its band and gives the flight an end-of-group indicator to
+          land on rather than a group rect it does not fill.
+        */
+        const ordered = group.todos.filter((t) => t.id !== todo.id);
+        const groupPosition = positionForIndex(ordered, ordered.length);
+
+        landingRectRef.current = landingRect;
+        setLandingTodoId(todo.id);
+
+        const forward = dayGroupPatch(dropped.key, dropped.day, groupPosition);
+        pushUndo(`Moved “${short(todo.title)}”`, [
+          { kind: "todo", entityId: todo.id, patch: inversePatch(todo, forward) },
+        ]);
+        await moveTodoToDayGroup(todo.id, dropped.key, dropped.day, groupPosition);
+        return;
+      }
+
       // `over` may be a column or another todo. Resolve the owning column.
       let target = parseColumnId(String(over.id));
       let siblings: Todo[] = [];
@@ -945,11 +1131,19 @@ export function Board() {
         ]);
         await moveTodoToList(todo.id, target.listId, position);
       } else if (target.kind === "day") {
-        const forward = schedulePatch(target.day, position);
+        /*
+          Empty space in a day column: schedule it here, keep its list, and write
+          NO position. A day column's order is computed from priority, and the
+          card's existing key still serves as its tiebreaker within whichever band
+          it lands in. `positionForIndex` over a grouped array would be arithmetic
+          on a sequence nothing orders by — meaningless, and it would silently
+          reshuffle the card's tiebreaker for no visible effect.
+        */
+        const forward = schedulePatch(target.day);
         pushUndo(`Scheduled “${short(todo.title)}”`, [
           { kind: "todo", entityId: todo.id, patch: inversePatch(todo, forward) },
         ]);
-        await scheduleTodo(todo.id, target.day, position);
+        await scheduleTodo(todo.id, target.day);
       } else {
         // Dropping into Overflow is a triage gesture, not a schedule. Leave the
         // date alone so the item stays overdue rather than silently becoming
@@ -1071,13 +1265,16 @@ export function Board() {
    * so leaving it open would mean staring at a form describing a column that
    * has already changed — or, for archive and delete, one that has gone.
    */
-  const handleRenameList = useCallback(
-    (id: string, name: string) => {
-      const before = lists.find((l) => l.id === id);
-      if (before) renameListWithUndo(before, name);
-    },
-    [lists],
-  );
+  const handleSaveList = useCallback((list: List, patch: ListPatch) => {
+    // The undo entry names what actually changed. A rename and a recolor are the
+    // same write, and "Renamed" on a recolor is the sort of label that makes ⌘Z
+    // look broken.
+    const label =
+      patch.name !== undefined
+        ? `Renamed “${list.name}”`
+        : `Recolored “${list.name}”`;
+    updateListWithUndo(list, patch, label);
+  }, []);
 
   const handleArchiveList = useCallback((list: List) => {
     setInfoListId(null);
@@ -1188,6 +1385,12 @@ export function Board() {
               todos={board.overflow.todos}
               labels={labels}
               ctx={ctx}
+              // Grouped like a day column — the origin of a stale to-do is as
+              // useful as anything here. `rejectsDrop` below means its groups
+              // register no droppable, so they read but do not receive.
+              groups={board.overflow.groups}
+              collapsedGroups={collapsedGroups}
+              onToggleGroup={toggleGroup}
               onToggle={handleToggle}
               onOpen={(todo) => setOpenTodoId(todo.id)}
               // No `onQuickAdd`, so no quick-add row: nothing can be scheduled
@@ -1239,6 +1442,11 @@ export function Board() {
                     todos={column.todos}
                     labels={labels}
                     ctx={ctx}
+                    dueCount={deadlineCounts.get(column.day)}
+                    groups={column.groups}
+                    collapsedGroups={collapsedGroups}
+                    onToggleGroup={toggleGroup}
+                    overGroupId={overGroupId}
                     emphasis={isToday}
                     onToggle={handleToggle}
                     onOpen={(todo) => setOpenTodoId(todo.id)}
@@ -1391,16 +1599,14 @@ export function Board() {
                     landingTodoId={landingTodoId}
                     reorderListId={column.list.id}
                     reservesGripSlot
-                    actions={
-                      <ColumnInfoButton
-                        listName={column.list.name}
-                        isOpen={infoListId === column.list.id}
-                        onOpen={() => setInfoListId(column.list.id)}
-                      />
-                    }
+                    onOpenListInfo={() => setInfoListId(column.list.id)}
                     isColumnDropTarget={columnDropTargetId === column.list.id}
                     isColumnDragActive={!!activeList}
-                    accentColor={activeTabRecord?.color}
+                    // The list's own color wins, falling back to its tab's. A
+                    // list you have deliberately colored should look colored in
+                    // both halves — and the tab accent still covers every list
+                    // you have not, so "these columns belong together" survives.
+                    accentColor={column.list.color ?? activeTabRecord?.color}
                   />
                 ))}
                 <CreateListColumn tabId={activeTabId} onNavigate={navigate} />
@@ -1423,13 +1629,30 @@ export function Board() {
             // classes, whether Tailwind emits `transform` or the individual
             // `rotate`/`scale` properties decides whether the animation
             // composites or doubles the tilt — not a thing to leave to chance.
-            style={LIFTED}
+            style={{
+              ...LIFTED,
+              // The card's rail, but riding the chip's existing border rather
+              // than an absolutely positioned span: a standalone rounded box has
+              // no column edge to keep true and no layout to shift, so a border
+              // is simply the right form here. Both surfaces read their width
+              // and colour from PRIORITY_RAILS, so they cannot drift in value.
+              borderLeftWidth: activeRail?.width,
+              borderLeftColor: activeRail?.color,
+            }}
             className={cn(
-              "flex max-w-xs cursor-grabbing items-center gap-2 rounded-md border",
+              "flex max-w-xs cursor-grabbing items-center gap-1 rounded-md border",
               "bg-background px-2 py-1.5 text-sm shadow-xl ring-2 ring-primary/40",
             )}
           >
             <GripVertical className="size-3 shrink-0 text-muted-foreground" aria-hidden />
+            {activeTodo.location && (
+              <MapPin className="size-3 shrink-0 text-muted-foreground" aria-hidden />
+            )}
+            {/*
+              Truncated, not wrapped like the card: the overlay wrapper has to
+              keep a stable measurable box or the drop animation mis-measures its
+              flight (§4.7), and a chip that changed height mid-drag would.
+            */}
             <span className="truncate">{activeTodo.title}</span>
           </div>
         )}
@@ -1476,7 +1699,7 @@ export function Board() {
       <ListInfoDialog
         list={infoList}
         onClose={() => setInfoListId(null)}
-        onRename={handleRenameList}
+        onSave={handleSaveList}
         onArchive={handleArchiveList}
         onDelete={handleDeleteList}
       />
@@ -1548,18 +1771,39 @@ function findColumn(
   todoId: string,
 ) {
   for (const day of board.days) {
+    // The group the card RENDERS in, which is not always the group its `listId`
+    // names: a dangling listId renders under Backlog. The no-op test in
+    // handleDragEnd needs the rendered answer.
+    const group = day.groups.find((g) => g.todos.some((t) => t.id === todoId));
+    if (group) {
+      return {
+        target: { kind: "day" as const, day: day.day },
+        todos: day.todos,
+        groupKey: group.key,
+      };
+    }
+    // Degenerate no-lists path, where a column falls back to a flat array.
     if (day.todos.some((t) => t.id === todoId)) {
-      return { target: { kind: "day" as const, day: day.day }, todos: day.todos };
+      return {
+        target: { kind: "day" as const, day: day.day },
+        todos: day.todos,
+        groupKey: null,
+      };
     }
   }
   if (board.overflow.todos.some((t) => t.id === todoId)) {
-    return { target: { kind: "overflow" as const }, todos: board.overflow.todos };
+    return {
+      target: { kind: "overflow" as const },
+      todos: board.overflow.todos,
+      groupKey: null,
+    };
   }
   for (const column of board.lists) {
     if (column.todos.some((t) => t.id === todoId)) {
       return {
         target: { kind: "list" as const, listId: column.list.id },
         todos: column.todos,
+        groupKey: null,
       };
     }
   }

@@ -11,8 +11,8 @@ interface RailCollapseButtonProps {
 /**
  * Collapses a pinned rail (Overflow, Backlog) without dragging its handle to
  * the edge — the fast path `RailHandle` doesn't offer on its own. Passed as
- * `BoardColumn`'s `actions` slot, but unlike `ColumnInfoButton` (an ordinary
- * inline icon at text baseline) this one is pulled out of flow entirely:
+ * `BoardColumn`'s `actions` slot, but unlike the list title (the ordinary
+ * inline label at text baseline) this one is pulled out of flow entirely:
  * `absolute inset-y-0 right-0` against the header's own box (the header is
  * `relative` for exactly this) spans the full height of the heading and sits
  * flush against the column's right edge, so the target is the whole top-right

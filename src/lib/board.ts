@@ -1,5 +1,6 @@
 import type { CivilDate, List, Tab, Todo } from "@/lib/schema";
 import { byPosition, positionForIndex, type Position } from "@/lib/ordering";
+import { byPriorityThenPosition } from "@/lib/priority";
 import { OVERFLOW, deriveColumn, type PlacementContext } from "@/lib/scheduling";
 
 /**
@@ -53,6 +54,32 @@ export function parseTabDragId(id: string): string | null {
   return id.startsWith("tabdrag:") ? id.slice(8) : null;
 }
 
+/**
+ * Droppable id for a list group inside a day column.
+ *
+ * A fifth id space, alongside `day:`/`list:`, `listdrag:`, `tab:`, `tabdrag:`,
+ * and deliberately NOT folded into `parseColumnId`. A group and its column mean
+ * different writes — "belongs to list X, still scheduled for D" versus "schedule
+ * for D, keep whatever list it had" — so a `DropTarget` that answered
+ * `{kind:"day"}` for a group id would silently take the column path.
+ *
+ * `|` rather than `:` as the separator: a CivilDate is `YYYY-MM-DD` and cannot
+ * contain one, while a list id can contain colons (`seed:list:backlog`). Parsed
+ * at the FIRST separator either way, so the key half may contain anything.
+ */
+export const dayGroupId = (day: CivilDate, key: string) => `daygroup:${day}|${key}`;
+
+/** The day and list key behind a group droppable, or null if this is not one. */
+export function parseDayGroupId(
+  id: string,
+): { day: CivilDate; key: string } | null {
+  if (!id.startsWith("daygroup:")) return null;
+  const rest = id.slice(9);
+  const sep = rest.indexOf("|");
+  if (sep < 0) return null;
+  return { day: rest.slice(0, sep), key: rest.slice(sep + 1) };
+}
+
 export type DropTarget =
   | { kind: "day"; day: CivilDate }
   | { kind: "overflow" }
@@ -82,25 +109,43 @@ export function isColumnId(id: string): boolean {
  * column: nothing lands *in* it. Everything that resolves a card's drop target
  * must use this rather than `isColumnId`, or a tab pill gets mistaken for a
  * card and looked up in the todo list, where it is silently not found.
+ *
+ * A day group is the third kind, and forgetting it here is the same silent
+ * failure: `preferPreciseTarget` would classify the group id as a card,
+ * `handleDragEnd` would look it up in `todos`, find nothing, and return — a drop
+ * that does nothing at all, with no error anywhere.
  */
 export function isDropZoneId(id: string): boolean {
-  return isColumnId(id) || parseTabDropId(id) !== null;
+  return (
+    isColumnId(id) || parseTabDropId(id) !== null || parseDayGroupId(id) !== null
+  );
 }
 
 /**
  * Pick the most specific droppable from a set of collisions.
  *
- * The pointer is usually inside both a card and the column containing it. The
- * card is the better answer: it gives a precise insertion point, whereas the
- * column only means "append to the end". Falling back to the column when no
- * card is present is what makes empty space anywhere in a column a valid drop.
+ * Precedence is card, then group, then column — stated rather than left to
+ * geometry, because the three mean different writes:
+ *
+ *   card   — a precise insertion point (planning half only; a day column's cards
+ *            are not droppables at all, see board-column.tsx)
+ *   group  — "belongs to this list, still scheduled for this day"
+ *   column — "append here" / "schedule here, keep whatever list it had"
+ *
+ * `pointerWithin` sorts by mean corner distance, which puts the smaller nested
+ * rect first *most* of the time — a short group near the top of a tall column can
+ * lose to the column itself. Leaving that to geometry would make one gesture mean
+ * two different things depending on where in the column the group happens to sit,
+ * and the keyboard path has no pointer at all.
  */
 export function preferPreciseTarget<T extends { id: string | number }>(
   collisions: readonly T[],
 ): T | null {
   if (collisions.length === 0) return null;
   const card = collisions.find((c) => !isDropZoneId(String(c.id)));
-  return card ?? collisions[0];
+  if (card) return card;
+  const group = collisions.find((c) => parseDayGroupId(String(c.id)) !== null);
+  return group ?? collisions[0];
 }
 
 export interface ListDropPlan {
@@ -195,10 +240,103 @@ export function planTabDrop(
   };
 }
 
+/**
+ * "To " is a filing artefact, not part of the name.
+ *
+ * "To Buy", "To Read" and "To Watch" would otherwise all sort under T and the
+ * alphabet would do no work at all — the entire reason to sort group headers is
+ * that the eye can find one without reading all of them.
+ *
+ * Only the WORD "To" followed by whitespace is stripped, which is why this is
+ * `^to\s+` and not `^to`: "Tomorrow", "Today" and "Together" keep their T. `\s`
+ * rather than a literal space covers a pasted non-breaking space, and `+`
+ * collapses "To  Buy". A list named exactly "To" keeps its name — an empty sort
+ * key would sort before every other group and pin it to the top forever.
+ */
+const TO_PREFIX = /^to\s+/i;
+
+export function listSortKey(name: string): string {
+  const trimmed = name.trim();
+  const stripped = trimmed.replace(TO_PREFIX, "");
+  return stripped.length > 0 ? stripped : trimmed;
+}
+
+/**
+ * One collator, built once at module scope.
+ *
+ * `localeCompare` is the same algorithm with a per-call options object, and
+ * constructing the collator is the expensive half. This runs once per group per
+ * column and up to 365 day columns can be rendered, so the instance is hoisted.
+ *
+ * `sensitivity: "base"` is what lands "to buy" and "To Buy" in the same place —
+ * case- and accent-insensitive, so "Café" sorts with "Cafe" rather than after
+ * "Z". `numeric: true` puts "Week 2" before "Week 10", which plain lexicographic
+ * ordering gets backwards. No explicit locale: the user's own is the right one,
+ * and nothing here is persisted, so a locale change cannot corrupt stored order.
+ */
+const COLLATOR = new Intl.Collator(undefined, {
+  sensitivity: "base",
+  numeric: true,
+});
+
+export function byListGroup(a: TodoGroup, b: TodoGroup): number {
+  const byName = COLLATOR.compare(a.sortKey, b.sortKey);
+  if (byName !== 0) return byName;
+  /*
+    Two lists can legitimately share a sort key — "To Buy" and "Buy", or two
+    lists both named "Errands". Falling through to the key makes the order TOTAL
+    rather than dependent on which todo happened to be encountered first, which
+    would otherwise flip between renders.
+  */
+  return a.key < b.key ? -1 : a.key > b.key ? 1 : 0;
+}
+
+/**
+ * A run of cards in a computed column that share one originating list.
+ *
+ * Deliberately NOT `{ list: List }`. `key`, `name` and `color` are the only
+ * facts a group header renders, and keeping the shape free of `List` is what
+ * would make a second grouping mode — by priority, say — a matter of filling
+ * these three fields rather than teaching the header a second domain. Only the
+ * drop path resolves `key` back to a list, because only the drop path cares.
+ */
+export interface TodoGroup {
+  /** Droppable id — see `dayGroupId`. */
+  id: string;
+  /** Stable identity for collapse state and for the drop write. A list id today. */
+  key: string;
+  /** Header text: the list's name, verbatim, "To " and all. */
+  name: string;
+  /** Accent for the header rule and the card wash. Null for an uncolored list. */
+  color: string | null;
+  /** What the alphabet actually sorts on. See `listSortKey`. */
+  sortKey: string;
+  /** P1 → P4 then unprioritised, `position` breaking ties. */
+  todos: Todo[];
+}
+
 export interface DayColumn {
   id: string;
   day: CivilDate;
+  /**
+   * Every card in the column, in RENDERED order.
+   *
+   * DERIVED from `groups`, never sorted independently. One source of truth for
+   * order is the whole point: the arrow keys read this, the drop path reads this,
+   * the filler-row arithmetic reads this, and `findColumn` reads this. Two arrays
+   * sorted by two comparators is exactly how "the eye sees one order and Tab
+   * walks another" gets shipped.
+   */
   todos: Todo[];
+  /** Empty groups are never emitted, so `groups.length` is the header count. */
+  groups: TodoGroup[];
+}
+
+/** Overflow is the same computed shape, minus a date. It refuses drops. */
+export interface OverflowColumn {
+  id: string;
+  todos: Todo[];
+  groups: TodoGroup[];
 }
 
 export interface ListColumn {
@@ -209,10 +347,53 @@ export interface ListColumn {
 
 export interface BoardModel {
   days: DayColumn[];
-  overflow: { id: string; todos: Todo[] };
+  overflow: OverflowColumn;
+  /** Unchanged: the planning half is arranged by hand — no groups, no wash. */
   lists: ListColumn[];
   /** Scheduled but outside the visible window — rendered dimmed in its list. */
   awayTodoIds: Set<string>;
+}
+
+/**
+ * Partition one computed column's cards by originating list.
+ *
+ * `index` must cover EVERY list that can own a scheduled card — the rendered
+ * tab's lists plus the hidden ones — not just the columns on screen.
+ */
+function groupTodosByList(
+  todos: readonly Todo[],
+  day: CivilDate,
+  index: ReadonlyMap<string, List>,
+  backlog: List | undefined,
+): TodoGroup[] {
+  const buckets = new Map<string, { list: List; todos: Todo[] }>();
+
+  for (const todo of todos) {
+    // The same `?? backlog` rule the planning half uses: no list, or a pointer
+    // at a deleted one, files under Backlog rather than vanishing.
+    const list = (todo.listId ? index.get(todo.listId) : undefined) ?? backlog;
+    /*
+      Degenerate only — no lists at all, which the board's loading gate makes
+      unreachable in the app but which this function's other callers can produce.
+      Returning no groups leaves the column's flat `todos` to render, so cards are
+      never dropped on the floor.
+    */
+    if (!list) return [];
+    const bucket = buckets.get(list.id);
+    if (bucket) bucket.todos.push(todo);
+    else buckets.set(list.id, { list, todos: [todo] });
+  }
+
+  return [...buckets.values()]
+    .map(({ list, todos: bucket }) => ({
+      id: dayGroupId(day, list.id),
+      key: list.id,
+      name: list.name,
+      color: list.color,
+      sortKey: listSortKey(list.name),
+      todos: bucket.sort(byPriorityThenPosition),
+    }))
+    .sort(byListGroup);
 }
 
 /**
@@ -223,26 +404,40 @@ export interface BoardModel {
  * view, which is the behaviour the reference UI has.
  *
  * `lists` is the columns to render: the active tab's lists plus Backlog.
- * `hiddenListIds` is the live lists on OTHER tabs. The two are separate on
+ * `hiddenLists` is the live lists on OTHER tabs. The two are separate on
  * purpose — see the planning branch below for why a hidden list cannot simply
  * be left out of `lists`.
+ *
+ * `hiddenLists` carries RECORDS rather than ids, and that is load bearing now
+ * that day columns group by list. The calendar branch below runs before the tab
+ * check, so a day column routinely holds a card whose list is not in `lists` at
+ * all — grouping it needs that list's name and colour. With ids alone, every
+ * other tab's scheduled work would group under Backlog, indistinguishable from a
+ * genuinely homeless todo, and a drop on that header would then REWRITE its
+ * `listId` to Backlog's.
  */
 export function buildBoard(
   todos: Todo[],
   lists: List[],
   ctx: PlacementContext,
-  hiddenListIds: ReadonlySet<string> = new Set(),
+  hiddenLists: readonly List[] = [],
 ): BoardModel {
   const open = todos.filter((t) => t.status === "open");
+  const hiddenListIds = new Set(hiddenLists.map((l) => l.id));
 
   const days: DayColumn[] = ctx.visibleWindow.map((day) => ({
     id: dayColumnId(day),
     day,
     todos: [],
+    groups: [],
   }));
   const dayIndex = new Map(days.map((d) => [d.day, d]));
 
-  const overflow: BoardModel["overflow"] = { id: overflowColumnId(), todos: [] };
+  const overflow: OverflowColumn = {
+    id: overflowColumnId(),
+    todos: [],
+    groups: [],
+  };
 
   const listColumns: ListColumn[] = lists.map((list) => ({
     id: listColumnId(list.id),
@@ -290,8 +485,37 @@ export function buildBoard(
     column?.todos.push(todo);
   }
 
-  for (const day of days) day.todos.sort(byPosition);
-  overflow.todos.sort(byPosition);
+  /*
+    THE TWO HALVES ORDER DIFFERENTLY, and that is the thesis of the design:
+    the planning half is arranged by hand, the calendar half is computed.
+
+    So `position` means an ORDER below and only a TIEBREAKER above. Nothing is
+    destroyed by that — a hand-arranged day column simply reshuffles into groups
+    the first time this runs.
+  */
+  const groupIndex = new Map<string, List>([
+    ...lists.map((l) => [l.id, l] as const),
+    ...hiddenLists.map((l) => [l.id, l] as const),
+  ]);
+  // Backlog as a record rather than a column, for the grouping fallback. Same
+  // lookup as the column above, and note Backlog is NOT pinned first among
+  // groups the way it is pinned leftmost among columns — it sorts under B like
+  // any other list, which is deliberate.
+  const backlogList = lists.find((l) => l.isBacklog) ?? lists[0];
+
+  const applyGroups = (column: DayColumn | OverflowColumn, day: CivilDate) => {
+    column.groups = groupTodosByList(column.todos, day, groupIndex, backlogList);
+    column.todos =
+      column.groups.length > 0
+        ? column.groups.flatMap((g) => g.todos)
+        : column.todos.sort(byPriorityThenPosition);
+  };
+
+  for (const day of days) applyGroups(day, day.day);
+  // Overflow groups under the OVERFLOW sentinel as its "day", so its group ids
+  // stay unique against every real date. Nothing drops on them.
+  applyGroups(overflow, OVERFLOW);
+
   for (const column of listColumns) column.todos.sort(byPosition);
 
   return { days, overflow, lists: listColumns, awayTodoIds };

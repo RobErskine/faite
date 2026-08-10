@@ -4,7 +4,7 @@ import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { DndContext } from "@dnd-kit/core";
 import { BoardColumn } from "./board-column";
 import { useColumnNav } from "./use-column-nav";
-import { addStop, buildNavGrid, cardStop } from "@/lib/column-nav";
+import { addStop, buildNavGrid, cardItems, cardStop } from "@/lib/column-nav";
 import type { Todo } from "@/lib/schema";
 import type { PlacementContext } from "@/lib/scheduling";
 
@@ -64,8 +64,8 @@ function Harness() {
     overflow: null,
     days: [],
     hasLoadMore: false,
-    backlog: { id: "list:backlog", todoIds: [] },
-    lists: [{ id: "list:overall", todoIds: OVERALL.map((t) => t.id) }],
+    backlog: { id: "list:backlog", items: [] },
+    lists: [{ id: "list:overall", items: cardItems(OVERALL.map((t) => t.id)) }],
   });
 
   const navigate = useColumnNav({

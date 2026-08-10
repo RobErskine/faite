@@ -24,6 +24,15 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # Same order as `npm run verify`, deliberately: the two are meant to be the
+      # same gate, and a CI pipeline that checks a different set in a different
+      # order than the local command is how "it passed on my machine" starts.
+      #
+      # Before the builds because vitest takes seconds and the two Next builds take
+      # minutes — a logic regression should not wait behind them.
+      - name: Tests
+        run: npm test
+
       - name: Build (Workers target)
         run: npm run build
 

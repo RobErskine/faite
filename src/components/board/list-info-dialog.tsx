@@ -11,15 +11,18 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { ColorPicker } from "@/components/ui/color-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { List } from "@/lib/schema";
+
+export type ListPatch = Partial<Pick<List, "name" | "color">>;
 
 interface ListInfoDialogProps {
   /** The list whose settings are open, or null when the dialog is closed. */
   list: List | null;
   onClose: () => void;
-  onRename: (id: string, name: string) => void;
+  onSave: (list: List, patch: ListPatch) => void;
   onArchive: (list: List) => void;
   onDelete: (list: List) => void;
 }
@@ -46,17 +49,25 @@ export function ListInfoDialog({ list, ...rest }: ListInfoDialogProps) {
 function ListInfoDialogContent({
   list,
   onClose,
-  onRename,
+  onSave,
   onArchive,
   onDelete,
 }: ListInfoDialogProps & { list: List }) {
   const [name, setName] = useState(list.name);
+  const [color, setColor] = useState<string | null>(list.color);
 
   const trimmed = name.trim();
-  const canSave = trimmed.length > 0 && trimmed !== list.name;
+
+  // Diffed rather than sent wholesale, the same shape TabInfoDialog uses: an
+  // undo entry for a field that did not change is an entry ⌘Z spends itself on.
+  const patch: ListPatch = {};
+  if (trimmed && trimmed !== list.name) patch.name = trimmed;
+  if (color !== list.color) patch.color = color;
+
+  const canSave = Object.keys(patch).length > 0;
 
   const save = () => {
-    if (canSave) onRename(list.id, trimmed);
+    if (canSave) onSave(list, patch);
     onClose();
   };
 
@@ -83,6 +94,22 @@ function ListInfoDialogContent({
               save();
             }}
           />
+        </div>
+
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-2">
+            <Label htmlFor="list-color">Color</Label>
+            <ColorPicker
+              id="list-color"
+              value={color}
+              onChange={setColor}
+              label="List color"
+            />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Tints this column&rsquo;s header, and groups this list&rsquo;s to-dos
+            in the day columns. Falls back to the tab&rsquo;s color when unset.
+          </p>
         </div>
 
         <DialogFooter className="sm:justify-between">

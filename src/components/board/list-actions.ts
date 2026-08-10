@@ -21,12 +21,23 @@ import { deleteListUndoSteps, inversePatch, pushUndo, undoById } from "@/lib/und
  * restoring a list's to-dos.
  */
 
-/** Silent: the column header updates under the dialog as you save. */
-export function renameListWithUndo(list: List, name: string): void {
-  pushUndo(`Renamed “${list.name}”`, [
-    { kind: "list", entityId: list.id, patch: inversePatch(list, { name }) },
+/**
+ * Silent: the column header updates under the dialog as you save.
+ *
+ * A patch rather than a name, mirroring `updateTabWithUndo` — a list has carried
+ * `color` since `decorationSchema` was written, and the caller decides both what
+ * changed and what the undo entry should read, since "Renamed" is wrong for a
+ * recolor and the write is otherwise identical.
+ */
+export function updateListWithUndo(
+  list: List,
+  patch: Partial<Pick<List, "name" | "color">>,
+  label: string,
+): void {
+  pushUndo(label, [
+    { kind: "list", entityId: list.id, patch: inversePatch(list, patch) },
   ]);
-  void updateList(list.id, { name });
+  void updateList(list.id, patch);
 }
 
 export async function archiveListWithUndo(list: List): Promise<void> {

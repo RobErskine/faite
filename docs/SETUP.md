@@ -308,6 +308,46 @@ Production-as-staging is a reasonable call while Faite has one user, but:
 
 ## Local development
 
+### Two servers, and what each one can do
+
+`next dev` (:3000) never runs the worker entry (`src/server/worker.ts`), so
+**all of `/api/*` is absent there** — it exists only under the real Workers
+runtime that `npm run preview` starts on :8787. Run both, in two terminals, and
+open :3000; `.env.local` points the auth client at :8787 so you get hot reload
+and a working login at once.
+
+| | `npm run dev` (:3000) | `npm run preview` (:8787) |
+|---|---|---|
+| Hot reload | ✅ | ❌ rebuild + restart |
+| UI, board, drag-and-drop | ✅ | ✅ |
+| `/api/auth/*` | ✅ cross-origin to :8787 | ✅ |
+| `/api/sync/*` + WebSocket | ❌ **silent no-op** | ✅ |
+
+The cross-origin half only works because `src/server/cors.ts` answers the
+preflight for every origin on `TRUSTED_ORIGINS`. Better Auth does not do this
+itself — `trustedOrigins` is a CSRF and redirect-target check that emits no CORS
+headers — and before that file existed, signing in on :3000 failed as an opaque
+`TypeError: Failed to fetch`. If that symptom ever returns, test the preflight
+directly, not the POST:
+
+```bash
+curl -i -X OPTIONS http://localhost:8787/api/auth/sign-in/email \
+  -H 'Origin: http://localhost:3000' -H 'Access-Control-Request-Method: POST'
+# expect 204 + Access-Control-Allow-Origin: http://localhost:3000
+```
+
+### Sync is off on :3000, deliberately and silently
+
+`src/lib/sync/transport.ts` fetches `/api/sync/*` same-origin-relative and
+`ws-transport.ts` opens its socket the same way, so on :3000 the HTTP calls 404
+and the handshake fails. The engine gives up **quietly** — no toast, no error —
+because the board is local-first and correct without it: edits are written to
+IndexedDB and simply stay on that device instead of reaching the account.
+
+This is an accepted limit, not a defect, and **push/pull itself is fine** — it
+is shipped, live in production, and works under `npm run preview`. Verify sync
+on :8787 alone. See "Known limits, deliberately accepted" in `docs/SYNC.md`.
+
 ### Local D1 is a completely separate database
 
 `wrangler dev` (and therefore `npm run preview`) uses a **local** SQLite file
@@ -347,7 +387,8 @@ npx wrangler d1 execute faite-auth --local \
 
 | | Local | Why |
 |---|---|---|
-| Email/password sign-up + sign-in | ✅ | Verification is off on localhost (§6) |
+| Email/password sign-up + sign-in | ✅ | Verification is off on localhost (§6). Cross-origin from :3000 works via `src/server/cors.ts` |
+| Sync — push/pull + WebSocket | ✅ on :8787, ❌ on :3000 | `next dev` runs no worker; the engine degrades silently. See above |
 | Verification / reset **emails** | ⚠️ logged, not sent | The `send_email` binding needs `"remote": true` to deliver. The full message, links included, goes to the `preview` terminal — copy the URL from there |
 | Google OAuth | ⚠️ needs config | Works once the real client ID/secret are in `.dev.vars` — `http://localhost:8787/api/auth/callback/google` is already a registered redirect URI on that client |
 | GitHub OAuth | ❌ | A GitHub OAuth App accepts exactly **one** callback URL, and it points at production. Needs a separate "Faite (local)" app to work locally |

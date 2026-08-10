@@ -319,3 +319,61 @@ reading application code and go read the preflight.**
 **Rule:** verify a cross-origin path with a real `OPTIONS` carrying `Origin`
 and `Access-Control-Request-Method`, not just the `POST`. A 404 on the
 preflight is invisible to every server-side test in the repo.
+
+---
+
+## Swapping a dnd-kit sensor silently renames the listener map
+
+Splitting `PointerSensor` into `MouseSensor` + `TouchSensor` (so touch could
+long-press instead of relying on `touch-action: none`) changed what
+`useSortable()` puts in `listeners`. The map has one entry per bound sensor
+activator: `PointerSensor` gives `onPointerDown`, `MouseSensor` gives
+`onMouseDown`, `TouchSensor` gives `onTouchStart`.
+
+`todo-card.tsx` and `board-column.tsx` both destructure that map and both cast
+it, because dnd-kit types the values as bare `Function` and a `Function` cannot
+be assigned to a typed handler prop. The cast asserts the shape rather than
+checking it — so `onPointerDown` kept type-checking after the swap, resolved to
+`undefined`, and React accepted `onMouseDown={undefined}` without complaint. The
+whole-row and whole-header drag would have been dead on arrival, with a green
+typecheck and a green test suite, since neither behaviour is unit-testable
+without layout.
+
+**Rule:** when changing which sensors a `DndContext` binds, grep the codebase for
+every activator name in the same edit. Any `as {...}` over a library's loosely
+typed object is a place where a rename cannot fail loudly — treat the cast site
+as the thing to re-verify, not the call site.
+
+Adjacent, same shape: `opacity-0` does not remove an element from hit testing.
+Moving the card grip out of the flow and hiding it meant its 24×24 `::before`
+hit area now sat over the checkbox, invisible and click-eating. Anything hidden
+by opacity alone still needs its pointer geometry reasoned about.
+
+---
+
+## tailwind-merge does not know a shorthand conflicts with its per-axis form
+
+`DragGrip` set its 24×24 hit area with `before:-inset-1.5`. Moving the card's grip
+out of the flow meant that expansion now covered the checkbox, so `todo-card.tsx`
+passed `before:-inset-y-1.5 before:inset-x-0` to keep it vertical-only.
+
+`cn()` merged nothing. tailwind-merge treats `-inset-1.5` and `-inset-x-*` /
+`-inset-y-*` as different groups, so **both** survived into the class list, and
+which one applied came down to the order Tailwind happened to emit them in. The
+failure is invisible twice over: the box is transparent, and the wrong outcome is
+just "clicking the grip toggles done sometimes".
+
+Two lessons:
+
+**When overriding a utility from a shared component, check the base uses the same
+granularity you are overriding at.** A shorthand in the base cannot be narrowed by
+a caller. The fix was in the base — state it per axis (`-inset-x-1.5 -inset-y-1.5`)
+so a caller can override one axis and tailwind-merge can actually see the conflict.
+
+**A class-list assertion is a real test when the CSS is load bearing and invisible.**
+This one was written as a guard against a future "tidy-up" and it caught the bug it
+was written for, on the first run, before any browser did.
+
+**Rule:** assert `not.toContain` on the class you believe you replaced, not just
+`toContain` on the replacement. `toContain` alone passes happily while both are
+present, which is exactly the broken state.

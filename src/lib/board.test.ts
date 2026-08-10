@@ -1,10 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
   buildBoard,
+  byListGroup,
+  dayColumnId,
+  dayGroupId,
   isColumnId,
   isDropZoneId,
+  listColumnId,
   listDragId,
+  listSortKey,
   parseColumnId,
+  parseDayGroupId,
   parseListDragId,
   parseTabDragId,
   parseTabDropId,
@@ -13,8 +19,9 @@ import {
   preferPreciseTarget,
   tabDragId,
   tabDropId,
+  type TodoGroup,
 } from "./board";
-import { buildWindow } from "./scheduling";
+import { OVERFLOW, buildWindow } from "./scheduling";
 import type { List, Tab, Todo } from "./schema";
 import { positionsBetween } from "./ordering";
 
@@ -215,11 +222,12 @@ describe("buildBoard with hidden lists (tabs)", () => {
     list("groceries", "Grocery List", false, positions[1]),
   ];
   // "work" lives on another tab, so it is absent from the columns AND hidden.
-  const hidden = new Set(["work"]);
+  // Records rather than ids: a day column groups by list, so it needs the name.
+  const hidden = [list("work", "Work")];
 
   it("keeps a scheduled todo on its day even when its list is on another tab", () => {
     // The calendar half is the week, not a tab. Switching tabs must not empty
-    // Thursday. This is the regression the hiddenListIds parameter exists for:
+    // Thursday. This is the regression the hiddenLists parameter exists for:
     // filtering these todos out upstream would have taken them off the
     // calendar too.
     const board = buildBoard(
@@ -268,6 +276,188 @@ describe("buildBoard with hidden lists (tabs)", () => {
     );
     expect(board.lists.find((c) => c.list.isBacklog)!.todos).toHaveLength(1);
   });
+
+  /*
+    The reason `hiddenLists` carries records. With ids alone the group index could
+    not resolve "work", so this card would file under Backlog — indistinguishable
+    from a homeless todo, and a drop on that header would rewrite its listId.
+  */
+  it("groups an other-tab card under its real list, not Backlog", () => {
+    const board = buildBoard(
+      [todo({ id: "a", listId: "work", scheduledDate: "2026-08-05" })],
+      TABBED,
+      ctx,
+      hidden,
+    );
+    const day = board.days.find((d) => d.day === "2026-08-05")!;
+    expect(day.groups.map((g) => g.name)).toEqual(["Work"]);
+    expect(day.groups[0].key).toBe("work");
+  });
+});
+
+describe("listSortKey", () => {
+  it("strips a leading “To ”, so the alphabet does some work", () => {
+    expect(listSortKey("To Buy")).toBe("Buy");
+    expect(listSortKey("to buy")).toBe("buy");
+    expect(listSortKey("TO READ")).toBe("READ");
+    expect(listSortKey("To  Buy")).toBe("Buy");
+    expect(listSortKey("To Buy")).toBe("Buy");
+    expect(listSortKey("  To Read  ")).toBe("Read");
+  });
+
+  /*
+    The regression that matters. `^to` without the whitespace boundary would file
+    "Tomorrow" under M.
+  */
+  it("only strips the WORD “to”", () => {
+    expect(listSortKey("Tomorrow")).toBe("Tomorrow");
+    expect(listSortKey("Today")).toBe("Today");
+    expect(listSortKey("Together")).toBe("Together");
+    expect(listSortKey("Total")).toBe("Total");
+  });
+
+  it("leaves a list named exactly “To” alone", () => {
+    // An empty sort key would sort before everything and pin it to the top.
+    expect(listSortKey("To")).toBe("To");
+    expect(listSortKey("To ")).toBe("To");
+  });
+});
+
+describe("byListGroup", () => {
+  const group = (key: string, name: string): TodoGroup => ({
+    id: dayGroupId("2026-08-05", key),
+    key,
+    name,
+    color: null,
+    sortKey: listSortKey(name),
+    todos: [],
+  });
+
+  const order = (...names: [string, string][]) =>
+    names
+      .map(([key, name]) => group(key, name))
+      .sort(byListGroup)
+      .map((g) => g.name);
+
+  it("sorts on the stripped name", () => {
+    expect(
+      order(["a", "To Buy"], ["b", "Admin"], ["c", "Cook"]),
+    ).toEqual(["Admin", "To Buy", "Cook"]);
+  });
+
+  it("is case- and accent-insensitive, and numeric", () => {
+    expect(order(["a", "Week 10"], ["b", "Week 2"])).toEqual(["Week 2", "Week 10"]);
+    expect(order(["a", "Zoo"], ["b", "Café"], ["c", "Cafe"])[2]).toBe("Zoo");
+  });
+
+  it("breaks a tie on the key, so the order is total", () => {
+    // Same sort key from two different names — without the fallback the result
+    // would depend on which todo was encountered first.
+    const sorted = [group("z", "To Buy"), group("a", "Buy")].sort(byListGroup);
+    expect(sorted.map((g) => g.key)).toEqual(["a", "z"]);
+  });
+
+  it("does not pin Backlog first the way the planning half does", () => {
+    expect(order(["backlog", "Backlog"], ["a", "Admin"])).toEqual([
+      "Admin",
+      "Backlog",
+    ]);
+  });
+});
+
+describe("day group ids", () => {
+  it("round-trips", () => {
+    const id = dayGroupId("2026-08-05", "groceries");
+    expect(parseDayGroupId(id)).toEqual({ day: "2026-08-05", key: "groceries" });
+  });
+
+  it("survives a key containing colons", () => {
+    // `seed:list:backlog` is a real id, which is why the separator is `|`.
+    const id = dayGroupId("2026-08-05", "seed:list:backlog");
+    expect(parseDayGroupId(id)?.key).toBe("seed:list:backlog");
+  });
+
+  it("rejects every other id space", () => {
+    expect(parseDayGroupId(dayColumnId("2026-08-05"))).toBeNull();
+    expect(parseDayGroupId(listColumnId("groceries"))).toBeNull();
+    expect(parseDayGroupId("daygroup:no-separator")).toBeNull();
+    expect(parseColumnId(dayGroupId("2026-08-05", "x"))).toBeNull();
+  });
+
+  it("is a drop zone, not a card", () => {
+    // Miss this and the group id gets looked up in `todos`, found to be nothing,
+    // and the drop silently does nothing.
+    expect(isDropZoneId(dayGroupId("2026-08-05", "x"))).toBe(true);
+  });
+});
+
+describe("grouping a day column", () => {
+  const LISTS_2 = [
+    list("backlog", "Backlog", true),
+    list("groceries", "To Buy"),
+    list("admin", "Admin"),
+  ];
+  const scheduled = (id: string, listId: string | null, priority: 1 | 2 | 3 | 4 | null = null) =>
+    todo({ id, listId, priority, scheduledDate: "2026-08-05" });
+
+  const dayOf = (todos: ReturnType<typeof todo>[]) =>
+    buildBoard(todos, LISTS_2, ctx).days.find((d) => d.day === "2026-08-05")!;
+
+  it("partitions by list, alphabetically on the stripped name", () => {
+    const day = dayOf([scheduled("a", "groceries"), scheduled("b", "admin")]);
+    expect(day.groups.map((g) => g.name)).toEqual(["Admin", "To Buy"]);
+  });
+
+  it("orders each group by priority, then position", () => {
+    const day = dayOf([
+      scheduled("none", "admin", null),
+      scheduled("p3", "admin", 3),
+      scheduled("p1", "admin", 1),
+    ]);
+    expect(day.groups[0].todos.map((t) => t.id)).toEqual(["p1", "p3", "none"]);
+  });
+
+  it("derives the flat array from the groups, so one order exists", () => {
+    const day = dayOf([scheduled("a", "groceries"), scheduled("b", "admin")]);
+    expect(day.todos).toEqual(day.groups.flatMap((g) => g.todos));
+  });
+
+  it("files a listless or dangling card under Backlog", () => {
+    const day = dayOf([scheduled("a", null), scheduled("b", "gone")]);
+    expect(day.groups.map((g) => g.name)).toEqual(["Backlog"]);
+    expect(day.groups[0].todos).toHaveLength(2);
+  });
+
+  it("emits no empty groups", () => {
+    const day = dayOf([scheduled("a", "admin")]);
+    expect(day.groups).toHaveLength(1);
+  });
+
+  it("groups Overflow too, under the sentinel", () => {
+    const board = buildBoard(
+      [todo({ id: "a", listId: "admin", scheduledDate: "2026-07-01" })],
+      LISTS_2,
+      ctx,
+    );
+    expect(board.overflow.groups.map((g) => g.id)).toEqual([
+      dayGroupId(OVERFLOW, "admin"),
+    ]);
+  });
+
+  it("leaves the planning half ungrouped and hand-ordered", () => {
+    const board = buildBoard([todo({ id: "a", listId: "admin" })], LISTS_2, ctx);
+    const column = board.lists.find((c) => c.list.id === "admin")!;
+    expect(column).not.toHaveProperty("groups");
+    expect(column.todos.map((t) => t.id)).toEqual(["a"]);
+  });
+
+  it("still renders every card when there are no lists at all", () => {
+    // Degenerate, but it must not drop cards on the floor.
+    const board = buildBoard([scheduled("a", "admin")], [], ctx);
+    const day = board.days.find((d) => d.day === "2026-08-05")!;
+    expect(day.groups).toHaveLength(0);
+    expect(day.todos.map((t) => t.id)).toEqual(["a"]);
+  });
 });
 
 describe("preferPreciseTarget", () => {
@@ -291,6 +481,30 @@ describe("preferPreciseTarget", () => {
   it("picks the first card when several overlap", () => {
     const collisions = [{ id: "todo-a" }, { id: "todo-b" }];
     expect(preferPreciseTarget(collisions)?.id).toBe("todo-a");
+  });
+
+  /*
+    Precedence, not geometry. `pointerWithin` sorts by mean corner distance, so a
+    short group near the top of a tall column can be listed AFTER it — hence the
+    deliberately reversed input here. Leaving this to the sort order would make one
+    gesture mean two different things depending on where the group sits.
+  */
+  it("prefers a group over the column containing it, whatever the order", () => {
+    const group = dayGroupId("2026-08-03", "groceries");
+    expect(
+      preferPreciseTarget([{ id: "day:2026-08-03" }, { id: group }])?.id,
+    ).toBe(group);
+    expect(
+      preferPreciseTarget([{ id: group }, { id: "day:2026-08-03" }])?.id,
+    ).toBe(group);
+  });
+
+  it("still prefers a card over a group", () => {
+    const collisions = [
+      { id: dayGroupId("2026-08-03", "groceries") },
+      { id: "todo-abc" },
+    ];
+    expect(preferPreciseTarget(collisions)?.id).toBe("todo-abc");
   });
 
   it("treats overflow as a column, not a card", () => {

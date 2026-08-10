@@ -30,6 +30,17 @@ export function addStop(columnId: string): string {
   return `add:${columnId}`;
 }
 
+/**
+ * Stop id for a group header, keyed by the group's droppable id.
+ *
+ * Headers are stops rather than tab stops: without them a keyboard user cannot
+ * collapse a group at all, but putting them in the tab order would add 28 stops
+ * to a seven-day week with four lists, all of them ahead of the first quick-add.
+ */
+export function groupStop(groupId: string): string {
+  return `group:${groupId}`;
+}
+
 const NAV_KEYS = ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"] as const;
 
 export type NavKey = (typeof NAV_KEYS)[number];
@@ -74,10 +85,30 @@ export interface LastVisited {
   planning: string | null;
 }
 
+/**
+ * One row of a column, as the arrow keys see it.
+ *
+ * A grouped column interleaves headers and cards; a flat one is all cards. Both
+ * end up as a `stops: string[]`, which is why `resolveNavTarget` below needed no
+ * change at all when grouping arrived.
+ */
+export type NavItem =
+  | { kind: "card"; id: string }
+  | { kind: "group"; id: string };
+
+/** Convenience for ungrouped columns — the whole planning half. */
+export const cardItems = (todoIds: readonly string[]): NavItem[] =>
+  todoIds.map((id) => ({ kind: "card", id }));
+
 export interface NavColumnInput {
   /** The column's droppable id — `day:2026-08-07`, `list:<id>`. */
   id: string;
-  todoIds: string[];
+  /**
+   * Rows top to bottom. A COLLAPSED group contributes its header and no cards:
+   * a stop for a card that is not in the DOM makes `useColumnNav` find nothing,
+   * return false, and the arrow key dies silently mid-column.
+   */
+  items: NavItem[];
 }
 
 export interface BuildNavGridInput {
@@ -92,7 +123,9 @@ export interface BuildNavGridInput {
 }
 
 function toColumn(input: NavColumnInput, hasQuickAdd: boolean): NavColumn {
-  const stops = input.todoIds.map(cardStop);
+  const stops = input.items.map((item) =>
+    item.kind === "card" ? cardStop(item.id) : groupStop(item.id),
+  );
   if (hasQuickAdd) stops.push(addStop(input.id));
   return { key: input.id, stops, hasQuickAdd };
 }
@@ -193,6 +226,10 @@ function crossColumn(
  *   quick-add; leaving a card lands on the same card index, clamped. Without it
  *   `→` out of an empty column into a thirty-card one would dump you on card
  *   one instead of the field you were typing in.
+ *
+ * Group headers are ordinary stops here, so anchor preservation counts them as
+ * rows — `→` out of a grouped column into a flat one lands at the same *visual*
+ * index, which is the right answer and needs no special case.
  */
 export function resolveNavTarget(
   grid: NavGrid,

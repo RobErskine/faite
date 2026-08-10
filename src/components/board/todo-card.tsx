@@ -1,16 +1,29 @@
 "use client";
 
-import type { KeyboardEventHandler, PointerEventHandler } from "react";
+import { useEffect, useRef, useState } from "react";
+import type {
+  KeyboardEventHandler,
+  MouseEventHandler,
+  TouchEventHandler,
+} from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { CalendarClock, Flag, MapPin } from "lucide-react";
+import { CalendarCheck, CalendarClock, MapPin } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { DragGrip } from "./drag-grip";
 import { cardStop, navKeyOf, type NavKey } from "@/lib/column-nav";
+import { priorityRail } from "@/lib/priority";
+import { TITLE_CLAMP_CLASS } from "@/lib/title";
 import type { Label as LabelRecord, Todo } from "@/lib/schema";
 import {
+  formatDeadlineDue,
   formatShortDate,
   isDeadlineMissed,
   type PlacementContext,
@@ -54,40 +67,83 @@ export function TodoCard({
     useSortable({ id: todo.id });
 
   // dnd-kit types its listeners as bare `Function`, which spreads onto an
-  // element fine but cannot be assigned to a specific handler prop. The two
+  // element fine but cannot be assigned to a specific handler prop. The
   // activators go to different elements here, so name them once.
-  const { onPointerDown: startPointerDrag, onKeyDown: startKeyboardDrag } =
-    (listeners ?? {}) as {
-      onPointerDown?: PointerEventHandler;
-      onKeyDown?: KeyboardEventHandler;
-    };
+  //
+  // `onMouseDown`/`onTouchStart`, not `onPointerDown`: the board runs a
+  // MouseSensor and a TouchSensor rather than one PointerSensor (§4.8), and each
+  // sensor names its own activator. Destructuring the wrong one fails silently —
+  // an undefined handler is a row that simply does not drag.
+  const {
+    onMouseDown: startMouseDrag,
+    onTouchStart: startTouchDrag,
+    onKeyDown: startKeyboardDrag,
+  } = (listeners ?? {}) as {
+    onMouseDown?: MouseEventHandler;
+    onTouchStart?: TouchEventHandler;
+    onKeyDown?: KeyboardEventHandler;
+  };
 
   const deadlineMissed = isDeadlineMissed(todo, ctx);
   const todoLabels = labels.filter((l) => todo.labelIds.includes(l.id));
+  const rail = priorityRail(todo.priority);
+  /** Quiet inline marker for a deadline still ahead; a missed one gets the loud badge. */
+  const dueAhead = todo.deadline && !deadlineMissed ? todo.deadline : null;
+
+  /**
+   * Whether the clamp is actually cutting the title off — the gate on the
+   * full-title tooltip, so it cannot fire on a title that already fits.
+   *
+   * Measured with a ResizeObserver rather than on hover. Measuring on hover is
+   * the obvious cheaper thing and it does not work: the measurement is what
+   * enables the trigger, so it lands *after* the `mouseenter` Base UI would have
+   * opened on, and the tooltip only appears the second time you hover. An
+   * observer also covers the other way this answer changes — the column being
+   * resized, which no interaction reports.
+   */
+  const titleRef = useRef<HTMLSpanElement | null>(null);
+  const [titleClamped, setTitleClamped] = useState(false);
+
+  useEffect(() => {
+    const el = titleRef.current;
+    // Absent in happy-dom, which has no layout to observe anyway.
+    if (!el || typeof ResizeObserver === "undefined") return;
+
+    // The +1 absorbs sub-pixel line-height rounding, which otherwise reports a
+    // one-line title as clamped at some zoom levels.
+    const measure = () => setTitleClamped(el.scrollHeight > el.clientHeight + 1);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [todo.title]);
 
   return (
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Translate.toString(transform), transition }}
       /*
-        Pointer drags start anywhere on the row. Only `onPointerDown` moves here
-        — `attributes` (role, tabIndex, aria-roledescription) and the keyboard
-        activator stay on the grip, because making the row itself a focusable
-        `role="button"` would nest interactive controls inside it.
+        Mouse and touch drags start anywhere on the row. Only those two
+        activators move here — `attributes` (role, tabIndex,
+        aria-roledescription) and the keyboard activator stay on the grip,
+        because making the row itself a focusable `role="button"` would nest
+        interactive controls inside it.
 
         The two concerns that originally kept dragging on the grip alone turn
         out to be dnd-kit's job, not ours: on activation it clears the document
         selection and keeps clearing it, and it registers a capture-phase click
         listener that swallows the trailing click — so a drag never also opens
-        the detail sheet. Below the 4px threshold nothing activates, so taps on
-        the checkbox and title behave exactly as before.
+        the detail sheet. Below the mouse's 4px threshold, and inside touch's
+        250ms delay, nothing activates — so taps on the checkbox and title
+        behave exactly as before, and a swipe still scrolls the column.
       */
-      onPointerDown={startPointerDrag}
+      onMouseDown={startMouseDrag}
+      onTouchStart={startTouchDrag}
       /*
         A nav stop for the arrow keys (docs/KEYBOARD.md §11). `tabIndex={-1}`
         makes the row focusable programmatically WITHOUT joining the tab order,
         so Tab still walks the grip, checkbox and title exactly as before and
-        the `:65` reasoning above still holds — the row takes focus but never a
+        the reasoning above still holds — the row takes focus but never a
         `role`, so no interactive control ends up nested inside a button.
       */
       tabIndex={-1}
@@ -111,7 +167,18 @@ export function TodoCard({
         }
       }}
       className={cn(
-        "group relative flex items-start gap-2 border-b border-border/60 px-2 py-1.5",
+        /*
+          Not a flex row any more, and that is the point: the grip and the
+          checkbox are both absolutely positioned in the left gutter, so the
+          title block spans the full width and its second and third lines run
+          *under* the checkbox instead of stopping at a flex column edge. Only
+          the first line is indented (`indent-6` below), which is the one line
+          that has to clear the checkbox.
+
+          `pl-3` is the grip's 12px gutter; the checkbox sits at `left-3`,
+          immediately after it.
+        */
+        "group relative block border-b border-border/60 py-1.5 pl-3 pr-2",
         "cursor-grab active:cursor-grabbing",
         "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring",
         // Opacity transitions alongside the background so the row fades in when
@@ -130,6 +197,37 @@ export function TodoCard({
       )}
     >
       {/*
+        PRIORITY, as a rail rather than a chip.
+
+        An absolutely positioned span, not `border-l`, for four separate reasons:
+
+        - `box-sizing: border-box` plus a column-imposed width means a left
+          border eats the content box, so a P1 card's checkbox and title would
+          sit 3px right of a P4's. Inside one column that reads as broken
+          alignment rather than as encoding.
+        - The row already has `border-b`. A 3px coloured left border mitres
+          against it into a visible diagonal wedge in the corner — worst exactly
+          at P1, where the rail is thickest.
+        - The insertion line below is positioned against the PADDING box, so a
+          left border would shift where the drop indicator starts, per level.
+          That position is load bearing: `data-drop-indicator` doubles as the
+          drop animation's flight target (DRAG-AND-DROP §4.7).
+        - `inset-y-0` stops the rail 1px short of `border-b`, so a run of
+          same-priority cards reads as ticks rather than fusing into one stripe.
+
+        The rail is `aria-hidden`; the level reaches screen readers as text
+        inside the title button below.
+      */}
+      {rail && (
+        <span
+          aria-hidden
+          data-priority-rail={todo.priority}
+          style={{ width: rail.width, backgroundColor: rail.color }}
+          className="pointer-events-none absolute inset-y-0 left-0"
+        />
+      )}
+
+      {/*
         Insertion indicator: a solid line showing exactly where the dragged item
         will land. Without it the column highlight tells you *which* column but
         not *where* in it.
@@ -145,23 +243,60 @@ export function TodoCard({
       )}
 
       {/*
-        The whole row drags, but the grip stays. It is the keyboard drag
-        activator — a real focusable control carrying the aria-roledescription,
-        which a bare div row cannot be without nesting interactive elements —
-        and it is the only touch drag surface, since `touch-none` on the row
-        itself would cost the columns their touch scrolling.
+        The whole row drags, but the grip stays — out of the layout, and out of
+        sight until you reach for it.
 
-        It stays faintly visible at rest rather than fully hidden — a control
-        that only exists on hover is undiscoverable until you happen to sweep
-        over it.
+        It is still the keyboard drag activator: a real focusable control
+        carrying `attributes` (role, tabIndex, aria-roledescription), which a
+        bare div row cannot be without nesting interactive elements inside a
+        button. `Space` on it still lifts, so the keyboard model is untouched.
+        It is no longer the touch drag surface — TouchSensor's long-press covers
+        the whole row now (board.tsx sensors), which is strictly better than one
+        12px control.
+
+        What changed is what it costs. In flow it took 20px of a ~108px title
+        track at the --column-min floor. Absolutely positioned in the row's left
+        gutter it takes none, and revealing it on hover or focus rather than
+        leaving it faintly visible trades a little discoverability for that
+        width — an acceptable trade now that the whole row is grabbable and the
+        grip-means-draggable vocabulary is still taught by columns and tabs.
+
+        `before:inset-x-0` is not tidiness. DragGrip expands its hit area to
+        24×24 via `::before`, and an `opacity-0` element still receives pointer
+        events — so out of flow, that expansion would sit over the checkbox and
+        silently eat its clicks. Vertical only.
       */}
       <DragGrip
-        className="mt-1 group-hover:text-muted-foreground"
+        className={cn(
+          // `top-2.5` centres a 12px glyph on the first line of `text-sm
+          // leading-snug` inside `py-1.5`.
+          "absolute left-0 top-2.5",
+          // Full strength rather than DragGrip's resting /30: at rest it is not
+          // visible at all, so there is nothing left for a faint state to do.
+          "text-muted-foreground opacity-0 transition-opacity",
+          // `group-focus-within` also fires for the row itself, so arrowing onto
+          // a card reveals the grip — which is how a keyboard user learns the
+          // row can be lifted at all.
+          "group-hover:opacity-100 group-focus-within:opacity-100",
+          "focus-visible:opacity-100",
+          "before:-inset-y-1.5 before:inset-x-0",
+        )}
         aria-label={`Drag to reschedule or reorder ${todo.title}`}
         {...attributes}
         onKeyDown={startKeyboardDrag}
       />
 
+      {/*
+        Out of flow, in the gutter right after the grip, so the title can wrap
+        beneath it. `top-2` centres a 16px box on the first line of `text-sm
+        leading-snug` inside `py-1.5`.
+
+        `after:-inset-x-1` narrows the shadcn base's 12px horizontal hit
+        expansion to 4px. Left at 12px it would reach back to x=0 and cover the
+        grip entirely, so a click meant for the grip would toggle done. At 4px the
+        target is still 24px wide — the WCAG 2.2 minimum — and stops clear of the
+        grip's glyph, which is painted between x≈4.5 and x≈7.5.
+      */}
       <Checkbox
         checked={todo.status === "done"}
         onCheckedChange={() => onToggle(todo)}
@@ -169,14 +304,20 @@ export function TodoCard({
         // Cursor is inherited, so without this the checkbox would read as a
         // drag surface. It still drags if you pull from it; it just should not
         // advertise that over being a checkbox.
-        className="mt-0.5 cursor-pointer"
+        className="absolute left-3 top-2 cursor-pointer after:-inset-x-1"
       />
 
       <button
         type="button"
         onClick={() => onOpen(todo)}
         className={cn(
-          "flex-1 text-left text-sm leading-snug",
+          // `block w-full`, because a button is inline-block by default and
+          // would otherwise shrink-wrap its text instead of taking the column's
+          // width — leaving the title nothing to wrap within. This replaced a
+          // `flex-1 min-w-0` pair when the row stopped being a flex container;
+          // block boxes have no flex automatic minimum size, so the min-content
+          // floor that used to push the row into the next column is simply gone.
+          "block w-full text-left text-sm leading-snug",
           // Stated rather than inherited: dragging is the primary gesture over
           // the title now, and a click still opens the sheet.
           "cursor-grab active:cursor-grabbing",
@@ -184,20 +325,103 @@ export function TodoCard({
           todo.status !== "open" && "text-muted-foreground line-through",
         )}
       >
-        <span className="block truncate">{todo.title}</span>
+        {/*
+          The title wraps, then clamps. `wrap-break-word` earns its place
+          independently of the clamp: one unbroken token longer than the track —
+          a pasted URL — has no break opportunity, so it would still push past
+          the column edge without it.
+
+          `indent-6` is the checkbox's 16px box plus an 8px gap, and text-indent
+          applies to the FIRST LINE ONLY — which is the whole trick behind
+          wrapping under the checkbox.
+
+          It survives `line-clamp` even though `-webkit-box` is not a block
+          container: text-indent is inherited, so the anonymous block box holding
+          this span's inline content picks it up and applies it to its own first
+          line (CSS 2.1 §9.2.1.1 — anonymous boxes inherit inherited properties
+          from the enclosing box).
+
+          The markers live inside this same inline flow rather than beside it, so
+          they sit on the indented first line and the text closes up after them.
+
+          A nested tooltip: this span is a trigger for the full title, and the
+          markers inside it are triggers of their own. Base UI handles that — it
+          walks up to the closest enabled trigger and suppresses the ancestor
+          while a nested one is hovered.
+        */}
+        <Tooltip>
+          <TooltipTrigger
+            disabled={!titleClamped}
+            render={
+              <span
+                ref={titleRef}
+                data-todo-title
+                className={cn("indent-6 wrap-break-word", TITLE_CLAMP_CLASS)}
+              >
+                {dueAhead && (
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <span
+                          data-deadline-marker
+                          className="mr-1 inline-block align-[-0.1875em] text-muted-foreground"
+                        >
+                          <CalendarCheck className="size-3" aria-hidden />
+                          <span className="sr-only">
+                            {formatDeadlineDue(dueAhead, ctx.today)}.{" "}
+                          </span>
+                        </span>
+                      }
+                    />
+                    <TooltipContent>
+                      {formatDeadlineDue(dueAhead, ctx.today)}
+                    </TooltipContent>
+                  </Tooltip>
+                )}
+                {todo.location && (
+                  <Tooltip>
+                    {/*
+                      A `span` trigger, deliberately: Base UI adds no role and no
+                      tabIndex of its own, so this stays non-interactive content
+                      inside the title button rather than a control nested in a
+                      control.
+
+                      Which means it is never focusable, and Base UI's focus
+                      handlers sit on the trigger while `focusin` bubbles *up* —
+                      so a keyboard or screen-reader user never opens the tooltip.
+                      The `sr-only` text is the real channel for them; the tooltip
+                      is a pointer nicety. The location string was already inside
+                      this button's accessible name when it was a chip, so nothing
+                      is lost.
+                    */}
+                    <TooltipTrigger
+                      render={
+                        <span
+                          data-location-pin
+                          className="mr-1 inline-block align-[-0.1875em] text-muted-foreground"
+                        >
+                          <MapPin className="size-3" aria-hidden />
+                          <span className="sr-only">
+                            Location: {todo.location}.{" "}
+                          </span>
+                        </span>
+                      }
+                    />
+                    <TooltipContent>{todo.location}</TooltipContent>
+                  </Tooltip>
+                )}
+                {todo.title}
+                {rail && <span className="sr-only"> — {rail.label}</span>}
+              </span>
+            }
+          />
+          <TooltipContent>{todo.title}</TooltipContent>
+        </Tooltip>
 
         {(todoLabels.length > 0 ||
-          deadlineMissed ||
-          isAway ||
-          todo.priority ||
-          todo.location) && (
+          (deadlineMissed && todo.deadline) ||
+          (isAway && todo.scheduledDate)) && (
           <span className="mt-1 flex flex-wrap items-center gap-1">
-            {todo.priority && (
-              <Badge variant="outline" className="num gap-1 text-2xs font-normal">
-                <Flag className="size-2.5" aria-hidden />
-                P{todo.priority}
-              </Badge>
-            )}
             {isAway && todo.scheduledDate && (
               <Badge variant="outline" className="num gap-1 text-2xs font-normal">
                 <CalendarClock className="size-2.5" aria-hidden />
@@ -207,12 +431,6 @@ export function TodoCard({
             {deadlineMissed && todo.deadline && (
               <Badge variant="destructive" className="text-2xs font-normal">
                 Deadline <span className="num">{formatShortDate(todo.deadline)}</span>
-              </Badge>
-            )}
-            {todo.location && (
-              <Badge variant="outline" className="gap-1 text-2xs font-normal">
-                <MapPin className="size-2.5" aria-hidden />
-                {todo.location}
               </Badge>
             )}
             {todoLabels.map((label) => (

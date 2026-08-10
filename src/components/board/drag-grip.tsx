@@ -36,7 +36,17 @@ export function DragGrip({ className, ...props }: ComponentProps<"button">) {
         // from claiming the gesture for scrolling before dnd-kit's 4px
         // threshold is met. See DRAG-AND-DROP.md §4.9.
         "touch-none",
-        "before:absolute before:-inset-1.5 before:content-['']",
+        /*
+          The hit expansion is stated per AXIS rather than as `-inset-1.5`, so a
+          caller can override one axis without the other.
+          `tailwind-merge` does not know that `-inset-1.5` and `-inset-x-1.5`
+          conflict, so the shorthand version survived every override and left
+          which side won to CSS source order — invisibly, since the box is
+          transparent. `todo-card.tsx` sets `before:inset-x-0` for exactly this
+          reason: out of flow, a horizontal expansion covers the checkbox and
+          eats its clicks.
+        */
+        "before:absolute before:-inset-x-1.5 before:-inset-y-1.5 before:content-['']",
         "hover:text-foreground",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         className,

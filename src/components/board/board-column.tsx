@@ -1,18 +1,50 @@
 "use client";
 
-import { useState } from "react";
-import type { KeyboardEventHandler, PointerEventHandler } from "react";
+import { useRef, useState } from "react";
+import type {
+  KeyboardEventHandler,
+  MouseEventHandler,
+  ReactNode,
+  TouchEventHandler,
+} from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
-import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import { Plus } from "lucide-react";
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  type SortingStrategy,
+} from "@dnd-kit/sortable";
+import { CalendarCheck, ChevronDown, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { edge } from "@/lib/colors";
-import { listDragId } from "@/lib/board";
-import { addStop, navKeyOf, type NavKey } from "@/lib/column-nav";
+import { edge, tint, wash } from "@/lib/colors";
+import { listDragId, type TodoGroup } from "@/lib/board";
+import { addStop, groupStop, navKeyOf, type NavKey } from "@/lib/column-nav";
 import type { Label as LabelRecord, Todo } from "@/lib/schema";
 import type { PlacementContext } from "@/lib/scheduling";
 import { DragGrip } from "./drag-grip";
 import { TodoCard } from "./todo-card";
+
+/**
+ * A grouped column's order is COMPUTED, so nothing shifts to preview an insertion.
+ *
+ * Not cosmetic, and not optional. `verticalListSortingStrategy` is called with
+ * `overIndex: -1` whenever `over` is a group rather than a card, and at -1 its
+ * `index < activeIndex && index >= overIndex` branch (@dnd-kit/sortable
+ * sortable.esm.js:245) is TRUE for every card above the dragged one — so the
+ * default strategy shoves the top of the column downwards for the whole drag.
+ */
+const NO_SORTING: SortingStrategy = () => null;
+
+/**
+ * Cards in a grouped column are drag SOURCES only; the group is the target.
+ *
+ * `SortableContext`'s `disabled` reaches every `useSortable` inside it and is
+ * forwarded straight to that card's `useDroppable` — and dnd-kit hands only
+ * ENABLED droppables to collision detection, so this removes day-column cards
+ * from `over` resolution entirely rather than ignoring them afterwards. Which is
+ * also why the per-card insertion line needs no gating here: `overTodoId` can no
+ * longer name a card in this half.
+ */
+const CARDS_NOT_DROPPABLE = { draggable: false, droppable: true } as const;
 
 interface BoardColumnProps {
   id: string;
@@ -22,6 +54,25 @@ interface BoardColumnProps {
   labels: LabelRecord[];
   ctx: PlacementContext;
   awayTodoIds?: Set<string>;
+  /**
+   * How many to-dos anywhere on the board carry a deadline on this column's
+   * date. Day columns only — a list column is not a date, so it has no answer.
+   * Omitted or 0 renders nothing.
+   */
+  dueCount?: number;
+  /**
+   * Grouped rendering, present on day columns and Overflow and absent on list
+   * columns — the planning half is arranged by hand.
+   *
+   * Must partition `todos`; both come off the same `DayColumn`, which derives one
+   * from the other, so they cannot disagree by construction.
+   */
+  groups?: TodoGroup[];
+  /** List keys whose groups are collapsed. Shared across the whole calendar half. */
+  collapsedGroups?: ReadonlySet<string>;
+  onToggleGroup?: (key: string) => void;
+  /** The group a release would land in — highlight and drop indicator. */
+  overGroupId?: string | null;
   emphasis?: boolean;
   /** Rendered in the column header — list rename/delete menus, etc. */
   actions?: React.ReactNode;
@@ -39,6 +90,8 @@ interface BoardColumnProps {
   onNavigate?: (fromStopId: string, key: NavKey) => boolean;
   /** Ruled lines fill the empty space, matching the reference UI's paper feel. */
   minRows?: number;
+  /** Opens the list settings dialog. A single click on the title triggers this. */
+  onOpenListInfo?: () => void;
   /** True while any drag is in flight — used to outline candidate targets. */
   isDragActive?: boolean;
   /** Id of the todo the pointer is currently over, for the insertion line. */
@@ -102,6 +155,11 @@ export function BoardColumn({
   labels,
   ctx,
   awayTodoIds,
+  dueCount,
+  groups,
+  collapsedGroups,
+  onToggleGroup,
+  overGroupId,
   emphasis,
   actions,
   onToggle,
@@ -109,6 +167,7 @@ export function BoardColumn({
   onQuickAdd,
   onNavigate,
   minRows = 8,
+  onOpenListInfo,
   isDragActive,
   overTodoId,
   landingTodoId,
@@ -158,15 +217,24 @@ export function BoardColumn({
   });
 
   // dnd-kit types its listeners as bare `Function`, which spreads onto an
-  // element fine but cannot be assigned to a specific handler prop. The two
-  // activators go to different elements here, so name them once. Both are
+  // element fine but cannot be assigned to a specific handler prop. The
+  // activators go to different elements here, so name them once. All are
   // undefined while disabled — dnd-kit withholds the listeners entirely, so a
   // day column's header gets no handler at all rather than a guarded one.
-  const { onPointerDown: startPointerDrag, onKeyDown: startKeyboardDrag } =
-    (dragListeners ?? {}) as {
-      onPointerDown?: PointerEventHandler;
-      onKeyDown?: KeyboardEventHandler;
-    };
+  //
+  // `onMouseDown`/`onTouchStart`, not `onPointerDown`: the sensors are a
+  // MouseSensor and a TouchSensor rather than one PointerSensor (§4.8), and each
+  // sensor names its own activator. Destructuring the wrong one fails silently —
+  // an undefined handler is a header that simply does not drag.
+  const {
+    onMouseDown: startMouseDrag,
+    onTouchStart: startTouchDrag,
+    onKeyDown: startKeyboardDrag,
+  } = (dragListeners ?? {}) as {
+    onMouseDown?: MouseEventHandler;
+    onTouchStart?: TouchEventHandler;
+    onKeyDown?: KeyboardEventHandler;
+  };
 
   const commit = () => {
     const title = draft.trim();
@@ -175,7 +243,46 @@ export function BoardColumn({
     setDraft(""); // Keep focus so several todos can be typed in a row.
   };
 
-  const fillerRows = Math.max(0, minRows - todos.length);
+  /**
+   * The groups to render, or null for a flat column.
+   *
+   * An ARRAY-or-null rather than a boolean flag, so narrowing it below needs no
+   * assertion — and `length > 0` rather than mere presence, because `groups` is
+   * `[]` on a day column with no lists to group by (`buildBoard`'s degenerate
+   * fallback) and in that state the flat `todos` are still the contents.
+   */
+  const grouped = groups && groups.length > 0 ? groups : null;
+
+  // Group headers occupy vertical space the filler arithmetic did not know
+  // about. A header is ~19px against a 32px filler row, so counting them 1:1
+  // slightly under-fills — the safe direction.
+  const fillerRows = Math.max(0, minRows - todos.length - (groups?.length ?? 0));
+
+  /**
+   * The card rows, so the markup exists once whether or not the column groups.
+   *
+   * A function rather than a second component: it closes over eight props that
+   * would otherwise all have to be threaded through, and it renders no element of
+   * its own.
+   */
+  const renderCards = (rows: Todo[]) =>
+    rows.map((todo) => (
+      <TodoCard
+        key={todo.id}
+        todo={todo}
+        labels={labels}
+        ctx={ctx}
+        isAway={awayTodoIds?.has(todo.id)}
+        // A grouped column has no per-card insertion line: its cards are not
+        // droppables, so `overTodoId` can never name one of them anyway (see
+        // CARDS_NOT_DROPPABLE). The group highlight is the indicator there.
+        showInsertionLine={!rejectsDrop && overTodoId === todo.id}
+        isLanding={landingTodoId === todo.id}
+        onToggle={onToggle}
+        onOpen={onOpen}
+        onNavigate={onNavigate}
+      />
+    ));
 
   return (
     <section
@@ -242,15 +349,17 @@ export function BoardColumn({
         ref={setDragRef}
         /*
           The whole header is the drag surface, matching a card's whole row
-          (§4.9). Only `onPointerDown` moves here: `attributes` and the keyboard
-          activator stay on the grip, which is a real focusable control and can
-          carry them without making the header a button that contains buttons.
+          (§4.9). Only the pointer activators move here: `attributes` and the
+          keyboard activator stay on the grip, which is a real focusable control
+          and can carry them without making the header a button that contains
+          buttons.
 
           Scoped to the header rather than the section because the column body
-          is full of cards that are drag sources themselves — a pointerdown
-          there has to mean "drag this card", not "drag its column".
+          is full of cards that are drag sources themselves — a press there has
+          to mean "drag this card", not "drag its column".
         */
-        onPointerDown={startPointerDrag}
+        onMouseDown={startMouseDrag}
+        onTouchStart={startTouchDrag}
         className={cn(
           // Relative regardless of branch: harmless when nothing inside is
           // absolutely positioned, and it's what lets RailCollapseButton (in
@@ -301,10 +410,10 @@ export function BoardColumn({
                 every neighbouring column's title was indented past a grip.
 
                 The header drags on its own now, so the grip is no longer the only
-                way in — but it stays a real control for the same two reasons it
-                does on a card: it is the keyboard activator, and it is the only
-                surface carrying `touch-none`, so on touch it remains the drag
-                surface while the track keeps its scrolling.
+                way in — but it stays a real control because it is the keyboard
+                activator, which a bare `<header>` cannot be without becoming a
+                button full of buttons. Touch no longer depends on it: the
+                TouchSensor's long press covers the whole header (§4.8).
               */}
               <div className="flex min-w-0 items-center gap-1.5">
                 {dragListName !== null ? (
@@ -323,6 +432,7 @@ export function BoardColumn({
                   reservesGripSlot && <span className="size-3 shrink-0" aria-hidden />
                 )}
                 <h2
+                  onClick={onOpenListInfo}
                   className={cn(
                     "truncate font-heading text-lg font-bold uppercase tracking-tight",
                     emphasis && "text-primary",
@@ -337,23 +447,67 @@ export function BoardColumn({
         )}
       </header>
 
+      {/*
+        DEADLINES DUE THIS DAY.
+
+        Counted across the whole board, not just this column: a to-do due Friday
+        may well be scheduled for Tuesday, and the point of the banner is to warn
+        you before Friday arrives. So it is a property of the *date*, not of the
+        column's contents, and `board.tsx` computes it from every todo.
+
+        Deliberately loud — destructive tint, full column width, directly under
+        the header — because it is the one thing on the board that a plan can be
+        wrong about without anything else looking wrong.
+      */}
+      {!collapsed && dueCount !== undefined && dueCount > 0 && (
+        <div
+          data-due-banner={dueCount}
+          className={cn(
+            "flex items-center gap-1 border-b border-destructive/20 bg-destructive/10",
+            "px-2 py-0.5 text-2xs font-medium text-destructive",
+          )}
+        >
+          <CalendarCheck className="size-3 shrink-0" aria-hidden />
+          <span aria-hidden>
+            <span className="num">{dueCount}</span> due
+          </span>
+          <span className="sr-only">
+            {dueCount === 1 ? "1 to-do is" : `${dueCount} to-dos are`} due on this
+            day
+          </span>
+        </div>
+      )}
+
       {!collapsed && (
         <div className="flex flex-1 flex-col">
-          <SortableContext items={todos.map((t) => t.id)} strategy={verticalListSortingStrategy}>
-            {todos.map((todo) => (
-              <TodoCard
-                key={todo.id}
-                todo={todo}
-                labels={labels}
-                ctx={ctx}
-                isAway={awayTodoIds?.has(todo.id)}
-                showInsertionLine={!rejectsDrop && overTodoId === todo.id}
-                isLanding={landingTodoId === todo.id}
-                onToggle={onToggle}
-                onOpen={onOpen}
-                onNavigate={onNavigate}
-              />
-            ))}
+          {/*
+            `groups?.length` rather than `groups`: an empty array is `buildBoard`'s
+            degenerate no-lists fallback, where the flat `todos` are still the
+            column's contents. Branching on the array's existence would render
+            `[].map(...)` and drop every card on the floor.
+          */}
+          <SortableContext
+            items={todos.map((t) => t.id)}
+            strategy={grouped ? NO_SORTING : verticalListSortingStrategy}
+            disabled={grouped ? CARDS_NOT_DROPPABLE : undefined}
+          >
+            {grouped ? (
+              grouped.map((group) => (
+                <TodoGroupSection
+                  key={group.id}
+                  group={group}
+                  collapsed={!!collapsedGroups?.has(group.key)}
+                  isOver={overGroupId === group.id}
+                  droppable={!rejectsDrop}
+                  onToggle={onToggleGroup}
+                  onNavigate={onNavigate}
+                >
+                  {renderCards(group.todos)}
+                </TodoGroupSection>
+              ))
+            ) : (
+              renderCards(todos)
+            )}
           </SortableContext>
 
           {/*
@@ -367,7 +521,12 @@ export function BoardColumn({
             drag, which is a different bug from, but the same shape as, the
             reason `isColumnDropTarget` exists above.
           */}
-          {isOver && !rejectsDrop && !overTodoId && !isColumnDragActive && (
+          {/*
+            `!overGroupId` keeps at most ONE `data-drop-indicator` on screen,
+            which `readLandingRect()` depends on — with two, the dragged card
+            flies to whichever one `querySelector` happens to find first.
+          */}
+          {isOver && !rejectsDrop && !overTodoId && !overGroupId && !isColumnDragActive && (
             <span
               aria-hidden
               data-drop-indicator
@@ -428,5 +587,144 @@ export function BoardColumn({
         </div>
       )}
     </section>
+  );
+}
+
+interface TodoGroupSectionProps {
+  group: TodoGroup;
+  collapsed: boolean;
+  /** A release here would land in this group. */
+  isOver: boolean;
+  /** False on Overflow, which refuses drops — so it registers no target at all. */
+  droppable: boolean;
+  onToggle?: (key: string) => void;
+  onNavigate?: (fromStopId: string, key: NavKey) => boolean;
+  children: ReactNode;
+}
+
+/**
+ * One list's run of cards inside a computed column, under a collapsible header.
+ *
+ * Local to this file because it calls `useDroppable`, which needs the
+ * `DndContext` this column already sits inside — and because the header and the
+ * wash are only meaningful next to the cards they belong to.
+ */
+function TodoGroupSection({
+  group,
+  collapsed,
+  isOver,
+  droppable,
+  onToggle,
+  onNavigate,
+  children,
+}: TodoGroupSectionProps) {
+  const { setNodeRef } = useDroppable({ id: group.id, disabled: !droppable });
+  const headerRef = useRef<HTMLButtonElement>(null);
+  const cardsId = `${group.id}-cards`;
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        "relative",
+        /*
+          The group highlight REPLACES the per-card insertion line in this half.
+          A drop here means "belongs to this list", which is a statement about the
+          whole group rather than about a slot between two cards — so a line
+          between two cards would promise precision the write does not have.
+        */
+        isOver && "bg-primary/5 outline outline-2 outline-offset-[-2px] outline-primary",
+      )}
+    >
+      <button
+        ref={headerRef}
+        type="button"
+        /*
+          A real `<button>`, so Enter and Space toggle natively — but
+          `tabIndex={-1}`, reached by the arrow keys only, exactly like a card
+          row. Tabbable headers were the obvious thing and they are wrong: a
+          seven-day week with four lists is 28 new Tab stops standing between the
+          user and the first quick-add.
+
+          Unlike a card row this CAN carry a role, because it contains only text,
+          a chevron and a count — there is no nested control to worry about.
+        */
+        tabIndex={-1}
+        data-nav-stop={groupStop(group.id)}
+        aria-expanded={!collapsed}
+        aria-controls={cardsId}
+        // The count is visible only when collapsed but always in the accessible
+        // name: a screen-reader user has no "glance".
+        aria-label={`${group.name}, ${group.todos.length} ${
+          group.todos.length === 1 ? "to-do" : "to-dos"
+        }`}
+        onClick={() => {
+          onToggle?.(group.key);
+          // Collapsing removes the cards from the DOM. If focus was inside them
+          // it lands on <body> and the arrow keys go dead, so pull it up to the
+          // header — which is where a keyboard user would expect to still be.
+          headerRef.current?.focus({ preventScroll: true });
+        }}
+        onKeyDown={(e) => {
+          const key = navKeyOf(e);
+          if (key && onNavigate?.(groupStop(group.id), key)) e.preventDefault();
+        }}
+        className={cn(
+          "flex w-full items-center gap-1 border-b px-2 py-0.5 text-left",
+          "text-2xs font-medium uppercase tracking-wide text-muted-foreground",
+          "cursor-pointer transition-colors hover:bg-accent/50",
+          "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring",
+          // An uncolored list keeps the ordinary rule rather than gaining a grey
+          // one — the same rule the column header's tab accent follows.
+          !group.color && "border-border/60",
+        )}
+        /*
+          Colour rides the border and a faint fill, never the text: a Radix step-9
+          hue at `text-2xs` fails contrast in one theme or the other, which is the
+          same reason `lib/priority.ts` keeps its palette to fills.
+        */
+        style={
+          group.color
+            ? { borderColor: edge(group.color), backgroundColor: tint(group.color) }
+            : undefined
+        }
+      >
+        <ChevronDown
+          className={cn(
+            "size-3 shrink-0 transition-transform",
+            collapsed && "-rotate-90",
+          )}
+          aria-hidden
+        />
+        <span className="truncate">{group.name}</span>
+        {collapsed && (
+          <span className="num ml-auto shrink-0" aria-hidden>
+            {group.todos.length}
+          </span>
+        )}
+      </button>
+
+      {/*
+        THE WASH sits behind the run of cards, not on each card — which is also
+        why nothing here fights `hover:bg-accent/50`. That hover is 50% alpha and
+        composites over this; an inline `style.backgroundColor` on the card would
+        have beaten the hover class outright, since inline always wins, and the fix
+        would have been a `bg-[var(--wash,transparent)]` custom-property dance on
+        every row. Behind them, there is nothing to fix.
+      */}
+      <div id={cardsId} style={{ backgroundColor: wash(group.color) }}>
+        {!collapsed && children}
+      </div>
+
+      {isOver && (
+        <span
+          aria-hidden
+          data-drop-indicator
+          className="relative block h-0.5 rounded-full bg-primary"
+        >
+          <span className="absolute -left-0.5 -top-[3px] size-2 rounded-full bg-primary" />
+        </span>
+      )}
+    </div>
   );
 }
