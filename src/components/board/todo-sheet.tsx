@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Trash2 } from "lucide-react";
+import { ArrowLeft, Trash2 } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -26,7 +26,9 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { TITLE_LINES } from "@/lib/title";
+import { formatShortDate } from "@/lib/scheduling";
 import type {
+  CivilDate,
   Label as LabelRecord,
   List,
   Priority,
@@ -52,6 +54,14 @@ interface TodoSheetProps {
   onSetStatus: (id: string, status: Todo["status"]) => void;
   onToggleLabel: (todoId: string, labelId: string) => void;
   onDelete: (id: string) => void;
+  /**
+   * Set only when this sheet was opened from that day's timeline — renders a
+   * "Back to Aug 11" affordance above the title. Absent for every other way of
+   * reaching the sheet (a board card, the palette, Overflow), where there is
+   * nowhere sensible to go back to.
+   */
+  backToDay?: CivilDate;
+  onBackToDay?: () => void;
 }
 
 /**
@@ -81,6 +91,8 @@ function TodoSheetContent({
   onSetStatus,
   onToggleLabel,
   onDelete,
+  backToDay,
+  onBackToDay,
 }: TodoSheetProps & { todo: Todo }) {
   const [title, setTitle] = useState(todo.title);
 
@@ -93,11 +105,21 @@ function TodoSheetContent({
   return (
     <Sheet open onOpenChange={(open) => !open && onClose()}>
       <SheetContent className="flex w-full flex-col gap-0 sm:max-w-md">
-        <SheetHeader>
+        <SheetHeader className={backToDay ? "gap-1.5 pr-10" : undefined}>
           <SheetTitle className="sr-only">Edit to-do</SheetTitle>
           <SheetDescription className="sr-only">
             Edit the details of this to-do item.
           </SheetDescription>
+          {backToDay && onBackToDay && (
+            <button
+              type="button"
+              onClick={onBackToDay}
+              className="-ml-1 flex w-fit items-center gap-1 rounded px-1 py-0.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            >
+              <ArrowLeft className="size-3" aria-hidden />
+              Back to {formatShortDate(backToDay)}
+            </button>
+          )}
           {/*
             A textarea, not an input, so a long title is readable here rather
             than scrolling sideways one line at a time — and it grows to exactly

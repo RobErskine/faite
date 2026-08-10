@@ -272,6 +272,13 @@ export function Board() {
   const [activeTodo, setActiveTodo] = useState<Todo | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
   const [openTodoId, setOpenTodoId] = useState<string | null>(null);
+  /**
+   * The day whose timeline the open todo sheet was reached from, if any —
+   * powers the sheet's "Back to Aug 11" affordance. Null for every other way
+   * of opening a todo (a board card, the palette, Overflow), which is what
+   * keeps a stale origin from following the sheet there.
+   */
+  const [todoOriginDay, setTodoOriginDay] = useState<CivilDate | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   /** The list whose settings dialog is open, if any. */
   const [infoListId, setInfoListId] = useState<string | null>(null);
@@ -1389,6 +1396,29 @@ export function Board() {
     [todos],
   );
 
+  /**
+   * The single door into the todo sheet. `originDay` is set ONLY by the day
+   * sheet's timeline — every other opener (a board card, the palette,
+   * Overflow) passes none, so the sheet shows no "Back to ..." affordance for
+   * them.
+   */
+  const openTodoSheet = useCallback((id: string, originDay: CivilDate | null = null) => {
+    setOpenTodoId(id);
+    setTodoOriginDay(originDay);
+  }, []);
+
+  const closeTodoSheet = useCallback(() => {
+    setOpenTodoId(null);
+    setTodoOriginDay(null);
+  }, []);
+
+  /** Return to the day the open todo was reached from, closing the todo sheet. */
+  const handleBackToDay = useCallback(() => {
+    setOpenTodoId(null);
+    setOpenDay(todoOriginDay);
+    setTodoOriginDay(null);
+  }, [todoOriginDay]);
+
   const handleSheetStatus = useCallback(
     (id: string, status: Todo["status"]) => {
       const before = todos.find((t) => t.id === id);
@@ -1574,7 +1604,7 @@ export function Board() {
               collapsedGroups={collapsedGroups}
               onToggleGroup={toggleGroup}
               onToggle={handleToggle}
-              onOpen={(todo) => setOpenTodoId(todo.id)}
+              onOpen={(todo) => openTodoSheet(todo.id)}
               // No `onQuickAdd`, so no quick-add row: nothing can be scheduled
               // INTO Overflow, only out of it.
               onNavigate={navigate}
@@ -1667,7 +1697,7 @@ export function Board() {
                     overGroupId={overGroupId}
                     emphasis={isToday}
                     onToggle={handleToggle}
-                    onOpen={(todo) => setOpenTodoId(todo.id)}
+                    onOpen={(todo) => openTodoSheet(todo.id)}
                     onQuickAdd={(title) => void handleQuickAdd(title, { day: column.day })}
                     onNavigate={navigate}
                     isDragActive={!!activeTodo}
@@ -1728,7 +1758,7 @@ export function Board() {
                 ctx={ctx}
                 awayTodoIds={board.awayTodoIds}
                 onToggle={handleToggle}
-                onOpen={(todo) => setOpenTodoId(todo.id)}
+                onOpen={(todo) => openTodoSheet(todo.id)}
                 onQuickAdd={(title) =>
                   void handleQuickAdd(title, { listId: backlogColumn.list.id })
                 }
@@ -1806,7 +1836,7 @@ export function Board() {
                     ctx={ctx}
                     awayTodoIds={board.awayTodoIds}
                     onToggle={handleToggle}
-                    onOpen={(todo) => setOpenTodoId(todo.id)}
+                    onOpen={(todo) => openTodoSheet(todo.id)}
                     onQuickAdd={(title) =>
                       void handleQuickAdd(title, { listId: column.list.id })
                     }
@@ -1907,11 +1937,13 @@ export function Board() {
         lists={lists}
         labels={labels}
         projects={projects}
-        onClose={() => setOpenTodoId(null)}
+        onClose={closeTodoSheet}
         onSave={handleSheetSave}
         onSetStatus={handleSheetStatus}
         onToggleLabel={handleToggleLabel}
         onDelete={handleDelete}
+        backToDay={todoOriginDay ?? undefined}
+        onBackToDay={handleBackToDay}
       />
 
       <ListInfoDialog
@@ -1956,7 +1988,7 @@ export function Board() {
         tabs={tabs}
         settings={settings}
         activeTabId={activeTabId}
-        onSelectTodo={(todo) => setOpenTodoId(todo.id)}
+        onSelectTodo={(todo) => openTodoSheet(todo.id)}
         onSelectTab={selectTab}
       />
 
@@ -1993,10 +2025,11 @@ export function Board() {
       onSaveNote={(day, body) => void setDayNote(day, body)}
       onToggleTodo={handleToggle}
       // Swap sheets rather than stacking them: a second right-side sheet fully
-      // covers the first, so "the day is still behind it" would be a lie.
+      // covers the first, so "the day is still behind it" would be a lie. The
+      // todo sheet's "Back to Aug 11" is what lets the user return.
       onOpenTodo={(todo) => {
+        openTodoSheet(todo.id, openDay);
         setOpenDay(null);
-        setOpenTodoId(todo.id);
       }}
     />
     </>
