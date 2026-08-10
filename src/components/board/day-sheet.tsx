@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { Check, Plus, X } from "lucide-react";
+import { ArrowRight, Check, Plus, X } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -15,7 +15,7 @@ import { Separator } from "@/components/ui/separator";
 import { edge, wash } from "@/lib/colors";
 import {
   buildDayTimeline,
-  formatEventTime,
+  formatEventWhen,
   type DayEvent,
   type DayEventKind,
 } from "@/lib/day-timeline";
@@ -66,12 +66,14 @@ interface DaySheetProps {
 
 const EVENT_LABEL: Record<DayEventKind, string> = {
   created: "Created",
+  scheduled: "Assigned here",
   done: "Completed",
   dropped: "Won't do",
 };
 
 const EVENT_ICON: Record<DayEventKind, typeof Plus> = {
   created: Plus,
+  scheduled: ArrowRight,
   done: Check,
   dropped: X,
 };
@@ -146,6 +148,7 @@ function DaySheetContent({
                   <TimelineEntry
                     key={event.key}
                     event={event}
+                    day={day}
                     isLast={index === events.length - 1}
                     list={
                       (event.todo.listId ? listsById.get(event.todo.listId) : undefined) ??
@@ -169,6 +172,9 @@ function DaySheetContent({
 
 interface TimelineEntryProps {
   event: DayEvent;
+  /** The day this timeline belongs to — NOT necessarily the day `event.at`
+   * falls on. See `formatEventWhen`. */
+  day: CivilDate;
   isLast: boolean;
   list: List | undefined;
   labels: LabelRecord[];
@@ -180,6 +186,7 @@ interface TimelineEntryProps {
 
 function TimelineEntry({
   event,
+  day,
   isLast,
   list,
   labels,
@@ -215,7 +222,7 @@ function TimelineEntry({
         {EVENT_LABEL[event.kind]}
         <span aria-hidden>·</span>
         <time dateTime={event.at} className="num">
-          {formatEventTime(event.at, timezone)}
+          {formatEventWhen(event.at, day, timezone)}
         </time>
       </p>
 

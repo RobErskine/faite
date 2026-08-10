@@ -1129,3 +1129,37 @@ timeline of that day's todo events. Sticky-note icon after the date marks days w
       clipping, Escape ordering, and link popovers were not exercised by hand.
 - [ ] Pre-existing and unrelated: the todo sheet's List/Priority/Project selects render
       the raw `__none__` sentinel instead of "None". Confirmed on `main` by stashing.
+
+### Follow-up — "Assigned here" timeline event
+
+Rob's ask: dragging a todo from today onto tomorrow should show, in TOMORROW's timeline,
+that today it was assigned there — not just events that literally occurred that day.
+
+- [x] `todo.scheduledAt` — a new field on the EXISTING `todo` kind (not a new sync kind),
+      stamped only on a genuine placement CHANGE, never on a write that repeats the same
+      date (dragging between list groups within one day must not look like a fresh move).
+      Migration 5, `ALTER TABLE todos ADD COLUMN scheduled_at text`.
+- [x] `schedulePatch`/`dayGroupPatch` now take a `previousDate` param and gate the stamp on
+      `scheduledDate !== previousDate`. `listPatch` nulls it unconditionally (unscheduling
+      clears "when was this placed"). `createTodo` never stamps it — a todo quick-added
+      directly onto a day is covered by "Created", not a redundant echo.
+  - Signature change touched exactly 2 call sites in `board.tsx` (day-group drop, empty-day
+    drop) plus `handleSheetSave` for the sheet's manual date field — verified by grep, no
+    other callers exist repo-wide.
+- [x] `day-timeline.ts` — new `scheduled` event kind, keyed by "is the todo CURRENTLY on
+      this day", not "did this happen on this day" (the other three kinds' membership
+      test). `at` is `scheduledAt`, which can fall on a DIFFERENT calendar day than the
+      one it's rendered on — that's the whole point.
+- [x] `formatEventWhen` — prefixes the date when an event's instant lands on a different
+      day than the timeline being viewed, so "Assigned here" reads "Aug 10 · 1:35 PM" on
+      Tuesday's timeline rather than a bare time that would silently imply Tuesday.
+- [x] Same "only latest survives" limitation as `completedAt`, documented in the module
+      header: reschedule twice and only the second move is knowable; move it away again
+      and the event disappears retroactively from where it landed.
+- [x] `inversePatch` picks up the new field automatically (it iterates the forward patch's
+      own keys) — no undo.ts change needed. Caught and fixed one stale test expectation
+      (`undo.test.ts`) that didn't anticipate the new key.
+- [x] Verified live: dragged "Reply to the design feedback" Monday → Tuesday. Monday's
+      timeline unchanged (still just its own Created/Completed/Won't-do). Tuesday shows
+      exactly one entry: "Assigned here · Aug 10 · 1:35 PM".
+- [x] `npm run verify` green: 790 tests / 57 files.

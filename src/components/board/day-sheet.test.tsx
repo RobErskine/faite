@@ -57,6 +57,7 @@ const todo = (overrides: Partial<Todo> & { id: string }): Todo => ({
   status: "open",
   priority: null,
   scheduledDate: DAY,
+  scheduledAt: null,
   deadline: null,
   listId: null,
   projectId: null,
@@ -253,5 +254,22 @@ describe("timeline", () => {
   it("offers no drag affordance on a timeline card", () => {
     render(<Harness todos={[todo({ id: "a" })]} />);
     expect(screen.queryByLabelText(/^Drag to reschedule/)).toBeNull();
+  });
+
+  it("shows a move onto this day, dated with WHEN the move happened", () => {
+    // Created and scheduled elsewhere a while ago; moved onto DAY yesterday.
+    render(
+      <Harness
+        todos={[
+          todo({
+            id: "a",
+            createdAt: "2026-08-01T00:00:00.000Z",
+            scheduledDate: DAY,
+            scheduledAt: "2026-08-09T15:00:00.000Z",
+          }),
+        ]}
+      />,
+    );
+    expect(entryLabels()).toEqual(["Assigned here·Aug 9 · 3:00 PM"]);
   });
 });

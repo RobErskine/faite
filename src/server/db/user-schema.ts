@@ -70,6 +70,7 @@ export const todos = sqliteTable("todos", {
   status: text("status").notNull().default("open"),
   priority: integer("priority"),
   scheduledDate: text("scheduled_date"),
+  scheduledAt: text("scheduled_at"),
   deadline: text("deadline"),
   listId: text("list_id"),
   projectId: text("project_id"),

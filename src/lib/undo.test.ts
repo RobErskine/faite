@@ -105,10 +105,16 @@ describe("inverses of the repository patch shapes", () => {
     // Regression: moveTodoToList writes `scheduledDate: null` internally. A
     // call site that hand-built {listId, position} would drop it, so dragging
     // a scheduled todo into a list and undoing left it unscheduled.
-    const before = todo({ scheduledDate: "2026-08-05" });
+    //
+    // `scheduledAt` carries a real (non-null) instant here on purpose — with it
+    // absent from the fixture, a bug that always restored `null` would pass
+    // this test by coincidence (`before[key]` reads `undefined`, coerced to
+    // `null` either way).
+    const before = todo({ scheduledDate: "2026-08-05", scheduledAt: "2026-08-04T09:00:00.000Z" });
     expect(inversePatch(before, listPatch("l2", "a5"))).toEqual({
       listId: "l1",
       scheduledDate: "2026-08-05",
+      scheduledAt: "2026-08-04T09:00:00.000Z",
       position: "a0",
     });
   });

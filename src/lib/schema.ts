@@ -153,6 +153,27 @@ export const todoSchema = z.object({
   scheduledDate: civilDateSchema.nullable().default(null),
 
   /**
+   * WHEN the current `scheduledDate` was assigned — an instant, not a civil
+   * date. Null whenever `scheduledDate` is null.
+   *
+   * Stamped only on a genuine placement change (`schedulePatch`/`dayGroupPatch`
+   * in `store/repositories.ts`), never on a write that merely repeats the same
+   * date — dragging a card between list groups within one day writes
+   * `scheduledDate` again but must not look like a fresh assignment. NOT
+   * stamped at creation either: a todo quick-added directly onto a day was
+   * never "moved" there, so `day-timeline.ts`'s "Assigned here" event would be
+   * a redundant echo of "Created" for the same instant.
+   *
+   * This is what lets the day sheet's timeline show, on the day a todo is
+   * CURRENTLY scheduled for, when that placement decision was made — which may
+   * be a different calendar day than the one being viewed (dragging something
+   * from today onto tomorrow is an event that belongs on tomorrow's timeline).
+   * Like `completedAt`, only the LATEST placement survives: reschedule
+   * something twice and only the second move is knowable.
+   */
+  scheduledAt: z.string().nullable().default(null),
+
+  /**
    * Hard due date, independent of `scheduledDate`.
    *
    * A deadline never exempts a todo from overflow and never changes which

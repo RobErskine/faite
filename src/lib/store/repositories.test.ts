@@ -10,10 +10,13 @@ import {
   createList,
   createTab,
   createTodo,
+  dayGroupPatch,
   DEFAULT_TAB_ID,
   deleteList,
   deleteTab,
   ensureDefaultTab,
+  listPatch,
+  schedulePatch,
   seedIfEmpty,
   unarchiveList,
   unarchiveTab,
@@ -476,5 +479,64 @@ describe("mutate writes to the outbox", () => {
     expect(entries[0].kind).toBe("todo");
     expect(entries[0].entityId).toBe(id);
     expect(entries[0].hlc).toBeTruthy();
+  });
+});
+
+describe("schedulePatch — placement stamping", () => {
+  it("stamps scheduledAt when the date genuinely changes", () => {
+    const patch = schedulePatch("2026-08-11", "2026-08-10");
+    expect(patch.scheduledDate).toBe("2026-08-11");
+    expect(patch.scheduledAt).toBeTruthy();
+  });
+
+  it("stamps scheduledAt when scheduling for the first time (previous null)", () => {
+    const patch = schedulePatch("2026-08-11", null);
+    expect(patch.scheduledAt).toBeTruthy();
+  });
+
+  it("does NOT stamp scheduledAt when the date is unchanged", () => {
+    // The case that matters: re-writing the same date must not look like a
+    // fresh assignment on the day sheet's timeline.
+    const patch = schedulePatch("2026-08-11", "2026-08-11");
+    expect(Object.hasOwn(patch, "scheduledAt")).toBe(false);
+  });
+
+  it("nulls scheduledAt when clearing the date", () => {
+    const patch = schedulePatch(null, "2026-08-11");
+    expect(patch.scheduledDate).toBeNull();
+    expect(patch.scheduledAt).toBeNull();
+  });
+
+  it("does not stamp when clearing an already-null date", () => {
+    const patch = schedulePatch(null, null);
+    expect(Object.hasOwn(patch, "scheduledAt")).toBe(false);
+  });
+});
+
+describe("dayGroupPatch — placement stamping", () => {
+  it("stamps scheduledAt when dropped on a different day", () => {
+    const patch = dayGroupPatch("list1", "2026-08-11", "2026-08-10");
+    expect(patch.scheduledAt).toBeTruthy();
+  });
+
+  it("does NOT stamp scheduledAt when only the list group changes within the same day", () => {
+    // Dragging a card between list groups within one day writes the same date
+    // again — that must not read as a fresh assignment.
+    const patch = dayGroupPatch("list2", "2026-08-11", "2026-08-11");
+    expect(Object.hasOwn(patch, "scheduledAt")).toBe(false);
+    expect(patch.listId).toBe("list2");
+  });
+
+  it("stamps scheduledAt on first placement (previous null)", () => {
+    const patch = dayGroupPatch("list1", "2026-08-11", null);
+    expect(patch.scheduledAt).toBeTruthy();
+  });
+});
+
+describe("listPatch — unscheduling clears placement", () => {
+  it("nulls both scheduledDate and scheduledAt", () => {
+    const patch = listPatch("list1", "a5");
+    expect(patch.scheduledDate).toBeNull();
+    expect(patch.scheduledAt).toBeNull();
   });
 });

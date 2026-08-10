@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildDayTimeline, formatEventTime } from "./day-timeline";
+import { buildDayTimeline, formatEventTime, formatEventWhen } from "./day-timeline";
 import type { Todo } from "./schema";
 
 const DAY = "2026-08-10";
@@ -16,6 +16,7 @@ function todo(overrides: Partial<Todo> & { id: string }): Todo {
     status: "open",
     priority: null,
     scheduledDate: null,
+    scheduledAt: null,
     deadline: null,
     listId: null,
     projectId: null,
@@ -127,6 +128,88 @@ describe("buildDayTimeline", () => {
     );
     expect(events.map((e) => e.key)).toEqual(["a:created", "a:done"]);
     expect(events[1].at).toBe(`${DAY}T17:00:00.000Z`);
+  });
+
+  describe("scheduled — the todo's CURRENT day, not the move's day", () => {
+    const NEXT_DAY = "2026-08-11";
+
+    it("shows up on the day the todo is scheduled for, timestamped with the move", () => {
+      // Created and scheduled onto DAY yesterday; today (DAY-1, i.e. before
+      // DAY) it was dragged onto NEXT_DAY. Viewing NEXT_DAY should show the
+      // move, timestamped with when it happened — not when it lands.
+      const rows = [
+        todo({
+          id: "a",
+          createdAt: "2026-08-01T09:00:00.000Z",
+          scheduledDate: NEXT_DAY,
+          scheduledAt: `${DAY}T15:00:00.000Z`,
+        }),
+      ];
+      expect(kinds(rows, NEXT_DAY)).toEqual(["a:scheduled"]);
+      expect(kinds(rows, DAY)).toEqual([]); // nothing on the day the move happened
+    });
+
+    it("does not appear for a todo created directly onto a day (never rescheduled)", () => {
+      // createTodo() never stamps scheduledAt — see repositories.ts. A todo
+      // quick-added straight onto DAY should show only "created", not a
+      // redundant "scheduled" echoing the same instant.
+      const rows = [todo({ id: "a", scheduledDate: DAY, scheduledAt: null })];
+      expect(kinds(rows)).toEqual(["a:created"]);
+    });
+
+    it("is silent for a todo currently unscheduled, even with a stale scheduledAt", () => {
+      const rows = [
+        todo({
+          id: "a",
+          createdAt: "2026-08-01T09:00:00.000Z",
+          scheduledDate: null,
+          scheduledAt: `${DAY}T15:00:00.000Z`,
+        }),
+      ];
+      expect(kinds(rows, DAY)).toEqual([]);
+    });
+
+    it("disappears once the todo is moved elsewhere (only the latest placement survives)", () => {
+      // NEXT_DAY's "scheduled" event for a todo now living on a THIRD day is
+      // gone — the documented limitation, not a bug.
+      const rows = [
+        todo({
+          id: "a",
+          createdAt: "2026-08-01T09:00:00.000Z",
+          scheduledDate: "2026-08-12",
+          scheduledAt: `${DAY}T15:00:00.000Z`,
+        }),
+      ];
+      expect(kinds(rows, NEXT_DAY)).toEqual([]);
+    });
+
+    it("can co-occur with created/done/dropped on the same day, ordered by instant", () => {
+      const rows = [
+        todo({
+          id: "a",
+          createdAt: `${DAY}T07:00:00.000Z`,
+          scheduledDate: DAY,
+          scheduledAt: `${DAY}T09:00:00.000Z`,
+          status: "done",
+          completedAt: `${DAY}T18:00:00.000Z`,
+        }),
+      ];
+      expect(kinds(rows)).toEqual(["a:created", "a:scheduled", "a:done"]);
+    });
+  });
+});
+
+describe("formatEventWhen", () => {
+  it("is a bare time when the event's day matches the timeline being viewed", () => {
+    expect(formatEventWhen(`${DAY}T14:30:00.000Z`, DAY, UTC)).toBe("2:30 PM");
+  });
+
+  it("prefixes the date when the event happened on a different day", () => {
+    expect(formatEventWhen("2026-08-09T14:30:00.000Z", DAY, UTC)).toBe("Aug 9 · 2:30 PM");
+  });
+
+  it("falls back to a bare time when the instant is unparseable", () => {
+    expect(formatEventWhen("nope", DAY, UTC)).toBe("");
   });
 });
 

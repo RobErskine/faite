@@ -103,7 +103,7 @@ import {
   updateTab,
   updateTodo,
 } from "@/lib/store/repositories";
-import { mutateSettings } from "@/lib/store/mutate";
+import { mutateSettings, now } from "@/lib/store/mutate";
 import {
   createUndoStep,
   inversePatch,
@@ -1247,11 +1247,11 @@ export function Board() {
         landingRectRef.current = landingRect;
         setLandingTodoId(todo.id);
 
-        const forward = dayGroupPatch(dropped.key, dropped.day, groupPosition);
+        const forward = dayGroupPatch(dropped.key, dropped.day, todo.scheduledDate, groupPosition);
         pushUndo(`Moved “${short(todo.title)}”`, [
           { kind: "todo", entityId: todo.id, patch: inversePatch(todo, forward) },
         ]);
-        await moveTodoToDayGroup(todo.id, dropped.key, dropped.day, groupPosition);
+        await moveTodoToDayGroup(todo.id, dropped.key, dropped.day, todo.scheduledDate, groupPosition);
         return;
       }
 
@@ -1310,11 +1310,11 @@ export function Board() {
           on a sequence nothing orders by — meaningless, and it would silently
           reshuffle the card's tiebreaker for no visible effect.
         */
-        const forward = schedulePatch(target.day);
+        const forward = schedulePatch(target.day, todo.scheduledDate);
         pushUndo(`Scheduled “${short(todo.title)}”`, [
           { kind: "todo", entityId: todo.id, patch: inversePatch(todo, forward) },
         ]);
-        await scheduleTodo(todo.id, target.day);
+        await scheduleTodo(todo.id, target.day, todo.scheduledDate);
       } else {
         // Dropping into Overflow is a triage gesture, not a schedule. Leave the
         // date alone so the item stays overdue rather than silently becoming
@@ -1368,14 +1368,23 @@ export function Board() {
   const handleSheetSave = useCallback(
     (id: string, patch: Partial<Todo>) => {
       const before = todos.find((t) => t.id === id);
+      // Typing a new date into the sheet is still a genuine reschedule, same
+      // as dragging — stamp `scheduledAt` the same way `schedulePatch` and
+      // `dayGroupPatch` do, so the day sheet's timeline sees it. Gated on the
+      // date actually changing for the same reason those are: re-saving the
+      // sheet with the date field untouched must not look like a fresh move.
+      const stamped =
+        before && "scheduledDate" in patch && patch.scheduledDate !== before.scheduledDate
+          ? { ...patch, scheduledAt: patch.scheduledDate ? now() : null }
+          : patch;
       // Silent: the sheet is open, so the change is visible in the field the
       // user just left. One entry per field, so ⌘Z steps back one edit.
       if (before) {
         pushUndo(`Edited “${short(before.title)}”`, [
-          { kind: "todo", entityId: id, patch: inversePatch(before, patch) },
+          { kind: "todo", entityId: id, patch: inversePatch(before, stamped) },
         ]);
       }
-      void updateTodo(id, patch);
+      void updateTodo(id, stamped);
     },
     [todos],
   );

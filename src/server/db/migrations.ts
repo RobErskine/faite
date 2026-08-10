@@ -117,6 +117,11 @@ export const USER_DB_MIGRATIONS: readonly UserDbMigration[] = [
   )`,
     ],
   },
+  {
+    id: 5,
+    name: "todos-add-scheduled-at",
+    statements: ["ALTER TABLE todos ADD COLUMN scheduled_at text"],
+  },
   // Add new migrations here. Never edit one above this line.
   //
   // Example — adding a nullable column (the safe, ordinary case):

@@ -42,6 +42,7 @@ const todo = (id: string): Todo => ({
   status: "open",
   priority: null,
   scheduledDate: "2026-08-09",
+  scheduledAt: null,
   deadline: null,
   listId: null,
   projectId: null,
