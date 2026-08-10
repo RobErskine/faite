@@ -21,17 +21,23 @@ jobs:
       - name: Typecheck (app + worker)
         run: npm run typecheck
 
-      - name: Lint
-        run: npm run lint
-
-      # Same order as `npm run verify`, deliberately: the two are meant to be the
-      # same gate, and a CI pipeline that checks a different set in a different
-      # order than the local command is how "it passed on my machine" starts.
+      # BEFORE lint, which is where `npm run verify` puts it second — and the
+      # divergence is the point. `npm run lint` has a documented pre-existing
+      # failure (`use-day-track.ts:156`, called out in SCHEMA-OPS.md and SYNC.md as
+      # the known baseline), and a failed step halts the job by default. Ordered
+      # after lint, this suite would never have run in CI at all.
       #
-      # Before the builds because vitest takes seconds and the two Next builds take
-      # minutes — a logic regression should not wait behind them.
+      # It also belongs ahead of the builds regardless: vitest takes seconds where
+      # the two Next builds take minutes, so a logic regression should not queue
+      # behind them.
       - name: Tests
         run: npm test
+
+      # Everything below is currently unreachable in CI for the same reason — the
+      # lint baseline halts the job here. Worth resolving: it means the Capacitor
+      # guard at the bottom has not actually run in a while.
+      - name: Lint
+        run: npm run lint
 
       - name: Build (Workers target)
         run: npm run build

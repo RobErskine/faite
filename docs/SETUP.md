@@ -402,9 +402,19 @@ like a bug that "won't go away", so restart before diagnosing.
 
 ---
 
-## Known-failing baseline
+## The known-failing baseline is gone
 
-`npm run verify` currently fails on one **pre-existing** lint error in
-`src/components/board/use-day-track.ts:156` (`react-hooks/set-state-in-effect`),
-unrelated to auth or setup. Typecheck, all 559 tests, and both build targets
-are green. Don't read a red `verify` here as "something I just did broke it."
+`npm run verify` had a long-standing lint error in
+`src/components/board/use-day-track.ts` (`react-hooks/set-state-in-effect`) that
+several docs told you to expect and not fix. **It is fixed** — the queued jump is
+a monotonic request now rather than state the layout effect cleared on its way
+out, so nothing calls `setState` from inside an effect. See DRAG-AND-DROP §4.11.
+
+Typecheck, lint and all 692 tests are green as of 2026-08-09. So a red `verify`
+here now really does mean something just broke — there is no baseline to discount
+any more.
+
+One thing that shape hid, worth remembering: `verify` runs its steps in sequence,
+so a failure at lint means **the two build targets never run** — including the
+static-export Capacitor guard. That was true for however long the baseline lasted.
+CI now runs the test suite *before* lint for the same reason.

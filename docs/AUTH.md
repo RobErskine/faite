@@ -20,7 +20,9 @@ Stack: **Better Auth 1.6.x** + Drizzle adapter on **Cloudflare D1**, with
 
 ```
 browser
-  └─ src/lib/auth-client.ts          createAuthClient(), baseURL = NEXT_PUBLIC_AUTH_URL || same origin
+  └─ src/lib/auth-client.ts          createAuthClient(), baseURL = resolveAuthBaseURL() —
+     │                               NEXT_PUBLIC_AUTH_URL, or same origin. A localhost
+     │                               value is DISCARDED on a real domain; see below.
        │  POST /api/auth/sign-in/email
        ▼
   src/server/worker.ts               intercepts /api/auth/* BEFORE the OpenNext handler
@@ -167,6 +169,17 @@ like a persistent bug.
   callback URL from it. Deriving it from `request.url` is what makes
   production, previews, and both local ports work simultaneously — and it does
   not weaken CSRF, since browsers set `Origin` from the page's real origin.
+- **`NEXT_PUBLIC_AUTH_URL` must never live in `.env.local`.** It is inlined into
+  the client bundle at BUILD time, and Next loads `.env.local` in every
+  environment — so a dev override there ships to production, and the live login
+  page posts to `http://localhost:8787`. This happened: sign-in on
+  https://myfaite.app failed a CORS preflight, with the console reporting
+  `Access-Control-Allow-Origin: 'http://localhost:8787'`, which reads like a
+  server misconfiguration and is actually a build-time leak. `.env.production`
+  does not help — `.env.local` outranks it. The override lives in the `dev` script
+  now, and `resolveAuthBaseURL()` discards a localhost target on a real domain as a
+  backstop. **If you see auth requests going to localhost from a deployed page,
+  this is the cause, and the fix is a rebuild, not an env var on the worker.**
 - **OAuth users arrive `email_verified: 1`; `credential` users do not.** Read
   the field; never infer verification from the provider.
 - **Better Auth links providers that share a verified email** into one user id

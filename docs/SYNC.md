@@ -301,9 +301,9 @@ npm run build && npm run build:static     # static is the P7 guard
 npx wrangler deploy --dry-run             # only thing that bundles worker.ts
 ```
 
-`npm run lint` has one **pre-existing** failure in
-`src/components/board/use-day-track.ts:156` unrelated to sync. That is the
-known baseline; don't "fix" it.
+`npm run lint` used to have one **pre-existing** failure in
+`src/components/board/use-day-track.ts`, and this line used to tell you to leave it
+alone. It is fixed as of 2026-08-09 — lint is clean, so a failure here is yours.
 
 **EI-48's acceptance is not a passing test.** It is Rob using Faite on two
 machines for a week with no lost or duplicated data. The tests are necessary,

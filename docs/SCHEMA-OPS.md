@@ -211,6 +211,6 @@ npx wrangler deploy --dry-run             # only thing that bundles worker.ts
 node scripts/sync-smoke/smoke.mjs         # after any user-do.ts / routes.ts change
 ```
 
-`npm run lint` has one pre-existing failure in
-`src/components/board/use-day-track.ts:156`, unrelated to any of this. That is
-the known baseline; don't "fix" it.
+`npm run lint` used to have one pre-existing failure in
+`src/components/board/use-day-track.ts`, and this line used to tell you to leave it
+alone. It is fixed as of 2026-08-09 — lint is clean, so a failure here is yours.

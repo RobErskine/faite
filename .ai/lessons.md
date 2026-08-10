@@ -377,3 +377,43 @@ was written for, on the first run, before any browser did.
 **Rule:** assert `not.toContain` on the class you believe you replaced, not just
 `toContain` on the replacement. `toContain` alone passes happily while both are
 present, which is exactly the broken state.
+
+---
+
+## A `NEXT_PUBLIC_*` in `.env.local` ships to production
+
+`.env.local` carried `NEXT_PUBLIC_AUTH_URL=http://localhost:8787` so `next dev`
+(:3000) could sign in against a separately-running preview worker (:8787). That is
+a correct dev setup and a production outage: **Next loads `.env.local` in every
+environment, and inlines `NEXT_PUBLIC_*` into the client bundle at BUILD time.** So
+`npm run deploy` shipped a login page that posted to `http://localhost:8787`, and
+sign-in on https://myfaite.app died on a CORS preflight.
+
+Three things worth carrying forward:
+
+**The error blamed the wrong layer.** The console said
+`Access-Control-Allow-Origin: 'http://localhost:8787'` is not equal to the supplied
+origin — which reads as a server CORS misconfiguration, and sent me looking at
+`src/server/cors.ts` and `TRUSTED_ORIGINS` first. The actual bug was a build-time
+string substitution in a client chunk, and the responder was the developer's own
+local worker. **When a deployed page requests localhost, no amount of server
+configuration is the answer; the artefact is wrong.** The tell is in the bundle:
+`grep -rl "localhost" .open-next/assets/_next/static/chunks/` named the exact file
+the console had already cited.
+
+**`.env.production` cannot fix it.** Next's precedence is
+`process.env` > `.env.$(NODE_ENV).local` > `.env.local` > `.env.$(NODE_ENV)` > `.env`,
+so `.env.local` outranks `.env.production`. A per-environment file cannot override a
+per-machine one. Environment-specific *values* have to go where only that
+environment reads them.
+
+**Rule:** a `NEXT_PUBLIC_*` override that is correct for exactly one command belongs
+in that command, not in a dotenv file. `NEXT_PUBLIC_AUTH_URL` now lives in the `dev`
+script in `package.json` — the same place `NEXT_PUBLIC_AGENTATION=1` already lived,
+which was the convention to follow all along. A dotenv file is machine scope; a
+script is command scope; build-time inlining means only command scope is safe.
+
+**And back the convention with a mechanism.** `resolveAuthBaseURL()` now discards a
+localhost target when the page is served from a real domain, turning the next leak
+into a console warning instead of a login outage. Conventions are one edit away from
+being broken; the guard is what makes the convention safe to get wrong.

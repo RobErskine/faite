@@ -1074,7 +1074,7 @@ list — see §4.7 and §4.9.)
 
 ```bash
 npm run dev        # http://localhost:3000 (or the next free port if taken)
-npm test           # vitest run — 559 tests (see ARCHITECTURE.md §8)
+npm test           # vitest run — 692 tests (see ARCHITECTURE.md §8)
 npm run verify     # typecheck + lint + tests + BOTH builds; run before commit
 ```
 

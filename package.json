@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "agentation": "agentation-mcp server",
-    "dev": "NEXT_PUBLIC_AGENTATION=1 concurrently -k -n agentation,next -c magenta,cyan \"npm:agentation\" \"next dev\"",
+    "dev": "NEXT_PUBLIC_AGENTATION=1 NEXT_PUBLIC_AUTH_URL=http://localhost:8787 concurrently -k -n agentation,next -c magenta,cyan \"npm:agentation\" \"next dev\"",
     "build": "next build",
     "build:static": "BUILD_TARGET=static next build",
     "start": "next start",
