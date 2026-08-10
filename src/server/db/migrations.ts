@@ -92,6 +92,31 @@ export const USER_DB_MIGRATIONS: readonly UserDbMigration[] = [
       "ALTER TABLE settings ADD COLUMN show_weekends integer DEFAULT true NOT NULL",
     ],
   },
+  {
+    id: 4,
+    name: "add-day-notes",
+    statements: [
+      // Deliberately NOT also added to `bootstrap.ts`. A whole new table is one
+      // of the two cases where duplicating into bootstrap is sanctioned, but it
+      // buys nothing here and costs the snapshot dance in `schema-parity.test.ts`
+      // — a fresh Durable Object runs the WHOLE ledger, not just migration 1, so
+      // new accounts get this table from here exactly like existing ones do.
+      //
+      // `NOT NULL DEFAULT ''` on `body` is safe because this is a new table with
+      // no existing rows; the prefer-nullable note below is about ALTER TABLE on
+      // a populated one.
+      `CREATE TABLE IF NOT EXISTS day_notes (
+    id text PRIMARY KEY NOT NULL,
+    owner_id text NOT NULL,
+    created_at text NOT NULL,
+    updated_at text NOT NULL,
+    deleted_at text,
+    version integer NOT NULL,
+    date text NOT NULL,
+    body text DEFAULT '' NOT NULL
+  )`,
+    ],
+  },
   // Add new migrations here. Never edit one above this line.
   //
   // Example — adding a nullable column (the safe, ordinary case):

@@ -359,7 +359,7 @@ short version:
    `webSocketMessage` calls `this.push(...)` directly. The thing that
    genuinely needed sharing was `routes.ts`'s **validation** — that is
    `validate.ts`, and without it the socket path would have handed `pull()`
-   an unclamped `LIMIT` across six kinds.
+   an unclamped `LIMIT` across every kind.
 3. **`onRemoteChange` goes through `trigger()`, not `runner.runSync()`.**
    `runSync()` bypasses both the `isActive()` gate and the `faite:sync` Web
    Lock, and both still apply to a remote change. Only the debounce should

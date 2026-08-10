@@ -1,4 +1,12 @@
-import { labelSchema, listSchema, projectSchema, settingsSchema, tabSchema, todoSchema } from "@/lib/schema";
+import {
+  dayNoteSchema,
+  labelSchema,
+  listSchema,
+  projectSchema,
+  settingsSchema,
+  tabSchema,
+  todoSchema,
+} from "@/lib/schema";
 import { positionAtEnd } from "@/lib/ordering";
 import type { SyncKind } from "./wire";
 
@@ -16,6 +24,7 @@ const SCHEMA_BY_KIND = {
   label: labelSchema,
   project: projectSchema,
   tab: tabSchema,
+  dayNote: dayNoteSchema,
   settings: settingsSchema,
 };
 

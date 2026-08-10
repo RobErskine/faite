@@ -20,11 +20,11 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
-import { GripVertical, MapPin } from "lucide-react";
+import { GripVertical, MapPin, StickyNote } from "lucide-react";
 import { toast } from "sonner";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
-import type { List, Tab, Todo } from "@/lib/schema";
+import type { CivilDate, List, Tab, Todo } from "@/lib/schema";
 import {
   buildBoard,
   parseColumnId,
@@ -75,6 +75,7 @@ import {
   useArchivedLists,
   useArchivedTabs,
   useBootstrap,
+  useDayNotes,
   useLabels,
   useLists,
   usePlacementContext,
@@ -94,6 +95,7 @@ import {
   moveTodoToList,
   schedulePatch,
   scheduleTodo,
+  setDayNote,
   setTodoStatus,
   statusPatch,
   toggleTodoLabel,
@@ -140,6 +142,7 @@ import {
   updateTabWithUndo,
 } from "./tab-actions";
 import { TodoSheet } from "./todo-sheet";
+import { DaySheet } from "./day-sheet";
 import { CommandPalette } from "./command-palette";
 import { useColumnNav } from "./use-column-nav";
 import { useDayTrack } from "./use-day-track";
@@ -264,6 +267,7 @@ export function Board() {
   const labels = useLabels();
   const projects = useProjects();
   const settings = useSettings();
+  const dayNotes = useDayNotes();
 
   const [activeTodo, setActiveTodo] = useState<Todo | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
@@ -275,6 +279,8 @@ export function Board() {
   const [infoTabId, setInfoTabId] = useState<string | null>(null);
   const [archivedOpen, setArchivedOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  /** The day whose details sheet is open, if any. */
+  const [openDay, setOpenDay] = useState<CivilDate | null>(null);
 
   /**
    * Which tab the planning half is showing.
@@ -408,7 +414,10 @@ export function Board() {
         !!infoListId ||
         !!infoTabId ||
         archivedOpen ||
-        settingsOpen,
+        settingsOpen ||
+        // The day sheet holds a rich-text editor, so board hotkeys — undo
+        // especially — must not fire while someone is typing a journal entry.
+        !!openDay,
     }),
     [
       activeTodo,
@@ -420,6 +429,7 @@ export function Board() {
       infoTabId,
       archivedOpen,
       settingsOpen,
+      openDay,
     ],
   );
 
@@ -793,6 +803,21 @@ export function Board() {
     () => board?.lists.filter((c) => !c.list.isBacklog) ?? [],
     [board],
   );
+
+  /**
+   * Every list a todo could point at, for the day sheet's timeline colours.
+   *
+   * Includes ARCHIVED lists on purpose: a todo finished last week whose list has
+   * since been filed still happened, and the timeline losing its colour would
+   * make it look like it never belonged anywhere.
+   */
+  const listsById = useMemo(
+    () => new Map([...lists, ...archivedLists].map((list) => [list.id, list])),
+    [lists, archivedLists],
+  );
+
+  /** The fallback for a homeless todo, mirroring `groupTodosByList`'s `?? backlog`. */
+  const backlogList = useMemo(() => lists.find((l) => l.isBacklog), [lists]);
 
   /**
    * Every place the arrow keys can put focus, as a grid — see
@@ -1464,6 +1489,7 @@ export function Board() {
   }
 
   return (
+    <>
     <DndContext
       sensors={sensors}
       collisionDetection={collisionDetection}
@@ -1602,7 +1628,26 @@ export function Board() {
                     title={weekday}
                     // `subtitle` also carries prose on other columns, so the
                     // numeral face is applied here rather than in BoardColumn.
-                    subtitle={<span className="num">{label}</span>}
+                    //
+                    // The sticky note is composed here for the same reason: it
+                    // is a fact about this DAY, and BoardColumn does not know
+                    // what its column is. Keeps the component free of a prop it
+                    // would ignore on every list column.
+                    subtitle={
+                      <span className="num">
+                        {label}
+                        {dayNotes.has(column.day) && (
+                          <>
+                            <StickyNote
+                              className="ml-1 inline-block size-3 align-[-0.125em] text-muted-foreground"
+                              aria-hidden
+                            />
+                            <span className="sr-only"> — has notes</span>
+                          </>
+                        )}
+                      </span>
+                    }
+                    onOpenInfo={() => setOpenDay(column.day)}
                     todos={column.todos}
                     labels={labels}
                     ctx={ctx}
@@ -1763,7 +1808,7 @@ export function Board() {
                     landingTodoId={landingTodoId}
                     reorderListId={column.list.id}
                     reservesGripSlot
-                    onOpenListInfo={() => setInfoListId(column.list.id)}
+                    onOpenInfo={() => setInfoListId(column.list.id)}
                     isColumnDropTarget={columnDropTargetId === column.list.id}
                     isColumnDragActive={!!activeList}
                     // The list's own color wins, falling back to its tab's. A
@@ -1910,6 +1955,42 @@ export function Board() {
       <SyncProvider />
       <WelcomeDialog />
     </DndContext>
+
+    {/*
+      DELIBERATELY OUTSIDE THE DndContext ABOVE, and this is load bearing.
+
+      The day sheet's timeline renders real TodoCards, and TodoCard calls
+      `useSortable` unconditionally. Inside the context those calls would
+      re-register draggable and droppable entries under ids the board already
+      owns — dnd-kit keys those maps by id, so the timeline's copy would silently
+      replace the real card's entry for as long as the sheet stayed open, and
+      dragging that card on the board behind it would stop working.
+
+      Outside, the hooks fall through to dnd-kit's default contexts (a no-op
+      dispatch and an empty item list), so they register nothing and hand back no
+      listeners. Base UI portals the popup to <body> either way, so the sheet
+      looks and behaves identically wherever it sits in the tree.
+    */}
+    <DaySheet
+      day={openDay}
+      note={openDay ? dayNotes.get(openDay) : undefined}
+      todos={visibleTodos}
+      timezone={settings?.timezone ?? "UTC"}
+      labels={labels}
+      listsById={listsById}
+      backlog={backlogList}
+      ctx={ctx}
+      onClose={() => setOpenDay(null)}
+      onSaveNote={(day, body) => void setDayNote(day, body)}
+      onToggleTodo={handleToggle}
+      // Swap sheets rather than stacking them: a second right-side sheet fully
+      // covers the first, so "the day is still behind it" would be a lie.
+      onOpenTodo={(todo) => {
+        setOpenDay(null);
+        setOpenTodoId(todo.id);
+      }}
+    />
+    </>
   );
 }
 

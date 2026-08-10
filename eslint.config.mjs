@@ -20,6 +20,10 @@ const eslintConfig = defineConfig([
     // wrangler-generated (`npm run cf-typegen`); machine-formatted, not ours
     // to fix lint warnings in.
     "cloudflare-env.d.ts",
+    // drizzle-kit-generated (`npm run schema:generate`). Kept in the repo as
+    // the record to diff a schema change against — never loaded at runtime,
+    // since the DO migrates itself from `src/server/db/migrations.ts`.
+    "drizzle/**",
   ]),
 ]);
 

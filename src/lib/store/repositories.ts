@@ -1,5 +1,6 @@
 import type {
   CivilDate,
+  DayNote,
   Label,
   List,
   Priority,
@@ -550,6 +551,57 @@ export async function deleteProject(id: string): Promise<void> {
     await mutate("todo", todo.id, { projectId: null });
   }
   await remove("project", id);
+}
+
+// ---------------------------------------------------------------------------
+// Day notes
+// ---------------------------------------------------------------------------
+
+/**
+ * Deterministic id for a day's notes — one row per calendar day.
+ *
+ * See `dayNoteSchema` (`lib/schema.ts`) for why this breaks the UUIDv7 rule:
+ * two offline devices journaling the same day must collide on one entity so
+ * field-level LWW can pick a `body`, rather than producing two rows nothing
+ * merges.
+ */
+export const dayNoteId = (date: CivilDate) => `daynote:${date}`;
+
+/**
+ * Write a day's notes, creating the row on first use.
+ *
+ * Deliberately does NOT create a row for an empty body: opening a day and
+ * closing it without typing must leave nothing behind, or every day anyone
+ * ever glanced at becomes a synced row and a sticky-note icon in the header.
+ *
+ * Clearing a note writes `body: ""` rather than a tombstone — the id is
+ * deterministic and would be recreated the next time that day is opened, so a
+ * `deletedAt` would only buy a resurrect-vs-tombstone race. `useDayNotes`
+ * treats a blank body as "no note", which is what makes that work.
+ */
+export async function setDayNote(date: CivilDate, body: string): Promise<void> {
+  const id = dayNoteId(date);
+  const existing = await getDb().dayNotes.get(id);
+
+  if (existing) {
+    if (existing.body === body) return;
+    await mutate("dayNote", id, { body, deletedAt: null });
+    return;
+  }
+
+  if (body.trim() === "") return;
+
+  const timestamp = now();
+  const note: DayNote = {
+    id,
+    ownerId: getCurrentOwnerId(),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    deletedAt: null,
+    date,
+    body,
+  };
+  await create("dayNote", note);
 }
 
 // ---------------------------------------------------------------------------

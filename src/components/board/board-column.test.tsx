@@ -77,6 +77,7 @@ interface HarnessProps {
   onToggleGroup?: (key: string) => void;
   overGroupId?: string | null;
   minRows?: number;
+  onOpenInfo?: () => void;
 }
 
 function Harness({ groups, ...rest }: HarnessProps) {
@@ -188,5 +189,26 @@ describe("filler rows", () => {
     };
     // Two groups of three cards total: 8 - 3 - 2 headers = 3.
     expect(rows({ groups: [ADMIN, BUY], minRows: 8 })).toBe(3);
+  });
+});
+
+describe("column heading", () => {
+  it("fires onOpenInfo when the heading is activated", () => {
+    const onOpenInfo = vi.fn();
+    render(<Harness onOpenInfo={onOpenInfo} />);
+    fireEvent.click(screen.getByRole("button", { name: "Sunday" }));
+    expect(onOpenInfo).toHaveBeenCalledTimes(1);
+  });
+
+  it("is a real button, so the keyboard reaches it", () => {
+    // The bare `<h2 onClick>` this replaced was pointer-only.
+    render(<Harness onOpenInfo={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Sunday" }).tagName).toBe("BUTTON");
+  });
+
+  it("renders plain text when there is nothing to open", () => {
+    render(<Harness />);
+    expect(screen.queryByRole("button", { name: "Sunday" })).toBeNull();
+    expect(screen.getByText("Sunday")).toBeTruthy();
   });
 });

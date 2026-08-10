@@ -187,6 +187,35 @@ export const todoSchema = z.object({
 export type Todo = z.infer<typeof todoSchema>;
 
 /**
+ * A day's notes — a journal entry, or loose things worth remembering.
+ *
+ * One row per calendar day, keyed BY that day: `id` is deterministic
+ * (`daynote:YYYY-MM-DD`, see `dayNoteId` in `store/repositories.ts`) rather
+ * than a UUIDv7. That is the one deliberate exception to convention 1 at the
+ * top of this file, and the reason is convergence. There is exactly one note
+ * per day, so two offline devices journaling the same Tuesday must collide on
+ * ONE entity and let field-level LWW pick a `body`. With random ids they would
+ * produce two rows for the same day and nothing in `sync/merge.ts` would ever
+ * collapse them. Same precedent as `seed:list:backlog` and `DEFAULT_TAB_ID`.
+ *
+ * Safe here specifically because a day note is private and per-owner, so it
+ * never needs to move between Durable Objects the way a shared label would.
+ *
+ * "Deleting" a note means writing `body: ""`, not setting `deletedAt` — the id
+ * is guaranteed to be recreated the next time that day is opened, so a
+ * tombstone would only buy a resurrect-vs-tombstone race. `deletedAt` stays on
+ * the row because every syncable record has it and `apply-remote` assumes it.
+ */
+export const dayNoteSchema = z.object({
+  ...syncableFields,
+  /** The day this belongs to. Also encoded in `id`. */
+  date: civilDateSchema,
+  /** Markdown, same convention as `todoSchema.description`. */
+  body: z.string().default(""),
+});
+export type DayNote = z.infer<typeof dayNoteSchema>;
+
+/**
  * Per-user settings.
  *
  * `timezone` is load-bearing: the overflow rule counts days, so the day
@@ -333,6 +362,7 @@ export const entityKindSchema = z.enum([
   "label",
   "project",
   "tab",
+  "dayNote",
   "settings",
 ]);
 export type EntityKind = z.infer<typeof entityKindSchema>;

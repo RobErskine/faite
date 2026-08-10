@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { MarkdownField } from "@/components/ui/markdown-field";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -82,7 +83,6 @@ function TodoSheetContent({
   onDelete,
 }: TodoSheetProps & { todo: Todo }) {
   const [title, setTitle] = useState(todo.title);
-  const [description, setDescription] = useState(todo.description ?? "");
 
   const commitTitle = () => {
     const next = title.trim();
@@ -134,17 +134,21 @@ function TodoSheetContent({
 
         <div className="flex-1 space-y-5 overflow-y-auto px-4 pb-4">
           <div className="space-y-1.5">
-            <Label htmlFor="todo-notes">Notes</Label>
-            <Textarea
-              id="todo-notes"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              onBlur={() =>
-                description !== (todo.description ?? "") &&
-                onSave(todo.id, { description: description || null })
-              }
+            <Label>Notes</Label>
+            {/*
+              Markdown, finally rendered rather than just stored — the field has
+              declared itself markdown since P1 (`todoSchema.description`) while
+              being a plain textarea. `MarkdownField` seeds once per mount, which
+              is why `TodoSheet` keys this whole subtree by todo id.
+            */}
+            <MarkdownField
+              value={todo.description ?? ""}
               placeholder="Add notes"
-              rows={4}
+              ariaLabel="Notes"
+              className="min-h-24"
+              onCommit={(next) =>
+                onSave(todo.id, { description: next.trim() ? next : null })
+              }
             />
           </div>
 

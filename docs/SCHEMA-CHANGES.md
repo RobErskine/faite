@@ -109,6 +109,7 @@ is a deliberate decision rather than an accident.
 | 5 | **`src/server/db/migrations.ts`** | Ledgered `ALTER`, for existing **and new** DOs alike | **Push breaks permanently for anyone with data** |
 | 6 | `src/server/sync/columns.ts` | Derived: whitelist + JS↔SQL coercion | Booleans/JSON round-trip wrong |
 | 7 | `src/lib/sync/wire.ts` | `SYNC_KINDS`, `SETTINGS_SYNCED_FIELDS`, `SERVER_ONLY_FIELDS` | Field never crosses the wire, or crosses when it shouldn't |
+| 8 | `src/lib/store/adopt-owner.ts` | `TABLES` + both transaction scopes + `resetLocalDataForNewOwner` | **Only for a new KIND, and only data tells you.** Rows written before sign-in keep `LOCAL_OWNER_ID` forever, and a different account signing in inherits the previous user's rows |
 
 Files 6 and 7 are mostly derived from 3, but not entirely — `columns.ts`
 carries an explicit `dataType` per column, and settings has its own allow-list.
@@ -167,12 +168,21 @@ More involved; the kind has to be threaded through the sync machinery.
 1. `EntityKind` in `src/lib/schema.ts`, plus the Zod type.
 2. `SYNC_KINDS` in `src/lib/sync/wire.ts`.
 3. Dexie table in `db.ts` (this **does** need a `version(n)` bump).
-4. `user-schema.ts` + `bootstrap.ts` + a migration (`CREATE TABLE IF NOT
-   EXISTS` — note this is the one change the old bootstrap mechanism *could*
-   have delivered on its own, but add the migration anyway for the record).
+4. `user-schema.ts` + a migration holding the `CREATE TABLE IF NOT EXISTS`.
+   **Prefer leaving `bootstrap.ts` alone.** Putting the statement in both is
+   sanctioned and idempotent, but it buys nothing — a fresh DO runs the whole
+   ledger, not just migration 1 — while costing you the bootstrap-fingerprint
+   snapshot dance in `schema-parity.test.ts`. `dayNote` (migration 4) is the
+   worked example.
 5. `TABLE_NAME_BY_KIND` and `COLUMNS_BY_KIND` in `columns.ts`.
-6. `mutate.ts`'s table dispatch and `apply-remote.ts`'s dispatch.
-7. `hydrate.ts` if remote creates need defaulting.
+6. `mutate.ts`'s table dispatch and `apply-remote.ts`'s dispatch (including
+   `apply-remote`'s transaction scope array).
+7. **`adopt-owner.ts`** — `TABLES`, both transaction scopes, and the `clear()`
+   in `resetLocalDataForNewOwner`. Row 8 above; nothing catches this but a
+   signed-in second account.
+8. `hydrate.ts` if remote creates need defaulting.
+9. `schema-parity.test.ts` — `ZOD_BY_KIND`, `TABLES_BY_KIND`, `ALL_TABLES`,
+   and a documented `KNOWN_DIVERGENCES` entry for `version`.
 
 **Cost to know about:** `pull()` runs one query per kind, so the worst-case id
 count feeding `readFieldClocksBulk` grows by `limit` per kind. That is already

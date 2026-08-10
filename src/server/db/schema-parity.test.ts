@@ -2,6 +2,7 @@ import { getTableColumns, getTableName } from "drizzle-orm";
 import type { SQLiteTable } from "drizzle-orm/sqlite-core";
 import { describe, expect, it } from "vitest";
 import {
+  dayNoteSchema,
   labelSchema,
   listSchema,
   projectSchema,
@@ -41,6 +42,7 @@ const ZOD_BY_KIND: Record<SyncKindName, { shape: Record<string, unknown> }> = {
   label: labelSchema,
   project: projectSchema,
   tab: tabSchema,
+  dayNote: dayNoteSchema,
   settings: settingsSchema,
 };
 
@@ -50,6 +52,7 @@ const TABLES_BY_KIND: Record<SyncKindName, SQLiteTable> = {
   label: userSchema.labels,
   project: userSchema.projects,
   tab: userSchema.tabs,
+  dayNote: userSchema.dayNotes,
   settings: userSchema.settings,
 };
 
@@ -60,6 +63,7 @@ const ALL_TABLES: SQLiteTable[] = [
   userSchema.labels,
   userSchema.projects,
   userSchema.tabs,
+  userSchema.dayNotes,
   userSchema.settings,
   userSchema.fieldClocks,
   userSchema.syncMeta,
@@ -81,6 +85,7 @@ const KNOWN_DIVERGENCES: Record<string, { drizzleOnly?: string[]; zodOnly?: stri
   label: { drizzleOnly: ["version"] },
   project: { drizzleOnly: ["version"] },
   tab: { drizzleOnly: ["version"] },
+  dayNote: { drizzleOnly: ["version"] },
   settings: { drizzleOnly: ["version"] },
 };
 

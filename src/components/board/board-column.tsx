@@ -90,8 +90,15 @@ interface BoardColumnProps {
   onNavigate?: (fromStopId: string, key: NavKey) => boolean;
   /** Ruled lines fill the empty space, matching the reference UI's paper feel. */
   minRows?: number;
-  /** Opens the list settings dialog. A single click on the title triggers this. */
-  onOpenListInfo?: () => void;
+  /**
+   * Opens this column's detail surface — the list settings dialog for a list
+   * column, the day details sheet for a day column. A single click on the
+   * heading triggers it.
+   *
+   * One prop rather than two because it is one gesture: click the heading, see
+   * what this column is.
+   */
+  onOpenInfo?: () => void;
   /** True while any drag is in flight — used to outline candidate targets. */
   isDragActive?: boolean;
   /** Id of the todo the pointer is currently over, for the insertion line. */
@@ -178,7 +185,7 @@ export function BoardColumn({
   onQuickAdd,
   onNavigate,
   minRows = 8,
-  onOpenListInfo,
+  onOpenInfo,
   isDragActive,
   overTodoId,
   landingTodoId,
@@ -444,14 +451,38 @@ export function BoardColumn({
                 ) : (
                   reservesGripSlot && <span className="size-3 shrink-0" aria-hidden />
                 )}
+                {/*
+                  A real button inside the heading, not an `onClick` on the h2.
+                  `<h2><button>` is the standard accessible heading-action
+                  pattern; the bare handler this replaced was pointer-only, so
+                  the list dialog was unreachable by keyboard or AT.
+
+                  This does not fight the header drag. On day columns there is
+                  no drag to fight — `dragListName` is null, so dnd-kit
+                  withholds its listeners and `<header>` carries none. On list
+                  columns it behaves exactly as the old handler did: dnd-kit
+                  swallows the trailing click once a drag activates, and below
+                  the MouseSensor's 4px / TouchSensor's 250ms thresholds nothing
+                  activates, so an ordinary click lands. Same mechanism the
+                  card's checkbox already relies on.
+                */}
                 <h2
-                  onClick={onOpenListInfo}
                   className={cn(
-                    "truncate font-heading text-lg font-bold uppercase tracking-tight",
+                    "min-w-0 truncate font-heading text-lg font-bold uppercase tracking-tight",
                     emphasis && "text-primary",
                   )}
                 >
-                  {title}
+                  {onOpenInfo ? (
+                    <button
+                      type="button"
+                      onClick={onOpenInfo}
+                      className="max-w-full cursor-pointer truncate rounded text-left hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                    >
+                      {title}
+                    </button>
+                  ) : (
+                    title
+                  )}
                 </h2>
               </div>
             </div>

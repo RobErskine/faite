@@ -2,6 +2,18 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+/*
+  BlockNote's shadcn build styles itself with Tailwind utility CLASSES rather
+  than shipping them precompiled, and Tailwind v4's automatic content detection
+  deliberately skips node_modules. Without this the editor's menus and toolbars
+  render completely unstyled — and only in a production build, since dev picks
+  up enough from the rest of the app to look plausible.
+
+  The stylesheet itself is imported from `components/ui/markdown-editor.tsx`, so
+  it stays in that component's lazy chunk instead of the global bundle.
+*/
+@source "../../node_modules/@blocknote/shadcn";
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
@@ -317,6 +329,28 @@
   [data-sonner-toast][data-styled="true"]
   [data-button][data-action]:hover {
   background: var(--muted);
+}
+
+/*
+  BlockNote fitted into a form field.
+
+  Unlayered, like the Sonner block above and for the same reason: BlockNote's
+  own stylesheet is imported at runtime from a lazily-loaded chunk, so it is
+  itself unlayered and would beat anything in `@layer components`.
+
+  Only three things are overridden — the editor's page-like outer padding, its
+  hardcoded font stack (the app has its own; see `markdown-editor.tsx`), and the
+  focus ring, which the wrapping field already draws.
+*/
+.bn-field .bn-editor {
+  padding-inline: 0.625rem;
+  font-family: inherit;
+}
+
+.bn-field .bn-container,
+.bn-field .bn-editor:focus-visible,
+.bn-field [contenteditable]:focus-visible {
+  outline: none;
 }
 
 @layer base {

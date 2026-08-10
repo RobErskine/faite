@@ -43,6 +43,17 @@ interface TodoCardProps {
    * in layout so the column does not resize under the animation.
    */
   isLanding?: boolean;
+  /**
+   * False where the card cannot be dragged — the day sheet's timeline, which
+   * renders outside the board's DndContext. Drops the grip and the grab cursor,
+   * which would otherwise advertise a gesture that does nothing there.
+   *
+   * Deliberately does NOT gate the `useSortable` call below. That hook must run
+   * unconditionally (it is a hook), and outside a DndContext it is inert anyway:
+   * dnd-kit's default context has a no-op dispatch and no items, so nothing is
+   * registered and `listeners` comes back empty.
+   */
+  draggable?: boolean;
   onToggle: (todo: Todo) => void;
   onOpen: (todo: Todo) => void;
   /**
@@ -59,6 +70,7 @@ export function TodoCard({
   isAway,
   showInsertionLine,
   isLanding,
+  draggable = true,
   onToggle,
   onOpen,
   onNavigate,
@@ -179,7 +191,7 @@ export function TodoCard({
           immediately after it.
         */
         "group relative block border-b border-border/60 py-1.5 pl-3 pr-2",
-        "cursor-grab active:cursor-grabbing",
+        draggable && "cursor-grab active:cursor-grabbing",
         "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring",
         // Opacity transitions alongside the background so the row fades in when
         // a landing completes rather than popping. Hover only changes the
@@ -266,6 +278,7 @@ export function TodoCard({
         events — so out of flow, that expansion would sit over the checkbox and
         silently eat its clicks. Vertical only.
       */}
+      {draggable && (
       <DragGrip
         className={cn(
           // `top-2.5` centres a 12px glyph on the first line of `text-sm
@@ -285,6 +298,7 @@ export function TodoCard({
         {...attributes}
         onKeyDown={startKeyboardDrag}
       />
+      )}
 
       {/*
         Out of flow, in the gutter right after the grip, so the title can wrap
@@ -320,7 +334,7 @@ export function TodoCard({
           "block w-full text-left text-sm leading-snug",
           // Stated rather than inherited: dragging is the primary gesture over
           // the title now, and a click still opens the sheet.
-          "cursor-grab active:cursor-grabbing",
+          draggable && "cursor-grab active:cursor-grabbing",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded",
           /*
             Two settled statuses, two different reads — worth the extra branch

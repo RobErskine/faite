@@ -93,6 +93,17 @@ export const tabs = sqliteTable("tabs", {
   position: text("position").notNull(),
 });
 
+/**
+ * One notes row per calendar day. `id` is deterministic (`daynote:<date>`) so
+ * two offline devices editing the same day converge on one row — see
+ * `dayNoteSchema` in `src/lib/schema.ts` for why that breaks the UUIDv7 rule.
+ */
+export const dayNotes = sqliteTable("day_notes", {
+  ...syncableColumns,
+  date: text("date").notNull(),
+  body: text("body").notNull().default(""),
+});
+
 /** Singleton row, keyed by `ownerId` — one settings row per DO (one owner per DO). */
 export const settings = sqliteTable("settings", {
   ownerId: text("owner_id").primaryKey(),
