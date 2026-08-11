@@ -163,6 +163,12 @@ interface BoardColumnProps {
    * jump would then land several days short of where it said it would.
    */
   dayTrackColumn?: boolean;
+  /**
+   * Recurring-occurrence badge counts, keyed by todo id — see
+   * `lib/recurrence-expand.ts`. Only ever populated for cards forced into
+   * Overflow, but threaded to every column for free rather than special-cased.
+   */
+  missedCounts?: ReadonlyMap<string, number>;
 }
 
 export function BoardColumn({
@@ -199,6 +205,7 @@ export function BoardColumn({
   collapsed,
   onExpand,
   dayTrackColumn,
+  missedCounts,
 }: BoardColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id });
   const [draft, setDraft] = useState("");
@@ -300,6 +307,7 @@ export function BoardColumn({
         onToggle={onToggle}
         onOpen={onOpen}
         onNavigate={onNavigate}
+        missedCount={missedCounts?.get(todo.id)}
       />
     ));
 

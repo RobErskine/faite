@@ -4,10 +4,12 @@ import { getDb, resetDbForTests } from "./db";
 import { DEFAULT_THEME_MODE } from "@/lib/theme";
 import { DEFAULT_AVATAR_KIND } from "@/lib/profile";
 import { SEED_HLC } from "@/lib/sync/wire";
+import { defaultRule, occurrenceId, parseRule } from "@/lib/recurrence";
 import {
   archiveList,
   archiveTab,
   createList,
+  createSeriesFromTodo,
   createTab,
   createTodo,
   dayGroupPatch,
@@ -16,8 +18,10 @@ import {
   deleteTab,
   ensureDefaultTab,
   listPatch,
+  materializeOccurrence,
   schedulePatch,
   seedIfEmpty,
+  setSeriesUntil,
   unarchiveList,
   unarchiveTab,
 } from "./repositories";
@@ -538,5 +542,76 @@ describe("listPatch — unscheduling clears placement", () => {
     const patch = listPatch("list1", "a5");
     expect(patch.scheduledDate).toBeNull();
     expect(patch.scheduledAt).toBeNull();
+  });
+});
+
+describe("materializeOccurrence", () => {
+  it("writes a real row for a virtual occurrence and stamps fresh timestamps", async () => {
+    const templateId = await createTodo({ title: "Timesheets", scheduledDate: "2026-08-07" });
+    const template = (await getDb().todos.get(templateId))!;
+    const virtual = { ...template, id: occurrenceId(templateId, "2026-08-14"), scheduledDate: "2026-08-14" };
+
+    const row = await materializeOccurrence(virtual);
+
+    expect(row.id).toBe(occurrenceId(templateId, "2026-08-14"));
+    const stored = await getDb().todos.get(row.id);
+    expect(stored).toBeDefined();
+    expect(stored?.scheduledDate).toBe("2026-08-14");
+  });
+
+  it("upserts rather than throwing on a re-entrant materialize of the same occurrence", async () => {
+    const templateId = await createTodo({ title: "Timesheets", scheduledDate: "2026-08-07" });
+    const template = (await getDb().todos.get(templateId))!;
+    const virtual = { ...template, id: occurrenceId(templateId, "2026-08-14"), scheduledDate: "2026-08-14" };
+
+    await materializeOccurrence(virtual);
+    await expect(materializeOccurrence(virtual)).resolves.toBeDefined();
+    expect(await getDb().todos.where("id").equals(virtual.id).count()).toBe(1);
+  });
+});
+
+describe("setSeriesUntil", () => {
+  it("sets `until` on the template's rule", async () => {
+    const templateId = await createTodo({ title: "Timesheets", scheduledDate: "2026-08-07" });
+    await getDb().todos.update(templateId, {
+      recurrenceRule: JSON.stringify(defaultRule("2026-08-07")),
+    });
+
+    await setSeriesUntil(templateId, "2026-09-01");
+
+    const template = (await getDb().todos.get(templateId))!;
+    expect(parseRule(template.recurrenceRule)?.until).toBe("2026-09-01");
+  });
+
+  it("is a no-op when the template has no parseable rule", async () => {
+    const todoId = await createTodo({ title: "Not a series" });
+    await expect(setSeriesUntil(todoId, "2026-09-01")).resolves.toBeUndefined();
+  });
+});
+
+describe("createSeriesFromTodo", () => {
+  it("leaves the source todo untouched and anchors the template past it", async () => {
+    const sourceId = await createTodo({ title: "Timesheets", scheduledDate: "2026-08-07" });
+    const source = (await getDb().todos.get(sourceId))!;
+
+    const rule = { ...defaultRule("2026-08-07"), freq: "weekly" as const, byDay: [5] };
+    const templateId = await createSeriesFromTodo(source, rule);
+
+    const unchangedSource = (await getDb().todos.get(sourceId))!;
+    expect(unchangedSource.recurrenceRule).toBeNull();
+    expect(unchangedSource.recurrenceParentId).toBeNull();
+    expect(unchangedSource.scheduledDate).toBe("2026-08-07");
+
+    const template = (await getDb().todos.get(templateId))!;
+    expect(template.id).not.toBe(sourceId);
+    expect(parseRule(template.recurrenceRule)).toEqual(rule);
+    // Anchored to the NEXT Friday, not the source's own date.
+    expect(template.scheduledDate).toBe("2026-08-14");
+  });
+
+  it("throws when the source todo has no scheduledDate", async () => {
+    const sourceId = await createTodo({ title: "Unscheduled" });
+    const source = (await getDb().todos.get(sourceId))!;
+    await expect(createSeriesFromTodo(source, defaultRule("2026-08-07"))).rejects.toThrow();
   });
 });

@@ -117,6 +117,16 @@ export function enqueue(
  *
  * Both writes share a transaction so a crash can never leave the local store
  * ahead of the change log — that would silently lose an edit at sync time.
+ *
+ * Throws if `entityId` has no local row. Dexie's `update()` is a SILENT NO-OP
+ * on a missing key, and without this guard the outbox entry still got
+ * appended — the patch would reach `push()` as a partial create, and
+ * `upsert.ts` synthesizes `FLOOR_HLC` placeholders for every NOT NULL column,
+ * fabricating a todo (or list, or tab…) that then pulls to every device. This
+ * is the exact failure already documented in `lib/sync/wire.ts` as the
+ * "Untitled" list incident. A caller with a row that might not exist yet
+ * (e.g. a virtual recurrence occurrence) must materialize it first — see
+ * `materialize()` below.
  */
 export async function mutate<K extends RecordTable>(
   kind: K,
@@ -128,8 +138,41 @@ export async function mutate<K extends RecordTable>(
   const stamped = { ...patch, updatedAt: now() };
 
   await db.transaction("rw", db[table], db.outbox, async () => {
+    const existing = await db[table].get(entityId);
+    if (existing === undefined) {
+      throw new Error(`mutate: no local ${kind} row for id ${entityId}`);
+    }
     await db[table].update(entityId, stamped);
     await db.outbox.add(enqueue(kind, entityId, stamped));
+  });
+}
+
+/**
+ * Write a full row that may or may not already exist locally, with a real
+ * (non-seed) HLC.
+ *
+ * `put` rather than `add`, on purpose: this is the materialization path for a
+ * deterministic id (a recurrence occurrence, `${templateId}@${date}`), and
+ * re-entrancy is expected — two devices can materialize the same occurrence
+ * offline, or a pull can land the sibling device's row a moment before this
+ * device's own click finishes. `create()`'s `add()` throws `ConstraintError`
+ * on that race; `put()` just upserts, and field-level LWW on the server
+ * reconciles whichever fields each side actually changed.
+ *
+ * Unlike `seedWrite()`, this stamps a real `nextHlc()` — a materialized
+ * occurrence is a real, provenanced write, not a first-run guess.
+ */
+export async function materialize<K extends RecordTable>(
+  kind: K,
+  record: { id: string } & Record<string, unknown>,
+): Promise<void> {
+  const db = getDb();
+  const table = TABLE_BY_KIND[kind];
+
+  await db.transaction("rw", db[table], db.outbox, async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (db[table] as any).put(record);
+    await db.outbox.add(enqueue(kind, record.id, record));
   });
 }
 

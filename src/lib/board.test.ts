@@ -855,3 +855,27 @@ describe("planListDrop", () => {
     expect(plan.position < positionOf("brain")).toBe(true);
   });
 });
+
+describe("buildBoard forceOverflow", () => {
+  it("places a forced todo in Overflow even though its scheduledDate would not otherwise land it there", () => {
+    const forced = todo({ id: "forced", scheduledDate: "2026-08-06", listId: "groceries" });
+    const board = buildBoard([], LISTS, ctx, [], { forceOverflow: [forced] });
+    expect(board.overflow.todos.map((t) => t.id)).toEqual(["forced"]);
+    expect(board.days.flatMap((d) => d.todos)).toHaveLength(0);
+  });
+
+  it("is grouped by list exactly like an ordinary Overflow todo", () => {
+    const forced = todo({ id: "forced", scheduledDate: "2026-08-06", listId: "groceries" });
+    const board = buildBoard([], LISTS, ctx, [], { forceOverflow: [forced] });
+    expect(board.overflow.groups.map((g) => g.key)).toContain("groceries");
+    expect(board.overflow.groups.find((g) => g.key === "groceries")?.todos.map((t) => t.id)).toEqual([
+      "forced",
+    ]);
+  });
+
+  it("still honours visibleStatuses for forced todos", () => {
+    const forcedDone = todo({ id: "forced-done", scheduledDate: "2026-08-06", status: "done" });
+    const board = buildBoard([], LISTS, ctx, [], { forceOverflow: [forcedDone] });
+    expect(board.overflow.todos).toHaveLength(0);
+  });
+});

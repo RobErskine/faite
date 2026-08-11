@@ -13,8 +13,14 @@ import { positionAtEnd, positionsBetween } from "@/lib/ordering";
 import { DEFAULT_FONT_PAIRING } from "@/lib/fonts";
 import { DEFAULT_THEME_MODE } from "@/lib/theme";
 import { DEFAULT_AVATAR_KIND } from "@/lib/profile";
+import {
+  firstOccurrenceAfter,
+  parseRule,
+  serializeRule,
+  type RecurrenceRule,
+} from "@/lib/recurrence";
 import { getDb } from "./db";
-import { create, mutate, newId, now, remove, seedWrite } from "./mutate";
+import { create, materialize, mutate, newId, now, remove, seedWrite } from "./mutate";
 import { getCurrentOwnerId, LOCAL_OWNER_ID } from "./owner";
 
 /**
@@ -222,6 +228,90 @@ export async function reorderTodo(id: string, position: string): Promise<void> {
  * restore helper would be a second way to do the same thing.
  */
 export const deleteTodo = (id: string) => remove("todo", id);
+
+// ---------------------------------------------------------------------------
+// Recurrence
+// ---------------------------------------------------------------------------
+
+/**
+ * Materialize a virtual recurrence occurrence into a real row.
+ *
+ * Required before any status change, edit, drag, or delete on an occurrence
+ * that has never been touched: `mutate()` throws on a missing row (see
+ * `mutate.ts`) by design — a virtual occurrence has no row to update yet.
+ * `materialize()` uses `put` rather than `add`, so two devices materializing
+ * the same occurrence offline converge on one row instead of racing a
+ * `ConstraintError`.
+ *
+ * Stamps fresh `createdAt`/`updatedAt`: the virtual object's timestamps are
+ * cloned from the template (see `lib/recurrence-expand.ts`), and a
+ * materialized occurrence is a real, provenanced write, not an echo of when
+ * the series itself was created.
+ */
+export async function materializeOccurrence(virtual: Todo): Promise<Todo> {
+  const timestamp = now();
+  const row: Todo = { ...virtual, createdAt: timestamp, updatedAt: timestamp };
+  await materialize("todo", row);
+  return row;
+}
+
+/**
+ * Stop a series after `until` (inclusive) — "delete this and all future
+ * occurrences" or editing the end date from the repeat dialog.
+ *
+ * A no-op if the template is gone or its rule fails to parse, rather than
+ * throwing — this is reachable from an undo replay, where the row it targets
+ * may already be gone for unrelated reasons.
+ */
+export async function setSeriesUntil(
+  templateId: string,
+  until: CivilDate | null,
+): Promise<void> {
+  const template = await getDb().todos.get(templateId);
+  const rule = template ? parseRule(template.recurrenceRule) : null;
+  if (!rule) return;
+  await mutate("todo", templateId, { recurrenceRule: serializeRule({ ...rule, until }) });
+}
+
+/**
+ * Start a recurring series from an existing one-off todo.
+ *
+ * `sourceTodo` is left completely untouched — no `recurrenceRule`, no
+ * `recurrenceParentId` written onto it. "Repeat this" reads as "and also,
+ * from here on, keep recurring", not "replace this card with a series": the
+ * user still gets to complete today's row normally, and the series picks up
+ * at its NEXT occurrence.
+ *
+ * The new template is a separate row, its `scheduledDate` anchored to the
+ * occurrence AFTER `sourceTodo`'s own date via `firstOccurrenceAfter` — never
+ * `sourceTodo.scheduledDate` itself, which would otherwise generate a
+ * duplicate virtual card on the same day as the real todo it came from.
+ */
+export async function createSeriesFromTodo(
+  sourceTodo: Todo,
+  rule: RecurrenceRule,
+): Promise<string> {
+  if (!sourceTodo.scheduledDate) {
+    throw new Error("createSeriesFromTodo: source todo has no scheduledDate to anchor a series");
+  }
+  const timestamp = now();
+  const template: Todo = {
+    ...sourceTodo,
+    id: newId(),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    deletedAt: null,
+    status: "open",
+    completedAt: null,
+    scheduledDate: firstOccurrenceAfter(rule, sourceTodo.scheduledDate),
+    scheduledAt: null,
+    deadline: null,
+    parentId: null,
+    recurrenceRule: serializeRule(rule),
+    recurrenceParentId: null,
+  };
+  return create("todo", template);
+}
 
 // ---------------------------------------------------------------------------
 // Lists

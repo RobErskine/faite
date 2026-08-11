@@ -128,13 +128,19 @@ describe("inverses of the repository patch shapes", () => {
 });
 
 describe("the undo stack", () => {
+  // `apply()` writes through `mutate()`, which now throws on a missing local
+  // row (see mutate.ts) — these tests are about STACK mechanics (order,
+  // eviction, id-targeting), not the write itself, but they still have to
+  // target real rows for `undoLast`/`undoById` to succeed.
   const step = (entityId: string) => [
     { kind: "todo" as const, entityId, patch: { title: "old" } },
   ];
 
   it("pops in LIFO order", async () => {
-    pushUndo("A", step("a"));
-    pushUndo("B", step("b"));
+    const a = await createTodo({ title: "A" });
+    const b = await createTodo({ title: "B" });
+    pushUndo("A", step(a));
+    pushUndo("B", step(b));
     expect((await undoLast())?.label).toBe("B");
     expect((await undoLast())?.label).toBe("A");
   });
@@ -144,7 +150,8 @@ describe("the undo stack", () => {
   });
 
   it("evicts the oldest entries past the cap", async () => {
-    for (let i = 0; i < MAX_UNDO + 5; i++) pushUndo(`entry-${i}`, step("a"));
+    const a = await createTodo({ title: "A" });
+    for (let i = 0; i < MAX_UNDO + 5; i++) pushUndo(`entry-${i}`, step(a));
     expect(undoDepth()).toBe(MAX_UNDO);
     // The five oldest are gone, so the bottom of the stack is entry-5.
     for (let i = 0; i < MAX_UNDO - 1; i++) await undoLast();
@@ -153,14 +160,17 @@ describe("the undo stack", () => {
 
   it("undoById removes that specific entry and leaves the rest", async () => {
     // Sonner stacks toasts, so the one clicked is not always the newest.
-    const a = pushUndo("A", step("a"));
-    pushUndo("B", step("b"));
+    const idA = await createTodo({ title: "A" });
+    const idB = await createTodo({ title: "B" });
+    const a = pushUndo("A", step(idA));
+    pushUndo("B", step(idB));
     expect((await undoById(a))?.label).toBe("A");
     expect((await undoLast())?.label).toBe("B");
   });
 
   it("undoById is a no-op once ⌘Z has consumed the entry", async () => {
-    const a = pushUndo("A", step("a"));
+    const idA = await createTodo({ title: "A" });
+    const a = pushUndo("A", step(idA));
     await undoLast();
     expect(await undoById(a)).toBeNull();
   });

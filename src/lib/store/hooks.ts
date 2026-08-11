@@ -69,6 +69,25 @@ export function useTodos(): Todo[] {
 }
 
 /**
+ * Every materialized recurrence occurrence — INCLUDING tombstoned and
+ * settled ones. Settlement detection (`lib/recurrence-expand.ts`) needs to
+ * see a deleted occurrence to know a series moved past it, so this
+ * deliberately does NOT filter `deletedAt` the way `useTodos()` does; pair
+ * the two rather than using either alone.
+ *
+ * Queries the `recurrenceParentId` index directly rather than scanning every
+ * todo: IndexedDB never indexes a null value, so `.above("")` already
+ * excludes every non-occurrence row for free.
+ */
+export function useRecurrenceChildren(): Todo[] {
+  return useLiveQuery(
+    () => getDb().todos.where("recurrenceParentId").above("").toArray(),
+    [],
+    [] as Todo[],
+  );
+}
+
+/**
  * Live lists, archived ones excluded.
  *
  * Filtering here rather than at each call site is what makes archiving a single

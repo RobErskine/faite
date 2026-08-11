@@ -55,7 +55,9 @@ import {
   type NavItem,
 } from "@/lib/column-nav";
 import { positionForIndex } from "@/lib/ordering";
-import { OVERFLOW, daysBetween, formatDay, todayIn } from "@/lib/scheduling";
+import { OVERFLOW, addDays, daysBetween, formatDay, todayIn } from "@/lib/scheduling";
+import { expandRecurrences, isRecurrenceTemplate } from "@/lib/recurrence-expand";
+import { parseOccurrenceId, parseRule, summarizeRule, type RecurrenceRule } from "@/lib/recurrence";
 import {
   calendarSpanFor,
   groupWeekendRuns,
@@ -80,6 +82,7 @@ import {
   useLists,
   usePlacementContext,
   useProjects,
+  useRecurrenceChildren,
   useSettings,
   useTabs,
   useTodos,
@@ -87,15 +90,18 @@ import {
 import {
   DEFAULT_TAB_ID,
   LOCAL_OWNER_ID,
+  createSeriesFromTodo,
   createTodo,
   deleteTodo,
   dayGroupPatch,
   listPatch,
+  materializeOccurrence,
   moveTodoToDayGroup,
   moveTodoToList,
   schedulePatch,
   scheduleTodo,
   setDayNote,
+  setSeriesUntil,
   setTodoStatus,
   statusPatch,
   toggleTodoLabel,
@@ -262,6 +268,7 @@ const collisionDetection: CollisionDetection = (args) => {
 export function Board() {
   const ready = useBootstrap();
   const todos = useTodos();
+  const recurrenceChildren = useRecurrenceChildren();
   const lists = useLists();
   const archivedLists = useArchivedLists();
   const tabs = useTabs();
@@ -314,19 +321,9 @@ export function Board() {
     void mutateSettings(LOCAL_OWNER_ID, { activeTabId: tabId });
   }, []);
 
-  /**
-   * The open todo is DERIVED, never snapshotted.
-   *
-   * Holding the Todo object in state let the sheet drift from the store: an
-   * edit made in the sheet, or an undo applied to it, left the fields showing
-   * the values as of the moment it opened. Worse for undo — an entry built
-   * from a stale object reverses stale values, so toggling two labels and
-   * pressing ⌘Z once would strip both.
-   */
-  const openTodo = useMemo(
-    () => todos.find((t) => t.id === openTodoId) ?? null,
-    [todos, openTodoId],
-  );
+  // `openTodo` is declared further down, after `todosById` — it has to resolve
+  // a virtual or force-overflowed recurrence occurrence too, neither of which
+  // exists in `todos` alone. See the comment there.
 
   /** Derived for the same reason as `openTodo` — a snapshot would go stale. */
   const infoList = useMemo(
@@ -549,6 +546,22 @@ export function Board() {
   );
 
   /**
+   * `visibleTodos` split into recurrence templates (never rendered directly —
+   * see `lib/recurrence-expand.ts`) and everything else. Everything downstream
+   * that used to read `visibleTodos` for window sizing or search reads
+   * `nonTemplateTodos` instead, so a template can never grow the window or
+   * turn up as a search result.
+   */
+  const { templates, nonTemplateTodos } = useMemo(() => {
+    const templates: Todo[] = [];
+    const nonTemplateTodos: Todo[] = [];
+    for (const t of visibleTodos) {
+      (isRecurrenceTemplate(t) ? templates : nonTemplateTodos).push(t);
+    }
+    return { templates, nonTemplateTodos };
+  }, [visibleTodos]);
+
+  /**
    * How many day columns to render: always at least `DEFAULT_RENDERED_DAYS`,
    * always enough to hold the furthest-out scheduled todo — growing the
    * window as a SIDE EFFECT of scrolling would silently drain cards out of
@@ -557,6 +570,11 @@ export function Board() {
    * are clamped to `cap`, past which `deriveColumn` in scheduling.ts falls
    * back to showing the todo dimmed in its list — the load-more tile at the
    * end of the day track is how the user reaches it from there.
+   *
+   * Built from `nonTemplateTodos`, not `visibleTodos` or the expanded board:
+   * a recurring series must NEVER grow this window. A daily series always has
+   * an occurrence sitting at the window's edge, so growing the window in
+   * response would grow it again next render, settling only at `cap`.
    */
   const todayCivil = useMemo(
     () => (settings ? todayIn(settings.timezone) : null),
@@ -565,13 +583,13 @@ export function Board() {
   const furthestScheduledOffset = useMemo(() => {
     if (!todayCivil) return 0;
     let furthest: string | null = null;
-    for (const t of visibleTodos) {
+    for (const t of nonTemplateTodos) {
       if (t.status === "open" && t.scheduledDate && (!furthest || t.scheduledDate > furthest)) {
         furthest = t.scheduledDate;
       }
     }
     return furthest ? daysBetween(todayCivil, furthest) + 1 : 0;
-  }, [visibleTodos, todayCivil]);
+  }, [nonTemplateTodos, todayCivil]);
 
   /**
    * Which weekday numbers the weekend strip collapses, and how long a window
@@ -771,13 +789,117 @@ export function Board() {
     [lists, activeTabId],
   );
 
+  /**
+   * Every real, non-template todo — INCLUDING settled and tombstoned
+   * materialized occurrences, which `nonTemplateTodos` (built on `useTodos()`)
+   * does not carry. Settlement detection in `expandRecurrences` needs to see
+   * a deleted occurrence to know a series moved past it.
+   *
+   * `recurrenceChildren` and `nonTemplateTodos` scan the same table, so an
+   * untouched, non-tombstoned occurrence appears in both — deduped by id.
+   */
+  const realTodosForExpansion = useMemo(() => {
+    if (recurrenceChildren.length === 0) return nonTemplateTodos;
+    const ids = new Set(nonTemplateTodos.map((t) => t.id));
+    const extra = recurrenceChildren.filter((c) => !ids.has(c.id));
+    return extra.length > 0 ? [...nonTemplateTodos, ...extra] : nonTemplateTodos;
+  }, [nonTemplateTodos, recurrenceChildren]);
+
+  /**
+   * Recurrence templates expanded into the occurrences the board actually
+   * renders — see `lib/recurrence-expand.ts`. Computed downstream of `ctx`,
+   * deliberately NOT folded into `nonTemplateTodos`/`furthestScheduledOffset`
+   * above: see that comment for why.
+   */
+  const recurrenceExpansion = useMemo(
+    () => (ctx ? expandRecurrences(templates, realTodosForExpansion, ctx) : null),
+    [templates, realTodosForExpansion, ctx],
+  );
+
   const visibleStatuses = settings?.visibleStatuses;
   const board = useMemo(
     () =>
       ctx
-        ? buildBoard(visibleTodos, tabLists, ctx, hiddenLists, { visibleStatuses })
+        ? buildBoard(
+            recurrenceExpansion?.todos ?? nonTemplateTodos,
+            tabLists,
+            ctx,
+            hiddenLists,
+            { visibleStatuses, forceOverflow: recurrenceExpansion?.forceOverflow },
+          )
         : null,
-    [visibleTodos, tabLists, ctx, hiddenLists, visibleStatuses],
+    [recurrenceExpansion, nonTemplateTodos, tabLists, ctx, hiddenLists, visibleStatuses],
+  );
+
+  /**
+   * Every id a card, drag, or sheet gesture might name — real rows, virtual
+   * recurrence occurrences, and force-overflowed occurrences alike — so every
+   * `todos.find(...)` call site that used to miss a virtual card can resolve
+   * one instead. `todos` covers real rows (including templates themselves,
+   * harmlessly); the other two only exist inside `recurrenceExpansion`.
+   */
+  const todosById = useMemo(() => {
+    const map = new Map<string, Todo>();
+    for (const t of todos) map.set(t.id, t);
+    if (recurrenceExpansion) {
+      for (const t of recurrenceExpansion.todos) map.set(t.id, t);
+      for (const t of recurrenceExpansion.forceOverflow) map.set(t.id, t);
+    }
+    return map;
+  }, [todos, recurrenceExpansion]);
+
+  /** Ids with a real Dexie row — anything else is virtual and needs materializing first. */
+  const rawTodoIds = useMemo(() => new Set(todos.map((t) => t.id)), [todos]);
+
+  /**
+   * The open todo is DERIVED, never snapshotted.
+   *
+   * Holding the Todo object in state let the sheet drift from the store: an
+   * edit made in the sheet, or an undo applied to it, left the fields showing
+   * the values as of the moment it opened. Worse for undo — an entry built
+   * from a stale object reverses stale values, so toggling two labels and
+   * pressing ⌘Z once would strip both.
+   *
+   * Resolved through `todosById` rather than `todos.find`, so a virtual or
+   * force-overflowed recurrence occurrence opens its sheet too.
+   */
+  const openTodo = useMemo(
+    () => (openTodoId ? todosById.get(openTodoId) ?? null : null),
+    [todosById, openTodoId],
+  );
+
+  /**
+   * The read-only recurrence summary for the open sheet, if `openTodo` is a
+   * materialized occurrence. `openTodo` alone doesn't carry the rule — that
+   * lives on the template, found through `recurrenceParentId`.
+   */
+  const recurrenceInfo = useMemo(() => {
+    if (!openTodo?.recurrenceParentId) return null;
+    const template = todosById.get(openTodo.recurrenceParentId);
+    const rule = template ? parseRule(template.recurrenceRule) : null;
+    if (!template || !rule || !template.scheduledDate) return null;
+    const todoId = openTodo.id;
+    return {
+      summary: summarizeRule(rule, template.scheduledDate),
+      missedCount: recurrenceExpansion?.missedCounts.get(todoId) ?? null,
+      onStop: () => {
+        // Ends the series the day before this occurrence, so this one and
+        // anything already materialized are untouched — only FUTURE
+        // occurrences stop generating.
+        const occurrence = parseOccurrenceId(todoId);
+        void setSeriesUntil(template.id, occurrence ? addDays(occurrence.date, -1) : null);
+        toast.success("Stopped repeating");
+      },
+    };
+  }, [openTodo, todosById, recurrenceExpansion]);
+
+  /** Start a new series from the currently open (plain, one-off) todo. */
+  const handleStartSeries = useCallback(
+    (rule: RecurrenceRule) => {
+      if (!openTodo) return;
+      void createSeriesFromTodo(openTodo, rule);
+    },
+    [openTodo],
   );
 
   /**
@@ -981,12 +1103,16 @@ export function Board() {
    */
   const deadlineCounts = useMemo(() => {
     const counts = new Map<string, number>();
-    for (const todo of visibleTodos) {
+    // `nonTemplateTodos`, not `visibleTodos`: a recurrence template must never
+    // contribute a deadline badge that would otherwise repeat on every
+    // occurrence's date. Occurrences never carry a deadline of their own
+    // (`cloneOccurrence` nulls it), so this changes nothing else.
+    for (const todo of nonTemplateTodos) {
       if (!todo.deadline || todo.status !== "open") continue;
       counts.set(todo.deadline, (counts.get(todo.deadline) ?? 0) + 1);
     }
     return counts;
-  }, [visibleTodos]);
+  }, [nonTemplateTodos]);
 
   const navigate = useColumnNav({
     grid: navGrid,
@@ -1037,6 +1163,22 @@ export function Board() {
     return column?.groups.find((g) => g.key === key)?.id ?? null;
   }, [activeTodo, overId, board, backlogColumn]);
 
+  /**
+   * Materialize a virtual (or already-real) todo before writing to it.
+   *
+   * `mutate()` throws on a missing row by design (see `lib/store/mutate.ts`)
+   * — a virtual recurrence occurrence has no row yet, and writing to it via
+   * the ordinary path would otherwise reach the server as a partial create.
+   * A no-op when `todo` already has a real row (the common case).
+   */
+  const materializeIfNeeded = useCallback(
+    async (todo: Todo): Promise<Todo> => {
+      if (rawTodoIds.has(todo.id)) return todo;
+      return materializeOccurrence(todo);
+    },
+    [rawTodoIds],
+  );
+
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {
       // Three gestures share one DndContext. `active.id` is what tells them
@@ -1056,9 +1198,11 @@ export function Board() {
         return;
       }
 
-      setActiveTodo(todos.find((t) => t.id === event.active.id) ?? null);
+      // `todosById`, not `todos.find`: a virtual or force-overflowed
+      // recurrence occurrence must still show a drag overlay.
+      setActiveTodo(todosById.get(id) ?? null);
     },
-    [todos, lists, tabs],
+    [todosById, lists, tabs],
   );
 
   const handleDragOver = useCallback((event: DragOverEvent) => {
@@ -1265,8 +1409,13 @@ export function Board() {
 
       if (!board) return;
 
-      const todo = todos.find((t) => t.id === active.id);
-      if (!todo) return;
+      // `todosById`, not `todos.find`: a card in flight may be a virtual or
+      // force-overflowed recurrence occurrence, neither of which has a real
+      // row yet. Materializing it here — a no-op if it already has one —
+      // gives every write below a row to land on.
+      const draggedCard = todosById.get(String(active.id));
+      if (!draggedCard) return;
+      const todo = await materializeIfNeeded(draggedCard);
 
       /**
        * DROPPED ON A GROUP: "this belongs to list X, still scheduled for D."
@@ -1333,7 +1482,7 @@ export function Board() {
       let index = 0;
 
       if (!target) {
-        const overTodo = todos.find((t) => t.id === over.id);
+        const overTodo = todosById.get(String(over.id));
         if (!overTodo) return;
         const column = findColumn(board, overTodo.id);
         if (!column) return;
@@ -1396,7 +1545,7 @@ export function Board() {
         });
       }
     },
-    [board, todos, lists, tabs],
+    [board, todosById, materializeIfNeeded, lists, tabs],
   );
 
   const handleQuickAdd = useCallback(
@@ -1420,17 +1569,25 @@ export function Board() {
    * only `open` — and that invisibility is exactly what earns a toast. A change
    * the user can still see does not get one.
    */
-  const handleToggle = useCallback((todo: Todo) => {
-    const forward = statusPatch("done");
-    const entryId = pushUndo(`Completed “${short(todo.title)}”`, [
-      { kind: "todo", entityId: todo.id, patch: inversePatch(todo, forward) },
-    ]);
-    void setTodoStatus(todo.id, "done");
-    toast.success(`Completed “${short(todo.title)}”`, {
-      duration: 6000,
-      action: { label: "Undo", onClick: () => void undoById(entryId) },
-    });
-  }, []);
+  const handleToggle = useCallback(
+    (todo: Todo) => {
+      const forward = statusPatch("done");
+      const entryId = pushUndo(`Completed “${short(todo.title)}”`, [
+        { kind: "todo", entityId: todo.id, patch: inversePatch(todo, forward) },
+      ]);
+      // `todo` may be a virtual recurrence occurrence with no row yet —
+      // materialize before writing. A no-op when it already has one.
+      void (async () => {
+        await materializeIfNeeded(todo);
+        await setTodoStatus(todo.id, "done");
+      })();
+      toast.success(`Completed “${short(todo.title)}”`, {
+        duration: 6000,
+        action: { label: "Undo", onClick: () => void undoById(entryId) },
+      });
+    },
+    [materializeIfNeeded],
+  );
 
   /**
    * The sheet's handlers all read the todo as it is RIGHT NOW to build an
@@ -1439,7 +1596,9 @@ export function Board() {
    */
   const handleSheetSave = useCallback(
     (id: string, patch: Partial<Todo>) => {
-      const before = todos.find((t) => t.id === id);
+      // `todosById`, not `todos.find`: the sheet may be open on a virtual or
+      // force-overflowed recurrence occurrence.
+      const before = todosById.get(id);
       // Typing a new date into the sheet is still a genuine reschedule, same
       // as dragging — stamp `scheduledAt` the same way `schedulePatch` and
       // `dayGroupPatch` do, so the day sheet's timeline sees it. Gated on the
@@ -1456,9 +1615,12 @@ export function Board() {
           { kind: "todo", entityId: id, patch: inversePatch(before, stamped) },
         ]);
       }
-      void updateTodo(id, stamped);
+      void (async () => {
+        if (before) await materializeIfNeeded(before);
+        await updateTodo(id, stamped);
+      })();
     },
-    [todos],
+    [todosById, materializeIfNeeded],
   );
 
   /**
@@ -1486,13 +1648,16 @@ export function Board() {
 
   const handleSheetStatus = useCallback(
     (id: string, status: Todo["status"]) => {
-      const before = todos.find((t) => t.id === id);
+      const before = todosById.get(id);
       if (!before) return;
       const forward = statusPatch(status);
       const entryId = pushUndo(`${STATUS_VERB[status]} “${short(before.title)}”`, [
         { kind: "todo", entityId: id, patch: inversePatch(before, forward) },
       ]);
-      void setTodoStatus(id, status);
+      void (async () => {
+        await materializeIfNeeded(before);
+        await setTodoStatus(id, status);
+      })();
       // Same reasoning as the card checkbox: anything but `open` drops the
       // todo off the board, so there is nothing left on screen to confirm it.
       if (status !== "open") {
@@ -1502,37 +1667,43 @@ export function Board() {
         });
       }
     },
-    [todos],
+    [todosById, materializeIfNeeded],
   );
 
   const handleToggleLabel = useCallback(
     (todoId: string, labelId: string) => {
-      const before = todos.find((t) => t.id === todoId);
+      const before = todosById.get(todoId);
       if (!before) return;
       // toggleTodoLabel rewrites the whole array, so the inverse is simply the
       // array as it stands — no need to know which way the toggle went.
       pushUndo(`Labelled “${short(before.title)}”`, [
         { kind: "todo", entityId: todoId, patch: { labelIds: before.labelIds } },
       ]);
-      void toggleTodoLabel(todoId, labelId);
+      void (async () => {
+        await materializeIfNeeded(before);
+        await toggleTodoLabel(todoId, labelId);
+      })();
     },
-    [todos],
+    [todosById, materializeIfNeeded],
   );
 
   const handleDelete = useCallback(
     (id: string) => {
-      const before = todos.find((t) => t.id === id);
+      const before = todosById.get(id);
       if (!before) return;
       const entryId = pushUndo(`Deleted “${short(before.title)}”`, [
         { kind: "todo", entityId: id, patch: { deletedAt: null } },
       ]);
-      void deleteTodo(id);
+      void (async () => {
+        await materializeIfNeeded(before);
+        await deleteTodo(id);
+      })();
       toast.success(`Deleted “${short(before.title)}”`, {
         duration: 8000,
         action: { label: "Undo", onClick: () => void undoById(entryId) },
       });
     },
-    [todos],
+    [todosById, materializeIfNeeded],
   );
 
   /**
@@ -1695,6 +1866,7 @@ export function Board() {
               onToggleGroup={toggleGroup}
               onToggle={handleToggle}
               onOpen={(todo) => openTodoSheet(todo.id)}
+              missedCounts={recurrenceExpansion?.missedCounts}
               // No `onQuickAdd`, so no quick-add row: nothing can be scheduled
               // INTO Overflow, only out of it.
               onNavigate={navigate}
@@ -2062,6 +2234,8 @@ export function Board() {
         onDelete={handleDelete}
         backToDay={todoOriginDay ?? undefined}
         onBackToDay={handleBackToDay}
+        recurrence={recurrenceInfo}
+        onStartSeries={handleStartSeries}
       />
 
       <ListInfoDialog
@@ -2101,8 +2275,10 @@ export function Board() {
         onOpenChange={setPaletteOpen}
         lists={lists}
         // Archived lists are off the board, and so are their to-dos — search
-        // must not be the one door left open to them.
-        todos={visibleTodos}
+        // must not be the one door left open to them. `nonTemplateTodos`, not
+        // `visibleTodos`: a virtual recurrence occurrence is not a distinct
+        // record to find, and a template renders nowhere for search to open.
+        todos={nonTemplateTodos}
         tabs={tabs}
         settings={settings}
         activeTabId={activeTabId}
@@ -2134,7 +2310,9 @@ export function Board() {
       day={openDay}
       settings={settings}
       note={openDay ? dayNotes.get(openDay) : undefined}
-      todos={visibleTodos}
+      // `nonTemplateTodos`: a day's timeline is a journal of what actually
+      // happened, and nothing happens to a virtual occurrence or a template.
+      todos={nonTemplateTodos}
       timezone={settings?.timezone ?? "UTC"}
       labels={labels}
       listsById={listsById}

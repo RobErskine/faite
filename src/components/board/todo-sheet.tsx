@@ -24,9 +24,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { RepeatDialog } from "@/components/board/repeat-dialog";
 import { cn } from "@/lib/utils";
 import { TITLE_LINES } from "@/lib/title";
 import { formatShortDate } from "@/lib/scheduling";
+import { Repeat } from "lucide-react";
+import type { RecurrenceRule } from "@/lib/recurrence";
 import type {
   CivilDate,
   Label as LabelRecord,
@@ -37,6 +40,17 @@ import type {
 } from "@/lib/schema";
 
 const NONE = "__none__";
+
+/** Read-only summary of the series a materialized occurrence belongs to. */
+export interface RecurrenceInfo {
+  /** "Every week on Fri", from `summarizeRule` — computed by the caller,
+   * which has the template row this todo alone does not carry. */
+  summary: string;
+  /** Occurrences currently outstanding on this card. Null hides the badge. */
+  missedCount: number | null;
+  /** Ends the series after this occurrence — "Stop repeating". */
+  onStop: () => void;
+}
 
 interface TodoSheetProps {
   todo: Todo | null;
@@ -62,6 +76,14 @@ interface TodoSheetProps {
    */
   backToDay?: CivilDate;
   onBackToDay?: () => void;
+  /** Set when this todo is a materialized occurrence of a recurring series. */
+  recurrence?: RecurrenceInfo | null;
+  /**
+   * Start a new series from this (plain, one-off) todo. Omitted — or simply
+   * not rendered — when `recurrence` is already set, or the todo has no
+   * `scheduledDate` to anchor a series on.
+   */
+  onStartSeries?: (rule: RecurrenceRule) => void;
 }
 
 /**
@@ -93,8 +115,11 @@ function TodoSheetContent({
   onDelete,
   backToDay,
   onBackToDay,
+  recurrence,
+  onStartSeries,
 }: TodoSheetProps & { todo: Todo }) {
   const [title, setTitle] = useState(todo.title);
+  const [repeatDialogOpen, setRepeatDialogOpen] = useState(false);
 
   const commitTitle = () => {
     const next = title.trim();
@@ -322,6 +347,38 @@ function TodoSheetContent({
             />
           </div>
 
+          {(recurrence || (onStartSeries && todo.scheduledDate)) && (
+            <div className="space-y-1.5">
+              <Label>Repeat</Label>
+              {recurrence ? (
+                <div className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm">
+                  <span className="flex items-center gap-1.5 text-muted-foreground">
+                    <Repeat className="size-3.5" aria-hidden />
+                    {recurrence.summary}
+                    {recurrence.missedCount !== null && recurrence.missedCount > 1 && (
+                      <Badge variant="outline" className="ml-1">
+                        ×{recurrence.missedCount}
+                      </Badge>
+                    )}
+                  </span>
+                  <Button variant="ghost" size="sm" onClick={recurrence.onStop}>
+                    Stop repeating
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setRepeatDialogOpen(true)}
+                  className="w-fit"
+                >
+                  <Repeat className="size-3.5" aria-hidden />
+                  Repeat…
+                </Button>
+              )}
+            </div>
+          )}
+
           <Separator />
 
           <div className="flex gap-2">
@@ -367,6 +424,16 @@ function TodoSheetContent({
           </Button>
         </SheetFooter>
       </SheetContent>
+
+      {onStartSeries && todo.scheduledDate && (
+        <RepeatDialog
+          open={repeatDialogOpen}
+          onOpenChange={setRepeatDialogOpen}
+          seriesStart={todo.scheduledDate}
+          initialRule={null}
+          onSave={onStartSeries}
+        />
+      )}
     </Sheet>
   );
 }

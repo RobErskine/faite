@@ -8,7 +8,7 @@ import type {
 } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { CalendarCheck, CalendarClock, MapPin } from "lucide-react";
+import { CalendarCheck, CalendarClock, MapPin, Repeat } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -61,6 +61,13 @@ interface TodoCardProps {
    * the handler only calls `preventDefault` for a press it actually consumed.
    */
   onNavigate?: (fromStopId: string, key: NavKey) => boolean;
+  /**
+   * Occurrences currently outstanding on this card — see
+   * `lib/recurrence-expand.ts`. Null/undefined/`<= 1` shows no badge: a
+   * single overdue occurrence already reads as overdue from Overflow
+   * placement alone, and a badge there would just be noise.
+   */
+  missedCount?: number | null;
 }
 
 export function TodoCard({
@@ -74,6 +81,7 @@ export function TodoCard({
   onToggle,
   onOpen,
   onNavigate,
+  missedCount,
 }: TodoCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: todo.id });
@@ -435,6 +443,15 @@ export function TodoCard({
                     <TooltipContent>{todo.location}</TooltipContent>
                   </Tooltip>
                 )}
+                {todo.recurrenceParentId && (
+                  <span
+                    data-recurrence-marker
+                    className="mr-1 inline-block align-[-0.1875em] text-muted-foreground"
+                  >
+                    <Repeat className="size-3" aria-hidden />
+                    <span className="sr-only">Part of a repeating series. </span>
+                  </span>
+                )}
                 {todo.title}
                 {rail && <span className="sr-only"> — {rail.label}</span>}
               </span>
@@ -445,7 +462,8 @@ export function TodoCard({
 
         {(todoLabels.length > 0 ||
           (deadlineMissed && todo.deadline) ||
-          (isAway && todo.scheduledDate)) && (
+          (isAway && todo.scheduledDate) ||
+          (missedCount ?? 0) > 1) && (
           <span className="mt-1 flex flex-wrap items-center gap-1">
             {isAway && todo.scheduledDate && (
               <Badge variant="outline" className="num gap-1 text-2xs font-normal">
@@ -456,6 +474,15 @@ export function TodoCard({
             {deadlineMissed && todo.deadline && (
               <Badge variant="destructive" className="text-2xs font-normal">
                 Deadline <span className="num">{formatShortDate(todo.deadline)}</span>
+              </Badge>
+            )}
+            {(missedCount ?? 0) > 1 && (
+              <Badge
+                variant="destructive"
+                className="num gap-1 text-2xs font-normal"
+                title={`Missed ${missedCount} times in a row`}
+              >
+                <Repeat className="size-2.5" aria-hidden />×{missedCount}
               </Badge>
             )}
             {todoLabels.map((label) => (

@@ -468,6 +468,14 @@ function placeSettled(
 export interface BuildBoardOptions {
   /** Which statuses render. Defaults to unfinished work only. */
   visibleStatuses?: readonly TodoStatus[];
+  /**
+   * Rendered directly in Overflow, bypassing `deriveColumn`/`placeSettled`
+   * entirely — used for a recurring occurrence that must overflow the moment
+   * it is overdue, skipping the ordinary multi-day rollover grace period. See
+   * `lib/recurrence-expand.ts`. Must not also appear in `todos`, or it
+   * renders twice.
+   */
+  forceOverflow?: readonly Todo[];
 }
 
 /**
@@ -496,7 +504,7 @@ export function buildBoard(
   lists: List[],
   ctx: PlacementContext,
   hiddenLists: readonly List[] = [],
-  { visibleStatuses = DEFAULT_VISIBLE_STATUSES }: BuildBoardOptions = {},
+  { visibleStatuses = DEFAULT_VISIBLE_STATUSES, forceOverflow = [] }: BuildBoardOptions = {},
 ): BoardModel {
   const shown = new Set(visibleStatuses);
   const visible = todos.filter((t) => shown.has(t.status));
@@ -563,6 +571,11 @@ export function buildBoard(
     // Backlog rather than disappearing from the board entirely.
     const column = (todo.listId ? listIndex.get(todo.listId) : undefined) ?? backlog;
     column?.todos.push(todo);
+  }
+
+  for (const todo of forceOverflow) {
+    if (!shown.has(todo.status)) continue;
+    overflow.todos.push(todo);
   }
 
   /*

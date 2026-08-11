@@ -65,17 +65,27 @@ export const priorityRank = (priority: Priority | null | undefined): number =>
   priority ?? 5;
 
 /**
- * P1 → P4, then unprioritised, with `position` breaking ties.
+ * P1 → P4, then unprioritised, with `position` breaking ties, and `id`
+ * breaking those.
  *
  * The `byPosition` fallback is not decoration and must not be trimmed on the
  * grounds that `Array.prototype.sort` is stable. It is stable — but the
  * insertion order it would preserve is the store's, which is arbitrary. Without
  * the fallback two P2 cards would swap places whenever Dexie handed them back in
  * a different order.
+ *
+ * The final `id` tiebreak matters for recurrence: every occurrence of one
+ * series shares the template's own `position` verbatim (see
+ * `lib/recurrence-expand.ts`), so equal priority AND equal position is no
+ * longer a one-in-a-million case. Without a total order here, two occurrences
+ * of the same series would swap places on every render.
  */
 export function byPriorityThenPosition(a: Todo, b: Todo): number {
   const rank = priorityRank(a.priority) - priorityRank(b.priority);
-  return rank !== 0 ? rank : byPosition(a, b);
+  if (rank !== 0) return rank;
+  const byPos = byPosition(a, b);
+  if (byPos !== 0) return byPos;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
 /**

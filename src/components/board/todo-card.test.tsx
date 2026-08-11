@@ -73,6 +73,7 @@ interface HarnessProps {
   onNavigate?: (stop: string, key: NavKey) => boolean;
   onDragStart?: () => void;
   showInsertionLine?: boolean;
+  missedCount?: number | null;
 }
 
 function Harness({
@@ -82,6 +83,7 @@ function Harness({
   onNavigate,
   onDragStart,
   showInsertionLine,
+  missedCount,
 }: HarnessProps) {
   return (
     <TooltipProvider>
@@ -95,6 +97,7 @@ function Harness({
             onOpen={onOpen}
             onNavigate={onNavigate}
             showInsertionLine={showInsertionLine}
+            missedCount={missedCount}
           />
         </SortableContext>
       </DndContext>
@@ -293,5 +296,32 @@ describe("the row's keyboard contract, unchanged", () => {
     fireEvent.keyDown(row(), { key: "ArrowDown" });
     expect(onNavigate).toHaveBeenCalledWith(cardStop("t1"), "ArrowDown");
     expect(row().getAttribute("tabindex")).toBe("-1");
+  });
+});
+
+describe("recurrence", () => {
+  it("shows the repeat marker for a materialized occurrence", () => {
+    render(<Harness todo={todo({ recurrenceParentId: "template-1" })} />);
+    expect(row().querySelector("[data-recurrence-marker]")).not.toBeNull();
+  });
+
+  it("shows no repeat marker for a plain todo", () => {
+    render(<Harness />);
+    expect(row().querySelector("[data-recurrence-marker]")).toBeNull();
+  });
+
+  it("shows no ×N badge for a single occurrence (missedCount 1)", () => {
+    render(<Harness missedCount={1} />);
+    expect(badgeRow()).toBeNull();
+  });
+
+  it("shows no ×N badge when missedCount is unset", () => {
+    render(<Harness missedCount={null} />);
+    expect(badgeRow()).toBeNull();
+  });
+
+  it("shows the ×N badge once more than one occurrence has accrued", () => {
+    render(<Harness missedCount={3} />);
+    expect(badgeRow()?.textContent).toContain("×3");
   });
 });

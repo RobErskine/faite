@@ -46,6 +46,11 @@ export class FaiteDatabase extends Dexie {
     this.version(2).stores({
       dayNotes: "id, date, deletedAt",
     });
+    // `recurrenceParentId` indexed for `useRecurrenceChildren()` — every
+    // materialized occurrence of a series is looked up by its template's id.
+    this.version(3).stores({
+      todos: "id, listId, projectId, scheduledDate, status, position, deletedAt, recurrenceParentId",
+    });
   }
 }
 
