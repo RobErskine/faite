@@ -39,6 +39,8 @@ const settings = (over: Partial<Settings> = {}): Settings => ({
   backlogCollapsed: false,
   overflowWidth: null,
   overflowCollapsed: false,
+  splitRatio: null,
+  splitCollapsed: "none",
   updatedAt: "2026-08-03T00:00:00.000Z",
   ...over,
 });

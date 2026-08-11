@@ -57,6 +57,11 @@ export const SETTINGS_ENTITY_ID = "settings";
  * of "device, not account": the right rail width for a laptop is not the
  * right rail width for a wide monitor signed into the same account, so a
  * synced value would fight the user on every device switch.
+ *
+ * `splitRatio`/`splitCollapsed` are INCLUDED, unlike the rail fields above,
+ * despite looking like the same kind of layout preference: a rail's stored
+ * value is a pixel width, which doesn't mean the same thing on a laptop and a
+ * wide monitor, but a split ratio is a percentage — it transfers.
  */
 export const SETTINGS_SYNCED_FIELDS: ReadonlySet<string> = new Set([
   "timezone",
@@ -73,6 +78,8 @@ export const SETTINGS_SYNCED_FIELDS: ReadonlySet<string> = new Set([
   "avatarInitials",
   "avatarEmoji",
   "avatarImage",
+  "splitRatio",
+  "splitCollapsed",
 ]);
 
 export const SYNC_PROTOCOL_VERSION = 1 as const;

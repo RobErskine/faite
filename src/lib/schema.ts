@@ -3,6 +3,7 @@ import { DEFAULT_FONT_PAIRING, FONT_PAIRING_IDS } from "./fonts";
 import { DEFAULT_THEME_MODE, THEME_MODE_IDS } from "./theme";
 import { AVATAR_KIND_IDS, DEFAULT_AVATAR_KIND } from "./profile";
 import { RAIL_MAX, RAIL_MIN } from "./rail";
+import { SPLIT_MAX_PERCENT, SPLIT_MIN_PERCENT } from "./split";
 
 /**
  * Single source of truth for Faite's data model.
@@ -287,6 +288,22 @@ export const settingsSchema = z.object({
   backlogCollapsed: z.boolean().default(false),
   overflowWidth: z.number().int().min(RAIL_MIN).max(RAIL_MAX).nullable().default(null),
   overflowCollapsed: z.boolean().default(false),
+  /**
+   * Percent of the vertical split the calendar half gets — see split-handle.tsx
+   * and use-split-resize.ts. Null means "never resized", same reasoning as the
+   * rail widths above: the CSS default (`--split-top` in globals.css) stays
+   * the single source of what that looks like.
+   *
+   * Unlike the rail widths, this one DOES sync (`SETTINGS_SYNCED_FIELDS` in
+   * lib/sync/wire.ts): a percentage transfers between a laptop and a wide
+   * monitor on the same account where a pixel width would not.
+   */
+  splitRatio: z.number().int().min(SPLIT_MIN_PERCENT).max(SPLIT_MAX_PERCENT).nullable().default(null),
+  /**
+   * Which half, if either, is collapsed. An enum rather than two booleans so
+   * "both collapsed at once" is unrepresentable rather than merely avoided.
+   */
+  splitCollapsed: z.enum(["none", "calendar", "planning"]).default("none"),
   updatedAt: z.string(),
 });
 export type Settings = z.infer<typeof settingsSchema>;

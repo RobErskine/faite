@@ -92,6 +92,16 @@ export const USER_DB_MIGRATIONS: readonly UserDbMigration[] = [
       "ALTER TABLE settings ADD COLUMN show_weekends integer DEFAULT true NOT NULL",
     ],
   },
+  {
+    id: 4,
+    name: "settings-add-split-layout",
+    statements: [
+      // Nullable, matching backlog_width/overflow_width in migration 2: null
+      // means "never resized", so no DEFAULT is needed here.
+      "ALTER TABLE settings ADD COLUMN split_ratio integer",
+      `ALTER TABLE settings ADD COLUMN split_collapsed text DEFAULT 'none' NOT NULL`,
+    ],
+  },
   // Add new migrations here. Never edit one above this line.
   //
   // Example — adding a nullable column (the safe, ordinary case):

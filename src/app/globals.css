@@ -135,6 +135,14 @@
     half is always exactly this much roomier, whatever --column-min becomes.
   */
   --list-column-min: calc(var(--column-min) + 50px);
+
+  /*
+    Percent of the vertical split the calendar half gets — see split-handle.tsx
+    and use-split-resize.ts. A bare number, not "56%": grow-(--split-top) in
+    board.tsx feeds it straight into a CSS `flex-grow`, which takes a unitless
+    ratio, so a percent sign there would make the whole declaration invalid.
+  */
+  --split-top: 56;
 }
 
 .dark {

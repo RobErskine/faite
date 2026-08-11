@@ -681,6 +681,8 @@ export async function seedIfEmpty(): Promise<void> {
         backlogCollapsed: false,
         overflowWidth: null,
         overflowCollapsed: false,
+        splitRatio: null,
+        splitCollapsed: "none",
         updatedAt: timestamp,
       },
     });

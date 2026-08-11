@@ -79,6 +79,17 @@ interface UseDayTrackOptions {
    * current horizon — the caller is expected to clamp, not this hook.
    */
   onExtend: (days: number) => void;
+  /**
+   * False while the calendar half is collapsed (see split-strip.tsx) — the
+   * track has no layout to scroll yet. A `jumpToIndex` request made in that
+   * state is not dropped: the layout effect below already bails without
+   * recording the request's `seq` whenever `measurePitch` reads 0, precisely
+   * so a later run can still serve it. What's missing without this flag is a
+   * later RUN — a ref appearing when the caller expands the half is not
+   * something React re-renders for on its own, so this flag is what gives
+   * the effect a reason to check again once the track exists.
+   */
+  trackReady?: boolean;
 }
 
 interface UseDayTrackResult {
@@ -115,7 +126,12 @@ interface JumpRequest {
   seq: number;
 }
 
-export function useDayTrack({ trackRef, cap, onExtend }: UseDayTrackOptions): UseDayTrackResult {
+export function useDayTrack({
+  trackRef,
+  cap,
+  onExtend,
+  trackReady = true,
+}: UseDayTrackOptions): UseDayTrackResult {
   const [anchorIndex, setAnchorIndex] = useState(0);
   const [visibleCount, setVisibleCount] = useState(1);
   const [jump, setJump] = useState<JumpRequest | null>(null);
@@ -207,8 +223,10 @@ export function useDayTrack({ trackRef, cap, onExtend }: UseDayTrackOptions): Us
     // `anchorIndex` deliberately excluded: it changes as a RESULT of this
     // scroll (via the scroll listener above), which would re-fire this effect
     // and scroll again to the same place. Only a new request should.
+    // `trackReady` included though this branch never reads it: it flipping
+    // true is exactly the "later run" the pitch<=0 bail above is waiting for.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jump, trackRef, measurePitch]);
+  }, [jump, trackRef, measurePitch, trackReady]);
 
   /**
    * The one place that actually moves the track: floors at day 0, extends the

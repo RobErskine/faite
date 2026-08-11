@@ -118,6 +118,9 @@ export const settings = sqliteTable("settings", {
   backlogCollapsed: integer("backlog_collapsed", { mode: "boolean" }).notNull().default(false),
   overflowWidth: integer("overflow_width"),
   overflowCollapsed: integer("overflow_collapsed", { mode: "boolean" }).notNull().default(false),
+  /** Nullable: null means "never resized", the CSS default applies. */
+  splitRatio: integer("split_ratio"),
+  splitCollapsed: text("split_collapsed").notNull().default("none"),
   updatedAt: text("updated_at").notNull(),
   version: integer("version").notNull(),
 });

@@ -124,6 +124,8 @@ import { DateNav } from "./date-nav";
 import { ListInfoDialog, type ListPatch } from "./list-info-dialog";
 import { RailCollapseButton } from "./rail-collapse-button";
 import { RailHandle } from "./rail-handle";
+import { SplitHandle } from "./split-handle";
+import { SplitStrip } from "./split-strip";
 import {
   archiveListWithUndo,
   deleteListWithUndo,
@@ -646,14 +648,40 @@ export function Board() {
   // drag start (§4.2 of DRAG-AND-DROP.md) — same reasoning as `rejectsDrop`.
   const railDisabled = !!activeTodo || !!activeList;
 
+  /**
+   * The vertical split between the calendar and planning halves — same
+   * "resized independently, null means never resized" shape as the rails
+   * above, rotated 90°. `splitContainerRef` is the outer flex column
+   * `--split-top` is written to; `calendarHalfRef`/`planningHalfRef` are what
+   * get measured on pointer-down (their rendered heights are the resizable
+   * total — see `useSplitResize`).
+   */
+  const splitContainerRef = useRef<HTMLDivElement>(null);
+  const calendarHalfRef = useRef<HTMLDivElement>(null);
+  const planningHalfRef = useRef<HTMLDivElement>(null);
+  const splitRatio = settings?.splitRatio ?? null;
+  const splitCollapsed = settings?.splitCollapsed ?? "none";
+
+  /**
+   * Re-shows a collapsed calendar before a `DateNav`/hotkey/palette jump —
+   * jumping to a date you can't see is meaningless. Wrapped here, once,
+   * rather than in `DateNav` itself, so every caller of `jumpBy`/
+   * `jumpToIndex`/`jumpToToday` inherits it for free.
+   */
+  const showCalendar = useCallback(() => {
+    if (splitCollapsed === "calendar") {
+      void mutateSettings(LOCAL_OWNER_ID, { splitCollapsed: "none" });
+    }
+  }, [splitCollapsed]);
+
   const {
     anchorIndex,
     visibleCount,
     canJumpBack,
     canJumpForward,
-    jumpBy,
-    jumpToIndex,
-    jumpToToday,
+    jumpBy: jumpByRaw,
+    jumpToIndex: jumpToIndexRaw,
+    jumpToToday: jumpToTodayRaw,
   } = useDayTrack({
     trackRef: dayTrackRef,
     cap,
@@ -667,7 +695,30 @@ export function Board() {
       setCap((c) => Math.max(c, days));
       setHorizon((h) => Math.max(h, days));
     },
+    // False while collapsed: the track has no layout to scroll to yet. A
+    // jump requested in that state parks (see the comment on `trackReady` in
+    // use-day-track.ts) and is served once this flips back to true.
+    trackReady: splitCollapsed !== "calendar",
   });
+
+  const jumpBy = useCallback(
+    (delta: number) => {
+      showCalendar();
+      jumpByRaw(delta);
+    },
+    [showCalendar, jumpByRaw],
+  );
+  const jumpToIndex = useCallback(
+    (target: number) => {
+      showCalendar();
+      jumpToIndexRaw(target);
+    },
+    [showCalendar, jumpToIndexRaw],
+  );
+  const jumpToToday = useCallback(() => {
+    showCalendar();
+    jumpToTodayRaw();
+  }, [showCalendar, jumpToTodayRaw]);
 
   /**
    * The planning half's columns: the active tab's lists, plus Backlog.
@@ -792,6 +843,20 @@ export function Board() {
   const otherListColumns = useMemo(
     () => board?.lists.filter((c) => !c.list.isBacklog) ?? [],
     [board],
+  );
+
+  /** To-do counts for the two `SplitStrip`s — everything in the half, pinned column included. */
+  const calendarCount = useMemo(
+    () =>
+      (board?.overflow.todos.length ?? 0) +
+      (board?.days.reduce((sum, c) => sum + c.todos.length, 0) ?? 0),
+    [board],
+  );
+  const planningCount = useMemo(
+    () =>
+      (backlogColumn?.todos.length ?? 0) +
+      otherListColumns.reduce((sum, c) => sum + c.todos.length, 0),
+    [backlogColumn, otherListColumns],
   );
 
   /**
@@ -1485,7 +1550,13 @@ export function Board() {
     >
       <Hotkeys registry={hotkeys} context={guardContext} />
 
-      <div className="flex h-dvh flex-col">
+      <div
+        ref={splitContainerRef}
+        className="flex h-dvh flex-col"
+        style={
+          splitRatio != null ? ({ "--split-top": String(splitRatio) } as CSSProperties) : undefined
+        }
+      >
         <SignedOutBanner hasUserData={todos.length > 0} />
 
         <AppHeader
@@ -1514,8 +1585,27 @@ export function Board() {
           corrects it by the scroll delta of its scrollable ancestors, so a
           sticky column's corrected rect would drift off screen and a drop
           "on" Overflow would silently resolve to whatever is underneath it.
+
+          Collapsed to a `SplitStrip` when `splitCollapsed === "calendar"` —
+          `showCalendar` (wrapped into every `jumpBy`/`jumpToIndex`/
+          `jumpToToday` above) is what re-expands it the moment a date nav
+          gesture needs it back.
         */}
-        <div className="flex flex-1 border-b bg-border/40">
+        {splitCollapsed === "calendar" ? (
+          <SplitStrip
+            label="Calendar"
+            count={calendarCount}
+            direction="down"
+            onExpand={() => void mutateSettings(LOCAL_OWNER_ID, { splitCollapsed: "none" })}
+          />
+        ) : (
+        <div
+          ref={calendarHalfRef}
+          className={cn(
+            "flex min-h-0 basis-0 bg-border/40",
+            splitCollapsed === "planning" ? "flex-1" : "grow-(--split-top)",
+          )}
+        >
           <div
             ref={overflowPanelRef}
             className={cn(PINNED_PANEL, "pt-4")}
@@ -1653,9 +1743,36 @@ export function Board() {
             </div>
           </div>
         </div>
+        )}
+
+        {splitCollapsed === "none" && (
+          <SplitHandle
+            containerRef={splitContainerRef}
+            calendarRef={calendarHalfRef}
+            planningRef={planningHalfRef}
+            storedSplit={splitRatio}
+            disabled={railDisabled}
+            onSplitChange={(percent) => void mutateSettings(LOCAL_OWNER_ID, { splitRatio: percent })}
+            onCollapse={(half) => void mutateSettings(LOCAL_OWNER_ID, { splitCollapsed: half })}
+          />
+        )}
 
         {/* Planning half */}
-        <div className="flex flex-[0.8] bg-muted/30">
+        {splitCollapsed === "planning" ? (
+          <SplitStrip
+            label="Lists"
+            count={planningCount}
+            direction="up"
+            onExpand={() => void mutateSettings(LOCAL_OWNER_ID, { splitCollapsed: "none" })}
+          />
+        ) : (
+        <div
+          ref={planningHalfRef}
+          className={cn(
+            "flex min-h-0 basis-0 bg-muted/30",
+            splitCollapsed === "calendar" ? "flex-1" : "grow-[calc(100_-_var(--split-top))]",
+          )}
+        >
           {backlogColumn && (
             <div
               ref={backlogPanelRef}
@@ -1778,6 +1895,7 @@ export function Board() {
             </div>
           </div>
         </div>
+        )}
       </div>
 
       {/*
