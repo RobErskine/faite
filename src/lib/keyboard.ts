@@ -150,10 +150,34 @@ const OTHER_LABEL: Record<string, string> = {
   meta: "Win",
 };
 
-/** Keys whose display form is not just an uppercased letter. */
-const KEY_LABEL: Record<string, string> = {
+/**
+ * Keys whose display form is not just an uppercased letter — split by
+ * platform like the modifier tables above, NOT one shared table. Backspace
+ * and Delete are the reason: macOS reads a single glyph (⌫/⌦) the same way
+ * it reads modifiers, while everywhere else spells the word out. A shared
+ * table would leak the Mac glyph to Windows (`Ctrl+⌫`) or the spelled-out
+ * word onto Mac (`⌘Backspace`) — either reads as a mistake.
+ */
+const MAC_KEY_LABEL: Record<string, string> = {
+  escape: "Esc",
+  enter: "↵",
+  backspace: "⌫",
+  delete: "⌦",
+  arrowup: "↑",
+  arrowdown: "↓",
+  arrowleft: "←",
+  arrowright: "→",
+  " ": "Space",
+  space: "Space",
+  slash: "/",
+  comma: ",",
+  period: ".",
+};
+const OTHER_KEY_LABEL: Record<string, string> = {
   escape: "Esc",
   enter: "Enter",
+  backspace: "Backspace",
+  delete: "Delete",
   arrowup: "↑",
   arrowdown: "↓",
   arrowleft: "←",
@@ -170,10 +194,11 @@ export function formatCombo(combo: string, platform: Platform): string {
   const { modifiers, key } = parseCombo(combo);
   const isMac = platform === "mac";
   const order = isMac ? MAC_ORDER : OTHER_ORDER;
-  const table = isMac ? MAC_GLYPH : OTHER_LABEL;
+  const modifierTable = isMac ? MAC_GLYPH : OTHER_LABEL;
+  const keyTable = isMac ? MAC_KEY_LABEL : OTHER_KEY_LABEL;
 
-  const rendered = order.filter((m) => modifiers.has(m)).map((m) => table[m]);
-  const keyLabel = KEY_LABEL[key] ?? (key.length === 1 ? key.toUpperCase() : key);
+  const rendered = order.filter((m) => modifiers.has(m)).map((m) => modifierTable[m]);
+  const keyLabel = keyTable[key] ?? (key.length === 1 ? key.toUpperCase() : key);
   if (keyLabel) rendered.push(keyLabel);
 
   return isMac ? rendered.join("") : rendered.join("+");

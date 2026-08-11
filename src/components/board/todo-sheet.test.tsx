@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { TodoSheet } from "./todo-sheet";
+import { TodoSheet, type RecurrenceInfo } from "./todo-sheet";
+import { defaultRule } from "@/lib/recurrence";
 import type { Todo } from "@/lib/schema";
 
 /**
@@ -49,9 +50,11 @@ const TODO: Todo = {
 interface HarnessProps {
   backToDay?: string;
   onBackToDay?: () => void;
+  onSetStatus?: (id: string, status: Todo["status"]) => void;
+  onDelete?: (id: string) => void;
 }
 
-function Harness({ backToDay, onBackToDay }: HarnessProps) {
+function Harness({ backToDay, onBackToDay, onSetStatus = vi.fn(), onDelete = vi.fn() }: HarnessProps) {
   return (
     <TodoSheet
       todo={TODO}
@@ -61,14 +64,130 @@ function Harness({ backToDay, onBackToDay }: HarnessProps) {
       places={[]}
       onClose={vi.fn()}
       onSave={vi.fn()}
-      onSetStatus={vi.fn()}
+      onSetStatus={onSetStatus}
       onToggleLabel={vi.fn()}
-      onDelete={vi.fn()}
+      onDelete={onDelete}
       backToDay={backToDay}
       onBackToDay={onBackToDay}
     />
   );
 }
+
+const sheetContent = () => document.querySelector<HTMLElement>('[data-slot="sheet-content"]')!;
+
+const RECURRENCE: RecurrenceInfo = {
+  rule: defaultRule("2026-08-07"),
+  seriesStart: "2026-08-07",
+  occurrenceDate: "2026-08-11",
+  summary: "Every week on Fri",
+  nextDate: "2026-08-18",
+  missedCount: null,
+  onStop: vi.fn(),
+  onChangeRule: vi.fn(),
+  onRemoveSeries: vi.fn(),
+};
+
+describe("repeat section (a materialized occurrence)", () => {
+  it("renders the schedule, Change…, and the actions menu without crashing", () => {
+    render(
+      <TodoSheet
+        todo={{ ...TODO, recurrenceParentId: "template-1" }}
+        lists={[]}
+        labels={[]}
+        projects={[]}
+        places={[]}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+        onSetStatus={vi.fn()}
+        onToggleLabel={vi.fn()}
+        onDelete={vi.fn()}
+        recurrence={RECURRENCE}
+      />,
+    );
+    expect(screen.getByText("Every week on Fri")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Change…" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "More repeat actions" })).toBeTruthy();
+  });
+});
+
+describe("location field", () => {
+  it("renders the autocomplete input, with and without saved places, without crashing", () => {
+    const place = {
+      id: "place-1",
+      ownerId: "local-user",
+      createdAt: "",
+      updatedAt: "",
+      deletedAt: null,
+      name: "Home",
+      address: "1 Main St",
+      googlePlaceId: null,
+      lat: null,
+      lng: null,
+    };
+    render(
+      <TodoSheet
+        todo={TODO}
+        lists={[]}
+        labels={[]}
+        projects={[]}
+        places={[place]}
+        onClose={vi.fn()}
+        onSave={vi.fn()}
+        onSetStatus={vi.fn()}
+        onToggleLabel={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+    expect(screen.getByLabelText("Location")).toBeTruthy();
+  });
+});
+
+describe("footer", () => {
+  it("renders Mark done, Won't do, and Delete as a 3-up row", () => {
+    render(<Harness />);
+    expect(screen.getByRole("button", { name: "Mark done" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Won't do" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Delete" })).toBeTruthy();
+  });
+});
+
+describe("keyboard shortcuts", () => {
+  it("⌘Enter marks the todo done", () => {
+    const onSetStatus = vi.fn();
+    render(<Harness onSetStatus={onSetStatus} />);
+    fireEvent.keyDown(sheetContent(), { key: "Enter", metaKey: true });
+    expect(onSetStatus).toHaveBeenCalledWith("t1", "done");
+  });
+
+  it("⌘Backspace marks the todo dropped (Won't do)", () => {
+    const onSetStatus = vi.fn();
+    render(<Harness onSetStatus={onSetStatus} />);
+    fireEvent.keyDown(sheetContent(), { key: "Backspace", metaKey: true });
+    expect(onSetStatus).toHaveBeenCalledWith("t1", "dropped");
+  });
+
+  it("⇧⌘Backspace deletes", () => {
+    const onDelete = vi.fn();
+    render(<Harness onDelete={onDelete} />);
+    fireEvent.keyDown(sheetContent(), { key: "Backspace", metaKey: true, shiftKey: true });
+    expect(onDelete).toHaveBeenCalledWith("t1");
+  });
+
+  it("does not fire ⌘Backspace while focus is in a text field — it means delete-to-line-start there", () => {
+    const onSetStatus = vi.fn();
+    render(<Harness onSetStatus={onSetStatus} />);
+    const title = screen.getByLabelText("Title");
+    fireEvent.keyDown(title, { key: "Backspace", metaKey: true });
+    expect(onSetStatus).not.toHaveBeenCalled();
+  });
+
+  it("requires exactly one of Ctrl/Meta — Ctrl+Meta together is a different chord", () => {
+    const onSetStatus = vi.fn();
+    render(<Harness onSetStatus={onSetStatus} />);
+    fireEvent.keyDown(sheetContent(), { key: "Enter", metaKey: true, ctrlKey: true });
+    expect(onSetStatus).not.toHaveBeenCalled();
+  });
+});
 
 describe("back-to-day affordance", () => {
   it("is absent when the sheet was not opened from a day's timeline", () => {

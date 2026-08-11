@@ -55,12 +55,20 @@ interface RepeatDialogProps {
   /** Null for a brand new series; the current rule when editing one. */
   initialRule: RecurrenceRule | null;
   onSave: (rule: RecurrenceRule) => void;
+  /** @default "Custom repeat" */
+  title?: string;
 }
 
 /**
  * The custom-repeat editor: Based on / Every / On / Ends. Draft state only —
  * nothing writes until Save, so Cancel (or the dialog's own close button)
  * discards every change.
+ *
+ * Draft state is seeded ONCE, on mount — it does not track `initialRule`
+ * after that. Callers that reopen this for a series that already has a rule
+ * must force a fresh mount each time (e.g. a `key` that changes on every
+ * open), or a previous edit's abandoned draft reappears instead of the
+ * saved rule. See `repeat-section.tsx` / `todo-sheet.tsx` for the pattern.
  */
 export function RepeatDialog({
   open,
@@ -68,6 +76,7 @@ export function RepeatDialog({
   seriesStart,
   initialRule,
   onSave,
+  title = "Custom repeat",
 }: RepeatDialogProps) {
   const seed = initialRule ?? defaultRule(seriesStart);
   const [anchor, setAnchor] = useState<RecurrenceAnchor>(seed.anchor);
@@ -110,7 +119,7 @@ export function RepeatDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Custom repeat</DialogTitle>
+          <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4">

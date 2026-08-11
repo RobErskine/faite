@@ -5,12 +5,15 @@ import {
   defaultRule,
   firstOccurrenceAfter,
   nextAfterCompletion,
+  nextOccurrenceAfter,
   occurrenceId,
   occurrencesBetween,
   parseOccurrenceId,
   parseRule,
   serializeRule,
+  summarizeEnd,
   summarizeRule,
+  summarizeSchedule,
   type RecurrenceRule,
 } from "./recurrence";
 
@@ -209,5 +212,48 @@ describe("summarizeRule", () => {
     expect(summarizeRule(r, "2026-08-03")).toBe(
       "Every 2 weeks on Mon, Wed, based on completion date, 5 times",
     );
+  });
+});
+
+describe("summarizeSchedule / summarizeEnd", () => {
+  it("summarizeSchedule matches summarizeRule minus the end condition", () => {
+    const r = rule({ freq: "weekly", interval: 2, byDay: [1, 3], anchor: "completed" });
+    expect(summarizeSchedule(r, "2026-08-03")).toBe(
+      "Every 2 weeks on Mon, Wed, based on completion date",
+    );
+  });
+
+  it("summarizeEnd covers count, until, and never", () => {
+    expect(summarizeEnd(rule({ count: 5 }))).toBe("Ends after 5 times");
+    expect(summarizeEnd(rule({ count: 1 }))).toBe("Ends after 1 time");
+    expect(summarizeEnd(rule({ until: "2026-08-07" }))).toBe("Ends Aug 7");
+    expect(summarizeEnd(rule())).toBe("Never ends");
+  });
+});
+
+describe("nextOccurrenceAfter", () => {
+  it("returns the next occurrence strictly after the given date", () => {
+    const r = rule({ freq: "weekly", byDay: [5] });
+    expect(nextOccurrenceAfter(r, "2026-08-07", "2026-08-07")).toBe("2026-08-14");
+    expect(nextOccurrenceAfter(r, "2026-08-07", "2026-08-10")).toBe("2026-08-14");
+  });
+
+  it("returns null once the rule has no occurrence left (until/count exhausted)", () => {
+    const untilRule = rule({ freq: "weekly", byDay: [5], until: "2026-08-14" });
+    expect(nextOccurrenceAfter(untilRule, "2026-08-07", "2026-08-14")).toBeNull();
+
+    const countRule = rule({ freq: "daily", count: 2 });
+    expect(nextOccurrenceAfter(countRule, "2026-08-07", "2026-08-08")).toBeNull();
+  });
+
+  it("returns null for anchor: completed — no fixed schedule to compute from", () => {
+    const r = rule({ freq: "weekly", anchor: "completed" });
+    expect(nextOccurrenceAfter(r, "2026-08-07", "2026-08-07")).toBeNull();
+  });
+
+  it("never throws for a rule with no occurrence left, unlike firstOccurrenceAfter", () => {
+    const r = rule({ count: 1 });
+    expect(() => nextOccurrenceAfter(r, "2026-08-07", "2026-08-07")).not.toThrow();
+    expect(() => firstOccurrenceAfter(r, "2026-08-07")).toThrow();
   });
 });

@@ -152,4 +152,16 @@ describe("formatCombo", () => {
   it("handles a bare key with no modifiers", () => {
     expect(formatCombo("k", "mac")).toBe("K");
   });
+
+  it("renders backspace/delete/enter per platform, never leaking the other's convention", () => {
+    // Mac gets glyphs; Windows/Linux get the spelled-out word — a shared
+    // table would leak one onto the other (`Ctrl+⌫` or `⌘Backspace`).
+    expect(formatCombo("mod+backspace", "mac")).toBe("⌘⌫");
+    expect(formatCombo("mod+backspace", "other")).toBe("Ctrl+Backspace");
+    expect(formatCombo("shift+mod+backspace", "mac")).toBe("⇧⌘⌫");
+    expect(formatCombo("shift+mod+backspace", "other")).toBe("Ctrl+Shift+Backspace");
+    expect(formatCombo("mod+delete", "mac")).toBe("⌘⌦");
+    expect(formatCombo("mod+delete", "other")).toBe("Ctrl+Delete");
+    expect(formatCombo("mod+enter", "mac")).toBe("⌘↵");
+  });
 });

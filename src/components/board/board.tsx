@@ -57,7 +57,13 @@ import {
 import { positionForIndex } from "@/lib/ordering";
 import { OVERFLOW, addDays, daysBetween, formatDay, todayIn } from "@/lib/scheduling";
 import { expandRecurrences, isRecurrenceTemplate } from "@/lib/recurrence-expand";
-import { parseOccurrenceId, parseRule, summarizeRule, type RecurrenceRule } from "@/lib/recurrence";
+import {
+  nextOccurrenceAfter,
+  parseOccurrenceId,
+  parseRule,
+  summarizeRule,
+  type RecurrenceRule,
+} from "@/lib/recurrence";
 import {
   calendarSpanFor,
   groupWeekendRuns,
@@ -93,12 +99,14 @@ import {
   LOCAL_OWNER_ID,
   createSeriesFromTodo,
   createTodo,
+  deleteSeries,
   deleteTodo,
   dayGroupPatch,
   listPatch,
   materializeOccurrence,
   moveTodoToDayGroup,
   moveTodoToList,
+  retargetSeries,
   schedulePatch,
   scheduleTodo,
   setDayNote,
@@ -414,33 +422,10 @@ export function Board() {
     [handleUndo],
   );
 
-  const guardContext = useMemo<GuardContext>(
-    () => ({
-      dragging: !!activeTodo || !!activeList || !!activeTab,
-      modalOpen:
-        paletteOpen ||
-        !!openTodoId ||
-        !!infoListId ||
-        !!infoTabId ||
-        archivedOpen ||
-        settingsOpen ||
-        // The day sheet holds a rich-text editor, so board hotkeys — undo
-        // especially — must not fire while someone is typing a journal entry.
-        !!openDay,
-    }),
-    [
-      activeTodo,
-      activeList,
-      activeTab,
-      paletteOpen,
-      openTodoId,
-      infoListId,
-      infoTabId,
-      archivedOpen,
-      settingsOpen,
-      openDay,
-    ],
-  );
+  // `guardContext` is declared further down, right after `openTodo` — its
+  // `modalOpen` has to key off the RESOLVED todo, not `openTodoId`, and
+  // `openTodo` is itself derived from `todosById`, computed later in this
+  // component.
 
   /**
    * Push the stored font pairing onto <html>, and mirror it to localStorage.
@@ -563,6 +548,23 @@ export function Board() {
     }
     return { templates, nonTemplateTodos };
   }, [visibleTodos]);
+
+  /**
+   * "Every week on Fri", keyed by template id — for the card's repeat-icon
+   * tooltip (`todo-card.tsx`). One entry per SERIES, not per occurrence:
+   * cards only ever carry `recurrenceParentId`, never the rule itself, so
+   * every card in a series shares the same lookup.
+   */
+  const recurrenceSummaries = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const template of templates) {
+      const rule = parseRule(template.recurrenceRule);
+      if (rule && template.scheduledDate) {
+        map.set(template.id, summarizeRule(rule, template.scheduledDate));
+      }
+    }
+    return map;
+  }, [templates]);
 
   // Foreground reminders: polls `nonTemplateTodos` for anything due and
   // delivers each once. See `use-reminders.ts` for why this is a poll rather
@@ -876,38 +878,39 @@ export function Board() {
     [todosById, openTodoId],
   );
 
-  /**
-   * The read-only recurrence summary for the open sheet, if `openTodo` is a
-   * materialized occurrence. `openTodo` alone doesn't carry the rule — that
-   * lives on the template, found through `recurrenceParentId`.
-   */
-  const recurrenceInfo = useMemo(() => {
-    if (!openTodo?.recurrenceParentId) return null;
-    const template = todosById.get(openTodo.recurrenceParentId);
-    const rule = template ? parseRule(template.recurrenceRule) : null;
-    if (!template || !rule || !template.scheduledDate) return null;
-    const todoId = openTodo.id;
-    return {
-      summary: summarizeRule(rule, template.scheduledDate),
-      missedCount: recurrenceExpansion?.missedCounts.get(todoId) ?? null,
-      onStop: () => {
-        // Ends the series the day before this occurrence, so this one and
-        // anything already materialized are untouched — only FUTURE
-        // occurrences stop generating.
-        const occurrence = parseOccurrenceId(todoId);
-        void setSeriesUntil(template.id, occurrence ? addDays(occurrence.date, -1) : null);
-        toast.success("Stopped repeating");
-      },
-    };
-  }, [openTodo, todosById, recurrenceExpansion]);
-
-  /** Start a new series from the currently open (plain, one-off) todo. */
-  const handleStartSeries = useCallback(
-    (rule: RecurrenceRule) => {
-      if (!openTodo) return;
-      void createSeriesFromTodo(openTodo, rule);
-    },
-    [openTodo],
+  const guardContext = useMemo<GuardContext>(
+    () => ({
+      dragging: !!activeTodo || !!activeList || !!activeTab,
+      modalOpen:
+        paletteOpen ||
+        // `openTodo`, not `openTodoId`: if whatever the id names ever stops
+        // resolving (deleting a series while viewing one of its virtual
+        // occurrences is the case that found this), the sheet blanks —
+        // `TodoSheet` returns null for a null todo — but `openTodoId` itself
+        // stays set. Keying this off the RESOLVED todo means `modalOpen`
+        // clears itself the same render the sheet disappears, instead of
+        // leaving undo silently blocked for the rest of the session.
+        !!openTodo ||
+        !!infoListId ||
+        !!infoTabId ||
+        archivedOpen ||
+        settingsOpen ||
+        // The day sheet holds a rich-text editor, so board hotkeys — undo
+        // especially — must not fire while someone is typing a journal entry.
+        !!openDay,
+    }),
+    [
+      activeTodo,
+      activeList,
+      activeTab,
+      paletteOpen,
+      openTodo,
+      infoListId,
+      infoTabId,
+      archivedOpen,
+      settingsOpen,
+      openDay,
+    ],
   );
 
   /**
@@ -1185,6 +1188,87 @@ export function Board() {
       return materializeOccurrence(todo);
     },
     [rawTodoIds],
+  );
+
+  /**
+   * The single door into the todo sheet. `originDay` is set ONLY by the day
+   * sheet's timeline — every other opener (a board card, the palette,
+   * Overflow) passes none, so the sheet shows no "Back to ..." affordance for
+   * them.
+   */
+  const openTodoSheet = useCallback((id: string, originDay: CivilDate | null = null) => {
+    setOpenTodoId(id);
+    setTodoOriginDay(originDay);
+  }, []);
+
+  const closeTodoSheet = useCallback(() => {
+    setOpenTodoId(null);
+    setTodoOriginDay(null);
+  }, []);
+
+  /**
+   * The recurrence detail for the open sheet, if `openTodo` is a
+   * materialized occurrence. `openTodo` alone doesn't carry the rule — that
+   * lives on the template, found through `recurrenceParentId`.
+   */
+  const recurrenceInfo = useMemo(() => {
+    if (!openTodo?.recurrenceParentId) return null;
+    const template = todosById.get(openTodo.recurrenceParentId);
+    const rule = template ? parseRule(template.recurrenceRule) : null;
+    if (!template || !rule || !template.scheduledDate) return null;
+    const todoId = openTodo.id;
+    const seriesStart = template.scheduledDate;
+    const occurrence = parseOccurrenceId(todoId);
+    // The occurrence currently open, not the template's own start — a
+    // "Change…" edit retargets the series to begin HERE (see
+    // `retargetSeries`), so the dialog it opens must default and bound
+    // itself from this date, not from wherever the series originally began.
+    const occurrenceDate = occurrence?.date ?? seriesStart;
+    return {
+      rule,
+      seriesStart,
+      occurrenceDate,
+      summary: summarizeRule(rule, seriesStart),
+      nextDate: occurrence ? nextOccurrenceAfter(rule, seriesStart, occurrence.date) : null,
+      missedCount: recurrenceExpansion?.missedCounts.get(todoId) ?? null,
+      onStop: async () => {
+        // Materialize FIRST: `openTodo` may still be a virtual occurrence,
+        // and ending the series before this date would otherwise make the
+        // very card being viewed stop existing on the next render.
+        const materialized = await materializeIfNeeded(openTodo);
+        // Ends the series the day before this occurrence, so this one and
+        // anything already materialized are untouched — only FUTURE
+        // occurrences stop generating.
+        const cutoff = parseOccurrenceId(materialized.id);
+        await setSeriesUntil(template.id, cutoff ? addDays(cutoff.date, -1) : null);
+        toast.success("Stopped repeating");
+      },
+      onChangeRule: (next: RecurrenceRule) => {
+        // Retargets the template to start HERE, so the occurrence currently
+        // open keeps generating under the new rule — no materialization
+        // needed, unlike onStop, because this never cuts off the viewed date.
+        void retargetSeries(template.id, next, occurrenceDate);
+        toast.success("Repeat updated");
+      },
+      onRemoveSeries: async () => {
+        // Materialization can't help here — the template itself is going,
+        // so every virtual occurrence (including this one) stops existing
+        // regardless. Close explicitly rather than relying on the stale-id
+        // effect, so the sheet dismisses in the same tick as the delete.
+        await deleteSeries(template.id);
+        closeTodoSheet();
+        toast.success("Deleted the repeating series");
+      },
+    };
+  }, [openTodo, todosById, recurrenceExpansion, materializeIfNeeded, closeTodoSheet]);
+
+  /** Start a new series from the currently open (plain, one-off) todo. */
+  const handleStartSeries = useCallback(
+    (rule: RecurrenceRule) => {
+      if (!openTodo) return;
+      void createSeriesFromTodo(openTodo, rule);
+    },
+    [openTodo],
   );
 
   const handleDragStart = useCallback(
@@ -1637,16 +1721,6 @@ export function Board() {
    * Overflow) passes none, so the sheet shows no "Back to ..." affordance for
    * them.
    */
-  const openTodoSheet = useCallback((id: string, originDay: CivilDate | null = null) => {
-    setOpenTodoId(id);
-    setTodoOriginDay(originDay);
-  }, []);
-
-  const closeTodoSheet = useCallback(() => {
-    setOpenTodoId(null);
-    setTodoOriginDay(null);
-  }, []);
-
   /** Return to the day the open todo was reached from, closing the todo sheet. */
   const handleBackToDay = useCallback(() => {
     setOpenTodoId(null);
@@ -1699,14 +1773,20 @@ export function Board() {
     (id: string) => {
       const before = todosById.get(id);
       if (!before) return;
-      const entryId = pushUndo(`Deleted “${short(before.title)}”`, [
+      // A recurring occurrence reads as "skip this one" — the series and
+      // its other occurrences are untouched — which is a different fact
+      // from an ordinary todo's "deleted" and worth saying so out loud.
+      const label = before.recurrenceParentId
+        ? `Skipped “${short(before.title)}”`
+        : `Deleted “${short(before.title)}”`;
+      const entryId = pushUndo(label, [
         { kind: "todo", entityId: id, patch: { deletedAt: null } },
       ]);
       void (async () => {
         await materializeIfNeeded(before);
         await deleteTodo(id);
       })();
-      toast.success(`Deleted “${short(before.title)}”`, {
+      toast.success(label, {
         duration: 8000,
         action: { label: "Undo", onClick: () => void undoById(entryId) },
       });
@@ -1875,6 +1955,7 @@ export function Board() {
               onToggle={handleToggle}
               onOpen={(todo) => openTodoSheet(todo.id)}
               missedCounts={recurrenceExpansion?.missedCounts}
+              recurrenceSummaries={recurrenceSummaries}
               // No `onQuickAdd`, so no quick-add row: nothing can be scheduled
               // INTO Overflow, only out of it.
               onNavigate={navigate}
@@ -1961,6 +2042,7 @@ export function Board() {
                     labels={labels}
                     ctx={ctx}
                     dueCount={deadlineCounts.get(column.day)}
+                    recurrenceSummaries={recurrenceSummaries}
                     groups={column.groups}
                     collapsedGroups={collapsedGroups}
                     onToggleGroup={toggleGroup}
@@ -2064,6 +2146,7 @@ export function Board() {
                 isDragActive={!!activeTodo}
                 overTodoId={overTodoId}
                 landingTodoId={landingTodoId}
+                recurrenceSummaries={recurrenceSummaries}
                 // Pinned leftmost, so it gets no reorder handle.
                 reservesGripSlot
                 // Backlog cannot be renamed, archived, or deleted, so its one
@@ -2142,6 +2225,7 @@ export function Board() {
                     isDragActive={!!activeTodo}
                     overTodoId={overTodoId}
                     landingTodoId={landingTodoId}
+                    recurrenceSummaries={recurrenceSummaries}
                     reorderListId={column.list.id}
                     reservesGripSlot
                     onOpenInfo={() => setInfoListId(column.list.id)}

@@ -169,6 +169,13 @@ interface BoardColumnProps {
    * Overflow, but threaded to every column for free rather than special-cased.
    */
   missedCounts?: ReadonlyMap<string, number>;
+  /**
+   * "Every week on Fri", keyed by TEMPLATE id (`todo.recurrenceParentId`),
+   * not by occurrence — one summary per series, unlike `missedCounts`. Used
+   * for the repeat icon's tooltip on any card in the series, materialized or
+   * virtual, wherever it renders — not just Overflow.
+   */
+  recurrenceSummaries?: ReadonlyMap<string, string>;
 }
 
 export function BoardColumn({
@@ -206,6 +213,7 @@ export function BoardColumn({
   onExpand,
   dayTrackColumn,
   missedCounts,
+  recurrenceSummaries,
 }: BoardColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id });
   const [draft, setDraft] = useState("");
@@ -308,6 +316,9 @@ export function BoardColumn({
         onOpen={onOpen}
         onNavigate={onNavigate}
         missedCount={missedCounts?.get(todo.id)}
+        recurrenceSummary={
+          todo.recurrenceParentId ? recurrenceSummaries?.get(todo.recurrenceParentId) : undefined
+        }
       />
     ));
 

@@ -68,6 +68,14 @@ interface TodoCardProps {
    * placement alone, and a badge there would just be noise.
    */
   missedCount?: number | null;
+  /**
+   * "Every week on Fri" — the caller's summary of the series this occurrence
+   * belongs to. The card only knows `recurrenceParentId`, not the rule
+   * itself (that lives on the template row), so this has to be threaded in
+   * rather than computed here. Undefined renders the marker with no tooltip
+   * content beyond the generic `sr-only` fallback.
+   */
+  recurrenceSummary?: string;
 }
 
 export function TodoCard({
@@ -82,6 +90,7 @@ export function TodoCard({
   onOpen,
   onNavigate,
   missedCount,
+  recurrenceSummary,
 }: TodoCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: todo.id });
@@ -444,13 +453,24 @@ export function TodoCard({
                   </Tooltip>
                 )}
                 {todo.recurrenceParentId && (
-                  <span
-                    data-recurrence-marker
-                    className="mr-1 inline-block align-[-0.1875em] text-muted-foreground"
-                  >
-                    <Repeat className="size-3" aria-hidden />
-                    <span className="sr-only">Part of a repeating series. </span>
-                  </span>
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <span
+                          data-recurrence-marker
+                          className="mr-1 inline-block align-[-0.1875em] text-muted-foreground"
+                        >
+                          <Repeat className="size-3" aria-hidden />
+                          <span className="sr-only">
+                            Repeats: {recurrenceSummary ?? "part of a repeating series"}.{" "}
+                          </span>
+                        </span>
+                      }
+                    />
+                    <TooltipContent>
+                      {recurrenceSummary ?? "Part of a repeating series"}
+                    </TooltipContent>
+                  </Tooltip>
                 )}
                 {todo.title}
                 {rail && <span className="sr-only"> — {rail.label}</span>}

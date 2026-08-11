@@ -32,7 +32,7 @@ planning session never needs the mouse.
 | `board-column.tsx` | `Enter` commits a quick-add, `Escape` clears the draft, `←→↑↓` navigate (§6) |
 | `create-list-column.tsx` | `Enter` commits, `Escape` cancels, `←→↑↓` navigate off the idle button (§6) |
 | `list-info-dialog.tsx` | `Enter` saves the list name |
-| `todo-sheet.tsx` | `Enter` blurs the title (commit-on-blur does the write) |
+| `todo-sheet.tsx` | `Enter` blurs the title (commit-on-blur does the write); on `SheetContent`, `⌘Enter`/`Ctrl+Enter` marks done, `⌘⌫`/`Ctrl+Backspace` marks won't-do, `⇧⌘⌫`/`Ctrl+Shift+Backspace` deletes — local rather than global because these are meaningless with no sheet open, and the registry's `GuardContext` has no per-surface discriminator (§4.3) to scope a global entry to just this sheet |
 | `todo-card.tsx` | `←→↑↓` navigate (§6), `Enter` opens the sheet, `Space` toggles done; dnd-kit's keyboard drag activator, on the grip |
 | `board-column.tsx` group header | `Enter`/`Space` collapses or expands the group, `←→↑↓` navigate (§11) |
 | `board.tsx` load-more tile | `←→↑↓` navigate (§6) |

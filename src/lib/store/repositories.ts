@@ -16,6 +16,8 @@ import { DEFAULT_THEME_MODE } from "@/lib/theme";
 import { DEFAULT_AVATAR_KIND } from "@/lib/profile";
 import {
   firstOccurrenceAfter,
+  occurrencesBetween,
+  parseOccurrenceId,
   parseRule,
   serializeRule,
   type RecurrenceRule,
@@ -320,6 +322,63 @@ export async function createSeriesFromTodo(
     recurrenceParentId: null,
   };
   return create("todo", template);
+}
+
+/**
+ * Retarget a series to a new rule starting HERE — "this and following
+ * occurrences," the same semantic every calendar app uses for editing a
+ * repeating event.
+ *
+ * Editing the rule in place (leaving `scheduledDate` alone) would re-align
+ * the WHOLE series including the past: `iterateOccurrences` always starts
+ * at the template's own `scheduledDate`, so a changed `freq`/`interval`/
+ * `byDay` recomputes every occurrence from day one. Materialized children
+ * don't move with it — their ids are `${templateId}@${date}`, frozen at
+ * creation — so they'd silently become orphans: real rows still pointing at
+ * a live template, sitting on dates the new rule no longer produces.
+ * Retargeting keeps everything before `newStart` as untouched history and
+ * only changes what the series generates from here forward.
+ *
+ * Any UNSETTLED child at or after `newStart` that the new rule doesn't
+ * produce on its own date is tombstoned — left alone it would sit forever as
+ * an open card on a date nothing will ever regenerate or settle. Settled
+ * children are never touched; they're already history regardless of rule.
+ */
+export async function retargetSeries(
+  templateId: string,
+  rule: RecurrenceRule,
+  newStart: CivilDate,
+): Promise<void> {
+  await mutate("todo", templateId, {
+    recurrenceRule: serializeRule(rule),
+    scheduledDate: newStart,
+  });
+
+  const children = await getDb().todos.where("recurrenceParentId").equals(templateId).toArray();
+  for (const child of children) {
+    if (child.status !== "open" || child.deletedAt) continue;
+    const occurrence = parseOccurrenceId(child.id);
+    if (!occurrence || occurrence.date < newStart) continue;
+    const stillOnRule =
+      occurrencesBetween(rule, newStart, occurrence.date, occurrence.date).length > 0;
+    if (!stillOnRule) await remove("todo", child.id);
+  }
+}
+
+/**
+ * Delete a repeating series entirely. The template is tombstoned and every
+ * materialized child's `recurrenceParentId` is cleared, so each survives as
+ * an ordinary todo rather than continuing to wear a repeat marker for a
+ * series that no longer exists — mirrors `deletePlace`'s cleanup of
+ * `placeId` below.
+ */
+export async function deleteSeries(templateId: string): Promise<void> {
+  const children = await getDb().todos.where("recurrenceParentId").equals(templateId).toArray();
+  for (const child of children) {
+    if (child.deletedAt) continue;
+    await mutate("todo", child.id, { recurrenceParentId: null });
+  }
+  await remove("todo", templateId);
 }
 
 // ---------------------------------------------------------------------------

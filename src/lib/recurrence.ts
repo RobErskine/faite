@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { civilDateSchema, type CivilDate } from "./schema";
-import { addDays, dayOfWeek } from "./scheduling";
+import { addDays, dayOfWeek, formatShortDate } from "./scheduling";
 
 /**
  * Recurrence rules: a versioned JSON blob stored verbatim in
@@ -260,6 +260,30 @@ export function firstOccurrenceAfter(rule: RecurrenceRule, date: CivilDate): Civ
   return next.value;
 }
 
+/**
+ * The next occurrence strictly after `after`, or null if the rule has none —
+ * past `until`/`count`, or `anchor: "completed"`, which has no fixed
+ * schedule to compute from at all (the next instance doesn't exist until the
+ * current one is actually completed — see `lib/recurrence-expand.ts`).
+ *
+ * Non-throwing sibling of `firstOccurrenceAfter`: this is meant to be called
+ * from a render memo (the repeat section's "Next occurrence" line), where a
+ * thrown error crashes the whole board rather than one dialog. A series
+ * whose `until` has already passed is an entirely ordinary state, not a
+ * programming error.
+ */
+export function nextOccurrenceAfter(
+  rule: RecurrenceRule,
+  seriesStart: CivilDate,
+  after: CivilDate,
+): CivilDate | null {
+  if (rule.anchor === "completed") return null;
+  for (const date of iterateOccurrences(rule, seriesStart)) {
+    if (date > after) return date;
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Occurrence identity
 // ---------------------------------------------------------------------------
@@ -312,4 +336,31 @@ export function summarizeRule(rule: RecurrenceRule, seriesStart: CivilDate): str
   else if (rule.until) text += `, until ${rule.until}`;
 
   return text;
+}
+
+/**
+ * The schedule half of `summarizeRule`, without the end condition — "Every 2
+ * weeks on Mon, Wed". Additive: `summarizeRule` is untouched so its existing
+ * tests stay valid. Exists for the repeat section's structured display,
+ * where schedule and end condition render as separate lines.
+ */
+export function summarizeSchedule(rule: RecurrenceRule, seriesStart: CivilDate): string {
+  const unit = { daily: "day", weekly: "week", monthly: "month", yearly: "year" }[rule.freq];
+  let text = rule.interval === 1 ? `Every ${unit}` : `Every ${rule.interval} ${unit}s`;
+
+  if (rule.freq === "weekly") {
+    const days = rule.byDay.length > 0 ? rule.byDay : [dayOfWeek(seriesStart)];
+    const names = [...days].sort((a, b) => a - b).map((d) => WEEKDAY_ABBR[d]).join(", ");
+    text += ` on ${names}`;
+  }
+
+  if (rule.anchor === "completed") text += ", based on completion date";
+  return text;
+}
+
+/** "Ends after 5 times" / "Ends Aug 7" / "Never ends" — the repeat section's end-condition line. */
+export function summarizeEnd(rule: RecurrenceRule): string {
+  if (rule.count) return `Ends after ${rule.count} time${rule.count === 1 ? "" : "s"}`;
+  if (rule.until) return `Ends ${formatShortDate(rule.until)}`;
+  return "Never ends";
 }

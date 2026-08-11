@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { ArrowLeft, Trash2 } from "lucide-react";
+import { useState, useSyncExternalStore } from "react";
+import { ArrowLeft, Clock, Repeat, Trash2, X } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -24,11 +24,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { RepeatDialog } from "@/components/board/repeat-dialog";
+import { RepeatSection, type RecurrenceInfo } from "@/components/board/repeat-section";
+import { LocationField } from "@/components/board/location-field";
 import { cn } from "@/lib/utils";
 import { TITLE_LINES } from "@/lib/title";
 import { formatShortDate } from "@/lib/scheduling";
-import { Repeat } from "lucide-react";
+import { isTextEntry } from "@/lib/undo";
+import { detectPlatform, formatCombo, type Platform } from "@/lib/keyboard";
 import type { RecurrenceRule } from "@/lib/recurrence";
 import type {
   CivilDate,
@@ -40,18 +44,9 @@ import type {
   Todo,
 } from "@/lib/schema";
 
-const NONE = "__none__";
+export type { RecurrenceInfo };
 
-/** Read-only summary of the series a materialized occurrence belongs to. */
-export interface RecurrenceInfo {
-  /** "Every week on Fri", from `summarizeRule` — computed by the caller,
-   * which has the template row this todo alone does not carry. */
-  summary: string;
-  /** Occurrences currently outstanding on this card. Null hides the badge. */
-  missedCount: number | null;
-  /** Ends the series after this occurrence — "Stop repeating". */
-  onStop: () => void;
-}
+const NONE = "__none__";
 
 interface TodoSheetProps {
   todo: Todo | null;
@@ -89,6 +84,22 @@ interface TodoSheetProps {
   onStartSeries?: (rule: RecurrenceRule) => void;
 }
 
+/** Never changes within a page's life — same rationale as `useIsLocalDev` in settings-sheet.tsx. */
+const subscribeToNothing = () => () => {};
+
+/**
+ * Display-only platform sniff, client-safe. `Platform` never gates
+ * behaviour (the keyboard handler below checks the actual event's
+ * modifiers), only which glyphs the footer tooltips show — but `navigator`
+ * doesn't exist during the static export's prerender, so reading it
+ * directly would still render one string server-side and swap in another on
+ * hydration. `useSyncExternalStore` with an explicit server snapshot is the
+ * sanctioned way to say "client-only" here — see `useIsLocalDev`.
+ */
+function usePlatform(): Platform {
+  return useSyncExternalStore(subscribeToNothing, detectPlatform, () => "other");
+}
+
 /**
  * Full CRUD for a single todo.
  *
@@ -124,11 +135,63 @@ function TodoSheetContent({
 }: TodoSheetProps & { todo: Todo }) {
   const [title, setTitle] = useState(todo.title);
   const [repeatDialogOpen, setRepeatDialogOpen] = useState(false);
+  const platform = usePlatform();
 
   const commitTitle = () => {
     const next = title.trim();
     if (next && next !== todo.title) onSave(todo.id, { title: next });
     else if (!next) setTitle(todo.title);
+  };
+
+  const markDone = () => {
+    onSetStatus(todo.id, todo.status === "done" ? "open" : "done");
+    onClose();
+  };
+  const wontDo = () => {
+    onSetStatus(todo.id, "dropped");
+    onClose();
+  };
+  const remove = () => {
+    onDelete(todo.id);
+    onClose();
+  };
+
+  /**
+   * Local `onKeyDown`, not a global registry entry — KEYBOARD.md §5 step 1:
+   * these three actions are meaningless unless this sheet is open, and the
+   * registry's `GuardContext` has no per-surface discriminator, so a global
+   * entry would need `allowWhenModalOpen: true` and would ALSO fire behind
+   * every other sheet/dialog in the app.
+   *
+   * `e.defaultPrevented` bails out from under an inner control that already
+   * handled the key — the location combobox's Base UI popup is a React
+   * child of this element (portals bubble through the React tree, not the
+   * DOM tree), so selecting a suggestion with Enter would otherwise also
+   * mark the todo done. `RepeatDialog` needs no such guard: it renders as a
+   * SIBLING of this element, so its keystrokes never reach this handler.
+   */
+  const handleSheetKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.defaultPrevented) return;
+    // Exactly one of Ctrl/Meta, never both, never Alt — the same rule
+    // `hasExactModifiers` (lib/keyboard.ts) enforces for the global registry.
+    // Hand-checked here because that helper only serves the registry.
+    const modOnly = e.metaKey !== e.ctrlKey && !e.altKey;
+    if (!modOnly) return;
+
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      markDone();
+      return;
+    }
+
+    if (e.key === "Backspace") {
+      // `⌘⌫`/`Ctrl+Backspace` is "delete to line start" / "delete previous
+      // word" in a text field on every platform — never steal it there.
+      if (isTextEntry(e.target)) return;
+      e.preventDefault();
+      if (e.shiftKey) remove();
+      else wontDo();
+    }
   };
 
   return (
@@ -142,7 +205,10 @@ function TodoSheetContent({
         See the matching comment in `day-sheet.tsx`, which shares this sheet
         width so the two don't read as two different components.
       */}
-      <SheetContent className="flex w-full flex-col gap-0 data-[side=right]:w-full data-[side=right]:sm:max-w-[75ch]">
+      <SheetContent
+        className="flex w-full flex-col gap-0 data-[side=right]:w-full data-[side=right]:sm:max-w-[75ch]"
+        onKeyDown={handleSheetKeyDown}
+      >
         <SheetHeader className={backToDay ? "gap-1.5 pr-10" : undefined}>
           <SheetTitle className="sr-only">Edit to-do</SheetTitle>
           <SheetDescription className="sr-only">
@@ -193,25 +259,6 @@ function TodoSheetContent({
         </SheetHeader>
 
         <div className="flex-1 space-y-5 overflow-y-auto px-4 pb-4">
-          <div className="space-y-1.5">
-            <Label>Notes</Label>
-            {/*
-              Markdown, finally rendered rather than just stored — the field has
-              declared itself markdown since P1 (`todoSchema.description`) while
-              being a plain textarea. `MarkdownField` seeds once per mount, which
-              is why `TodoSheet` keys this whole subtree by todo id.
-            */}
-            <MarkdownField
-              value={todo.description ?? ""}
-              placeholder="Add notes"
-              ariaLabel="Notes"
-              className="min-h-[50vh]"
-              onCommit={(next) =>
-                onSave(todo.id, { description: next.trim() ? next : null })
-              }
-            />
-          </div>
-
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="todo-scheduled">Date</Label>
@@ -219,9 +266,19 @@ function TodoSheetContent({
                 id="todo-scheduled"
                 type="date"
                 value={todo.scheduledDate ?? ""}
-                onChange={(e) =>
-                  onSave(todo.id, { scheduledDate: e.target.value || null })
-                }
+                onChange={(e) => {
+                  const next = e.target.value || null;
+                  // Clearing the date orphans any reminder — it resolves
+                  // against `scheduledDate` (lib/reminders.ts) and would
+                  // otherwise silently resurrect the moment a date is set
+                  // again.
+                  onSave(
+                    todo.id,
+                    next
+                      ? { scheduledDate: next }
+                      : { scheduledDate: null, reminderTime: null },
+                  );
+                }}
               />
             </div>
             <div className="space-y-1.5">
@@ -238,15 +295,44 @@ function TodoSheetContent({
           {todo.scheduledDate && (
             <div className="space-y-1.5">
               <Label htmlFor="todo-reminder">Reminder</Label>
-              <Input
-                id="todo-reminder"
-                type="time"
-                value={todo.reminderTime ?? ""}
-                onChange={(e) =>
-                  onSave(todo.id, { reminderTime: e.target.value || null })
-                }
-                className="w-fit"
-              />
+              <div className="flex items-center gap-1.5">
+                <div className="relative w-fit">
+                  <Clock
+                    className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground"
+                    aria-hidden
+                  />
+                  <Input
+                    id="todo-reminder"
+                    type="time"
+                    value={todo.reminderTime ?? ""}
+                    onChange={(e) => {
+                      const next = e.target.value;
+                      // The native input emits "" mid-edit — skip rather
+                      // than spending an undo entry nulling a reminder that
+                      // was never set (⌘Z ⌘Z to type one time otherwise).
+                      if (!next && !todo.reminderTime) return;
+                      onSave(todo.id, { reminderTime: next || null });
+                    }}
+                    // The shadcn Base UI time-picker look — NOT `step="1"`.
+                    // That example uses it for HH:MM:SS display, but
+                    // `reminderTime` is validated as HH:MM
+                    // (`todoSchema.reminderTime`) and `zonedInstant` throws
+                    // on anything else; `step`'s default (60) already gives
+                    // HH:MM.
+                    className="w-32 appearance-none bg-background pl-8 [&::-webkit-calendar-picker-indicator]:appearance-none [&::-webkit-calendar-picker-indicator]:hidden"
+                  />
+                </div>
+                {todo.reminderTime && (
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Clear reminder"
+                    onClick={() => onSave(todo.id, { reminderTime: null })}
+                  >
+                    <X className="size-3.5" aria-hidden />
+                  </Button>
+                )}
+              </div>
             </div>
           )}
 
@@ -353,69 +439,15 @@ function TodoSheetContent({
             </div>
           </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="todo-location">Location</Label>
-            {places.length > 0 && (
-              <Select
-                value={todo.placeId ?? NONE}
-                onValueChange={(v) => {
-                  if (v === NONE) {
-                    onSave(todo.id, { placeId: null });
-                    return;
-                  }
-                  const place = places.find((p) => p.id === v);
-                  // Setting `location` too keeps the free-text fallback in
-                  // step, so a place deleted later still shows something
-                  // rather than a dangling reference — see `Todo.placeId`.
-                  onSave(todo.id, { placeId: v, location: place?.address ?? null });
-                }}
-              >
-                <SelectTrigger id="todo-location" className="mb-1.5">
-                  <SelectValue placeholder="No saved place" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NONE}>No saved place</SelectItem>
-                  {places.map((place) => (
-                    <SelectItem key={place.id} value={place.id}>
-                      {place.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-            <Input
-              defaultValue={todo.location ?? ""}
-              onBlur={(e) => {
-                if (e.target.value === (todo.location ?? "")) return;
-                // Editing the free text directly means it no longer matches
-                // whichever saved place was selected — clear the link so the
-                // select above doesn't keep showing a name for text that has
-                // since diverged from it.
-                onSave(todo.id, { location: e.target.value || null, placeId: null });
-              }}
-              placeholder="Grocery store, the in-laws' house…"
-            />
-          </div>
+          <LocationField todo={todo} places={places} onSave={onSave} />
 
-          {(recurrence || (onStartSeries && todo.scheduledDate)) && (
-            <div className="space-y-1.5">
-              <Label>Repeat</Label>
-              {recurrence ? (
-                <div className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm">
-                  <span className="flex items-center gap-1.5 text-muted-foreground">
-                    <Repeat className="size-3.5" aria-hidden />
-                    {recurrence.summary}
-                    {recurrence.missedCount !== null && recurrence.missedCount > 1 && (
-                      <Badge variant="outline" className="ml-1">
-                        ×{recurrence.missedCount}
-                      </Badge>
-                    )}
-                  </span>
-                  <Button variant="ghost" size="sm" onClick={recurrence.onStop}>
-                    Stop repeating
-                  </Button>
-                </div>
-              ) : (
+          {recurrence ? (
+            <RepeatSection recurrence={recurrence} />
+          ) : (
+            onStartSeries &&
+            todo.scheduledDate && (
+              <div className="space-y-1.5">
+                <Label>Repeat</Label>
                 <Button
                   variant="outline"
                   size="sm"
@@ -425,53 +457,91 @@ function TodoSheetContent({
                   <Repeat className="size-3.5" aria-hidden />
                   Repeat…
                 </Button>
-              )}
-            </div>
+              </div>
+            )
           )}
 
           <Separator />
 
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                onSetStatus(todo.id, todo.status === "done" ? "open" : "done");
-                onClose();
-              }}
-            >
-              {todo.status === "done" ? "Reopen" : "Mark done"}
-            </Button>
+          <div className="space-y-1.5">
+            <Label>Notes</Label>
             {/*
-              "Won't do" is a distinct status from done, not a delete. It keeps
-              the item in history as abandoned rather than completed.
+              Markdown, finally rendered rather than just stored — the field has
+              declared itself markdown since P1 (`todoSchema.description`) while
+              being a plain textarea. `MarkdownField` seeds once per mount, which
+              is why `TodoSheet` keys this whole subtree by todo id.
+
+              Last in the scroll body, not first: at `min-h-40` it can grow
+              freely under whatever is typed without burying the metadata
+              above it — the fields this whole section exists to make more
+              usable (Location, Repeat) would otherwise sit a deliberate
+              half-screen scroll away.
             */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                onSetStatus(todo.id, "dropped");
-                onClose();
-              }}
-            >
-              Won&apos;t do
-            </Button>
+            <MarkdownField
+              value={todo.description ?? ""}
+              placeholder="Add notes"
+              ariaLabel="Notes"
+              className="min-h-40"
+              onCommit={(next) =>
+                onSave(todo.id, { description: next.trim() ? next : null })
+              }
+            />
           </div>
         </div>
 
-        <SheetFooter className="border-t">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-destructive hover:text-destructive"
-            onClick={() => {
-              onDelete(todo.id);
-              onClose();
-            }}
-          >
-            <Trash2 className="size-4" aria-hidden />
-            Delete
-          </Button>
+        {/*
+          3-up, not stacked: `SheetFooter` is `flex-col` by default (one
+          button had no reason to fight that), so this overrides to a row and
+          gives each button an equal third.
+        */}
+        <SheetFooter className="grid grid-cols-3 gap-2 border-t">
+          <Tooltip>
+            <TooltipTrigger render={<Button variant="outline" size="sm" onClick={markDone} />}>
+              {todo.status === "done" ? "Reopen" : "Mark done"}
+            </TooltipTrigger>
+            <TooltipContent>
+              {todo.status === "done" ? "Reopen" : "Mark done"}
+              <kbd data-slot="kbd" className="rounded border border-background/30 px-1 font-mono text-2xs">
+                {formatCombo("mod+enter", platform)}
+              </kbd>
+            </TooltipContent>
+          </Tooltip>
+          {/*
+            "Won't do" is a distinct status from done, not a delete. It keeps
+            the item in history as abandoned rather than completed.
+          */}
+          <Tooltip>
+            <TooltipTrigger render={<Button variant="outline" size="sm" onClick={wontDo} />}>
+              Won&apos;t do
+            </TooltipTrigger>
+            <TooltipContent>
+              Won&apos;t do
+              <kbd data-slot="kbd" className="rounded border border-background/30 px-1 font-mono text-2xs">
+                {formatCombo("mod+backspace", platform)}
+              </kbd>
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive hover:text-destructive"
+                  onClick={remove}
+                />
+              }
+            >
+              <Trash2 className="size-4" aria-hidden />
+              Delete
+            </TooltipTrigger>
+            <TooltipContent>
+              {recurrence ? "Skip this occurrence" : "Delete"}
+              <kbd data-slot="kbd" className="rounded border border-background/30 px-1 font-mono text-2xs">
+                {formatCombo("shift+mod+backspace", platform)}
+              </kbd>
+            </TooltipContent>
+          </Tooltip>
         </SheetFooter>
       </SheetContent>
 

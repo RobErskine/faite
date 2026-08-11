@@ -76,6 +76,7 @@ interface HarnessProps {
   onDragStart?: () => void;
   showInsertionLine?: boolean;
   missedCount?: number | null;
+  recurrenceSummary?: string;
 }
 
 function Harness({
@@ -86,6 +87,7 @@ function Harness({
   onDragStart,
   showInsertionLine,
   missedCount,
+  recurrenceSummary,
 }: HarnessProps) {
   return (
     <TooltipProvider>
@@ -100,6 +102,7 @@ function Harness({
             onNavigate={onNavigate}
             showInsertionLine={showInsertionLine}
             missedCount={missedCount}
+            recurrenceSummary={recurrenceSummary}
           />
         </SortableContext>
       </DndContext>
@@ -310,6 +313,23 @@ describe("recurrence", () => {
   it("shows no repeat marker for a plain todo", () => {
     render(<Harness />);
     expect(row().querySelector("[data-recurrence-marker]")).toBeNull();
+  });
+
+  it("carries the series summary in the marker's sr-only text when given one", () => {
+    render(
+      <Harness
+        todo={todo({ recurrenceParentId: "template-1" })}
+        recurrenceSummary="Every week on Fri"
+      />,
+    );
+    const marker = row().querySelector("[data-recurrence-marker]");
+    expect(marker?.textContent).toContain("Every week on Fri");
+  });
+
+  it("falls back to a generic description with no summary threaded in", () => {
+    render(<Harness todo={todo({ recurrenceParentId: "template-1" })} />);
+    const marker = row().querySelector("[data-recurrence-marker]");
+    expect(marker?.textContent).toContain("part of a repeating series");
   });
 
   it("shows no ×N badge for a single occurrence (missedCount 1)", () => {

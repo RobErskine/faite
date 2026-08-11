@@ -17,10 +17,12 @@ import {
   DEFAULT_TAB_ID,
   deleteList,
   deletePlace,
+  deleteSeries,
   deleteTab,
   ensureDefaultTab,
   listPatch,
   materializeOccurrence,
+  retargetSeries,
   schedulePatch,
   seedIfEmpty,
   setSeriesUntil,
@@ -616,6 +618,99 @@ describe("createSeriesFromTodo", () => {
     const sourceId = await createTodo({ title: "Unscheduled" });
     const source = (await getDb().todos.get(sourceId))!;
     await expect(createSeriesFromTodo(source, defaultRule("2026-08-07"))).rejects.toThrow();
+  });
+});
+
+describe("retargetSeries", () => {
+  it("writes the new rule and scheduledDate to the template", async () => {
+    const templateId = await createTodo({ title: "Timesheets", scheduledDate: "2026-08-07" });
+    await getDb().todos.update(templateId, {
+      recurrenceRule: JSON.stringify(defaultRule("2026-08-07")),
+    });
+
+    const newRule = { ...defaultRule("2026-08-21"), interval: 2, byDay: [5] };
+    await retargetSeries(templateId, newRule, "2026-08-21");
+
+    const template = (await getDb().todos.get(templateId))!;
+    expect(parseRule(template.recurrenceRule)).toEqual(newRule);
+    expect(template.scheduledDate).toBe("2026-08-21");
+  });
+
+  it("tombstones an unsettled child at/after newStart that the new rule no longer produces", async () => {
+    const templateId = await createTodo({ title: "Timesheets", scheduledDate: "2026-08-07" });
+    // 2026-08-28 is a Friday >= newStart, produced by the OLD weekly rule
+    // but not by the new every-other-week rule (which lands on 08-21, 09-04, ...).
+    const childId = occurrenceId(templateId, "2026-08-28");
+    await materializeOccurrence({
+      ...(await getDb().todos.get(templateId))!,
+      id: childId,
+      scheduledDate: "2026-08-28",
+      recurrenceRule: null,
+      recurrenceParentId: templateId,
+    });
+
+    const newRule = { ...defaultRule("2026-08-21"), interval: 2, byDay: [5] };
+    await retargetSeries(templateId, newRule, "2026-08-21");
+
+    expect((await getDb().todos.get(childId))?.deletedAt).toBeTruthy();
+  });
+
+  it("never touches a settled child, regardless of the new rule", async () => {
+    const templateId = await createTodo({ title: "Timesheets", scheduledDate: "2026-08-07" });
+    const childId = occurrenceId(templateId, "2026-08-14");
+    await materializeOccurrence({
+      ...(await getDb().todos.get(templateId))!,
+      id: childId,
+      scheduledDate: "2026-08-14",
+      status: "done",
+      recurrenceRule: null,
+      recurrenceParentId: templateId,
+    });
+
+    const newRule = { ...defaultRule("2026-08-21"), interval: 2, byDay: [5] };
+    await retargetSeries(templateId, newRule, "2026-08-21");
+
+    const child = (await getDb().todos.get(childId))!;
+    expect(child.deletedAt).toBeNull();
+    expect(child.status).toBe("done");
+  });
+
+  it("never touches a child before newStart, even if off the new rule", async () => {
+    const templateId = await createTodo({ title: "Timesheets", scheduledDate: "2026-08-07" });
+    const childId = occurrenceId(templateId, "2026-08-07");
+    await materializeOccurrence({
+      ...(await getDb().todos.get(templateId))!,
+      id: childId,
+      scheduledDate: "2026-08-07",
+      recurrenceRule: null,
+      recurrenceParentId: templateId,
+    });
+
+    const newRule = { ...defaultRule("2026-08-21"), interval: 2, byDay: [5] };
+    await retargetSeries(templateId, newRule, "2026-08-21");
+
+    expect((await getDb().todos.get(childId))?.deletedAt).toBeNull();
+  });
+});
+
+describe("deleteSeries", () => {
+  it("tombstones the template and clears recurrenceParentId on every child", async () => {
+    const templateId = await createTodo({ title: "Timesheets", scheduledDate: "2026-08-07" });
+    const childId = occurrenceId(templateId, "2026-08-14");
+    await materializeOccurrence({
+      ...(await getDb().todos.get(templateId))!,
+      id: childId,
+      scheduledDate: "2026-08-14",
+      recurrenceRule: null,
+      recurrenceParentId: templateId,
+    });
+
+    await deleteSeries(templateId);
+
+    expect((await getDb().todos.get(templateId))?.deletedAt).toBeTruthy();
+    const child = (await getDb().todos.get(childId))!;
+    expect(child.recurrenceParentId).toBeNull();
+    expect(child.deletedAt).toBeNull();
   });
 });
 

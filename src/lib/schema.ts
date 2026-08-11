@@ -196,10 +196,12 @@ export const todoSchema = z.object({
 
   /**
    * A saved place (`Place`, above), when this todo's location was picked
-   * from one rather than typed as free text. `location` stays set too — the
-   * UI shows the place's `name` when this resolves, else falls back to the
-   * `location` string, so a dangling reference to a deleted place degrades
-   * to whatever free text was last there rather than showing nothing.
+   * from one rather than typed as free text. `location` is written too, set
+   * to the place's `address` — that's what the card's tooltip and the plain
+   * free-text field both show; `placeId` only adds the nickname badge in the
+   * sheet. A dangling reference to a deleted place (`deletePlace` clears
+   * this field but leaves `location` alone) degrades to that same address
+   * text rather than showing nothing.
    */
   placeId: idSchema.nullable().default(null),
 
