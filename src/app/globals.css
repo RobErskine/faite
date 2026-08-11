@@ -338,12 +338,22 @@
   own stylesheet is imported at runtime from a lazily-loaded chunk, so it is
   itself unlayered and would beat anything in `@layer components`.
 
-  Only three things are overridden — the editor's page-like outer padding, its
-  hardcoded font stack (the app has its own; see `markdown-editor.tsx`), and the
-  focus ring, which the wrapping field already draws.
+  Overridden: the editor's page-like outer padding, its hardcoded font stack
+  (the app has its own; see `markdown-editor.tsx`), the focus ring (the
+  wrapping field already draws one), and the LEFT half of that padding
+  specifically: BlockNote anchors each block's drag-handle / "+" menu flush
+  against the block's own left edge, so shrinking the side menu (below) and
+  reserving just enough room for the shrunk version keeps it inside this
+  field's border on hover without spending as much width on it as the
+  default menu needed.
 */
 .bn-field .bn-editor {
   padding-inline: 0.625rem;
+  /* Matches the scaled-down `.bn-side-menu` below (52px * 0.75 = 39px) plus a
+     hair of breathing room, so the menu's right edge — flush against the
+     block's left edge by BlockNote's own positioning — lands just inside
+     this padding instead of past it. */
+  padding-left: 2.5rem;
   font-family: inherit;
 }
 
@@ -351,6 +361,44 @@
 .bn-field .bn-editor:focus-visible,
 .bn-field [contenteditable]:focus-visible {
   outline: none;
+}
+
+/*
+  The drag-handle / "+" menu, scaled down to match the smaller left gutter
+  above. `transform-origin: right` keeps its right edge — the edge that has
+  to line up with the block's own left edge — fixed while it shrinks, so the
+  two stay flush instead of drifting apart as the scale changes.
+*/
+.bn-field .bn-side-menu {
+  transform: scale(0.75);
+  transform-origin: right center;
+}
+
+/*
+  Headings get 18px of BlockNote's own top padding on top of every block's
+  base `padding: 3px 0` — every other block type only gets the 3px. That
+  reads as an arbitrary gap wherever a heading follows another block, so it's
+  flattened to the same 3px every block already has.
+
+  `--level` is BlockNote's own heading-size variable (h1 defaults to 3em,
+  i.e. 48px against a 16px base) — sized for a full page, not a form field.
+  Compressed to a much narrower range so headings stay visibly bigger than
+  body text without dominating a field this size.
+*/
+.bn-field [data-content-type="heading"] {
+  padding-top: 3px;
+  --level: 1.25em;
+}
+.bn-field [data-content-type="heading"][data-level="2"] {
+  --level: 1.15em;
+}
+.bn-field [data-content-type="heading"][data-level="3"] {
+  --level: 1.08em;
+}
+.bn-field [data-content-type="heading"][data-level="4"],
+.bn-field [data-content-type="heading"][data-level="5"],
+.bn-field [data-content-type="heading"][data-level="6"] {
+  --level: 1em;
 }
 
 @layer base {

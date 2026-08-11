@@ -1,10 +1,20 @@
 // @vitest-environment happy-dom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { DaySheet } from "./day-sheet";
-import type { DayNote, List, Todo } from "@/lib/schema";
+import type { DayNote, List, Settings, Todo } from "@/lib/schema";
 import type { PlacementContext } from "@/lib/scheduling";
+
+/**
+ * Mocked for the same reason as `view-settings.test.tsx`: the kind-filter
+ * tests assert PATCH SHAPE, which is invisible once Dexie has round-tripped
+ * it.
+ */
+const mutateSettings = vi.fn();
+vi.mock("@/lib/store/mutate", () => ({
+  mutateSettings: (...args: unknown[]) => mutateSettings(...args),
+}));
 
 /**
  * BlockNote is ProseMirror, which needs layout APIs happy-dom does not have —
@@ -35,6 +45,7 @@ beforeAll(() => {
   Element.prototype.scrollIntoView = () => {};
 });
 
+beforeEach(() => mutateSettings.mockClear());
 afterEach(cleanup);
 
 const DAY = "2026-08-10";
@@ -100,8 +111,35 @@ const note = (body: string): DayNote => ({
 
 const RED = list("Errands", "#e5484d");
 
+const settings = (over: Partial<Settings> = {}): Settings => ({
+  ownerId: "local-user",
+  timezone: "UTC",
+  workdaysOnly: false,
+  workdays: [1, 2, 3, 4, 5],
+  overflowAfterDays: 3,
+  visibleDays: 7,
+  visibleStatuses: ["open"],
+  visibleEventKinds: ["created", "scheduled", "done", "dropped"],
+  showWeekends: true,
+  fontPairing: "hyperlegible",
+  theme: "system",
+  displayName: "",
+  avatarKind: "initials",
+  avatarInitials: "",
+  avatarEmoji: "",
+  avatarImage: "",
+  activeTabId: null,
+  backlogWidth: null,
+  backlogCollapsed: false,
+  overflowWidth: null,
+  overflowCollapsed: false,
+  updatedAt: "2026-08-03T00:00:00.000Z",
+  ...over,
+});
+
 interface HarnessProps {
   day?: string | null;
+  settings?: Settings;
   todos?: Todo[];
   note?: DayNote;
   onSaveNote?: (day: string, body: string) => void;
@@ -119,6 +157,7 @@ function Harness({ day = DAY, todos = [], ...rest }: HarnessProps) {
       */}
       <DaySheet
         day={day}
+        settings={rest.settings}
         note={rest.note}
         todos={todos}
         timezone="UTC"
@@ -139,6 +178,13 @@ const entryLabels = () =>
   Array.from(document.querySelectorAll("ol > li > p")).map((el) =>
     el.textContent?.replace(/\s+/g, " ").trim(),
   );
+
+/** Opens the timeline's kind-filter dropdown. */
+function openFilterMenu() {
+  fireEvent.click(screen.getByRole("button", { name: /which timeline entries/i }));
+}
+
+const lastPatch = () => mutateSettings.mock.calls.at(-1)?.[1];
 
 describe("mounting", () => {
   it("renders outside a DndContext without throwing", () => {
@@ -271,5 +317,77 @@ describe("timeline", () => {
       />,
     );
     expect(entryLabels()).toEqual(["Assigned here·Aug 9 · 3:00 PM"]);
+  });
+});
+
+describe("timeline — kind filter", () => {
+  const threeKinds = [
+    todo({ id: "made", createdAt: `${DAY}T08:00:00.000Z` }),
+    todo({
+      id: "finished",
+      createdAt: "2026-08-01T00:00:00.000Z",
+      status: "done",
+      completedAt: `${DAY}T09:00:00.000Z`,
+    }),
+    todo({
+      id: "abandoned",
+      createdAt: "2026-08-01T00:00:00.000Z",
+      status: "dropped",
+      completedAt: `${DAY}T10:00:00.000Z`,
+    }),
+  ];
+
+  it("labels the scheduled kind 'Assigned', distinct from the row's 'Assigned here'", async () => {
+    render(<Harness settings={settings()} />);
+    openFilterMenu();
+    expect(await screen.findByRole("menuitemcheckbox", { name: "Assigned" })).toBeTruthy();
+  });
+
+  it("removes a kind that's already visible, keeping canonical order", async () => {
+    render(<Harness settings={settings()} />);
+    openFilterMenu();
+    fireEvent.click(await screen.findByRole("menuitemcheckbox", { name: "Assigned" }));
+    expect(lastPatch()).toEqual({
+      visibleEventKinds: ["created", "done", "dropped"],
+    });
+  });
+
+  /**
+   * Unlike `ViewSettings`' status filter, unchecking the last kind is
+   * allowed — the "N hidden by the view filter" notice below is the empty
+   * state that guard exists to avoid building.
+   */
+  it("allows turning off the last remaining kind", async () => {
+    render(<Harness settings={settings({ visibleEventKinds: ["done"] })} />);
+    openFilterMenu();
+    fireEvent.click(await screen.findByRole("menuitemcheckbox", { name: "Completed" }));
+    expect(lastPatch()).toEqual({ visibleEventKinds: [] });
+  });
+
+  it("hides events of unchecked kinds and notes how many, with a reset", () => {
+    render(
+      <Harness todos={threeKinds} settings={settings({ visibleEventKinds: ["done"] })} />,
+    );
+    expect(entryLabels()).toEqual(["Completed·9:00 AM"]);
+    expect(
+      screen.getByText("2 entries hidden by the view filter"),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Show all" }));
+    expect(lastPatch()).toEqual({
+      visibleEventKinds: ["created", "scheduled", "done", "dropped"],
+    });
+  });
+
+  it("replaces the list with the notice when every event is filtered out", () => {
+    render(<Harness todos={threeKinds} settings={settings({ visibleEventKinds: [] })} />);
+    expect(document.querySelector("ol")).toBeNull();
+    expect(
+      screen.getByText("3 entries hidden by the view filter"),
+    ).toBeTruthy();
+  });
+
+  it("still reads as normal on an empty day regardless of the filter", () => {
+    render(<Harness settings={settings({ visibleEventKinds: [] })} />);
+    expect(screen.getByText("Nothing happened on this day yet.")).toBeTruthy();
   });
 });

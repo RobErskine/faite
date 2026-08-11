@@ -116,6 +116,10 @@ export const settings = sqliteTable("settings", {
   visibleDays: integer("visible_days").notNull().default(7),
   /** JSON-encoded array of statuses — see `settingsSchema.visibleStatuses`. */
   visibleStatuses: text("visible_statuses").notNull().default('["open"]'),
+  /** JSON-encoded array of kinds — see `settingsSchema.visibleEventKinds`. */
+  visibleEventKinds: text("visible_event_kinds")
+    .notNull()
+    .default('["created","scheduled","done","dropped"]'),
   showWeekends: integer("show_weekends", { mode: "boolean" }).notNull().default(true),
   fontPairing: text("font_pairing").notNull(),
   theme: text("theme").notNull(),

@@ -2014,6 +2014,7 @@ export function Board() {
     */}
     <DaySheet
       day={openDay}
+      settings={settings}
       note={openDay ? dayNotes.get(openDay) : undefined}
       todos={visibleTodos}
       timezone={settings?.timezone ?? "UTC"}

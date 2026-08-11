@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { ArrowRight, Check, Plus, X } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, Plus, X } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -9,6 +9,14 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { MarkdownField } from "@/components/ui/markdown-field";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
@@ -20,13 +28,17 @@ import {
   type DayEventKind,
 } from "@/lib/day-timeline";
 import { formatDay, type PlacementContext } from "@/lib/scheduling";
+import { mutateSettings } from "@/lib/store/mutate";
+import { LOCAL_OWNER_ID } from "@/lib/store/owner";
 import type {
   CivilDate,
   DayNote,
   Label as LabelRecord,
   List,
+  Settings,
   Todo,
 } from "@/lib/schema";
+import { cn } from "@/lib/utils";
 import { TodoCard } from "./todo-card";
 
 /**
@@ -48,6 +60,8 @@ import { TodoCard } from "./todo-card";
 interface DaySheetProps {
   /** The day whose details are open. Null closes the sheet. */
   day: CivilDate | null;
+  /** Raw Dexie row; undefined until the store has read it. */
+  settings: Settings | undefined;
   note: DayNote | undefined;
   /** Every live to-do — the timeline is derived here, not upstream. */
   todos: Todo[];
@@ -78,6 +92,21 @@ const EVENT_ICON: Record<DayEventKind, typeof Plus> = {
   dropped: X,
 };
 
+/**
+ * Filter-menu labels, kept separate from `EVENT_LABEL` above rather than
+ * reused: `scheduled` reads "Assigned here" on a timeline row, where "here"
+ * refers to the day the sheet is open on. A dropdown item has no such
+ * referent, so it reads "Assigned" instead.
+ */
+const KIND_FILTER_OPTIONS: ReadonlyArray<{ value: DayEventKind; label: string }> = [
+  { value: "created", label: "Created" },
+  { value: "scheduled", label: "Assigned" },
+  { value: "done", label: "Completed" },
+  { value: "dropped", label: "Won't do" },
+];
+
+const ALL_EVENT_KINDS: DayEventKind[] = KIND_FILTER_OPTIONS.map((o) => o.value);
+
 export function DaySheet({ day, ...rest }: DaySheetProps) {
   if (!day) return null;
   // Keyed remount re-seeds the note draft for each day. `MarkdownField` reads
@@ -88,6 +117,7 @@ export function DaySheet({ day, ...rest }: DaySheetProps) {
 
 function DaySheetContent({
   day,
+  settings,
   note,
   todos,
   timezone,
@@ -106,9 +136,38 @@ function DaySheetContent({
     [todos, day, timezone],
   );
 
+  const visibleKinds = settings?.visibleEventKinds ?? ALL_EVENT_KINDS;
+  const visibleEvents = useMemo(
+    () => events.filter((event) => visibleKinds.includes(event.kind)),
+    [events, visibleKinds],
+  );
+  const hiddenCount = events.length - visibleEvents.length;
+
+  const toggleEventKind = (value: DayEventKind, next: boolean) => {
+    // Unlike `ViewSettings`' status filter, unchecking the last kind is
+    // allowed — see `HiddenByFilterNotice` below, which is the empty state
+    // that guard exists to avoid building.
+    const nextKinds = next
+      ? KIND_FILTER_OPTIONS.filter(
+          (o) => o.value === value || visibleKinds.includes(o.value),
+        ).map((o) => o.value)
+      : visibleKinds.filter((k) => k !== value);
+    void mutateSettings(LOCAL_OWNER_ID, { visibleEventKinds: nextKinds });
+  };
+
+  const showAllKinds = () =>
+    void mutateSettings(LOCAL_OWNER_ID, { visibleEventKinds: ALL_EVENT_KINDS });
+
   return (
     <Sheet open onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="flex w-full flex-col gap-0 sm:max-w-md">
+      {/*
+        `data-[side=right]:` on the width utilities, not plain `sm:` ones: the
+        base `SheetContent` already sets `data-[side=right]:w-3/4` and
+        `data-[side=right]:sm:max-w-sm`, both gated on the same attribute
+        selector. A plain class loses that specificity fight and silently
+        does nothing — matching the modifier is what makes the override win.
+      */}
+      <SheetContent className="flex w-full flex-col gap-0 data-[side=right]:w-full data-[side=right]:sm:max-w-[75ch]">
         {/* Leaves room for the close button pinned at the top right. */}
         <SheetHeader className="pr-10">
           <SheetTitle className="font-heading uppercase tracking-tight">
@@ -124,7 +183,7 @@ function DaySheetContent({
               value={note?.body ?? ""}
               placeholder="Journal, or anything worth remembering about this day"
               ariaLabel={`Notes for ${weekday}, ${label}`}
-              className="min-h-32"
+              className="min-h-[50vh]"
               onCommit={(next) => onSaveNote(day, next)}
             />
           </div>
@@ -132,9 +191,42 @@ function DaySheetContent({
           <Separator />
 
           <section className="space-y-1.5">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Timeline
-            </h3>
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Timeline
+              </h3>
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  aria-label="Which timeline entries to show"
+                  className={cn(
+                    buttonVariants({ variant: "ghost", size: "xs" }),
+                    "text-muted-foreground",
+                  )}
+                >
+                  Filter
+                  <ChevronDown aria-hidden />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-44">
+                  <DropdownMenuGroup>
+                    {KIND_FILTER_OPTIONS.map((option) => (
+                      <DropdownMenuCheckboxItem
+                        key={option.value}
+                        checked={visibleKinds.includes(option.value)}
+                        // Stays open across clicks, same reasoning as the
+                        // board's status filter: these read as one
+                        // multi-select.
+                        closeOnClick={false}
+                        onCheckedChange={(checked) =>
+                          toggleEventKind(option.value, checked)
+                        }
+                      >
+                        {option.label}
+                      </DropdownMenuCheckboxItem>
+                    ))}
+                  </DropdownMenuGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
 
             {events.length === 0 ? (
               // Every future day hits this, so it has to read as normal rather
@@ -142,31 +234,67 @@ function DaySheetContent({
               <p className="py-2 text-sm text-muted-foreground">
                 Nothing happened on this day yet.
               </p>
+            ) : visibleEvents.length === 0 ? (
+              <HiddenByFilterNotice count={hiddenCount} onShowAll={showAllKinds} />
             ) : (
-              <ol className="space-y-3">
-                {events.map((event, index) => (
-                  <TimelineEntry
-                    key={event.key}
-                    event={event}
-                    day={day}
-                    isLast={index === events.length - 1}
-                    list={
-                      (event.todo.listId ? listsById.get(event.todo.listId) : undefined) ??
-                      backlog
-                    }
-                    labels={labels}
-                    ctx={ctx}
-                    timezone={timezone}
-                    onToggleTodo={onToggleTodo}
-                    onOpenTodo={onOpenTodo}
-                  />
-                ))}
-              </ol>
+              <>
+                <ol className="space-y-3">
+                  {visibleEvents.map((event, index) => (
+                    <TimelineEntry
+                      key={event.key}
+                      event={event}
+                      day={day}
+                      isLast={index === visibleEvents.length - 1}
+                      list={
+                        (event.todo.listId ? listsById.get(event.todo.listId) : undefined) ??
+                        backlog
+                      }
+                      labels={labels}
+                      ctx={ctx}
+                      timezone={timezone}
+                      onToggleTodo={onToggleTodo}
+                      onOpenTodo={onOpenTodo}
+                    />
+                  ))}
+                </ol>
+                {hiddenCount > 0 && (
+                  <HiddenByFilterNotice count={hiddenCount} onShowAll={showAllKinds} />
+                )}
+              </>
             )}
           </section>
         </div>
       </SheetContent>
     </Sheet>
+  );
+}
+
+/**
+ * "N hidden by the view filter · Show all" — one component for two spots:
+ * replacing the list entirely when the filter hides every event, and as a
+ * footer line when it hides some. Reused rather than two separately worded
+ * messages, so the count and the reset action can't drift apart.
+ */
+function HiddenByFilterNotice({
+  count,
+  onShowAll,
+}: {
+  count: number;
+  onShowAll: () => void;
+}) {
+  return (
+    <p className="flex items-center gap-1 py-2 text-sm text-muted-foreground">
+      {/* Own span, not inlined with the button: keeps the count text
+          queryable by its exact words rather than the row's full text,
+          which includes "Show all". */}
+      <span>
+        {count} {count === 1 ? "entry" : "entries"} hidden by the view filter
+      </span>
+      <span aria-hidden>·</span>
+      <Button variant="link" size="xs" className="h-auto p-0" onClick={onShowAll}>
+        Show all
+      </Button>
+    </p>
   );
 }
 

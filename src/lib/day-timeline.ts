@@ -1,4 +1,4 @@
-import type { CivilDate, Todo } from "./schema";
+import type { CivilDate, DayEventKind, Todo } from "./schema";
 import { civilDateOf, formatShortDate } from "./scheduling";
 
 /**
@@ -37,7 +37,7 @@ import { civilDateOf, formatShortDate } from "./scheduling";
  *    can stamp an instant landing on the wrong civil day for the viewer.
  */
 
-export type DayEventKind = "created" | "scheduled" | "done" | "dropped";
+export type { DayEventKind };
 
 export interface DayEvent {
   /** Stable React key. A todo can legitimately appear twice on one day. */

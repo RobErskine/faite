@@ -104,7 +104,16 @@ function TodoSheetContent({
 
   return (
     <Sheet open onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="flex w-full flex-col gap-0 sm:max-w-md">
+      {/*
+        `data-[side=right]:` on the width utilities, not plain `sm:` ones: the
+        base `SheetContent` already sets `data-[side=right]:w-3/4` and
+        `data-[side=right]:sm:max-w-sm`, both gated on the same attribute
+        selector. A plain class loses that specificity fight and silently
+        does nothing — matching the modifier is what makes the override win.
+        See the matching comment in `day-sheet.tsx`, which shares this sheet
+        width so the two don't read as two different components.
+      */}
+      <SheetContent className="flex w-full flex-col gap-0 data-[side=right]:w-full data-[side=right]:sm:max-w-[75ch]">
         <SheetHeader className={backToDay ? "gap-1.5 pr-10" : undefined}>
           <SheetTitle className="sr-only">Edit to-do</SheetTitle>
           <SheetDescription className="sr-only">
@@ -167,7 +176,7 @@ function TodoSheetContent({
               value={todo.description ?? ""}
               placeholder="Add notes"
               ariaLabel="Notes"
-              className="min-h-24"
+              className="min-h-[50vh]"
               onCommit={(next) =>
                 onSave(todo.id, { description: next.trim() ? next : null })
               }

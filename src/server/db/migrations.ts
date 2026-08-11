@@ -122,6 +122,16 @@ export const USER_DB_MIGRATIONS: readonly UserDbMigration[] = [
     name: "todos-add-scheduled-at",
     statements: ["ALTER TABLE todos ADD COLUMN scheduled_at text"],
   },
+  {
+    id: 6,
+    name: "settings-add-visible-event-kinds",
+    statements: [
+      // Same reasoning as migration 3: NOT NULL with a DEFAULT that matches
+      // the Zod default, so every existing row comes out showing everything
+      // the day sheet showed before this was a setting.
+      `ALTER TABLE settings ADD COLUMN visible_event_kinds text DEFAULT '["created","scheduled","done","dropped"]' NOT NULL`,
+    ],
+  },
   // Add new migrations here. Never edit one above this line.
   //
   // Example — adding a nullable column (the safe, ordinary case):

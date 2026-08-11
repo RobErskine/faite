@@ -39,6 +39,10 @@ export type Id = z.infer<typeof idSchema>;
 export const todoStatusSchema = z.enum(["open", "done", "dropped"]);
 export type TodoStatus = z.infer<typeof todoStatusSchema>;
 
+/** What a day-sheet timeline entry can be — see `buildDayTimeline` in `day-timeline.ts`. */
+export const dayEventKindSchema = z.enum(["created", "scheduled", "done", "dropped"]);
+export type DayEventKind = z.infer<typeof dayEventKindSchema>;
+
 /** 1 = highest. Matches the 4-level convention in the original spec. */
 export const prioritySchema = z.union([
   z.literal(1),
@@ -276,6 +280,15 @@ export const settingsSchema = z.object({
    * rarely wants the other.
    */
   visibleStatuses: z.array(todoStatusSchema).default(["open"]),
+  /**
+   * Which kinds render in a day sheet's Timeline section — filters that view,
+   * not the board. Unlike `visibleStatuses` this may legally be empty: an
+   * empty board looks broken, but a day sheet has its own "N hidden by the
+   * view filter" notice for that case, so there's no ambiguity to guard against.
+   */
+  visibleEventKinds: z
+    .array(dayEventKindSchema)
+    .default(["created", "scheduled", "done", "dropped"]),
   /**
    * When false, each run of consecutive non-working days collapses into a
    * single expandable strip and stops counting toward `visibleDays`.
