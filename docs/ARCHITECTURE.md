@@ -740,12 +740,27 @@ transport to WebSockets against the same semantics, also verified live.
 primitive (see §2.14, EI-62) — no longer part of P6 scope.
 
 **P6 fast-follow, in priority order:** sub-tasks, recurrence (RRULE template +
-lazily materialized occurrences + exceptions table), markdown descriptions,
-locations library, saved views, icon upload, magic-link auth (Google moved
-into P2 — see §2.12).
+lazily materialized occurrences + exceptions table), locations library, saved
+views, icon upload, magic-link auth (Google moved into P2 — see §2.12).
 
 List tabs, priority, and location were pulled forward out of P6 and shipped —
 see §2.8b.
+
+**Markdown descriptions shipped** alongside day notes: `MarkdownField`
+(`components/ui/markdown-field.tsx`) wraps BlockNote and now backs both
+`todo.description` and `dayNote.body`. Markdown remains the stored format
+rather than BlockNote's own JSON — the command palette substring-searches
+descriptions, and the field has declared itself markdown since P1.
+
+**Day notes are the seventh sync kind** (`dayNote`, migration 4). One row per
+calendar day, keyed by a DETERMINISTIC id (`daynote:YYYY-MM-DD`) rather than a
+UUIDv7 — the one deliberate exception to that rule, because there is exactly
+one note per day and two offline devices must collide on a single entity for
+LWW to resolve rather than producing two rows nothing merges. See
+`dayNoteSchema` in `lib/schema.ts`. Surfaced by `DaySheet`, which also renders
+a DERIVED timeline of that day's todo events (`lib/day-timeline.ts`) — there is
+still no events table, and the limits that follow from deriving history out of
+`createdAt`/`completedAt` are documented in that module's header.
 
 ### P2 is live
 

@@ -1,5 +1,6 @@
 import Dexie, { type EntityTable } from "dexie";
 import type {
+  DayNote,
   Label,
   List,
   OutboxEntry,
@@ -23,6 +24,7 @@ export class FaiteDatabase extends Dexie {
   labels!: EntityTable<Label, "id">;
   projects!: EntityTable<Project, "id">;
   tabs!: EntityTable<Tab, "id">;
+  dayNotes!: EntityTable<DayNote, "id">;
   settings!: EntityTable<Settings, "ownerId">;
   outbox!: EntityTable<OutboxEntry, "id">;
 
@@ -37,6 +39,12 @@ export class FaiteDatabase extends Dexie {
       tabs: "id, position, deletedAt",
       settings: "ownerId",
       outbox: "id, kind, entityId, createdAt",
+    });
+    // Dexie MERGES versions — a later version declares only its delta, and the
+    // stores above carry forward untouched. Restating them here would be
+    // harmless but would also make it impossible to see what v2 actually added.
+    this.version(2).stores({
+      dayNotes: "id, date, deletedAt",
     });
   }
 }

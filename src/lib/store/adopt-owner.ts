@@ -9,14 +9,22 @@ import {
   setBoundOwnerId,
 } from "./owner";
 
-type RecordTable = "todos" | "lists" | "labels" | "projects" | "tabs";
+type RecordTable = "todos" | "lists" | "labels" | "projects" | "tabs" | "dayNotes";
 
+/**
+ * Every id-keyed syncable table. **A new sync kind must be added here**, and
+ * nothing will tell you if it isn't: the omission type-checks cleanly and
+ * fails only as data — rows written before sign-in keep `LOCAL_OWNER_ID`
+ * forever and push under the wrong owner, and `resetLocalDataForNewOwner`
+ * leaves them behind for the next account to inherit.
+ */
 const TABLES: Array<{ table: RecordTable; kind: EntityKind }> = [
   { table: "todos", kind: "todo" },
   { table: "lists", kind: "list" },
   { table: "labels", kind: "label" },
   { table: "projects", kind: "project" },
   { table: "tabs", kind: "tab" },
+  { table: "dayNotes", kind: "dayNote" },
 ];
 
 async function adoptTable(
@@ -52,8 +60,8 @@ export type AdoptionResult =
   | "different-user";
 
 /**
- * One-time backfill: rewrites every `todos`/`lists`/`labels`/`projects`/`tabs`
- * row carrying the placeholder `LOCAL_OWNER_ID` to the real, signed-in user's
+ * One-time backfill: rewrites every row in `TABLES` above carrying the
+ * placeholder `LOCAL_OWNER_ID` to the real, signed-in user's
  * id, and remembers the binding (`localStorage`, mirroring the font/theme
  * bridge in layout.tsx) so it never repeats. New writes after this call use
  * `getCurrentOwnerId()` (owner.ts), so this genuinely only has to run once.
@@ -80,7 +88,7 @@ export async function adoptLocalData(newOwnerId: string): Promise<AdoptionResult
   const db = getDb();
   await db.transaction(
     "rw",
-    [db.todos, db.lists, db.labels, db.projects, db.tabs, db.outbox],
+    [db.todos, db.lists, db.labels, db.projects, db.tabs, db.dayNotes, db.outbox],
     async () => {
       for (const { table, kind } of TABLES) {
         await adoptTable(table, kind, newOwnerId);
@@ -105,13 +113,14 @@ export async function resetLocalDataForNewOwner(): Promise<void> {
   const db = getDb();
   await db.transaction(
     "rw",
-    [db.todos, db.lists, db.labels, db.projects, db.tabs, db.settings, db.outbox],
+    [db.todos, db.lists, db.labels, db.projects, db.tabs, db.dayNotes, db.settings, db.outbox],
     async () => {
       await db.todos.clear();
       await db.lists.clear();
       await db.labels.clear();
       await db.projects.clear();
       await db.tabs.clear();
+      await db.dayNotes.clear();
       await db.settings.clear();
       await db.outbox.clear();
     },

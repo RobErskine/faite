@@ -70,6 +70,7 @@ export const todos = sqliteTable("todos", {
   status: text("status").notNull().default("open"),
   priority: integer("priority"),
   scheduledDate: text("scheduled_date"),
+  scheduledAt: text("scheduled_at"),
   deadline: text("deadline"),
   listId: text("list_id"),
   projectId: text("project_id"),
@@ -93,6 +94,17 @@ export const tabs = sqliteTable("tabs", {
   position: text("position").notNull(),
 });
 
+/**
+ * One notes row per calendar day. `id` is deterministic (`daynote:<date>`) so
+ * two offline devices editing the same day converge on one row — see
+ * `dayNoteSchema` in `src/lib/schema.ts` for why that breaks the UUIDv7 rule.
+ */
+export const dayNotes = sqliteTable("day_notes", {
+  ...syncableColumns,
+  date: text("date").notNull(),
+  body: text("body").notNull().default(""),
+});
+
 /** Singleton row, keyed by `ownerId` — one settings row per DO (one owner per DO). */
 export const settings = sqliteTable("settings", {
   ownerId: text("owner_id").primaryKey(),
@@ -104,6 +116,10 @@ export const settings = sqliteTable("settings", {
   visibleDays: integer("visible_days").notNull().default(7),
   /** JSON-encoded array of statuses — see `settingsSchema.visibleStatuses`. */
   visibleStatuses: text("visible_statuses").notNull().default('["open"]'),
+  /** JSON-encoded array of kinds — see `settingsSchema.visibleEventKinds`. */
+  visibleEventKinds: text("visible_event_kinds")
+    .notNull()
+    .default('["created","scheduled","done","dropped"]'),
   showWeekends: integer("show_weekends", { mode: "boolean" }).notNull().default(true),
   fontPairing: text("font_pairing").notNull(),
   theme: text("theme").notNull(),

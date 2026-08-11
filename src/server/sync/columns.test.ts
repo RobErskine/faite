@@ -9,6 +9,7 @@ describe("TABLE_NAME_BY_KIND / COLUMNS_BY_KIND", () => {
       label: "labels",
       project: "projects",
       tab: "tabs",
+      dayNote: "day_notes",
       settings: "settings",
     });
   });

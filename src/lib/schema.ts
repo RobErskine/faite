@@ -40,6 +40,10 @@ export type Id = z.infer<typeof idSchema>;
 export const todoStatusSchema = z.enum(["open", "done", "dropped"]);
 export type TodoStatus = z.infer<typeof todoStatusSchema>;
 
+/** What a day-sheet timeline entry can be — see `buildDayTimeline` in `day-timeline.ts`. */
+export const dayEventKindSchema = z.enum(["created", "scheduled", "done", "dropped"]);
+export type DayEventKind = z.infer<typeof dayEventKindSchema>;
+
 /** 1 = highest. Matches the 4-level convention in the original spec. */
 export const prioritySchema = z.union([
   z.literal(1),
@@ -154,6 +158,27 @@ export const todoSchema = z.object({
   scheduledDate: civilDateSchema.nullable().default(null),
 
   /**
+   * WHEN the current `scheduledDate` was assigned — an instant, not a civil
+   * date. Null whenever `scheduledDate` is null.
+   *
+   * Stamped only on a genuine placement change (`schedulePatch`/`dayGroupPatch`
+   * in `store/repositories.ts`), never on a write that merely repeats the same
+   * date — dragging a card between list groups within one day writes
+   * `scheduledDate` again but must not look like a fresh assignment. NOT
+   * stamped at creation either: a todo quick-added directly onto a day was
+   * never "moved" there, so `day-timeline.ts`'s "Assigned here" event would be
+   * a redundant echo of "Created" for the same instant.
+   *
+   * This is what lets the day sheet's timeline show, on the day a todo is
+   * CURRENTLY scheduled for, when that placement decision was made — which may
+   * be a different calendar day than the one being viewed (dragging something
+   * from today onto tomorrow is an event that belongs on tomorrow's timeline).
+   * Like `completedAt`, only the LATEST placement survives: reschedule
+   * something twice and only the second move is knowable.
+   */
+  scheduledAt: z.string().nullable().default(null),
+
+  /**
    * Hard due date, independent of `scheduledDate`.
    *
    * A deadline never exempts a todo from overflow and never changes which
@@ -186,6 +211,35 @@ export const todoSchema = z.object({
   completedAt: z.string().nullable().default(null),
 });
 export type Todo = z.infer<typeof todoSchema>;
+
+/**
+ * A day's notes — a journal entry, or loose things worth remembering.
+ *
+ * One row per calendar day, keyed BY that day: `id` is deterministic
+ * (`daynote:YYYY-MM-DD`, see `dayNoteId` in `store/repositories.ts`) rather
+ * than a UUIDv7. That is the one deliberate exception to convention 1 at the
+ * top of this file, and the reason is convergence. There is exactly one note
+ * per day, so two offline devices journaling the same Tuesday must collide on
+ * ONE entity and let field-level LWW pick a `body`. With random ids they would
+ * produce two rows for the same day and nothing in `sync/merge.ts` would ever
+ * collapse them. Same precedent as `seed:list:backlog` and `DEFAULT_TAB_ID`.
+ *
+ * Safe here specifically because a day note is private and per-owner, so it
+ * never needs to move between Durable Objects the way a shared label would.
+ *
+ * "Deleting" a note means writing `body: ""`, not setting `deletedAt` — the id
+ * is guaranteed to be recreated the next time that day is opened, so a
+ * tombstone would only buy a resurrect-vs-tombstone race. `deletedAt` stays on
+ * the row because every syncable record has it and `apply-remote` assumes it.
+ */
+export const dayNoteSchema = z.object({
+  ...syncableFields,
+  /** The day this belongs to. Also encoded in `id`. */
+  date: civilDateSchema,
+  /** Markdown, same convention as `todoSchema.description`. */
+  body: z.string().default(""),
+});
+export type DayNote = z.infer<typeof dayNoteSchema>;
 
 /**
  * Per-user settings.
@@ -227,6 +281,15 @@ export const settingsSchema = z.object({
    * rarely wants the other.
    */
   visibleStatuses: z.array(todoStatusSchema).default(["open"]),
+  /**
+   * Which kinds render in a day sheet's Timeline section — filters that view,
+   * not the board. Unlike `visibleStatuses` this may legally be empty: an
+   * empty board looks broken, but a day sheet has its own "N hidden by the
+   * view filter" notice for that case, so there's no ambiguity to guard against.
+   */
+  visibleEventKinds: z
+    .array(dayEventKindSchema)
+    .default(["created", "scheduled", "done", "dropped"]),
   /**
    * When false, each run of consecutive non-working days collapses into a
    * single expandable strip and stops counting toward `visibleDays`.
@@ -350,6 +413,7 @@ export const entityKindSchema = z.enum([
   "label",
   "project",
   "tab",
+  "dayNote",
   "settings",
 ]);
 export type EntityKind = z.infer<typeof entityKindSchema>;

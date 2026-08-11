@@ -102,6 +102,49 @@ export const USER_DB_MIGRATIONS: readonly UserDbMigration[] = [
       `ALTER TABLE settings ADD COLUMN split_collapsed text DEFAULT 'none' NOT NULL`,
     ],
   },
+  {
+    // Renumbered from 4 to 5 during the merge with feat/resizable-board-split,
+    // which landed its own migration 4 first. Never renumber an id once it
+    // has shipped — this one hadn't, so it was still safe to.
+    id: 5,
+    name: "add-day-notes",
+    statements: [
+      // Deliberately NOT also added to `bootstrap.ts`. A whole new table is one
+      // of the two cases where duplicating into bootstrap is sanctioned, but it
+      // buys nothing here and costs the snapshot dance in `schema-parity.test.ts`
+      // — a fresh Durable Object runs the WHOLE ledger, not just migration 1, so
+      // new accounts get this table from here exactly like existing ones do.
+      //
+      // `NOT NULL DEFAULT ''` on `body` is safe because this is a new table with
+      // no existing rows; the prefer-nullable note below is about ALTER TABLE on
+      // a populated one.
+      `CREATE TABLE IF NOT EXISTS day_notes (
+    id text PRIMARY KEY NOT NULL,
+    owner_id text NOT NULL,
+    created_at text NOT NULL,
+    updated_at text NOT NULL,
+    deleted_at text,
+    version integer NOT NULL,
+    date text NOT NULL,
+    body text DEFAULT '' NOT NULL
+  )`,
+    ],
+  },
+  {
+    id: 6,
+    name: "todos-add-scheduled-at",
+    statements: ["ALTER TABLE todos ADD COLUMN scheduled_at text"],
+  },
+  {
+    id: 7,
+    name: "settings-add-visible-event-kinds",
+    statements: [
+      // Same reasoning as migration 3: NOT NULL with a DEFAULT that matches
+      // the Zod default, so every existing row comes out showing everything
+      // the day sheet showed before this was a setting.
+      `ALTER TABLE settings ADD COLUMN visible_event_kinds text DEFAULT '["created","scheduled","done","dropped"]' NOT NULL`,
+    ],
+  },
   // Add new migrations here. Never edit one above this line.
   //
   // Example — adding a nullable column (the safe, ordinary case):

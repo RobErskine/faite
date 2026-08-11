@@ -1,5 +1,6 @@
 import type {
   CivilDate,
+  DayNote,
   Label,
   List,
   Priority,
@@ -63,6 +64,11 @@ export async function createTodo(input: CreateTodoInput): Promise<string> {
     status: "open",
     priority: input.priority ?? null,
     scheduledDate: input.scheduledDate ?? null,
+    // Never stamped at creation, even when created directly onto a day
+    // (quick-add): that placement is already covered by the "Created" event,
+    // and this would just echo it. Only a later RESCHEDULE sets this — see
+    // `schedulePatch`/`dayGroupPatch`.
+    scheduledAt: null,
     deadline: input.deadline ?? null,
     listId: input.listId ?? null,
     projectId: input.projectId ?? null,
@@ -109,18 +115,33 @@ export const statusPatch = (status: TodoStatus) => ({
   completedAt: status === "open" ? null : now(),
 });
 
+/**
+ * `previousDate` is the placement BEFORE this write — used only to decide
+ * whether `scheduledAt` should move, not written itself. Dragging a card
+ * between list groups within the SAME day calls this too (see
+ * `dayGroupPatch`), rewriting the date it already had; that must not look
+ * like a fresh assignment on the day sheet's timeline, or shuffling groups
+ * within a day would keep bumping "Assigned here" to the current moment.
+ */
 export const schedulePatch = (
   scheduledDate: CivilDate | null,
+  previousDate: CivilDate | null,
   position?: string,
 ) => ({
   scheduledDate,
+  ...(scheduledDate !== previousDate
+    ? { scheduledAt: scheduledDate ? now() : null }
+    : {}),
   ...(position ? { position } : {}),
 });
 
 export const listPatch = (listId: string | null, position?: string) => ({
   listId,
-  // Moving into a list returns the todo to planning, so any schedule goes.
+  // Moving into a list returns the todo to planning, so any schedule goes —
+  // and with it, WHEN it was last placed on a day. A todo currently unscheduled
+  // has nothing for `day-timeline.ts` to say about it.
   scheduledDate: null,
+  scheduledAt: null,
   ...(position ? { position } : {}),
 });
 
@@ -142,10 +163,12 @@ export const listPatch = (listId: string | null, position?: string) => ({
 export const dayGroupPatch = (
   listId: string | null,
   scheduledDate: CivilDate,
+  previousDate: CivilDate | null,
   position?: string,
 ) => ({
   listId,
   scheduledDate,
+  ...(scheduledDate !== previousDate ? { scheduledAt: now() } : {}),
   ...(position ? { position } : {}),
 });
 
@@ -163,9 +186,10 @@ export async function setTodoStatus(id: string, status: TodoStatus): Promise<voi
 export async function scheduleTodo(
   id: string,
   scheduledDate: CivilDate | null,
+  previousDate: CivilDate | null,
   position?: string,
 ): Promise<void> {
-  await mutate("todo", id, schedulePatch(scheduledDate, position));
+  await mutate("todo", id, schedulePatch(scheduledDate, previousDate, position));
 }
 
 /** Move into a list column, clearing any schedule so it returns to planning. */
@@ -182,9 +206,10 @@ export async function moveTodoToDayGroup(
   id: string,
   listId: string | null,
   scheduledDate: CivilDate,
+  previousDate: CivilDate | null,
   position?: string,
 ): Promise<void> {
-  await mutate("todo", id, dayGroupPatch(listId, scheduledDate, position));
+  await mutate("todo", id, dayGroupPatch(listId, scheduledDate, previousDate, position));
 }
 
 export async function reorderTodo(id: string, position: string): Promise<void> {
@@ -550,6 +575,57 @@ export async function deleteProject(id: string): Promise<void> {
     await mutate("todo", todo.id, { projectId: null });
   }
   await remove("project", id);
+}
+
+// ---------------------------------------------------------------------------
+// Day notes
+// ---------------------------------------------------------------------------
+
+/**
+ * Deterministic id for a day's notes — one row per calendar day.
+ *
+ * See `dayNoteSchema` (`lib/schema.ts`) for why this breaks the UUIDv7 rule:
+ * two offline devices journaling the same day must collide on one entity so
+ * field-level LWW can pick a `body`, rather than producing two rows nothing
+ * merges.
+ */
+export const dayNoteId = (date: CivilDate) => `daynote:${date}`;
+
+/**
+ * Write a day's notes, creating the row on first use.
+ *
+ * Deliberately does NOT create a row for an empty body: opening a day and
+ * closing it without typing must leave nothing behind, or every day anyone
+ * ever glanced at becomes a synced row and a sticky-note icon in the header.
+ *
+ * Clearing a note writes `body: ""` rather than a tombstone — the id is
+ * deterministic and would be recreated the next time that day is opened, so a
+ * `deletedAt` would only buy a resurrect-vs-tombstone race. `useDayNotes`
+ * treats a blank body as "no note", which is what makes that work.
+ */
+export async function setDayNote(date: CivilDate, body: string): Promise<void> {
+  const id = dayNoteId(date);
+  const existing = await getDb().dayNotes.get(id);
+
+  if (existing) {
+    if (existing.body === body) return;
+    await mutate("dayNote", id, { body, deletedAt: null });
+    return;
+  }
+
+  if (body.trim() === "") return;
+
+  const timestamp = now();
+  const note: DayNote = {
+    id,
+    ownerId: getCurrentOwnerId(),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    deletedAt: null,
+    date,
+    body,
+  };
+  await create("dayNote", note);
 }
 
 // ---------------------------------------------------------------------------

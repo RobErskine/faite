@@ -77,27 +77,59 @@ export function dayOfWeek(date: CivilDate): number {
 }
 
 /**
+ * Memoized instant -> `YYYY-MM-DD` formatters, one per timezone.
+ *
+ * Cached for the same reason the display formatters below are module-level:
+ * constructing an `Intl.DateTimeFormat` is the expensive half, and
+ * `civilDateOf` runs once per timestamp when the day sheet builds its timeline.
+ */
+const CIVIL_DATE_FORMATTERS = new Map<string, Intl.DateTimeFormat>();
+
+function civilDateFormatter(timezone: string): Intl.DateTimeFormat {
+  const cached = CIVIL_DATE_FORMATTERS.get(timezone);
+  if (cached) return cached;
+
+  const options: Intl.DateTimeFormatOptions = {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  };
+  let formatter: Intl.DateTimeFormat;
+  try {
+    formatter = new Intl.DateTimeFormat("en-CA", { ...options, timeZone: timezone });
+  } catch {
+    // Unknown timezone: fall back to UTC rather than throwing mid-render.
+    formatter = new Intl.DateTimeFormat("en-CA", { ...options, timeZone: "UTC" });
+  }
+  CIVIL_DATE_FORMATTERS.set(timezone, formatter);
+  return formatter;
+}
+
+/**
  * Today as a civil date in the user's timezone.
  *
  * `en-CA` formats as YYYY-MM-DD, which is exactly our storage shape.
  */
 export function todayIn(timezone: string, now: Date = new Date()): CivilDate {
-  try {
-    return new Intl.DateTimeFormat("en-CA", {
-      timeZone: timezone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(now);
-  } catch {
-    // Unknown timezone: fall back to UTC rather than throwing mid-render.
-    return new Intl.DateTimeFormat("en-CA", {
-      timeZone: "UTC",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(now);
-  }
+  return civilDateFormatter(timezone).format(now);
+}
+
+/**
+ * The civil date an INSTANT falls on, in `timezone`. Null if unparseable.
+ *
+ * The only place this module converts an instant to a civil date, and it exists
+ * because `createdAt`/`completedAt` are ISO instants while everything else here
+ * reasons in civil dates. Which day an instant belongs to is a question only
+ * the user's timezone can answer — a 4am-UTC completion is the previous day in
+ * Los Angeles.
+ *
+ * Returns null rather than throwing: one malformed timestamp on one todo must
+ * not take down a whole render.
+ */
+export function civilDateOf(instant: string, timezone: string): CivilDate | null {
+  const dt = new Date(instant);
+  if (Number.isNaN(dt.getTime())) return null;
+  return civilDateFormatter(timezone).format(dt);
 }
 
 // ---------------------------------------------------------------------------

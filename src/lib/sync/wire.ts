@@ -30,6 +30,7 @@ export const SYNC_KINDS = [
   "label",
   "project",
   "tab",
+  "dayNote",
   "settings",
 ] as const satisfies readonly SyncKind[];
 
@@ -70,6 +71,7 @@ export const SETTINGS_SYNCED_FIELDS: ReadonlySet<string> = new Set([
   "overflowAfterDays",
   "visibleDays",
   "visibleStatuses",
+  "visibleEventKinds",
   "showWeekends",
   "fontPairing",
   "theme",

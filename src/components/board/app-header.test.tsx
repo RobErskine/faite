@@ -46,6 +46,7 @@ function settingsWith(patch: Partial<Settings>): Settings {
     overflowAfterDays: 3,
     visibleDays: 7,
     visibleStatuses: ["open"],
+    visibleEventKinds: ["created", "scheduled", "done", "dropped"],
     showWeekends: true,
     fontPairing: "hyperlegible",
     theme: "system",

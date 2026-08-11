@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Trash2 } from "lucide-react";
+import { ArrowLeft, Trash2 } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { MarkdownField } from "@/components/ui/markdown-field";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -25,7 +26,9 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { TITLE_LINES } from "@/lib/title";
+import { formatShortDate } from "@/lib/scheduling";
 import type {
+  CivilDate,
   Label as LabelRecord,
   List,
   Priority,
@@ -51,6 +54,14 @@ interface TodoSheetProps {
   onSetStatus: (id: string, status: Todo["status"]) => void;
   onToggleLabel: (todoId: string, labelId: string) => void;
   onDelete: (id: string) => void;
+  /**
+   * Set only when this sheet was opened from that day's timeline — renders a
+   * "Back to Aug 11" affordance above the title. Absent for every other way of
+   * reaching the sheet (a board card, the palette, Overflow), where there is
+   * nowhere sensible to go back to.
+   */
+  backToDay?: CivilDate;
+  onBackToDay?: () => void;
 }
 
 /**
@@ -80,9 +91,10 @@ function TodoSheetContent({
   onSetStatus,
   onToggleLabel,
   onDelete,
+  backToDay,
+  onBackToDay,
 }: TodoSheetProps & { todo: Todo }) {
   const [title, setTitle] = useState(todo.title);
-  const [description, setDescription] = useState(todo.description ?? "");
 
   const commitTitle = () => {
     const next = title.trim();
@@ -92,12 +104,31 @@ function TodoSheetContent({
 
   return (
     <Sheet open onOpenChange={(open) => !open && onClose()}>
-      <SheetContent className="flex w-full flex-col gap-0 sm:max-w-md">
-        <SheetHeader>
+      {/*
+        `data-[side=right]:` on the width utilities, not plain `sm:` ones: the
+        base `SheetContent` already sets `data-[side=right]:w-3/4` and
+        `data-[side=right]:sm:max-w-sm`, both gated on the same attribute
+        selector. A plain class loses that specificity fight and silently
+        does nothing — matching the modifier is what makes the override win.
+        See the matching comment in `day-sheet.tsx`, which shares this sheet
+        width so the two don't read as two different components.
+      */}
+      <SheetContent className="flex w-full flex-col gap-0 data-[side=right]:w-full data-[side=right]:sm:max-w-[75ch]">
+        <SheetHeader className={backToDay ? "gap-1.5 pr-10" : undefined}>
           <SheetTitle className="sr-only">Edit to-do</SheetTitle>
           <SheetDescription className="sr-only">
             Edit the details of this to-do item.
           </SheetDescription>
+          {backToDay && onBackToDay && (
+            <button
+              type="button"
+              onClick={onBackToDay}
+              className="-ml-1 flex w-fit items-center gap-1 rounded px-1 py-0.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            >
+              <ArrowLeft className="size-3" aria-hidden />
+              Back to {formatShortDate(backToDay)}
+            </button>
+          )}
           {/*
             A textarea, not an input, so a long title is readable here rather
             than scrolling sideways one line at a time — and it grows to exactly
@@ -134,17 +165,21 @@ function TodoSheetContent({
 
         <div className="flex-1 space-y-5 overflow-y-auto px-4 pb-4">
           <div className="space-y-1.5">
-            <Label htmlFor="todo-notes">Notes</Label>
-            <Textarea
-              id="todo-notes"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              onBlur={() =>
-                description !== (todo.description ?? "") &&
-                onSave(todo.id, { description: description || null })
-              }
+            <Label>Notes</Label>
+            {/*
+              Markdown, finally rendered rather than just stored — the field has
+              declared itself markdown since P1 (`todoSchema.description`) while
+              being a plain textarea. `MarkdownField` seeds once per mount, which
+              is why `TodoSheet` keys this whole subtree by todo id.
+            */}
+            <MarkdownField
+              value={todo.description ?? ""}
               placeholder="Add notes"
-              rows={4}
+              ariaLabel="Notes"
+              className="min-h-[50vh]"
+              onCommit={(next) =>
+                onSave(todo.id, { description: next.trim() ? next : null })
+              }
             />
           </div>
 

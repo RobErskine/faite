@@ -24,12 +24,16 @@ type RecordTable = Exclude<EntityKind, "settings">;
 /** Every syncable Dexie table, keyed by kind. `seedWrite` is the one caller
  * that needs the `settings` entry — `mutate()`/`create()` stay narrowed to
  * `RecordTable` via their own generic bound. */
-const TABLE_BY_KIND: Record<EntityKind, "todos" | "lists" | "labels" | "projects" | "tabs" | "settings"> = {
+const TABLE_BY_KIND: Record<
+  EntityKind,
+  "todos" | "lists" | "labels" | "projects" | "tabs" | "dayNotes" | "settings"
+> = {
   todo: "todos",
   list: "lists",
   label: "labels",
   project: "projects",
   tab: "tabs",
+  dayNote: "dayNotes",
   settings: "settings",
 };
 

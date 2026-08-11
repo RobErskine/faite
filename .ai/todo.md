@@ -1022,3 +1022,144 @@ in the window and the collapse is purely a rendering concern (`weekend-runs.ts`)
 - [ ] Not committed. Branch `feat/board-view-settings` also carries unrelated
       pre-existing edits from earlier work (docs, ci.yml, auth-client) — worth
       splitting before a PR.
+
+---
+
+## Day details sheet — notes + activity timeline (branch `feat/day-details-sheet`)
+
+Click any day column's heading → a Sheet with a markdown **Notes** field and a vertical
+timeline of that day's todo events. Sticky-note icon after the date marks days with notes.
+
+### Storage — `dayNote`, the seventh sync kind
+
+- [x] Zod `dayNoteSchema` + `"dayNote"` in `entityKindSchema` (`lib/schema.ts`)
+- [x] **Deterministic id `daynote:YYYY-MM-DD`**, the one deliberate break from the
+      UUIDv7 rule. Reason is convergence: exactly one note per day, so two offline
+      devices must collide on ONE entity and let field-level LWW pick a `body`. Random
+      ids would produce two rows for the same day and nothing in `merge.ts` collapses
+      them. Precedent: `seed:list:backlog`, `DEFAULT_TAB_ID`.
+- [x] Full sync ceremony: `wire.ts` `SYNC_KINDS`, Dexie `version(2)` delta in `db.ts`,
+      `mutate.ts` + `apply-remote.ts` dispatch + tx scope, `hydrate.ts`,
+      `user-schema.ts`, migration 4, `columns.ts`, `schema-parity.test.ts`.
+- [x] **`adopt-owner.ts`** — the one nothing catches. `TABLES`, both tx scopes, and the
+      `clear()` in `resetLocalDataForNewOwner`. Missing it type-checks cleanly and fails
+      only as data: pre-sign-in rows keep `LOCAL_OWNER_ID` forever, and the next account
+      to sign in inherits the previous user's journal. Added to `docs/SCHEMA-CHANGES.md`
+      as row 8 — the doc never listed it.
+- [x] **`bootstrap.ts` deliberately untouched.** Duplicating a new table's `CREATE` into
+      it is sanctioned but pointless — a fresh DO runs the whole ledger — and it would
+      have cost the bootstrap-fingerprint snapshot dance. `schema:check` passed with no
+      re-baseline.
+- [x] `setDayNote` never creates a row for an empty body; clearing writes `body: ""`
+      rather than a tombstone, since the deterministic id is recreated on next open.
+      `useDayNotes` filters blank bodies, so it is the single source of truth for
+      "has notes" and the indicator follows for free.
+
+### Timeline — derived, no events table
+
+- [x] `lib/day-timeline.ts` — `buildDayTimeline(todos, day, timezone)` over `createdAt`
+      and `completedAt`. Sorted by instant, tie-broken by key so the order is total.
+- [x] `civilDateOf(instant, timezone)` added to `scheduling.ts` with a memoized
+      per-timezone formatter; `todayIn` re-expressed on it, behaviour unchanged.
+      The time-of-day formatter lives in `day-timeline.ts`, NOT `scheduling.ts` —
+      every formatter there is `timeZone: "UTC"` by design because it formats civil
+      dates.
+- [x] Limits documented in the module header rather than papered over: reopening nulls
+      `completedAt` and retroactively erases that day's entry; only the latest settle
+      survives; done/dropped is read from CURRENT status; deleted todos vanish from past
+      days (deliberate — matching the board beats contradicting it).
+
+### UI
+
+- [x] `day-sheet.tsx`, mounted **outside** the board's `DndContext`. Load-bearing:
+      `TodoCard` calls `useSortable` unconditionally, so inside the context the
+      timeline's cards would re-register under ids the board already owns and replace
+      the real cards' entries in dnd-kit's maps. Verified live: opened and closed the
+      sheet, then dragged a board card Monday → Wednesday successfully.
+- [x] `onOpenListInfo` → `onOpenInfo`; the bare `<h2 onClick>` became `<h2><button>`,
+      which also fixes an existing keyboard/AT gap on list columns. No drag conflict —
+      day columns pass no `reorderListId`, so their `<header>` carries no listeners.
+- [x] Sticky-note icon composed in `board.tsx`'s existing `subtitle` node, so
+      `board-column.tsx` needed no new prop.
+- [x] `TodoCard` gained one additive `draggable?: boolean` prop gating the grip and the
+      grab cursors. Does NOT gate the hook.
+
+### Markdown — BlockNote
+
+- [x] `@blocknote/{core,react,shadcn}` 0.53.0. `@blocknote/shadcn` with its BUNDLED
+      components — the repo's `src/components/ui/*` are Base UI (`render=`, not
+      `asChild`) and portal internally, which BlockNote explicitly forbids for
+      `shadCNComponents` overrides. Accepted trade: Radix enters via that package.
+- [x] **Markdown stays the stored format**, not BlockNote JSON. `todo.description` is
+      substring-searched by the command palette and has declared itself markdown since
+      P1. Both conversion methods are synchronous in 0.53, so no async seeding dance.
+- [x] **Churn guard** — parse→serialize is not a fixed point (`*` → `-`), so seeding
+      fires `onChange` and would commit a rewritten-but-unedited body on every sheet
+      open. `seededRef` gates `onChange`; commit diffs against the last known value.
+      Verified live: open + close without typing produced ZERO writes (outbox 13 → 13,
+      `updatedAt` unchanged).
+- [x] `next/dynamic({ssr:false})` inside `markdown-field.tsx` keeps ProseMirror off the
+      board's initial chunk and off the prerender (required under `output: export`).
+- [x] `globals.css` gained its first `@source` directive — Tailwind v4 does not scan
+      node_modules, and without it BlockNote's menus render unstyled in a production
+      build only.
+- [x] Used for the day sheet AND `todo-sheet.tsx`, closing the open P6 item.
+
+### Verification
+
+- [x] `npm run verify` green: **772 tests / 57 files**, typecheck (both tsconfigs),
+      lint, `next build`, `build:static`.
+- [x] Live in the browser: Dexie v2 upgrade, sheet open from heading, all three event
+      kinds in order with the list wash behind the cards, markdown round-trip in both
+      fields, sticky-note appear/disappear, dark mode, no console errors.
+- [x] `eslint.config.mjs` ignores `drizzle/**` — `schema:generate` now emits a
+      `migrations.js` that tripped `import/no-anonymous-default-export`.
+
+### Open
+
+- [ ] **Not verified against a live DO.** Migration 4 has not run anywhere real; the
+      `wrangler dev` push/pull round trip and `scripts/sync-smoke/*` were not executed.
+      Additive new table, so the expected outcome is a clean no-op on next boot — but
+      that is an expectation, not an observation. Same gap as migration 3 above.
+- [ ] Collapsed weekend strips have no per-day heading, so a Saturday note is
+      unreachable until the strip is expanded. Accepted for v1.
+- [ ] Day notes are not searchable from ⌘K — `search.ts` covers todo titles and
+      descriptions only.
+- [ ] BlockNote inside the Sheet was smoke-tested, but slash menu / formatting toolbar
+      clipping, Escape ordering, and link popovers were not exercised by hand.
+- [ ] Pre-existing and unrelated: the todo sheet's List/Priority/Project selects render
+      the raw `__none__` sentinel instead of "None". Confirmed on `main` by stashing.
+
+### Follow-up — "Assigned here" timeline event
+
+Rob's ask: dragging a todo from today onto tomorrow should show, in TOMORROW's timeline,
+that today it was assigned there — not just events that literally occurred that day.
+
+- [x] `todo.scheduledAt` — a new field on the EXISTING `todo` kind (not a new sync kind),
+      stamped only on a genuine placement CHANGE, never on a write that repeats the same
+      date (dragging between list groups within one day must not look like a fresh move).
+      Migration 5, `ALTER TABLE todos ADD COLUMN scheduled_at text`.
+- [x] `schedulePatch`/`dayGroupPatch` now take a `previousDate` param and gate the stamp on
+      `scheduledDate !== previousDate`. `listPatch` nulls it unconditionally (unscheduling
+      clears "when was this placed"). `createTodo` never stamps it — a todo quick-added
+      directly onto a day is covered by "Created", not a redundant echo.
+  - Signature change touched exactly 2 call sites in `board.tsx` (day-group drop, empty-day
+    drop) plus `handleSheetSave` for the sheet's manual date field — verified by grep, no
+    other callers exist repo-wide.
+- [x] `day-timeline.ts` — new `scheduled` event kind, keyed by "is the todo CURRENTLY on
+      this day", not "did this happen on this day" (the other three kinds' membership
+      test). `at` is `scheduledAt`, which can fall on a DIFFERENT calendar day than the
+      one it's rendered on — that's the whole point.
+- [x] `formatEventWhen` — prefixes the date when an event's instant lands on a different
+      day than the timeline being viewed, so "Assigned here" reads "Aug 10 · 1:35 PM" on
+      Tuesday's timeline rather than a bare time that would silently imply Tuesday.
+- [x] Same "only latest survives" limitation as `completedAt`, documented in the module
+      header: reschedule twice and only the second move is knowable; move it away again
+      and the event disappears retroactively from where it landed.
+- [x] `inversePatch` picks up the new field automatically (it iterates the forward patch's
+      own keys) — no undo.ts change needed. Caught and fixed one stale test expectation
+      (`undo.test.ts`) that didn't anticipate the new key.
+- [x] Verified live: dragged "Reply to the design feedback" Monday → Tuesday. Monday's
+      timeline unchanged (still just its own Created/Completed/Won't-do). Tuesday shows
+      exactly one entry: "Assigned here · Aug 10 · 1:35 PM".
+- [x] `npm run verify` green: 790 tests / 57 files.

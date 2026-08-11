@@ -13,6 +13,7 @@ function todo(overrides: Partial<Todo> & { id: string }): Todo {
     status: "open",
     priority: null,
     scheduledDate: null,
+    scheduledAt: null,
     deadline: null,
     listId: null,
     projectId: null,

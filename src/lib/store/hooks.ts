@@ -2,7 +2,16 @@
 
 import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useMemo, useState } from "react";
-import type { Label, List, Project, Settings, Tab, Todo } from "@/lib/schema";
+import type {
+  CivilDate,
+  DayNote,
+  Label,
+  List,
+  Project,
+  Settings,
+  Tab,
+  Todo,
+} from "@/lib/schema";
 import { byPosition } from "@/lib/ordering";
 import { contextFromSettings, type PlacementContext } from "@/lib/scheduling";
 import { canUseDb, getDb } from "./db";
@@ -121,6 +130,30 @@ export function useLabels(): Label[] {
 export function useProjects(): Project[] {
   const rows = useLiveQuery(() => getDb().projects.toArray(), [], [] as Project[]);
   return useMemo(() => alive(rows).sort(byPosition), [rows]);
+}
+
+/**
+ * Every day that HAS notes, keyed by date.
+ *
+ * A map rather than an array because the board's only question is "does this
+ * column's day have a note?", asked once per rendered column.
+ *
+ * Blank-bodied rows are filtered out here, which is what makes clearing a note
+ * work without a tombstone: this hook is the single source of truth for "has
+ * notes", so the sticky-note indicator and the sheet agree by construction.
+ * See `setDayNote` in repositories.ts.
+ */
+export function useDayNotes(): ReadonlyMap<CivilDate, DayNote> {
+  const rows = useLiveQuery(() => getDb().dayNotes.toArray(), [], [] as DayNote[]);
+  return useMemo(
+    () =>
+      new Map(
+        alive(rows)
+          .filter((note) => note.body.trim() !== "")
+          .map((note) => [note.date, note]),
+      ),
+    [rows],
+  );
 }
 
 export function useSettings(): Settings | undefined {

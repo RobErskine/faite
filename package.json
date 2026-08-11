@@ -26,9 +26,13 @@
   "dependencies": {
     "@base-ui/react": "^1.6.0",
     "@better-auth/drizzle-adapter": "^1.6.26",
+    "@blocknote/core": "^0.53.0",
+    "@blocknote/react": "^0.53.0",
+    "@blocknote/shadcn": "^0.53.0",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
+    "@floating-ui/react": "^0.27.20",
     "@opennextjs/cloudflare": "^1.20.2",
     "better-auth": "^1.6.26",
     "class-variance-authority": "^0.7.1",
