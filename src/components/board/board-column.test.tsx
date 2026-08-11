@@ -53,6 +53,7 @@ const todo = (id: string): Todo => ({
   recurrenceRule: null,
   recurrenceParentId: null,
   completedAt: null,
+  reminderTime: null,
 });
 
 const group = (

@@ -145,6 +145,11 @@ export const USER_DB_MIGRATIONS: readonly UserDbMigration[] = [
       `ALTER TABLE settings ADD COLUMN visible_event_kinds text DEFAULT '["created","scheduled","done","dropped"]' NOT NULL`,
     ],
   },
+  {
+    id: 8,
+    name: "todos-add-reminder-time",
+    statements: ["ALTER TABLE todos ADD COLUMN reminder_time text"],
+  },
   // Add new migrations here. Never edit one above this line.
   //
   // Example — adding a nullable column (the safe, ordinary case):

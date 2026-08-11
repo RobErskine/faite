@@ -154,6 +154,7 @@ import { DaySheet } from "./day-sheet";
 import { CommandPalette } from "./command-palette";
 import { useColumnNav } from "./use-column-nav";
 import { useDayTrack } from "./use-day-track";
+import { useReminders } from "./use-reminders";
 
 /**
  * How long a card must hover a tab before it focuses.
@@ -560,6 +561,11 @@ export function Board() {
     }
     return { templates, nonTemplateTodos };
   }, [visibleTodos]);
+
+  // Foreground reminders: polls `nonTemplateTodos` for anything due and
+  // delivers each once. See `use-reminders.ts` for why this is a poll rather
+  // than a per-todo timer.
+  useReminders(nonTemplateTodos, settings?.timezone ?? "UTC");
 
   /**
    * How many day columns to render: always at least `DEFAULT_RENDERED_DAYS`,

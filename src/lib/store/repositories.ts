@@ -55,6 +55,7 @@ export interface CreateTodoInput {
   projectId?: string | null;
   labelIds?: string[];
   position?: string;
+  reminderTime?: string | null;
 }
 
 export async function createTodo(input: CreateTodoInput): Promise<string> {
@@ -85,6 +86,7 @@ export async function createTodo(input: CreateTodoInput): Promise<string> {
     recurrenceRule: null,
     recurrenceParentId: null,
     completedAt: null,
+    reminderTime: input.reminderTime ?? null,
   };
   return create("todo", todo);
 }
@@ -148,6 +150,10 @@ export const listPatch = (listId: string | null, position?: string) => ({
   // has nothing for `day-timeline.ts` to say about it.
   scheduledDate: null,
   scheduledAt: null,
+  // A reminder resolves against `scheduledDate` (lib/reminders.ts) — clearing
+  // one without the other would leave a stored time with no date to fire
+  // against, silently orphaned until the todo is scheduled again.
+  reminderTime: null,
   ...(position ? { position } : {}),
 });
 

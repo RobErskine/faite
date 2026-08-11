@@ -82,6 +82,7 @@ export const todos = sqliteTable("todos", {
   recurrenceRule: text("recurrence_rule"),
   recurrenceParentId: text("recurrence_parent_id"),
   completedAt: text("completed_at"),
+  reminderTime: text("reminder_time"),
 });
 
 export const tabs = sqliteTable("tabs", {

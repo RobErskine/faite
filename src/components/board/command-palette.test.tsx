@@ -61,6 +61,7 @@ const todo = (overrides: Partial<Todo> & { id: string }): Todo => ({
   recurrenceRule: null,
   recurrenceParentId: null,
   completedAt: null,
+  reminderTime: null,
   ...overrides,
 });
 

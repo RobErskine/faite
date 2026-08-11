@@ -209,6 +209,21 @@ export const todoSchema = z.object({
   recurrenceParentId: idSchema.nullable().default(null),
 
   completedAt: z.string().nullable().default(null),
+
+  /**
+   * Time of day, "HH:MM" 24-hour, resolved against `scheduledDate` in the
+   * user's `Settings.timezone` — see `lib/zoned.ts`. A TIME, not an instant:
+   * storing an instant would fix it to one timezone and wouldn't survive a
+   * recurring todo's occurrence landing on a different date each time.
+   *
+   * Foreground only (P6): fires via `lib/reminders.ts` while a tab is open.
+   * No effect while `scheduledDate` is null.
+   */
+  reminderTime: z
+    .string()
+    .regex(/^\d{2}:\d{2}$/, "Expected a HH:MM time")
+    .nullable()
+    .default(null),
 });
 export type Todo = z.infer<typeof todoSchema>;
 

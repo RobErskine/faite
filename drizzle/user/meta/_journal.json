@@ -15,6 +15,20 @@
       "when": 1786417068816,
       "tag": "0001_free_rachel_grey",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1786419507980,
+      "tag": "0002_violet_sabretooth",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1786423681975,
+      "tag": "0003_milky_dracula",
+      "breakpoints": true
     }
   ]
 }

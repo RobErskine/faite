@@ -231,6 +231,21 @@ function TodoSheetContent({
             </div>
           </div>
 
+          {todo.scheduledDate && (
+            <div className="space-y-1.5">
+              <Label htmlFor="todo-reminder">Reminder</Label>
+              <Input
+                id="todo-reminder"
+                type="time"
+                value={todo.reminderTime ?? ""}
+                onChange={(e) =>
+                  onSave(todo.id, { reminderTime: e.target.value || null })
+                }
+                className="w-fit"
+              />
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="todo-list">List</Label>

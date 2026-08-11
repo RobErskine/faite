@@ -1,7 +1,8 @@
-import { Palette, User, Wrench } from "lucide-react";
+import { Bell, Palette, User, Wrench } from "lucide-react";
 import type { SettingsSection } from "./types";
 import { ProfileSection } from "./profile-section";
 import { DesignSection } from "./design-section";
+import { NotificationsSection } from "./notifications-section";
 import { DeveloperSection } from "./developer-section";
 
 /**
@@ -22,6 +23,13 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     description: "How the board looks: typeface and appearance.",
     icon: Palette,
     Component: DesignSection,
+  },
+  {
+    id: "notifications",
+    label: "Notifications",
+    description: "Reminder delivery for to-dos with a time set.",
+    icon: Bell,
+    Component: NotificationsSection,
   },
   {
     id: "developer",

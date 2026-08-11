@@ -115,6 +115,7 @@ describe("inverses of the repository patch shapes", () => {
       listId: "l1",
       scheduledDate: "2026-08-05",
       scheduledAt: "2026-08-04T09:00:00.000Z",
+      reminderTime: null,
       position: "a0",
     });
   });

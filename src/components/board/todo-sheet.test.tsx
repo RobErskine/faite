@@ -42,6 +42,7 @@ const TODO: Todo = {
   recurrenceRule: null,
   recurrenceParentId: null,
   completedAt: null,
+  reminderTime: null,
 };
 
 interface HarnessProps {
