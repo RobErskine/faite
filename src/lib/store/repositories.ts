@@ -287,14 +287,29 @@ export async function setSeriesUntil(
 /**
  * Start a recurring series from an existing one-off todo.
  *
- * `sourceTodo` is left completely untouched — no `recurrenceRule`, no
- * `recurrenceParentId` written onto it. "Repeat this" reads as "and also,
- * from here on, keep recurring", not "replace this card with a series": the
- * user still gets to complete today's row normally, and the series picks up
- * at its NEXT occurrence.
+ * `sourceTodo` keeps its own `recurrenceRule` null — it is never itself a
+ * template, and never gets re-expanded as one — but its `recurrenceParentId`
+ * IS set to the new template, purely so the todo the user just set a repeat
+ * on immediately shows that it repeats: the repeat icon on its card, and the
+ * schedule/next-occurrence detail in its sheet, rather than looking exactly
+ * like a plain todo until the NEXT occurrence eventually appears days later.
+ * Without this link, setting up a weekly repeat produced no visible
+ * confirmation at all on the item just edited — reported as "is this even
+ * being saved?" in practice.
  *
- * The new template is a separate row, its `scheduledDate` anchored to the
- * occurrence AFTER `sourceTodo`'s own date via `firstOccurrenceAfter` — never
+ * This is safe because `recurrenceParentId` alone, without a matching
+ * `${templateId}@${date}` id, never satisfies `parseOccurrenceId` — so
+ * `sourceTodo` is invisible to the occupancy/settlement logic in
+ * `recurrence-expand.ts` (which matches by id shape, not by this field) and
+ * can never be mistaken for a materialized occurrence there. `board.tsx`'s
+ * `recurrenceInfo` and `retargetSeries`/`deleteSeries` below all fall back
+ * sensibly when `parseOccurrenceId` comes back null.
+ *
+ * "Repeat this" still reads as "and also, from here on, keep recurring", not
+ * "replace this card with a series": `sourceTodo` keeps its own status,
+ * completion, and every other field untouched, and the user still gets to
+ * complete today's row normally — the series' own occurrences pick up
+ * starting at the NEXT one, anchored via `firstOccurrenceAfter` rather than
  * `sourceTodo.scheduledDate` itself, which would otherwise generate a
  * duplicate virtual card on the same day as the real todo it came from.
  */
@@ -321,7 +336,9 @@ export async function createSeriesFromTodo(
     recurrenceRule: serializeRule(rule),
     recurrenceParentId: null,
   };
-  return create("todo", template);
+  const templateId = await create("todo", template);
+  await mutate("todo", sourceTodo.id, { recurrenceParentId: templateId });
+  return templateId;
 }
 
 /**

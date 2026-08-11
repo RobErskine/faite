@@ -1229,18 +1229,28 @@ export function Board() {
       seriesStart,
       occurrenceDate,
       summary: summarizeRule(rule, seriesStart),
-      nextDate: occurrence ? nextOccurrenceAfter(rule, seriesStart, occurrence.date) : null,
+      // `occurrence` is null for the ORIGIN one-off todo a series was just
+      // started from (`createSeriesFromTodo`) — it links to the template via
+      // `recurrenceParentId` for display, but its own id was never in
+      // `${templateId}@${date}` form, so it isn't itself an occurrence to
+      // compute "next after". `seriesStart` — the template's own scheduled
+      // date — IS the next occurrence in that case.
+      nextDate: occurrence ? nextOccurrenceAfter(rule, seriesStart, occurrence.date) : seriesStart,
       missedCount: recurrenceExpansion?.missedCounts.get(todoId) ?? null,
       onStop: async () => {
         // Materialize FIRST: `openTodo` may still be a virtual occurrence,
         // and ending the series before this date would otherwise make the
-        // very card being viewed stop existing on the next render.
+        // very card being viewed stop existing on the next render. A no-op
+        // for the origin todo (already a real row) or an already-real one.
         const materialized = await materializeIfNeeded(openTodo);
         // Ends the series the day before this occurrence, so this one and
         // anything already materialized are untouched — only FUTURE
-        // occurrences stop generating.
-        const cutoff = parseOccurrenceId(materialized.id);
-        await setSeriesUntil(template.id, cutoff ? addDays(cutoff.date, -1) : null);
+        // occurrences stop generating. Falls back to the day before the
+        // template's own start when `materialized` isn't itself a
+        // parseable occurrence (the origin todo again) — stopping from
+        // there means "cancel the series before it ever begins."
+        const cutoff = parseOccurrenceId(materialized.id)?.date ?? addDays(seriesStart, -1);
+        await setSeriesUntil(template.id, cutoff);
         toast.success("Stopped repeating");
       },
       onChangeRule: (next: RecurrenceRule) => {

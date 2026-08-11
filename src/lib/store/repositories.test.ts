@@ -595,17 +595,22 @@ describe("setSeriesUntil", () => {
 });
 
 describe("createSeriesFromTodo", () => {
-  it("leaves the source todo untouched and anchors the template past it", async () => {
+  it("links the source todo to the new template, but keeps it a plain (non-template) todo", async () => {
     const sourceId = await createTodo({ title: "Timesheets", scheduledDate: "2026-08-07" });
     const source = (await getDb().todos.get(sourceId))!;
 
     const rule = { ...defaultRule("2026-08-07"), freq: "weekly" as const, byDay: [5] };
     const templateId = await createSeriesFromTodo(source, rule);
 
-    const unchangedSource = (await getDb().todos.get(sourceId))!;
-    expect(unchangedSource.recurrenceRule).toBeNull();
-    expect(unchangedSource.recurrenceParentId).toBeNull();
-    expect(unchangedSource.scheduledDate).toBe("2026-08-07");
+    // The source is still an ordinary todo — not a template, not treated as
+    // a materialized occurrence — but now points at the series it started,
+    // so its card shows the repeat icon and its sheet shows the schedule
+    // immediately, rather than only once the NEXT occurrence appears.
+    const linkedSource = (await getDb().todos.get(sourceId))!;
+    expect(linkedSource.recurrenceRule).toBeNull();
+    expect(linkedSource.recurrenceParentId).toBe(templateId);
+    expect(linkedSource.scheduledDate).toBe("2026-08-07");
+    expect(linkedSource.status).toBe(source.status);
 
     const template = (await getDb().todos.get(templateId))!;
     expect(template.id).not.toBe(sourceId);
@@ -691,6 +696,20 @@ describe("retargetSeries", () => {
 
     expect((await getDb().todos.get(childId))?.deletedAt).toBeNull();
   });
+
+  it("never touches the origin todo — its id was never in occurrence form", async () => {
+    const sourceId = await createTodo({ title: "Timesheets", scheduledDate: "2026-08-07" });
+    const source = (await getDb().todos.get(sourceId))!;
+    const rule = { ...defaultRule("2026-08-07"), freq: "weekly" as const, byDay: [5] };
+    const templateId = await createSeriesFromTodo(source, rule);
+
+    const newRule = { ...defaultRule("2026-09-04"), interval: 2, byDay: [5] };
+    await retargetSeries(templateId, newRule, "2026-09-04");
+
+    const origin = (await getDb().todos.get(sourceId))!;
+    expect(origin.deletedAt).toBeNull();
+    expect(origin.recurrenceParentId).toBe(templateId);
+  });
 });
 
 describe("deleteSeries", () => {
@@ -711,6 +730,19 @@ describe("deleteSeries", () => {
     const child = (await getDb().todos.get(childId))!;
     expect(child.recurrenceParentId).toBeNull();
     expect(child.deletedAt).toBeNull();
+  });
+
+  it("unlinks the origin todo too — a real row whose id was never in occurrence form", async () => {
+    const sourceId = await createTodo({ title: "Timesheets", scheduledDate: "2026-08-07" });
+    const source = (await getDb().todos.get(sourceId))!;
+    const rule = { ...defaultRule("2026-08-07"), freq: "weekly" as const, byDay: [5] };
+    const templateId = await createSeriesFromTodo(source, rule);
+
+    await deleteSeries(templateId);
+
+    const origin = (await getDb().todos.get(sourceId))!;
+    expect(origin.recurrenceParentId).toBeNull();
+    expect(origin.deletedAt).toBeNull();
   });
 });
 
