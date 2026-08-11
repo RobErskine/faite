@@ -2327,6 +2327,7 @@ export function Board() {
       <TodoSheet
         todo={openTodo}
         lists={lists}
+        tabs={tabs}
         labels={labels}
         projects={projects}
         places={places}

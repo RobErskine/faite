@@ -28,6 +28,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { RepeatDialog } from "@/components/board/repeat-dialog";
 import { RepeatSection, type RecurrenceInfo } from "@/components/board/repeat-section";
 import { LocationField } from "@/components/board/location-field";
+import { ListField } from "@/components/board/list-field";
 import { cn } from "@/lib/utils";
 import { TITLE_LINES } from "@/lib/title";
 import { formatShortDate } from "@/lib/scheduling";
@@ -41,6 +42,7 @@ import type {
   Place,
   Priority,
   Project,
+  Tab,
   Todo,
 } from "@/lib/schema";
 
@@ -51,6 +53,8 @@ const NONE = "__none__";
 interface TodoSheetProps {
   todo: Todo | null;
   lists: List[];
+  /** Every live tab — see the List field, grouped into "{tabName} > {listName}" sections. */
+  tabs: Tab[];
   labels: LabelRecord[];
   projects: Project[];
   /** Saved locations (`lib/schema.ts`'s `Place`) — see the Location field. */
@@ -120,6 +124,7 @@ export function TodoSheet({ todo, ...rest }: TodoSheetProps) {
 function TodoSheetContent({
   todo,
   lists,
+  tabs,
   labels,
   projects,
   places,
@@ -339,25 +344,7 @@ function TodoSheetContent({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="todo-list">List</Label>
-              <Select
-                value={todo.listId ?? NONE}
-                onValueChange={(v) =>
-                  onSave(todo.id, { listId: v === NONE ? null : v })
-                }
-              >
-                <SelectTrigger id="todo-list">
-                  <SelectValue placeholder="None" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NONE}>None</SelectItem>
-                  {lists.map((list) => (
-                    <SelectItem key={list.id} value={list.id}>
-                      {list.emoji ? `${list.emoji} ` : ""}
-                      {list.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <ListField todo={todo} lists={lists} tabs={tabs} onSave={onSave} />
             </div>
 
             <div className="space-y-1.5">
@@ -371,7 +358,13 @@ function TodoSheetContent({
                 }
               >
                 <SelectTrigger id="todo-priority">
-                  <SelectValue placeholder="None" />
+                  {/* Base UI's SelectValue shows the raw `value` string by
+                      default ("1" rather than "P1") unless given a way to
+                      resolve a label — see ListField's comment for the fuller
+                      explanation. */}
+                  <SelectValue>
+                    {(value: string) => (value === NONE ? "None" : `P${value}`)}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={NONE}>None</SelectItem>
@@ -394,7 +387,20 @@ function TodoSheetContent({
               }
             >
               <SelectTrigger id="todo-project">
-                <SelectValue placeholder="None" />
+                <SelectValue>
+                  {(value: string) => {
+                    if (value === NONE) return "None";
+                    // `deleteProject` clears every referencing todo's
+                    // `projectId` (repositories.ts), so an unresolved id here
+                    // would mean a genuinely different bug — not the
+                    // archived-list case `ListField` guards against — but
+                    // falling back rather than leaking the raw id costs
+                    // nothing.
+                    const project = projects.find((p) => p.id === value);
+                    if (!project) return "None";
+                    return project.emoji ? `${project.emoji} ${project.name}` : project.name;
+                  }}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={NONE}>None</SelectItem>

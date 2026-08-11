@@ -59,6 +59,7 @@ function Harness({ backToDay, onBackToDay, onSetStatus = vi.fn(), onDelete = vi.
     <TodoSheet
       todo={TODO}
       lists={[]}
+      tabs={[]}
       labels={[]}
       projects={[]}
       places={[]}
@@ -93,6 +94,7 @@ describe("repeat section (a materialized occurrence)", () => {
       <TodoSheet
         todo={{ ...TODO, recurrenceParentId: "template-1" }}
         lists={[]}
+        tabs={[]}
         labels={[]}
         projects={[]}
         places={[]}
@@ -128,6 +130,7 @@ describe("location field", () => {
       <TodoSheet
         todo={TODO}
         lists={[]}
+        tabs={[]}
         labels={[]}
         projects={[]}
         places={[place]}
