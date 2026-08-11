@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { offset } from "@floating-ui/react";
 import { en } from "@blocknote/core/locales";
-import { useCreateBlockNote } from "@blocknote/react";
+import { SideMenuController, useCreateBlockNote } from "@blocknote/react";
 import { BlockNoteView } from "@blocknote/shadcn";
 import "@blocknote/shadcn/style.css";
 import { cn } from "@/lib/utils";
@@ -30,6 +31,26 @@ import { useResolvedTheme } from "@/lib/use-resolved-theme";
  * pairing), and shipping Inter alongside it would override the user's choice
  * inside this one field.
  */
+
+/**
+ * BlockNote centers its drag-handle/"+" menu on a block by adding a fixed
+ * pixel offset per block type — 39px for an h1, 27px for h2, 18.5px for h3,
+ * ported from BlockNote's OWN default (much larger) heading sizes. Ours are
+ * shrunk in `globals.css` (`--level`), so those hardcoded numbers overshoot:
+ * the menu lands roughly a block below where it hovered, exactly the bug in
+ * the screenshot this fixes.
+ *
+ * Rather than hardcode corrected constants (which would drift again the next
+ * time heading sizes change), this centers on the REFERENCE block's actual
+ * measured height at position time — the same formula BlockNote's own
+ * comment describes, `(block height - menu height) / 2`, just computed live
+ * instead of baked in per level.
+ */
+const SIDE_MENU_MIDDLEWARE = [
+  offset(({ rects }) => ({
+    crossAxis: (rects.reference.height - rects.floating.height) / 2,
+  })),
+];
 
 interface MarkdownEditorProps {
   /** Markdown. Read once, at mount — see the seeding note below. */
@@ -110,7 +131,14 @@ export default function MarkdownEditor({
         editable={editable}
         theme={theme}
         aria-label={ariaLabel}
-      />
+        sideMenu={false}
+      >
+        <SideMenuController
+          floatingUIOptions={{
+            useFloatingOptions: { middleware: SIDE_MENU_MIDDLEWARE },
+          }}
+        />
+      </BlockNoteView>
     </div>
   );
 }
