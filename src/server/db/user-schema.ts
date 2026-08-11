@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, primaryKey } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, real, primaryKey } from "drizzle-orm/sqlite-core";
 
 /**
  * Per-user Durable Object storage schema (P3, EI-46/EI-47).
@@ -77,6 +77,7 @@ export const todos = sqliteTable("todos", {
   /** JSON-encoded array of label ids — see `todoSchema.labelIds`. */
   labelIds: text("label_ids").notNull().default("[]"),
   location: text("location"),
+  placeId: text("place_id"),
   parentId: text("parent_id"),
   position: text("position").notNull(),
   recurrenceRule: text("recurrence_rule"),
@@ -104,6 +105,16 @@ export const dayNotes = sqliteTable("day_notes", {
   ...syncableColumns,
   date: text("date").notNull(),
   body: text("body").notNull().default(""),
+});
+
+/** A saved location — see `placeSchema` in `lib/schema.ts`. Scaffold (P6.5): no Google lookup yet. */
+export const places = sqliteTable("places", {
+  ...syncableColumns,
+  name: text("name").notNull(),
+  address: text("address").notNull(),
+  googlePlaceId: text("google_place_id"),
+  lat: real("lat"),
+  lng: real("lng"),
 });
 
 /** Singleton row, keyed by `ownerId` — one settings row per DO (one owner per DO). */

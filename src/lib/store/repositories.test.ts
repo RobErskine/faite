@@ -9,12 +9,14 @@ import {
   archiveList,
   archiveTab,
   createList,
+  createPlace,
   createSeriesFromTodo,
   createTab,
   createTodo,
   dayGroupPatch,
   DEFAULT_TAB_ID,
   deleteList,
+  deletePlace,
   deleteTab,
   ensureDefaultTab,
   listPatch,
@@ -24,6 +26,7 @@ import {
   setSeriesUntil,
   unarchiveList,
   unarchiveTab,
+  updatePlace,
 } from "./repositories";
 
 beforeEach(async () => {
@@ -613,5 +616,46 @@ describe("createSeriesFromTodo", () => {
     const sourceId = await createTodo({ title: "Unscheduled" });
     const source = (await getDb().todos.get(sourceId))!;
     await expect(createSeriesFromTodo(source, defaultRule("2026-08-07"))).rejects.toThrow();
+  });
+});
+
+describe("places", () => {
+  it("creates a place with the given name and address", async () => {
+    const id = await createPlace("Home", "1 Main St");
+    const place = await getDb().places.get(id);
+    expect(place?.name).toBe("Home");
+    expect(place?.address).toBe("1 Main St");
+    expect(place?.googlePlaceId).toBeNull();
+  });
+
+  it("updates a place", async () => {
+    const id = await createPlace("Home", "1 Main St");
+    await updatePlace(id, { name: "Home Sweet Home" });
+    expect((await getDb().places.get(id))?.name).toBe("Home Sweet Home");
+  });
+
+  it("deletes a place and clears it from every todo that referenced it", async () => {
+    const placeId = await createPlace("Gym", "2 Fitness Ave");
+    const todoId = await createTodo({ title: "Workout" });
+    await getDb().todos.update(todoId, { placeId });
+
+    await deletePlace(placeId);
+
+    expect((await getDb().places.get(placeId))?.deletedAt).toBeTruthy();
+    const todo = await getDb().todos.get(todoId);
+    expect(todo?.placeId).toBeNull();
+    // The todo itself, and its free-text location, are untouched.
+    expect(todo?.deletedAt).toBeNull();
+  });
+
+  it("leaves unrelated todos' placeId alone", async () => {
+    const placeA = await createPlace("Home", "1 Main St");
+    const placeB = await createPlace("Gym", "2 Fitness Ave");
+    const todoId = await createTodo({ title: "Workout" });
+    await getDb().todos.update(todoId, { placeId: placeB });
+
+    await deletePlace(placeA);
+
+    expect((await getDb().todos.get(todoId))?.placeId).toBe(placeB);
   });
 });

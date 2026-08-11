@@ -34,6 +34,7 @@ import type {
   CivilDate,
   Label as LabelRecord,
   List,
+  Place,
   Priority,
   Project,
   Todo,
@@ -57,6 +58,8 @@ interface TodoSheetProps {
   lists: List[];
   labels: LabelRecord[];
   projects: Project[];
+  /** Saved locations (`lib/schema.ts`'s `Place`) — see the Location field. */
+  places: Place[];
   onClose: () => void;
   onSave: (id: string, patch: Partial<Todo>) => void;
   /**
@@ -108,6 +111,7 @@ function TodoSheetContent({
   lists,
   labels,
   projects,
+  places,
   onClose,
   onSave,
   onSetStatus,
@@ -351,13 +355,44 @@ function TodoSheetContent({
 
           <div className="space-y-1.5">
             <Label htmlFor="todo-location">Location</Label>
+            {places.length > 0 && (
+              <Select
+                value={todo.placeId ?? NONE}
+                onValueChange={(v) => {
+                  if (v === NONE) {
+                    onSave(todo.id, { placeId: null });
+                    return;
+                  }
+                  const place = places.find((p) => p.id === v);
+                  // Setting `location` too keeps the free-text fallback in
+                  // step, so a place deleted later still shows something
+                  // rather than a dangling reference — see `Todo.placeId`.
+                  onSave(todo.id, { placeId: v, location: place?.address ?? null });
+                }}
+              >
+                <SelectTrigger id="todo-location" className="mb-1.5">
+                  <SelectValue placeholder="No saved place" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>No saved place</SelectItem>
+                  {places.map((place) => (
+                    <SelectItem key={place.id} value={place.id}>
+                      {place.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             <Input
-              id="todo-location"
               defaultValue={todo.location ?? ""}
-              onBlur={(e) =>
-                e.target.value !== (todo.location ?? "") &&
-                onSave(todo.id, { location: e.target.value || null })
-              }
+              onBlur={(e) => {
+                if (e.target.value === (todo.location ?? "")) return;
+                // Editing the free text directly means it no longer matches
+                // whichever saved place was selected — clear the link so the
+                // select above doesn't keep showing a name for text that has
+                // since diverged from it.
+                onSave(todo.id, { location: e.target.value || null, placeId: null });
+              }}
               placeholder="Grocery store, the in-laws' house…"
             />
           </div>

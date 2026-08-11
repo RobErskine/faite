@@ -31,6 +31,7 @@ function todo(overrides: Partial<Todo> = {}): Todo {
     recurrenceParentId: null,
     completedAt: null,
     reminderTime: null,
+    placeId: null,
     ...overrides,
   };
 }

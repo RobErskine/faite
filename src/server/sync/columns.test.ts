@@ -10,6 +10,7 @@ describe("TABLE_NAME_BY_KIND / COLUMNS_BY_KIND", () => {
       project: "projects",
       tab: "tabs",
       dayNote: "day_notes",
+      place: "places",
       settings: "settings",
     });
   });

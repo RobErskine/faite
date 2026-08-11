@@ -194,6 +194,15 @@ export const todoSchema = z.object({
   /** Free text: "grocery store", "the in-laws' house". UI is P6. */
   location: z.string().nullable().default(null),
 
+  /**
+   * A saved place (`Place`, above), when this todo's location was picked
+   * from one rather than typed as free text. `location` stays set too — the
+   * UI shows the place's `name` when this resolves, else falls back to the
+   * `location` string, so a dangling reference to a deleted place degrades
+   * to whatever free text was last there rather than showing nothing.
+   */
+  placeId: idSchema.nullable().default(null),
+
   /** One level of nesting. Sub-task UI is P6. */
   parentId: idSchema.nullable().default(null),
 
@@ -255,6 +264,32 @@ export const dayNoteSchema = z.object({
   body: z.string().default(""),
 });
 export type DayNote = z.infer<typeof dayNoteSchema>;
+
+/**
+ * A saved location: a real address the user has typed once, given a
+ * nickname ("Home", "Gym", "Mother-in-law's"), so it can be recalled by
+ * that name instead of retyped.
+ *
+ * SCAFFOLD ONLY (P6.5) — this is the data model and sync plumbing, with no
+ * Google Places lookup wired up yet. `googlePlaceId`/`lat`/`lng` are
+ * populated once that lands (see `docs/GOOGLE-PLACES-SETUP.md`); until then
+ * every place is entered by hand via `name`/`address` alone, exactly like
+ * `Todo.location` free text is today. `Todo.location` is UNCHANGED and
+ * stays the fallback for a todo with no saved place — see `Todo.placeId`.
+ */
+export const placeSchema = z.object({
+  ...syncableFields,
+  /** The nickname: "Home", "Gym", "Mother-in-law's". */
+  name: z.string().min(1),
+  /** The formatted address, however it was entered — by hand today, from
+   * Google Place Details once the lookup exists. */
+  address: z.string(),
+  /** Set once the Google Places lookup is wired up. Null for a hand-entered place. */
+  googlePlaceId: z.string().nullable().default(null),
+  lat: z.number().nullable().default(null),
+  lng: z.number().nullable().default(null),
+});
+export type Place = z.infer<typeof placeSchema>;
 
 /**
  * Per-user settings.
@@ -429,6 +464,7 @@ export const entityKindSchema = z.enum([
   "project",
   "tab",
   "dayNote",
+  "place",
   "settings",
 ]);
 export type EntityKind = z.infer<typeof entityKindSchema>;

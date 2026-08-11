@@ -9,7 +9,7 @@ import {
   setBoundOwnerId,
 } from "./owner";
 
-type RecordTable = "todos" | "lists" | "labels" | "projects" | "tabs" | "dayNotes";
+type RecordTable = "todos" | "lists" | "labels" | "projects" | "tabs" | "dayNotes" | "places";
 
 /**
  * Every id-keyed syncable table. **A new sync kind must be added here**, and
@@ -25,6 +25,7 @@ const TABLES: Array<{ table: RecordTable; kind: EntityKind }> = [
   { table: "projects", kind: "project" },
   { table: "tabs", kind: "tab" },
   { table: "dayNotes", kind: "dayNote" },
+  { table: "places", kind: "place" },
 ];
 
 async function adoptTable(
@@ -88,7 +89,7 @@ export async function adoptLocalData(newOwnerId: string): Promise<AdoptionResult
   const db = getDb();
   await db.transaction(
     "rw",
-    [db.todos, db.lists, db.labels, db.projects, db.tabs, db.dayNotes, db.outbox],
+    [db.todos, db.lists, db.labels, db.projects, db.tabs, db.dayNotes, db.places, db.outbox],
     async () => {
       for (const { table, kind } of TABLES) {
         await adoptTable(table, kind, newOwnerId);
@@ -113,7 +114,17 @@ export async function resetLocalDataForNewOwner(): Promise<void> {
   const db = getDb();
   await db.transaction(
     "rw",
-    [db.todos, db.lists, db.labels, db.projects, db.tabs, db.dayNotes, db.settings, db.outbox],
+    [
+      db.todos,
+      db.lists,
+      db.labels,
+      db.projects,
+      db.tabs,
+      db.dayNotes,
+      db.places,
+      db.settings,
+      db.outbox,
+    ],
     async () => {
       await db.todos.clear();
       await db.lists.clear();
@@ -121,6 +132,7 @@ export async function resetLocalDataForNewOwner(): Promise<void> {
       await db.projects.clear();
       await db.tabs.clear();
       await db.dayNotes.clear();
+      await db.places.clear();
       await db.settings.clear();
       await db.outbox.clear();
     },

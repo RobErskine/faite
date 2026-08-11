@@ -43,6 +43,7 @@ const TODO: Todo = {
   recurrenceParentId: null,
   completedAt: null,
   reminderTime: null,
+  placeId: null,
 };
 
 interface HarnessProps {
@@ -57,6 +58,7 @@ function Harness({ backToDay, onBackToDay }: HarnessProps) {
       lists={[]}
       labels={[]}
       projects={[]}
+      places={[]}
       onClose={vi.fn()}
       onSave={vi.fn()}
       onSetStatus={vi.fn()}

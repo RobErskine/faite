@@ -56,6 +56,7 @@ const todo = (id: string, title: string): Todo => ({
   recurrenceParentId: null,
   completedAt: null,
   reminderTime: null,
+  placeId: null,
 });
 
 const OVERALL = [todo("t1", "Show Completed Items"), todo("t2", "Keyboard arrow keys")];

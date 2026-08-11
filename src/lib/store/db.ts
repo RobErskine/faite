@@ -4,6 +4,7 @@ import type {
   Label,
   List,
   OutboxEntry,
+  Place,
   Project,
   Settings,
   Tab,
@@ -25,6 +26,7 @@ export class FaiteDatabase extends Dexie {
   projects!: EntityTable<Project, "id">;
   tabs!: EntityTable<Tab, "id">;
   dayNotes!: EntityTable<DayNote, "id">;
+  places!: EntityTable<Place, "id">;
   settings!: EntityTable<Settings, "ownerId">;
   outbox!: EntityTable<OutboxEntry, "id">;
 
@@ -50,6 +52,14 @@ export class FaiteDatabase extends Dexie {
     // materialized occurrence of a series is looked up by its template's id.
     this.version(3).stores({
       todos: "id, listId, projectId, scheduledDate, status, position, deletedAt, recurrenceParentId",
+    });
+    // Saved locations (`lib/schema.ts`'s `placeSchema`) — scaffold (P6.5), no
+    // Google Places lookup wired up yet. `placeId` indexed on todos so
+    // `deletePlace` can find (and clear) every todo pointing at it, the same
+    // pattern `deleteLabel` uses for `labelIds`.
+    this.version(4).stores({
+      todos: "id, listId, projectId, scheduledDate, status, position, deletedAt, recurrenceParentId, placeId",
+      places: "id, deletedAt",
     });
   }
 }

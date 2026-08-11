@@ -26,7 +26,7 @@ type RecordTable = Exclude<EntityKind, "settings">;
  * `RecordTable` via their own generic bound. */
 const TABLE_BY_KIND: Record<
   EntityKind,
-  "todos" | "lists" | "labels" | "projects" | "tabs" | "dayNotes" | "settings"
+  "todos" | "lists" | "labels" | "projects" | "tabs" | "dayNotes" | "places" | "settings"
 > = {
   todo: "todos",
   list: "lists",
@@ -34,6 +34,7 @@ const TABLE_BY_KIND: Record<
   project: "projects",
   tab: "tabs",
   dayNote: "dayNotes",
+  place: "places",
   settings: "settings",
 };
 

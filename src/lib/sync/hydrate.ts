@@ -1,7 +1,9 @@
+import type { ZodType } from "zod";
 import {
   dayNoteSchema,
   labelSchema,
   listSchema,
+  placeSchema,
   projectSchema,
   settingsSchema,
   tabSchema,
@@ -18,13 +20,20 @@ import type { SyncKind } from "./wire";
  * hand-rolled shape check that can drift from it.
  */
 
-const SCHEMA_BY_KIND = {
+/**
+ * Explicitly `Record<SyncKind, ZodType>` — a bare object literal would
+ * compile with a kind missing and fail only at runtime, the first time a
+ * remote create of that kind reaches `hydrateRemoteRow` and indexes
+ * `undefined`.
+ */
+const SCHEMA_BY_KIND: Record<SyncKind, ZodType> = {
   todo: todoSchema,
   list: listSchema,
   label: labelSchema,
   project: projectSchema,
   tab: tabSchema,
   dayNote: dayNoteSchema,
+  place: placeSchema,
   settings: settingsSchema,
 };
 
@@ -91,5 +100,7 @@ export function hydrateRemoteRow(
   if (!result.success) {
     return { ok: false, reason: result.error.issues.map((issue) => issue.message).join("; ") };
   }
-  return { ok: true, row: result.data };
+  // Every schema in SCHEMA_BY_KIND parses to a plain record — the generic
+  // `ZodType` above just can't say so statically.
+  return { ok: true, row: result.data as Record<string, unknown> };
 }

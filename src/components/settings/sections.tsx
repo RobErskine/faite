@@ -1,8 +1,9 @@
-import { Bell, Palette, User, Wrench } from "lucide-react";
+import { Bell, MapPin, Palette, User, Wrench } from "lucide-react";
 import type { SettingsSection } from "./types";
 import { ProfileSection } from "./profile-section";
 import { DesignSection } from "./design-section";
 import { NotificationsSection } from "./notifications-section";
+import { PlacesSection } from "./places-section";
 import { DeveloperSection } from "./developer-section";
 
 /**
@@ -30,6 +31,13 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     description: "Reminder delivery for to-dos with a time set.",
     icon: Bell,
     Component: NotificationsSection,
+  },
+  {
+    id: "places",
+    label: "Places",
+    description: "Saved locations you can attach to a to-do.",
+    icon: MapPin,
+    Component: PlacesSection,
   },
   {
     id: "developer",

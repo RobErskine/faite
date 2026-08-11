@@ -25,6 +25,7 @@ function todo(overrides: Partial<Todo> = {}): Todo {
     recurrenceRule: null,
     recurrenceParentId: null,
     completedAt: null,
+    placeId: null,
     reminderTime: "09:00",
     ...overrides,
   };

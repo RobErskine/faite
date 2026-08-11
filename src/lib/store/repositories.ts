@@ -3,6 +3,7 @@ import type {
   DayNote,
   Label,
   List,
+  Place,
   Priority,
   Project,
   Tab,
@@ -56,6 +57,7 @@ export interface CreateTodoInput {
   labelIds?: string[];
   position?: string;
   reminderTime?: string | null;
+  placeId?: string | null;
 }
 
 export async function createTodo(input: CreateTodoInput): Promise<string> {
@@ -81,6 +83,7 @@ export async function createTodo(input: CreateTodoInput): Promise<string> {
     projectId: input.projectId ?? null,
     labelIds: input.labelIds ?? [],
     location: input.location ?? null,
+    placeId: input.placeId ?? null,
     parentId: null,
     position: input.position ?? (await nextTodoPosition()),
     recurrenceRule: null,
@@ -722,6 +725,51 @@ export async function setDayNote(date: CivilDate, body: string): Promise<void> {
     body,
   };
   await create("dayNote", note);
+}
+
+// ---------------------------------------------------------------------------
+// Places
+// ---------------------------------------------------------------------------
+
+/**
+ * A saved location — see `placeSchema` (`lib/schema.ts`). SCAFFOLD (P6.5):
+ * `address` is whatever the user types by hand today; there is no Google
+ * Places lookup wired up yet (see `docs/GOOGLE-PLACES-SETUP.md`).
+ */
+export async function createPlace(name: string, address: string): Promise<string> {
+  const timestamp = now();
+  const place: Place = {
+    id: newId(),
+    ownerId: getCurrentOwnerId(),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    deletedAt: null,
+    name,
+    address,
+    googlePlaceId: null,
+    lat: null,
+    lng: null,
+  };
+  return create("place", place);
+}
+
+export async function updatePlace(
+  id: string,
+  patch: Partial<Omit<Place, "id" | "ownerId" | "createdAt">>,
+): Promise<void> {
+  await mutate("place", id, patch);
+}
+
+/** Delete a place and clear it from every todo that referenced it — the todo
+ * keeps its free-text `location`, so nothing about it disappears, only the
+ * saved-place link. Mirrors `deleteLabel`'s cleanup of `labelIds`. */
+export async function deletePlace(id: string): Promise<void> {
+  const db = getDb();
+  const linked = await db.todos.where("placeId").equals(id).toArray();
+  for (const todo of linked) {
+    await mutate("todo", todo.id, { placeId: null });
+  }
+  await remove("place", id);
 }
 
 // ---------------------------------------------------------------------------

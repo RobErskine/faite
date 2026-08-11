@@ -7,6 +7,7 @@ import type {
   DayNote,
   Label,
   List,
+  Place,
   Project,
   Settings,
   Tab,
@@ -149,6 +150,15 @@ export function useLabels(): Label[] {
 export function useProjects(): Project[] {
   const rows = useLiveQuery(() => getDb().projects.toArray(), [], [] as Project[]);
   return useMemo(() => alive(rows).sort(byPosition), [rows]);
+}
+
+/** Saved locations, alphabetical by nickname — see `placeSchema` (schema.ts). */
+export function usePlaces(): Place[] {
+  const rows = useLiveQuery(() => getDb().places.toArray(), [], [] as Place[]);
+  return useMemo(
+    () => alive(rows).sort((a, b) => a.name.localeCompare(b.name)),
+    [rows],
+  );
 }
 
 /**

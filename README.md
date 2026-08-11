@@ -30,6 +30,7 @@ Everything is written down. The problem is knowing which file, so start here:
 | add a keyboard shortcut | **[KEYBOARD.md](docs/KEYBOARD.md)** — structure, guard model, how to add one |
 | touch the ⌘K palette or search | **[COMMAND-PALETTE.md](docs/COMMAND-PALETTE.md)** |
 | build the public API or MCP adapter | **[API.md](docs/API.md)** — not started; the design constraint to read *before* writing an endpoint |
+| wire up saved-place typeahead (Google Places) | **[GOOGLE-PLACES-SETUP.md](docs/GOOGLE-PLACES-SETUP.md)** — not started; API setup, session-token cost control, proxy design |
 
 Split by design: **rationale lives in ARCHITECTURE, setup in SETUP, operations
 in the subsystem doc.** No file repeats another's reasoning — two copies drift,

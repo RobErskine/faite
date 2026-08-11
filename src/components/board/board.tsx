@@ -81,6 +81,7 @@ import {
   useLabels,
   useLists,
   usePlacementContext,
+  usePlaces,
   useProjects,
   useRecurrenceChildren,
   useSettings,
@@ -276,6 +277,7 @@ export function Board() {
   const archivedTabs = useArchivedTabs();
   const labels = useLabels();
   const projects = useProjects();
+  const places = usePlaces();
   const settings = useSettings();
   const dayNotes = useDayNotes();
 
@@ -2233,6 +2235,7 @@ export function Board() {
         lists={lists}
         labels={labels}
         projects={projects}
+        places={places}
         onClose={closeTodoSheet}
         onSave={handleSheetSave}
         onSetStatus={handleSheetStatus}

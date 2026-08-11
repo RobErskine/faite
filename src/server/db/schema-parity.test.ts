@@ -5,6 +5,7 @@ import {
   dayNoteSchema,
   labelSchema,
   listSchema,
+  placeSchema,
   projectSchema,
   settingsSchema,
   tabSchema,
@@ -43,6 +44,7 @@ const ZOD_BY_KIND: Record<SyncKindName, { shape: Record<string, unknown> }> = {
   project: projectSchema,
   tab: tabSchema,
   dayNote: dayNoteSchema,
+  place: placeSchema,
   settings: settingsSchema,
 };
 
@@ -53,6 +55,7 @@ const TABLES_BY_KIND: Record<SyncKindName, SQLiteTable> = {
   project: userSchema.projects,
   tab: userSchema.tabs,
   dayNote: userSchema.dayNotes,
+  place: userSchema.places,
   settings: userSchema.settings,
 };
 
@@ -64,6 +67,7 @@ const ALL_TABLES: SQLiteTable[] = [
   userSchema.projects,
   userSchema.tabs,
   userSchema.dayNotes,
+  userSchema.places,
   userSchema.settings,
   userSchema.fieldClocks,
   userSchema.syncMeta,
@@ -86,6 +90,7 @@ const KNOWN_DIVERGENCES: Record<string, { drizzleOnly?: string[]; zodOnly?: stri
   project: { drizzleOnly: ["version"] },
   tab: { drizzleOnly: ["version"] },
   dayNote: { drizzleOnly: ["version"] },
+  place: { drizzleOnly: ["version"] },
   settings: { drizzleOnly: ["version"] },
 };
 

@@ -22,6 +22,7 @@ type RecordTable =
   | "projects"
   | "tabs"
   | "dayNotes"
+  | "places"
   | "settings";
 
 const TABLE_BY_KIND: Record<EntityKind, RecordTable> = {
@@ -31,6 +32,7 @@ const TABLE_BY_KIND: Record<EntityKind, RecordTable> = {
   project: "projects",
   tab: "tabs",
   dayNote: "dayNotes",
+  place: "places",
   settings: "settings",
 };
 
@@ -50,7 +52,17 @@ export async function applyPulledChanges(changes: WireChange[]): Promise<ApplyPl
 
   return db.transaction(
     "rw",
-    [db.todos, db.lists, db.labels, db.projects, db.tabs, db.dayNotes, db.settings, db.outbox],
+    [
+      db.todos,
+      db.lists,
+      db.labels,
+      db.projects,
+      db.tabs,
+      db.dayNotes,
+      db.places,
+      db.settings,
+      db.outbox,
+    ],
     async () => {
       // Read-only: this is the local field clock every pulled change merges
       // against, but nothing here is ever added to, updated, or deleted.
