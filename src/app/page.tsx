@@ -24,12 +24,30 @@ const redirectIfKnownDevice = `try{if(localStorage.getItem(${JSON.stringify(
 )}))window.location.replace("/board")}catch(e){}`;
 
 /**
+ * Unconditional redirect, for the app-shell build only.
+ *
+ * `NEXT_PUBLIC_APP_SHELL` is set exclusively by `npm run build:static`
+ * (package.json) — the Capacitor target. A `output: "export"` bundle has no
+ * server to run a real redirect on, and ships inside a WebView where "/" has
+ * no reason to ever be a marketing pitch: there is no marketplace listing to
+ * land a stranger on it, only a device that already has the app installed.
+ * `next/navigation`'s `redirect()` doesn't fit either — this needs to run in
+ * the browser, ahead of any React hydration, the same technique as
+ * `redirectIfKnownDevice` above, not during static generation.
+ */
+const redirectToBoard = `window.location.replace("/board")`;
+
+/**
  * Marketing page. A Server Component with no client JS of its own — the one
  * inline script above is the only thing that runs before the board would take
  * over, and it is not a hydration boundary, so this stays static-export clean
  * (`npm run build:static`, the Capacitor guard) with nothing to break.
  */
 export default function Home() {
+  if (process.env.NEXT_PUBLIC_APP_SHELL === "1") {
+    return <script dangerouslySetInnerHTML={{ __html: redirectToBoard }} />;
+  }
+
   return (
     <>
       <script dangerouslySetInnerHTML={{ __html: redirectIfKnownDevice }} />

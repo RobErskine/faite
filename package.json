@@ -6,7 +6,7 @@
     "agentation": "agentation-mcp server",
     "dev": "NEXT_PUBLIC_AGENTATION=1 NEXT_PUBLIC_AUTH_URL=http://localhost:8787 concurrently -k -n agentation,next -c magenta,cyan \"npm:agentation\" \"next dev\"",
     "build": "next build",
-    "build:static": "BUILD_TARGET=static next build",
+    "build:static": "BUILD_TARGET=static NEXT_PUBLIC_APP_SHELL=1 next build",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.worker.json --noEmit",

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Agentation } from "agentation";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
@@ -20,6 +20,38 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Faite",
   description: "Control your fate by getting things done.",
+  // `black-translucent` is what makes board content extend under the status
+  // bar on iOS when added to the home screen — the payoff for
+  // `viewportFit: "cover"` below. Without both, `env(safe-area-inset-*)`
+  // resolves to 0 and there's nothing for the inset to protect anyway.
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Faite",
+  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  // Required for `env(safe-area-inset-*)` to resolve to anything but 0, even
+  // on hardware with a notch/home-indicator — see the --safe-* vars in
+  // globals.css. Deliberately no `maximumScale`/`userScalable: false`: that
+  // disables pinch-zoom, which is an accessibility regression, fails a
+  // Lighthouse audit, and iOS silently ignores it anyway.
+  viewportFit: "cover",
+  // Shrinks the layout viewport when a software keyboard opens instead of
+  // overlaying it, so `100dvh` inside an open TodoSheet/DaySheet actually
+  // means "the space left above the keyboard" (P4 in the mobile plan).
+  interactiveWidget: "resizes-content",
+  themeColor: [
+    // Matches --background in globals.css: oklch(1 0 0) light / oklch(0.145
+    // 0 0) dark. The dark value is an sRGB approximation — theme-color is a
+    // browser-chrome tint hint, not a rendered pixel, so exactness doesn't
+    // matter the way it would for an actual background paint.
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
+  ],
 };
 
 /**

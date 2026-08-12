@@ -1937,7 +1937,13 @@ export function Board() {
 
       <div
         ref={splitContainerRef}
-        className="flex h-dvh flex-col"
+        // `overscroll-none`: kills iOS's whole-page rubber-band and
+        // Android's pull-to-refresh at the shell boundary. Scoped to the
+        // board specifically, not `html` — the marketing page has no
+        // internal scroll containers competing with the page scroll, so it
+        // has nothing to protect and no reason to opt out of the platform
+        // default. See docs/MOBILE.md.
+        className="flex h-dvh flex-col overscroll-none"
         style={
           splitRatio != null ? ({ "--split-top": String(splitRatio) } as CSSProperties) : undefined
         }
