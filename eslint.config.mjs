@@ -5,6 +5,18 @@ import nextTs from "eslint-config-next/typescript";
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
+  {
+    // Plain Playwright test code, not React — `eslint-config-next`'s
+    // react-hooks rules still apply here by default and false-positive on
+    // Playwright's own fixture API, whose second callback parameter is
+    // conventionally named `use` (e.g. `page: async ({ page }, use) => {...}`
+    // in e2e/support/fixtures.ts): `react-hooks/rules-of-hooks` treats any
+    // function literally named `use` as a hook call, regardless of context.
+    files: ["e2e/**/*.ts"],
+    rules: {
+      "react-hooks/rules-of-hooks": "off",
+    },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:
