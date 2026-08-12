@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import { ArrowLeft, Clock, Repeat, Trash2, X } from "lucide-react";
 import {
   Sheet,
@@ -29,9 +29,11 @@ import { RepeatDialog } from "@/components/board/repeat-dialog";
 import { RepeatSection, type RecurrenceInfo } from "@/components/board/repeat-section";
 import { LocationField } from "@/components/board/location-field";
 import { ListField } from "@/components/board/list-field";
+import { QuickAddPreview, type QuickAddChip } from "@/components/board/quick-add-preview";
 import { cn } from "@/lib/utils";
 import { TITLE_LINES } from "@/lib/title";
 import { formatShortDate } from "@/lib/scheduling";
+import { parseQuickAdd } from "@/lib/quick-add";
 import { isTextEntry } from "@/lib/undo";
 import { detectPlatform, formatCombo, type Platform } from "@/lib/keyboard";
 import type { RecurrenceRule } from "@/lib/recurrence";
@@ -52,6 +54,8 @@ const NONE = "__none__";
 
 interface TodoSheetProps {
   todo: Todo | null;
+  /** For the title field's quick-add tokens (`p2`, `fri`, `2pm`, `!fri`) — see `commitTitle`. */
+  today: CivilDate;
   lists: List[];
   /** Every live tab — see the List field, grouped into "{tabName} > {listName}" sections. */
   tabs: Tab[];
@@ -123,6 +127,7 @@ export function TodoSheet({ todo, ...rest }: TodoSheetProps) {
 
 function TodoSheetContent({
   todo,
+  today,
   lists,
   tabs,
   labels,
@@ -142,11 +147,45 @@ function TodoSheetContent({
   const [repeatDialogOpen, setRepeatDialogOpen] = useState(false);
   const platform = usePlatform();
 
+  /**
+   * Same grammar quick-add uses to CREATE a todo (`p2`, `fri`, `2pm`, `!fri`
+   * — see `lib/quick-add.ts`), reused here to UPDATE one: trailing tokens on
+   * the title are stripped and applied as real field writes rather than left
+   * as literal text. The one difference from creation: a field `parseQuickAdd`
+   * didn't recognize stays `null`, and `null` here means "leave it alone" —
+   * unlike a brand-new todo, this one may already have a priority or a
+   * deadline that a title edit with no date token in it must not clobber.
+   */
   const commitTitle = () => {
     const next = title.trim();
-    if (next && next !== todo.title) onSave(todo.id, { title: next });
-    else if (!next) setTitle(todo.title);
+    if (!next) {
+      setTitle(todo.title);
+      return;
+    }
+
+    const parsed = parseQuickAdd(next, today);
+    const patch: Partial<Todo> = {};
+    if (parsed.matches.length > 0) {
+      if (parsed.title !== todo.title) patch.title = parsed.title;
+      if (parsed.priority !== null) patch.priority = parsed.priority;
+      if (parsed.scheduledDate !== null) patch.scheduledDate = parsed.scheduledDate;
+      if (parsed.deadline !== null) patch.deadline = parsed.deadline;
+      if (parsed.reminderTime !== null) patch.reminderTime = parsed.reminderTime;
+      setTitle(parsed.title);
+    } else if (next !== todo.title) {
+      patch.title = next;
+    }
+
+    if (Object.keys(patch).length > 0) onSave(todo.id, patch);
   };
+
+  // Live feedback while typing, same as quick-add's row — teaches that a
+  // trailing token is about to become a real field, not just get typed
+  // literally into the title.
+  const titleChips = useMemo((): QuickAddChip[] => {
+    const parsed = parseQuickAdd(title, today);
+    return parsed.matches.map((m) => ({ key: `${m.kind}:${m.raw}`, label: m.label }));
+  }, [title, today]);
 
   const markDone = () => {
     onSetStatus(todo.id, todo.status === "done" ? "open" : "done");
@@ -261,6 +300,7 @@ function TodoSheetContent({
               "shadow-none focus-visible:border-0 focus-visible:ring-0",
             )}
           />
+          <QuickAddPreview chips={titleChips} className="px-0 pt-1 pb-0" />
         </SheetHeader>
 
         <div className="flex-1 space-y-5 overflow-y-auto px-4 pb-4">

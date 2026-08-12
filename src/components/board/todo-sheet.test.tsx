@@ -52,19 +52,27 @@ interface HarnessProps {
   onBackToDay?: () => void;
   onSetStatus?: (id: string, status: Todo["status"]) => void;
   onDelete?: (id: string) => void;
+  onSave?: (id: string, patch: Partial<Todo>) => void;
 }
 
-function Harness({ backToDay, onBackToDay, onSetStatus = vi.fn(), onDelete = vi.fn() }: HarnessProps) {
+function Harness({
+  backToDay,
+  onBackToDay,
+  onSetStatus = vi.fn(),
+  onDelete = vi.fn(),
+  onSave = vi.fn(),
+}: HarnessProps) {
   return (
     <TodoSheet
       todo={TODO}
+      today="2026-08-11"
       lists={[]}
       tabs={[]}
       labels={[]}
       projects={[]}
       places={[]}
       onClose={vi.fn()}
-      onSave={vi.fn()}
+      onSave={onSave}
       onSetStatus={onSetStatus}
       onToggleLabel={vi.fn()}
       onDelete={onDelete}
@@ -93,6 +101,7 @@ describe("repeat section (a materialized occurrence)", () => {
     render(
       <TodoSheet
         todo={{ ...TODO, recurrenceParentId: "template-1" }}
+        today="2026-08-11"
         lists={[]}
         tabs={[]}
         labels={[]}
@@ -129,6 +138,7 @@ describe("location field", () => {
     render(
       <TodoSheet
         todo={TODO}
+        today="2026-08-11"
         lists={[]}
         tabs={[]}
         labels={[]}
@@ -142,6 +152,68 @@ describe("location field", () => {
       />,
     );
     expect(screen.getByLabelText("Location")).toBeTruthy();
+  });
+});
+
+describe("title quick-update", () => {
+  it("shows a live chip while typing a trailing token, before committing", () => {
+    render(<Harness />);
+    const title = screen.getByLabelText("Title");
+    fireEvent.change(title, { target: { value: "Buy milk p2" } });
+    expect(screen.getByText("P2")).toBeTruthy();
+  });
+
+  it("strips a trailing priority token and applies it as a field on blur", () => {
+    const onSave = vi.fn();
+    render(<Harness onSave={onSave} />);
+    const title = screen.getByLabelText("Title");
+    fireEvent.change(title, { target: { value: "Reply to the design feedback p2" } });
+    fireEvent.blur(title);
+    // No `title` key: stripping "p2" recovers the ORIGINAL title exactly, so
+    // there is nothing to write there — only the field the token implied.
+    expect(onSave).toHaveBeenCalledWith(TODO.id, { priority: 2 });
+  });
+
+  it("still writes the stripped title when it differs from the original", () => {
+    const onSave = vi.fn();
+    render(<Harness onSave={onSave} />);
+    const title = screen.getByLabelText("Title");
+    fireEvent.change(title, { target: { value: "Buy milk p2" } });
+    fireEvent.blur(title);
+    expect(onSave).toHaveBeenCalledWith(TODO.id, { title: "Buy milk", priority: 2 });
+  });
+
+  it("does not clobber fields the title has no token for", () => {
+    // TODO already has scheduledDate set; a priority-only edit must not
+    // touch it, or every quick-update would silently unschedule the todo.
+    const onSave = vi.fn();
+    render(<Harness onSave={onSave} />);
+    const title = screen.getByLabelText("Title");
+    fireEvent.change(title, { target: { value: "Reply to the design feedback p3" } });
+    fireEvent.blur(title);
+    const patch = onSave.mock.calls[0][1];
+    expect(patch).not.toHaveProperty("scheduledDate");
+    expect(patch).not.toHaveProperty("deadline");
+    expect(patch).not.toHaveProperty("reminderTime");
+  });
+
+  it("a plain edit with no token saves the title only", () => {
+    const onSave = vi.fn();
+    render(<Harness onSave={onSave} />);
+    const title = screen.getByLabelText("Title");
+    fireEvent.change(title, { target: { value: "Reply to the design feedback tonight" } });
+    fireEvent.blur(title);
+    expect(onSave).toHaveBeenCalledWith(TODO.id, {
+      title: "Reply to the design feedback tonight",
+    });
+  });
+
+  it("an edit with no change at all does not call onSave", () => {
+    const onSave = vi.fn();
+    render(<Harness onSave={onSave} />);
+    const title = screen.getByLabelText("Title");
+    fireEvent.blur(title);
+    expect(onSave).not.toHaveBeenCalled();
   });
 });
 

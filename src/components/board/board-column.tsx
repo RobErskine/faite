@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   KeyboardEventHandler,
   MouseEventHandler,
@@ -18,9 +18,12 @@ import { cn } from "@/lib/utils";
 import { edge, tint, wash } from "@/lib/colors";
 import { listDragId, type TodoGroup } from "@/lib/board";
 import { addStop, groupStop, navKeyOf, type NavKey } from "@/lib/column-nav";
+import { parseQuickAdd } from "@/lib/quick-add";
+import { MentionMenu, useMention } from "@/components/mention-menu";
 import type { Label as LabelRecord, Todo } from "@/lib/schema";
 import type { PlacementContext } from "@/lib/scheduling";
 import { DragGrip } from "./drag-grip";
+import { QuickAddPreview, type QuickAddChip } from "./quick-add-preview";
 import { TodoCard } from "./todo-card";
 
 /**
@@ -45,6 +48,13 @@ const NO_SORTING: SortingStrategy = () => null;
  * longer name a card in this half.
  */
 const CARDS_NOT_DROPPABLE = { draggable: false, droppable: true } as const;
+
+/** A quick-add "@list" mention candidate — see `BoardColumnProps.lists`. */
+export interface MentionListOption {
+  id: string;
+  name: string;
+  color: string | null;
+}
 
 interface BoardColumnProps {
   id: string;
@@ -81,8 +91,21 @@ interface BoardColumnProps {
   /**
    * Omit to drop the quick-add row entirely. Overflow does: nothing can be
    * scheduled into it, so a field there would discard whatever you typed.
+   *
+   * `listId` is set when the "@list" mention resolved one — it overrides
+   * whatever list this column would otherwise file into (see `handleQuickAdd`
+   * in board.tsx).
    */
-  onQuickAdd?: (title: string) => void;
+  onQuickAdd?: (title: string, listId?: string) => void;
+  /**
+   * Every list, for the quick-add row's "@list" mention — `color` already
+   * resolved to what the list actually shows elsewhere on the board (its own
+   * color, falling back to its tab's, the same rule `accentColor` uses at each
+   * `BoardColumn` call site), not just `List.color` raw. Omit (or pass `[]`)
+   * on a column with no `onQuickAdd` — the mention only ever matters where
+   * quick-add exists.
+   */
+  lists?: MentionListOption[];
   /**
    * Arrow-key navigation out of this column's cards and quick-add. Returns
    * true when focus moved. See docs/KEYBOARD.md §11.
@@ -196,6 +219,7 @@ export function BoardColumn({
   onToggle,
   onOpen,
   onQuickAdd,
+  lists,
   onNavigate,
   minRows = 8,
   onOpenInfo,
@@ -270,12 +294,71 @@ export function BoardColumn({
     onKeyDown?: KeyboardEventHandler;
   };
 
+  const quickAddInputRef = useRef<HTMLInputElement>(null);
+  const [quickAddCursor, setQuickAddCursor] = useState(0);
+  const [mentionedList, setMentionedList] = useState<MentionListOption | null>(null);
+  /**
+   * Set right after a mention resolves, so an effect can move the DOM caret
+   * there once the controlled input's value has actually updated — React
+   * otherwise leaves the caret wherever the browser's default landed after a
+   * mid-string splice, which is inconsistent across browsers.
+   *
+   * A ref, not state: nothing ever reads this to render, it only drives one
+   * imperative DOM call, so writing it doesn't need to schedule a render —
+   * `applyMention`'s own `setDraft`/`setQuickAddCursor` calls already do that,
+   * and the effect below rides along on the render they cause.
+   */
+  const pendingCaretRef = useRef<number | null>(null);
+
+  const mentionItems = useMemo(
+    () => (lists ?? []).map((list) => ({ id: list.id, label: list.name, data: list })),
+    [lists],
+  );
+  const mention = useMention({ value: draft, cursor: quickAddCursor, items: mentionItems });
+
+  useEffect(() => {
+    if (pendingCaretRef.current === null) return;
+    quickAddInputRef.current?.setSelectionRange(pendingCaretRef.current, pendingCaretRef.current);
+    pendingCaretRef.current = null;
+  });
+
+  const syncQuickAddCursor = (el: HTMLInputElement) =>
+    setQuickAddCursor(el.selectionStart ?? el.value.length);
+
+  const applyMention = (resolved: ReturnType<typeof mention.resolve>) => {
+    setDraft(resolved.text);
+    setQuickAddCursor(resolved.caretIndex);
+    pendingCaretRef.current = resolved.caretIndex;
+    setMentionedList(resolved.item.data);
+  };
+
   const commit = () => {
     const title = draft.trim();
     if (!title || !onQuickAdd) return;
-    onQuickAdd(title);
+    onQuickAdd(title, mentionedList?.id);
     setDraft(""); // Keep focus so several todos can be typed in a row.
+    setQuickAddCursor(0);
+    setMentionedList(null);
   };
+
+  // Parsed only for the live preview — `handleQuickAdd` (board.tsx) re-parses
+  // the committed title itself, so this never has to be threaded anywhere.
+  const quickAddChips = useMemo((): QuickAddChip[] => {
+    const chips: QuickAddChip[] = draft.trim()
+      ? parseQuickAdd(draft, ctx.today).matches.map((m) => ({
+          key: `${m.kind}:${m.raw}`,
+          label: m.label,
+        }))
+      : [];
+    if (mentionedList) {
+      chips.push({
+        key: `list:${mentionedList.id}`,
+        label: `→ ${mentionedList.name}`,
+        color: mentionedList.color,
+      });
+    }
+    return chips;
+  }, [draft, ctx.today, mentionedList]);
 
   /**
    * The groups to render, or null for a flat column.
@@ -601,45 +684,100 @@ export function BoardColumn({
 
           {/* Quick add sits directly under the last item, like the reference UI. */}
           {onQuickAdd && (
-            <div className="group relative flex items-center border-b border-border/60">
-              <Plus
-                className="pointer-events-none absolute left-2 size-3 text-muted-foreground/40 opacity-0 group-focus-within:opacity-100"
-                aria-hidden
-              />
-              <input
-                data-nav-stop={addStop(id)}
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    commit();
-                  }
-                  if (e.key === "Escape") setDraft("");
+            <div className="group border-b border-border/60">
+              <div className="relative flex items-center">
+                <Plus
+                  className="pointer-events-none absolute left-2 size-3 text-muted-foreground/40 opacity-0 group-focus-within:opacity-100"
+                  aria-hidden
+                />
+                <input
+                  ref={quickAddInputRef}
+                  data-nav-stop={addStop(id)}
+                  value={draft}
+                  onChange={(e) => {
+                    setDraft(e.target.value);
+                    syncQuickAddCursor(e.target);
+                  }}
+                  onSelect={(e) => syncQuickAddCursor(e.currentTarget)}
+                  onKeyDown={(e) => {
+                    if (mention.isOpen) {
+                      if (e.key === "ArrowDown") {
+                        e.preventDefault();
+                        mention.moveHighlight(1);
+                        return;
+                      }
+                      if (e.key === "ArrowUp") {
+                        e.preventDefault();
+                        mention.moveHighlight(-1);
+                        return;
+                      }
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        const resolved = mention.resolveHighlighted();
+                        if (resolved) applyMention(resolved);
+                        return;
+                      }
+                      if (e.key === "Escape") {
+                        // Closes the popover only — the "@query" text you were
+                        // typing stays put, same as Slack/Linear/Notion. A
+                        // second Escape (mention now closed) falls through to
+                        // the plain "clear the whole draft" case below.
+                        e.preventDefault();
+                        mention.dismiss();
+                        return;
+                      }
+                    }
 
-                  const key = navKeyOf(e);
-                  if (!key) return;
-                  /*
-                    Caret motion wins while there is text to move through — and
-                    more importantly, `onBlur` commits, so navigating away
-                    mid-draft would silently create the to-do you were still
-                    typing. Enter already clears the draft and keeps focus, so
-                    type → Enter → `→` is the intended loop.
-                  */
-                  if (draft !== "") return;
-                  if (onNavigate?.(addStop(id), key)) e.preventDefault();
-                }}
-                onBlur={commit}
-                placeholder="Add a to-do"
-                aria-label={
-                  typeof title === "string" ? `Add a to-do to ${title}` : "Add a to-do"
-                }
-                className={cn(
-                  "w-full bg-transparent px-2 py-1.5 text-sm outline-none",
-                  "placeholder:text-transparent focus:placeholder:text-muted-foreground/60",
-                  "group-focus-within:pl-6",
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      commit();
+                    }
+                    if (e.key === "Escape") {
+                      setDraft("");
+                      setMentionedList(null);
+                    }
+
+                    const key = navKeyOf(e);
+                    if (!key) return;
+                    /*
+                      Caret motion wins while there is text to move through — and
+                      more importantly, `onBlur` commits, so navigating away
+                      mid-draft would silently create the to-do you were still
+                      typing. Enter already clears the draft and keeps focus, so
+                      type → Enter → `→` is the intended loop.
+                    */
+                    if (draft !== "") return;
+                    if (onNavigate?.(addStop(id), key)) e.preventDefault();
+                  }}
+                  onBlur={commit}
+                  placeholder="Add a to-do"
+                  // The browser's own form-history suggestions render as
+                  // native UI on top of everything, including `MentionMenu` —
+                  // there is no z-index that beats it. Off entirely, not just
+                  // a generic autocomplete value, since a to-do title is
+                  // never a value worth resubmitting anyway.
+                  autoComplete="off"
+                  aria-label={
+                    typeof title === "string" ? `Add a to-do to ${title}` : "Add a to-do"
+                  }
+                  className={cn(
+                    "w-full bg-transparent px-2 py-1.5 text-sm outline-none",
+                    "placeholder:text-transparent focus:placeholder:text-muted-foreground/60",
+                    "group-focus-within:pl-6",
+                  )}
+                />
+                {mention.isOpen && (
+                  <MentionMenu
+                    results={mention.results}
+                    highlightedIndex={mention.highlightedIndex}
+                    onHighlight={mention.setHighlightedIndex}
+                    onSelect={(item) => applyMention(mention.resolve(item))}
+                    side="up"
+                    ariaLabel="Lists"
+                  />
                 )}
-              />
+              </div>
+              <QuickAddPreview chips={quickAddChips} />
             </div>
           )}
 

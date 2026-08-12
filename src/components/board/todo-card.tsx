@@ -8,26 +8,16 @@ import type {
 } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { CalendarCheck, CalendarClock, MapPin, Repeat } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Badge } from "@/components/ui/badge";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { DragGrip } from "./drag-grip";
+import { PriorityRail, TitleMarkers, TodoMetaBadges } from "./todo-row-parts";
 import { cardStop, navKeyOf, type NavKey } from "@/lib/column-nav";
 import { priorityRail } from "@/lib/priority";
 import { TITLE_CLAMP_CLASS } from "@/lib/title";
 import type { Label as LabelRecord, Todo } from "@/lib/schema";
-import {
-  formatDeadlineDue,
-  formatShortDate,
-  isDeadlineMissed,
-  type PlacementContext,
-} from "@/lib/scheduling";
+import type { PlacementContext } from "@/lib/scheduling";
 
 interface TodoCardProps {
   todo: Todo;
@@ -113,11 +103,9 @@ export function TodoCard({
     onKeyDown?: KeyboardEventHandler;
   };
 
-  const deadlineMissed = isDeadlineMissed(todo, ctx);
-  const todoLabels = labels.filter((l) => todo.labelIds.includes(l.id));
+  /** Kept locally only for the sr-only priority label below — the visual
+   * rail itself is rendered by `<PriorityRail>`. */
   const rail = priorityRail(todo.priority);
-  /** Quiet inline marker for a deadline still ahead; a missed one gets the loud badge. */
-  const dueAhead = todo.deadline && !deadlineMissed ? todo.deadline : null;
 
   /**
    * Whether the clamp is actually cutting the title off — the gate on the
@@ -247,14 +235,7 @@ export function TodoCard({
         The rail is `aria-hidden`; the level reaches screen readers as text
         inside the title button below.
       */}
-      {rail && (
-        <span
-          aria-hidden
-          data-priority-rail={todo.priority}
-          style={{ width: rail.width, backgroundColor: rail.color }}
-          className="pointer-events-none absolute inset-y-0 left-0"
-        />
-      )}
+      <PriorityRail priority={todo.priority} />
 
       {/*
         Insertion indicator: a solid line showing exactly where the dragged item
@@ -400,78 +381,7 @@ export function TodoCard({
                 data-todo-title
                 className={cn("indent-6 wrap-break-word", TITLE_CLAMP_CLASS)}
               >
-                {dueAhead && (
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <span
-                          data-deadline-marker
-                          className="mr-1 inline-block align-[-0.1875em] text-muted-foreground"
-                        >
-                          <CalendarCheck className="size-3" aria-hidden />
-                          <span className="sr-only">
-                            {formatDeadlineDue(dueAhead, ctx.today)}.{" "}
-                          </span>
-                        </span>
-                      }
-                    />
-                    <TooltipContent>
-                      {formatDeadlineDue(dueAhead, ctx.today)}
-                    </TooltipContent>
-                  </Tooltip>
-                )}
-                {todo.location && (
-                  <Tooltip>
-                    {/*
-                      A `span` trigger, deliberately: Base UI adds no role and no
-                      tabIndex of its own, so this stays non-interactive content
-                      inside the title button rather than a control nested in a
-                      control.
-
-                      Which means it is never focusable, and Base UI's focus
-                      handlers sit on the trigger while `focusin` bubbles *up* —
-                      so a keyboard or screen-reader user never opens the tooltip.
-                      The `sr-only` text is the real channel for them; the tooltip
-                      is a pointer nicety. The location string was already inside
-                      this button's accessible name when it was a chip, so nothing
-                      is lost.
-                    */}
-                    <TooltipTrigger
-                      render={
-                        <span
-                          data-location-pin
-                          className="mr-1 inline-block align-[-0.1875em] text-muted-foreground"
-                        >
-                          <MapPin className="size-3" aria-hidden />
-                          <span className="sr-only">
-                            Location: {todo.location}.{" "}
-                          </span>
-                        </span>
-                      }
-                    />
-                    <TooltipContent>{todo.location}</TooltipContent>
-                  </Tooltip>
-                )}
-                {todo.recurrenceParentId && (
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <span
-                          data-recurrence-marker
-                          className="mr-1 inline-block align-[-0.1875em] text-muted-foreground"
-                        >
-                          <Repeat className="size-3" aria-hidden />
-                          <span className="sr-only">
-                            Repeats: {recurrenceSummary ?? "part of a repeating series"}.{" "}
-                          </span>
-                        </span>
-                      }
-                    />
-                    <TooltipContent>
-                      {recurrenceSummary ?? "Part of a repeating series"}
-                    </TooltipContent>
-                  </Tooltip>
-                )}
+                <TitleMarkers todo={todo} today={ctx.today} recurrenceSummary={recurrenceSummary} />
                 {todo.title}
                 {rail && <span className="sr-only"> — {rail.label}</span>}
               </span>
@@ -480,48 +390,13 @@ export function TodoCard({
           <TooltipContent>{todo.title}</TooltipContent>
         </Tooltip>
 
-        {(todoLabels.length > 0 ||
-          (deadlineMissed && todo.deadline) ||
-          (isAway && todo.scheduledDate) ||
-          (missedCount ?? 0) > 1) && (
-          <span className="mt-1 flex flex-wrap items-center gap-1">
-            {isAway && todo.scheduledDate && (
-              <Badge variant="outline" className="num gap-1 text-2xs font-normal">
-                <CalendarClock className="size-2.5" aria-hidden />
-                {formatShortDate(todo.scheduledDate)}
-              </Badge>
-            )}
-            {deadlineMissed && todo.deadline && (
-              <Badge variant="destructive" className="text-2xs font-normal">
-                Deadline <span className="num">{formatShortDate(todo.deadline)}</span>
-              </Badge>
-            )}
-            {(missedCount ?? 0) > 1 && (
-              <Badge
-                variant="destructive"
-                className="num gap-1 text-2xs font-normal"
-                title={`Missed ${missedCount} times in a row`}
-              >
-                <Repeat className="size-2.5" aria-hidden />×{missedCount}
-              </Badge>
-            )}
-            {todoLabels.map((label) => (
-              <Badge
-                key={label.id}
-                variant="secondary"
-                className="text-2xs font-normal"
-                style={
-                  label.color
-                    ? { backgroundColor: `${label.color}20`, color: label.color }
-                    : undefined
-                }
-              >
-                {label.emoji ? `${label.emoji} ` : ""}
-                {label.name}
-              </Badge>
-            ))}
-          </span>
-        )}
+        <TodoMetaBadges
+          todo={todo}
+          labels={labels}
+          today={ctx.today}
+          showScheduledDate={isAway}
+          missedCount={missedCount}
+        />
       </button>
     </div>
   );

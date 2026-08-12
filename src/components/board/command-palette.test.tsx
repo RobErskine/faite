@@ -3,8 +3,8 @@ import "fake-indexeddb/auto";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { CommandPalette } from "./command-palette";
-import { FONT_PAIRINGS } from "@/lib/fonts";
-import type { List, Settings, Tab, Todo } from "@/lib/schema";
+import { formatShortDate } from "@/lib/scheduling";
+import type { Label as LabelRecord, List, Settings, Tab, Todo } from "@/lib/schema";
 
 /**
  * Regression guard for the ⌘K crash.
@@ -129,10 +129,13 @@ function renderPalette(
     lists: LISTS,
     tabs: TABS,
     todos: TODOS,
+    labels: [] as LabelRecord[],
     settings,
     activeTabId: "tab1",
     onSelectTodo: () => {},
     onSelectTab: () => {},
+    onSetTodoStatus: () => {},
+    onDeleteTodo: () => {},
     ...overrides,
   };
   return render(<CommandPalette {...props} />);
@@ -179,17 +182,10 @@ describe("CommandPalette", () => {
     expect(screen.queryByText("current")).toBeNull();
   });
 
-  it("offers every font pairing, previewed in its own pairing", () => {
+  it("has no Typography group — font pairing lives in Settings → Design now", () => {
     renderPalette();
 
-    for (const pairing of FONT_PAIRINGS) {
-      const label = screen.getByText(pairing.label);
-      // data-font on the item scopes the pairing's CSS vars to that row, which
-      // is what makes each option render as a preview of itself.
-      expect(label.closest("[data-font]")?.getAttribute("data-font")).toBe(
-        pairing.id,
-      );
-    }
+    expect(screen.queryByText("Typography")).toBeNull();
   });
 
   it("shows no to-do results until something is typed", () => {
@@ -238,5 +234,147 @@ describe("CommandPalette", () => {
     renderPalette({ open: false });
 
     expect(screen.queryByText("New to-do")).toBeNull();
+  });
+});
+
+describe("CommandPalette — @list mention", () => {
+  it("opens a filtered popover when typing @ + a list name, in root mode", () => {
+    renderPalette();
+
+    search("buy milk @groc");
+
+    expect(screen.getByRole("option", { name: "Grocery List" })).toBeTruthy();
+  });
+
+  it("opens the popover in New to-do mode too", () => {
+    renderPalette();
+
+    fireEvent.click(screen.getByText("New to-do"));
+    fireEvent.change(screen.getByRole("combobox"), {
+      target: { value: "buy milk @groc" },
+    });
+
+    expect(screen.getByRole("option", { name: "Grocery List" })).toBeTruthy();
+  });
+
+  it("selecting a mention strips the @token and shows a destination chip", () => {
+    renderPalette();
+
+    search("buy milk @groc");
+    fireEvent.mouseDown(screen.getByRole("option", { name: "Grocery List" }));
+
+    expect(screen.getByPlaceholderText(PLACEHOLDER)).toHaveProperty("value", "buy milk");
+    expect(screen.getByText("→ Grocery List")).toBeTruthy();
+  });
+
+  it("does not open for a query with no matching list", () => {
+    renderPalette();
+
+    search("buy milk @nonexistent");
+
+    expect(screen.queryByRole("listbox", { name: "Lists" })).toBeNull();
+  });
+});
+
+describe("CommandPalette — to-do result rows", () => {
+  // `document.body`, not the render `container`: CommandDialog portals its
+  // content out via Base UI's FloatingPortal, so it never lands inside the
+  // container div RTL mounts into. `screen` queries already account for
+  // this (bound to `document.body`); these need a raw selector, so they go
+  // straight to `document.body` too.
+  it("shows the priority rail for a prioritized hit", () => {
+    const todos = [...TODOS, todo({ id: "t3", title: "Ship taxes", priority: 1 })];
+    renderPalette({ todos });
+
+    search("taxes");
+
+    expect(document.body.querySelector('[data-priority-rail="1"]')).toBeTruthy();
+  });
+
+  it("shows a marker for a deadline still ahead", () => {
+    const todos = [
+      ...TODOS,
+      todo({ id: "t4", title: "Renew lease", deadline: "2099-01-01" }),
+    ];
+    renderPalette({ todos });
+
+    search("lease");
+
+    expect(document.body.querySelector("[data-deadline-marker]")).toBeTruthy();
+  });
+
+  it("shows a marker for a recurring occurrence", () => {
+    const todos = [
+      ...TODOS,
+      todo({ id: "t5", title: "Water plants", recurrenceParentId: "series1" }),
+    ];
+    renderPalette({ todos });
+
+    search("plants");
+
+    expect(document.body.querySelector("[data-recurrence-marker]")).toBeTruthy();
+  });
+
+  it("shows a scheduled date badge — the card only shows this when away from its column, the palette always does", () => {
+    const todos = [
+      ...TODOS,
+      todo({ id: "t6", title: "Pack suitcase", scheduledDate: "2099-06-01" }),
+    ];
+    renderPalette({ todos });
+
+    search("suitcase");
+
+    expect(document.body.textContent).toContain(formatShortDate("2099-06-01"));
+  });
+});
+
+describe("CommandPalette — row actions", () => {
+  function pressOnInput(key: string, opts: Record<string, boolean> = {}) {
+    fireEvent.keyDown(screen.getByPlaceholderText(PLACEHOLDER), { key, ...opts });
+  }
+
+  it("⌘⏎ completes the highlighted hit without opening it", () => {
+    const statusCalls: Array<[string, string]> = [];
+    const selected: string[] = [];
+    renderPalette({
+      onSetTodoStatus: (id, status) => statusCalls.push([id, status]),
+      onSelectTodo: (t) => selected.push(t.id),
+    });
+
+    search("milk");
+    pressOnInput("Enter", { metaKey: true });
+
+    expect(statusCalls).toEqual([["t1", "done"]]);
+    expect(selected).toEqual([]);
+  });
+
+  it("⌘⌫ marks the highlighted hit as won't-do", () => {
+    const statusCalls: Array<[string, string]> = [];
+    renderPalette({ onSetTodoStatus: (id, status) => statusCalls.push([id, status]) });
+
+    search("milk");
+    pressOnInput("Backspace", { metaKey: true });
+
+    expect(statusCalls).toEqual([["t1", "dropped"]]);
+  });
+
+  it("⌘⇧⌫ deletes the highlighted hit", () => {
+    const deleted: string[] = [];
+    renderPalette({ onDeleteTodo: (id) => deleted.push(id) });
+
+    search("milk");
+    pressOnInput("Backspace", { metaKey: true, shiftKey: true });
+
+    expect(deleted).toEqual(["t1"]);
+  });
+
+  it("stays open after a row action", () => {
+    const openCalls: boolean[] = [];
+    renderPalette({ onOpenChange: (open) => openCalls.push(open) });
+
+    search("milk");
+    pressOnInput("Enter", { metaKey: true });
+
+    expect(openCalls).toEqual([]);
   });
 });

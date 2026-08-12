@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   Command,
@@ -23,10 +23,16 @@ import { mutateSettings } from "@/lib/store/mutate";
 import { createUndoStep, pushUndo, undoById } from "@/lib/undo";
 import { deleteListWithUndo } from "./list-actions";
 import { createTabWithUndo, deleteTabWithUndo } from "./tab-actions";
-import { DEFAULT_FONT_PAIRING, FONT_PAIRINGS } from "@/lib/fonts";
-import { formatShortDate } from "@/lib/scheduling";
+import { todayIn } from "@/lib/scheduling";
+import { parseQuickAdd } from "@/lib/quick-add";
+import { useMention, MentionMenu } from "@/components/mention-menu";
 import { searchTodos } from "@/lib/search";
-import type { List, Settings, Tab, Todo, TodoStatus } from "@/lib/schema";
+import { cn } from "@/lib/utils";
+import { PriorityRail, TitleMarkers, TodoMetaBadges } from "./todo-row-parts";
+import { TITLE_CLAMP_CLASS } from "@/lib/title";
+import type { Label as LabelRecord, List, Settings, Tab, Todo, TodoStatus } from "@/lib/schema";
+import type { MentionListOption } from "./board-column";
+import { QuickAddPreview } from "./quick-add-preview";
 
 /**
  * The status filter, in the same order and wording as the DateNav control —
@@ -44,12 +50,22 @@ interface CommandPaletteProps {
   lists: List[];
   tabs: Tab[];
   todos: Todo[];
+  labels: LabelRecord[];
   settings: Settings | undefined;
   activeTabId: string;
+  /** Series summaries keyed by `recurrenceParentId` — see `board.tsx`'s
+   * `recurrenceSummaries`. Threaded in rather than computed here for the
+   * same reason `TodoCard` takes it as a prop: only the template row knows
+   * its own rule. */
+  recurrenceSummaries?: Map<string, string>;
   /** Opens a search hit. Board owns which to-do the sheet is showing. */
   onSelectTodo: (todo: Todo) => void;
   /** Switches the planning half. Board owns where the active tab is stored. */
   onSelectTab: (tabId: string) => void;
+  /** `⌘⏎` toggles done/open, `⌘⌫` marks won't-do, on the highlighted result. */
+  onSetTodoStatus: (id: string, status: TodoStatus) => void;
+  /** `⌘⇧⌫` on the highlighted result. */
+  onDeleteTodo: (id: string) => void;
 }
 
 type Mode =
@@ -75,13 +91,24 @@ export function CommandPalette({
   lists,
   tabs,
   todos,
+  labels,
   settings,
   activeTabId,
+  recurrenceSummaries,
   onSelectTodo,
   onSelectTab,
+  onSetTodoStatus,
+  onDeleteTodo,
 }: CommandPaletteProps) {
   const [mode, setMode] = useState<Mode>({ kind: "root" });
   const [value, setValue] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const [cursor, setCursor] = useState(0);
+  const [mentionedList, setMentionedList] = useState<MentionListOption | null>(null);
+  /** Same reason `board-column.tsx`'s quick-add row uses one: moves the DOM
+   * caret only after the controlled input's value has actually updated. */
+  const pendingCaretRef = useRef<number | null>(null);
 
   const query = value.trim();
 
@@ -94,10 +121,72 @@ export function CommandPalette({
     [mode.kind, query, todos],
   );
 
+  const today = useMemo(
+    () => todayIn(settings?.timezone ?? "UTC"),
+    [settings?.timezone],
+  );
+
+  /**
+   * Parsed once, up front, and reused by both creation paths — the "Create
+   * to-do" fallback in root mode and the New to-do entry mode both create
+   * from `value`, so they must not be free to disagree on what it parses to.
+   */
+  const quickAdd = useMemo(() => parseQuickAdd(value, today), [value, today]);
+  const showQuickAddPreview = mode.kind === "root" ? query.length > 0 : mode.kind === "new-todo";
+
   const listNameById = useMemo(
     () => new Map(lists.map((list) => [list.id, list.name])),
     [lists],
   );
+
+  /**
+   * Quick-add's "@list" mention candidates — color-resolved the same way
+   * `board.tsx`'s `mentionLists` is (own color, falling back to the tab's),
+   * duplicated locally rather than threaded down as a prop: this component
+   * already has both `lists` and `tabs`, and the two other things `lists` is
+   * used for here (`listNameById`, `lists.find(l => l.isBacklog)`) need the
+   * full record, not this lighter shape.
+   */
+  const tabsById = useMemo(() => new Map(tabs.map((t) => [t.id, t])), [tabs]);
+  const mentionListOptions = useMemo(
+    (): MentionListOption[] =>
+      lists.map((list) => ({
+        id: list.id,
+        name: list.name,
+        color: list.color ?? (list.tabId ? (tabsById.get(list.tabId)?.color ?? null) : null),
+      })),
+    [lists, tabsById],
+  );
+
+  /**
+   * Only live where typed text becomes a todo — root's search box (via the
+   * "Create to-do" fallback) and the "New to-do" entry mode. An empty item
+   * list keeps `useMention` permanently closed everywhere else, rather than
+   * gating the hook call itself (hooks cannot be conditional).
+   */
+  const mentionItems = useMemo(
+    () =>
+      mode.kind === "root" || mode.kind === "new-todo"
+        ? mentionListOptions.map((list) => ({ id: list.id, label: list.name, data: list }))
+        : [],
+    [mode.kind, mentionListOptions],
+  );
+  const mention = useMention({ value, cursor, items: mentionItems });
+
+  useEffect(() => {
+    if (pendingCaretRef.current === null) return;
+    inputRef.current?.setSelectionRange(pendingCaretRef.current, pendingCaretRef.current);
+    pendingCaretRef.current = null;
+  });
+
+  const syncCursor = (el: HTMLInputElement) => setCursor(el.selectionStart ?? el.value.length);
+
+  const applyMention = (resolved: ReturnType<typeof mention.resolve>) => {
+    setValue(resolved.text);
+    setCursor(resolved.caretIndex);
+    pendingCaretRef.current = resolved.caretIndex;
+    setMentionedList(resolved.item.data);
+  };
 
   /**
    * Reset to the root menu on dismissal.
@@ -110,6 +199,8 @@ export function CommandPalette({
     if (!next) {
       setMode({ kind: "root" });
       setValue("");
+      setCursor(0);
+      setMentionedList(null);
     }
     onOpenChange(next);
   };
@@ -135,13 +226,24 @@ export function CommandPalette({
     });
   };
 
-  /** Files a to-do straight into Backlog, titled with whatever was typed. */
+  /**
+   * Files a to-do titled with whatever was typed — into Backlog, unless the
+   * "@list" mention picked somewhere else.
+   */
   const createFromQuery = async () => {
     const backlog = lists.find((l) => l.isBacklog);
+    const listId = mentionedList?.id ?? backlog?.id ?? null;
     recordCreate(
-      "To-do added to Backlog",
+      `To-do added to ${mentionedList?.name ?? "Backlog"}`,
       "todo",
-      await createTodo({ title: query, listId: backlog?.id ?? null }),
+      await createTodo({
+        title: quickAdd.title,
+        listId,
+        scheduledDate: quickAdd.scheduledDate,
+        deadline: quickAdd.deadline,
+        priority: quickAdd.priority,
+        reminderTime: quickAdd.reminderTime,
+      }),
     );
     close();
   };
@@ -176,10 +278,18 @@ export function CommandPalette({
         break;
       case "new-todo": {
         const backlog = lists.find((l) => l.isBacklog);
+        const listId = mentionedList?.id ?? backlog?.id ?? null;
         recordCreate(
-          "To-do added to Backlog",
+          `To-do added to ${mentionedList?.name ?? "Backlog"}`,
           "todo",
-          await createTodo({ title: name, listId: backlog?.id ?? null }),
+          await createTodo({
+            title: quickAdd.title,
+            listId,
+            scheduledDate: quickAdd.scheduledDate,
+            deadline: quickAdd.deadline,
+            priority: quickAdd.priority,
+            reminderTime: quickAdd.reminderTime,
+          }),
         );
         break;
       }
@@ -188,6 +298,18 @@ export function CommandPalette({
     }
     close();
   };
+
+  /**
+   * The id of the row cmdk currently has selected, read straight off the
+   * DOM the way cmdk itself resolves it (its internal `aria-selected`
+   * lookup) rather than by controlling `<Command value>` — a controlled
+   * value that stops matching any item leaves nothing selected, since
+   * cmdk's "select first" only runs when the value is empty.
+   */
+  const highlightedTodoId = () =>
+    listRef.current
+      ?.querySelector('[cmdk-item][aria-selected="true"]')
+      ?.getAttribute("data-todo-id") ?? null;
 
   const placeholder =
     mode.kind === "new-list"
@@ -214,6 +336,7 @@ export function CommandPalette({
       onOpenChange={handleOpenChange}
       title="Command palette"
       description="Create and manage to-dos, lists, labels, and projects"
+      className="sm:max-w-2xl"
     >
       {/*
         CommandDialog renders children straight into DialogContent without a
@@ -225,27 +348,115 @@ export function CommandPalette({
         the single "create" item as soon as the typed value stopped matching.
       */}
       <Command shouldFilter={!isEntryMode}>
-      <CommandInput
-        placeholder={placeholder}
-        value={value}
-        onValueChange={setValue}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && isEntryMode) {
-            e.preventDefault();
-            void submit();
-          }
-          if (e.key === "Escape" && mode.kind !== "root") {
-            e.preventDefault();
-            setMode({ kind: "root" });
-            setValue("");
-          }
-        }}
-      />
-      <CommandList>
+      <div className="relative">
+        <CommandInput
+          ref={inputRef}
+          placeholder={placeholder}
+          value={value}
+          onValueChange={(next) => {
+            setValue(next);
+            setCursor(inputRef.current?.selectionStart ?? next.length);
+          }}
+          onSelect={(e) => syncCursor(e.currentTarget)}
+          onKeyDown={(e) => {
+            if (mention.isOpen) {
+              if (e.key === "ArrowDown") {
+                e.preventDefault();
+                mention.moveHighlight(1);
+                return;
+              }
+              if (e.key === "ArrowUp") {
+                e.preventDefault();
+                mention.moveHighlight(-1);
+                return;
+              }
+              if (e.key === "Enter") {
+                e.preventDefault();
+                const resolved = mention.resolveHighlighted();
+                if (resolved) applyMention(resolved);
+                return;
+              }
+              if (e.key === "Escape") {
+                // Closes the popover only — same as quick-add's row. A second
+                // Escape (mention now closed) falls through to the existing
+                // "back to root" case below.
+                e.preventDefault();
+                mention.dismiss();
+                return;
+              }
+            }
+
+            /*
+              Row actions on the highlighted to-do — ⌘⏎ toggles done/open,
+              ⌘⌫ marks won't-do, ⌘⇧⌫ deletes. Mirrors `TodoSheet`'s bindings
+              (`todo-sheet.tsx`), with one deliberate divergence: the sheet
+              exempts text-entry targets from ⌘⌫ because that combo means
+              "delete to line start" natively. This input IS the palette's
+              only focus target, so exempting it would just disable the
+              shortcut outright — the override is intentional here.
+            */
+            const modOnly = e.metaKey !== e.ctrlKey && !e.altKey;
+            if (mode.kind === "root" && modOnly && (e.key === "Enter" || e.key === "Backspace")) {
+              const id = highlightedTodoId();
+              const todo = id ? todos.find((t) => t.id === id) : undefined;
+              if (todo) {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  onSetTodoStatus(todo.id, todo.status === "done" ? "open" : "done");
+                  return;
+                }
+                if (e.key === "Backspace") {
+                  e.preventDefault();
+                  if (e.shiftKey) onDeleteTodo(todo.id);
+                  else onSetTodoStatus(todo.id, "dropped");
+                  return;
+                }
+              }
+            }
+
+            if (e.key === "Enter" && isEntryMode) {
+              e.preventDefault();
+              void submit();
+            }
+            if (e.key === "Escape" && mode.kind !== "root") {
+              e.preventDefault();
+              setMode({ kind: "root" });
+              setValue("");
+            }
+          }}
+        />
+        {mention.isOpen && (
+          <MentionMenu
+            results={mention.results}
+            highlightedIndex={mention.highlightedIndex}
+            onHighlight={mention.setHighlightedIndex}
+            onSelect={(item) => applyMention(mention.resolve(item))}
+            side="down"
+            ariaLabel="Lists"
+          />
+        )}
+      </div>
+      {showQuickAddPreview && (
+        <QuickAddPreview
+          chips={[
+            ...quickAdd.matches.map((m) => ({ key: `${m.kind}:${m.raw}`, label: m.label })),
+            ...(mentionedList
+              ? [
+                  {
+                    key: `list:${mentionedList.id}`,
+                    label: `→ ${mentionedList.name}`,
+                    color: mentionedList.color,
+                  },
+                ]
+              : []),
+          ]}
+        />
+      )}
+      <CommandList ref={listRef} className="max-h-[60vh]">
         {isEntryMode ? (
           <CommandGroup heading="Press Enter to create">
             <CommandItem onSelect={() => void submit()} disabled={!value.trim()}>
-              {value.trim() || "Start typing…"}
+              {(mode.kind === "new-todo" ? quickAdd.title : value.trim()) || "Start typing…"}
             </CommandItem>
           </CommandGroup>
         ) : mode.kind === "delete-list" ? (
@@ -296,42 +507,61 @@ export function CommandPalette({
             {results.length > 0 ? (
               <>
                 <CommandGroup heading="To-dos">
-                  {results.map((todo) => {
-                    const where = todo.scheduledDate
-                      ? formatShortDate(todo.scheduledDate)
-                      : (listNameById.get(todo.listId ?? "") ?? "Unfiled");
-                    return (
-                      <CommandItem
-                        key={todo.id}
-                        /*
-                          Titles repeat ("Follow up"), and cmdk keys its
-                          selection off `value` — so the id rides along to keep
-                          rows distinct. It also scores the value, hence title
-                          first. The description travels as a keyword so
-                          description-only hits survive cmdk's own filter.
-                        */
-                        value={`${todo.title} ${todo.id}`}
-                        keywords={todo.description ? [todo.description] : undefined}
-                        onSelect={() => {
-                          onSelectTodo(todo);
-                          close();
-                        }}
-                      >
+                  {results.map((todo) => (
+                    <CommandItem
+                      key={todo.id}
+                      /*
+                        Titles repeat ("Follow up"), and cmdk keys its
+                        selection off `value` — so the id rides along to keep
+                        rows distinct. It also scores the value, hence title
+                        first. The description travels as a keyword so
+                        description-only hits survive cmdk's own filter.
+                      */
+                      value={`${todo.title} ${todo.id}`}
+                      keywords={todo.description ? [todo.description] : undefined}
+                      // How the row-action shortcuts (⌘⏎/⌘⌫/⌘⇧⌫) find the
+                      // highlighted to-do without controlling `<Command value>`.
+                      data-todo-id={todo.id}
+                      onSelect={() => {
+                        onSelectTodo(todo);
+                        close();
+                      }}
+                      className="items-start overflow-hidden py-2 pl-4"
+                    >
+                      <PriorityRail priority={todo.priority} />
+                      <span className="min-w-0 flex-1 text-sm leading-snug">
                         <span
-                          className={
-                            todo.status === "open"
-                              ? undefined
-                              : "text-muted-foreground line-through"
-                          }
+                          className={cn(
+                            "wrap-break-word",
+                            TITLE_CLAMP_CLASS,
+                            todo.status !== "open" && "text-muted-foreground",
+                            todo.status === "done" && "line-through",
+                            todo.status === "dropped" && "opacity-70",
+                          )}
                         >
+                          <TitleMarkers
+                            todo={todo}
+                            today={today}
+                            recurrenceSummary={
+                              todo.recurrenceParentId
+                                ? recurrenceSummaries?.get(todo.recurrenceParentId)
+                                : undefined
+                            }
+                          />
                           {todo.title}
                         </span>
-                        <span className="ml-auto text-xs text-muted-foreground">
-                          {where}
-                        </span>
-                      </CommandItem>
-                    );
-                  })}
+                        <TodoMetaBadges
+                          todo={todo}
+                          labels={labels}
+                          today={today}
+                          showScheduledDate
+                        />
+                      </span>
+                      <span className="ml-auto shrink-0 self-center text-xs text-muted-foreground">
+                        {listNameById.get(todo.listId ?? "") ?? "Unfiled"}
+                      </span>
+                    </CommandItem>
+                  ))}
                 </CommandGroup>
 
                 <CommandSeparator />
@@ -349,7 +579,7 @@ export function CommandPalette({
                   value={`Create to-do ${query}`}
                   onSelect={() => void createFromQuery()}
                 >
-                  Create to-do “{query}”
+                  Create to-do “{quickAdd.title}”
                 </CommandItem>
               ) : null}
               <CommandItem onSelect={() => { setMode({ kind: "new-todo" }); setValue(""); }}>
@@ -487,46 +717,16 @@ export function CommandPalette({
                   : "Roll over on workdays only"}
               </CommandItem>
             </CommandGroup>
-
-            <CommandSeparator />
-
-            <CommandGroup heading="Typography">
-              {FONT_PAIRINGS.map((pairing) => (
-                <CommandItem
-                  key={pairing.id}
-                  // Preview each option in its own pairing — choosing a
-                  // typeface from a list rendered in a different typeface is
-                  // guesswork.
-                  data-font={pairing.id}
-                  onSelect={async () => {
-                    await mutateSettings(LOCAL_OWNER_ID, {
-                      fontPairing: pairing.id,
-                    });
-                    close();
-                  }}
-                >
-                  <span className="font-heading">{pairing.label}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {pairing.description}
-                  </span>
-                  {/*
-                    Settings rows written before this feature existed have no
-                    fontPairing, and useSettings hands back the raw Dexie row
-                    rather than a schema-parsed one — so fall back explicitly
-                    instead of showing no current option at all.
-                  */}
-                  {(settings?.fontPairing ?? DEFAULT_FONT_PAIRING) ===
-                  pairing.id ? (
-                    <span className="text-xs text-muted-foreground">
-                      (current)
-                    </span>
-                  ) : null}
-                </CommandItem>
-              ))}
-            </CommandGroup>
           </>
         )}
       </CommandList>
+      {mode.kind === "root" && results.length > 0 ? (
+        <div className="flex items-center gap-3 border-t border-border/60 px-3 py-1.5 text-xs text-muted-foreground">
+          <span>⌘⏎ complete</span>
+          <span>⌘⌫ won&apos;t do</span>
+          <span>⌘⇧⌫ delete</span>
+        </div>
+      ) : null}
       </Command>
     </CommandDialog>
   );

@@ -4,12 +4,17 @@
 its search from "finds a to-do by title" into something genuinely powerful,
 without reading the rest of the codebase first.
 
-Read §5 before designing anything. The single biggest constraint on search is
+Read §6 before designing anything. The single biggest constraint on search is
 not the matcher — it is that **cmdk re-filters everything we render**, and most
 interesting ranking ideas are in direct conflict with that.
 
 Status at time of writing: palette does creates, deletes, tab switching, view
-settings, typography, and substring search over to-do titles/descriptions.
+settings, substring search over to-do titles/descriptions, row actions
+(complete/won't-do/delete a search hit without leaving the palette — §4, §7.3),
+and (§5) quick-add tokens — priority, dates, deadlines, times, and an `@list`
+mention — when creating a to-do from typed text. Font pairing moved to
+Settings → Design (`src/components/settings/design-section.tsx`); it is no
+longer a palette command.
 
 ---
 
@@ -41,16 +46,25 @@ Board
 
 | File | Role |
 | --- | --- |
-| `src/components/board/command-palette.tsx` | the whole surface (~485 lines) |
+| `src/components/board/command-palette.tsx` | the whole surface |
 | `src/lib/search.ts` | `searchTodos` — the matcher, pure and testable |
 | `src/lib/search.test.ts` | matcher unit tests |
-| `src/components/board/command-palette.test.tsx` | DOM-level tests, incl. search |
+| `src/components/board/command-palette.test.tsx` | DOM-level tests, incl. search and §5 |
 | `src/components/board/app-header.tsx` | the search-field trigger |
-| `src/components/ui/command.tsx` | shadcn `base-nova` wrapper over cmdk |
+| `src/components/ui/command.tsx` | shadcn `base-nova` wrapper over cmdk — `CommandInput` forwards its ref (§5) |
 | `src/components/board/board.tsx` | owns open state, hotkey, and the callbacks |
+| `src/lib/quick-add.ts` | §5's token grammar — shared with column quick-add, not palette-specific |
+| `src/lib/mention.ts` | §5's `@` trigger detection — shared, see `docs/AT-MENTION.md` |
+| `src/components/mention-menu.tsx` | §5's `useMention` hook + popover — shared |
+| `src/components/board/quick-add-preview.tsx` | §5's live chip row — shared |
+| `src/components/board/todo-row-parts.tsx` | `PriorityRail`/`TitleMarkers`/`TodoMetaBadges` — presentational pieces of `TodoCard`, factored out so a search hit renders priority/deadline/recurrence/labels the same way a board card does. See §10's `TodoCard` gotcha for why the card itself isn't reused directly. |
+| `src/components/board/todo-card.tsx` | the board card; now a consumer of `todo-row-parts.tsx`, not the source of it |
 
 Related: `docs/KEYBOARD.md` (how `mod+k` is registered and why it is exempt from
-every guard), `docs/ARCHITECTURE.md` (data model, local-first constraints).
+every guard), `docs/ARCHITECTURE.md` (data model, local-first constraints),
+`docs/AT-MENTION.md` (the `@` mention system in full — trigger detection,
+cursor-tracking contract, positioning tradeoffs; this doc only covers how the
+palette wires into it).
 
 ---
 
@@ -89,27 +103,81 @@ At root, in render order:
 
 | Group | Items | Notes |
 | --- | --- | --- |
-| **To-dos** | up to 8 search hits | only when the query is non-empty |
-| **Create** | `Create to-do "<query>"` | only when the query is non-empty |
-| | New to-do / list / label / project / tab | each enters an entry mode |
+| **To-dos** | up to 8 search hits | only when the query is non-empty; each hit renders like a board card (priority rail, deadline/location/recurrence markers, label and scheduled-date badges — via `todo-row-parts.tsx`) and supports the row actions below |
+| **Create** | `Create to-do "<query>"` | only when the query is non-empty; parses quick-add tokens — §5 |
+| | New to-do / list / label / project / tab | New to-do parses quick-add tokens too — §5; the rest enter a plain entry mode |
 | **Tabs** | one row per tab, active marked `current` | hidden when `tabs.length <= 1` |
 | **Manage** | Delete a list… / Delete a tab… | each enters a picker mode |
 | **View** | Show 1 / 3 / 5 / 7 days | writes `settings.visibleDays` |
 | | Roll over on workdays only ⇄ every day | writes `settings.workdaysOnly` |
-| **Typography** | one row per font pairing | each row previews itself via `data-font` |
 
 Every mutating item routes through the shared undo helpers (`recordCreate`,
 `deleteListWithUndo`, `deleteTabWithUndo`) so palette actions and their
 equivalents elsewhere in the UI cannot diverge.
 
+**Row actions**, keyboard-only and not part of the command list above: with a
+to-do hit highlighted, `⌘⏎` toggles done/open, `⌘⌫` marks won't-do, `⌘⇧⌫`
+deletes — mirroring `TodoSheet`'s bindings (`todo-sheet.tsx`). They call
+`onSetTodoStatus`/`onDeleteTodo`, which `board.tsx` wires to the same
+`handleSheetStatus`/`handleDelete` callbacks the sheet uses, so the undo toast
+and `materializeIfNeeded` guard (for acting on a virtual recurrence occurrence)
+are identical either way. The palette stays open afterward — unlike selecting a
+hit, which closes it. One deliberate divergence from the sheet: `TodoSheet`
+exempts `⌘⌫` when focus is in a text field, because that combo means "delete
+to line start" natively; the palette does not, since its search input is the
+only focus target and exempting it would just disable the shortcut.
+
 **The commands are hardcoded JSX, not data.** That is the main structural
-obstacle to everything in §7 — see §6.1.
+obstacle to everything in §8 — see §7.1.
 
 ---
 
-## 5. Search as it works today
+## 5. Quick-add tokens & the `@list` mention
 
-### 5.1 The matcher
+Typed text in `Create to-do "<query>"` and `New to-do` is not literal — it is
+parsed the same way a column's quick-add row parses a title, so
+`buy milk p2 fri 2pm @groceries` creates one to-do with `priority: 2`,
+`scheduledDate` set to the next Friday, `reminderTime: "14:00"`, and files it
+into the "Groceries" list instead of Backlog. `quickAdd` (the parsed result)
+is computed once from `value` and reused by both creation paths, so root's
+fallback and `New to-do` can never disagree about what the same typed text
+means.
+
+This is the `@` half of the "scoped modes" idea in §8 item 6 below, shipped —
+but as an **inline mention inside free text**, not a mode that restricts the
+whole palette to a list-picker. Typing `@` doesn't leave `mode.kind === "root"`
+or `"new-todo"`; it opens a small popover *over* the input, and picking a
+result resolves to a hidden field (`mentionedList` state, alongside `mode` and
+`value`) rather than to visible text. Full mechanics — trigger detection, the
+cursor-tracking contract, why positioning is a plain anchored popover rather
+than portaled — live in `docs/AT-MENTION.md`; this section only covers what's
+specific to wiring it into `CommandInput`.
+
+**Grammar** (source of truth: `src/lib/quick-add.ts`'s own comments):
+`p1`-`p4` for priority, a weekday/`next <weekday>`/`M/D`/month-day/ISO date,
+`!` before any of those for a deadline instead of a scheduled date, and a
+time (`2pm`, `14:00`). Tokens are only recognized at the edges of the string
+(trailing run for all kinds, leading run for priority only) — see the module
+for why: it's what keeps "call mom about p1 stuff" from parsing anything.
+
+**Where it's live:** root mode's search box (via the `Create to-do` fallback)
+and `New to-do`. **Not** `new-list`/`new-label`/`new-project`/`new-tab`/
+`delete-*` — those aren't creating a to-do, so `mentionItems` is `[]` there
+and the popover never opens (an empty item list is how `useMention` stays
+permanently closed, rather than a special case per mode).
+
+**The one cmdk-specific wrinkle:** `useMention` needs the underlying
+`<input>` DOM node — to read `selectionStart` for cursor tracking and to
+reposition the caret after a mention resolves — so `CommandInput`
+(`ui/command.tsx`) now forwards its `ref`. It didn't before this; there was
+no other consumer of the component at the time, so this was a safe, additive
+change, but check for new consumers before assuming that's still true.
+
+---
+
+## 6. Search as it works today
+
+### 6.1 The matcher
 
 `searchTodos(query, todos, limit = 8)` in `src/lib/search.ts`. Four tiers,
 best first:
@@ -125,7 +193,7 @@ Ties break by status (`open` before `done`/`dropped`), then `updatedAt`
 descending. Soft-deleted rows are excluded. Empty query returns `[]` — the
 palette shows its command list until you actually type.
 
-### 5.2 The constraint that shapes everything — cmdk double-filters
+### 6.2 The constraint that shapes everything — cmdk double-filters
 
 **cmdk applies its own subsequence scorer to every item we render.** The
 displayed result set is the *intersection* of our matcher and cmdk's, and cmdk
@@ -146,13 +214,13 @@ Also: rows use `value={`${todo.title} ${todo.id}`}` because titles repeat
 ("Follow up") and cmdk keys selection off `value`. Title comes first because
 cmdk scores the value string.
 
-### 5.3 The create-from-query fallback
+### 6.3 The create-from-query fallback
 
 When a query matches no command and no to-do, `Create to-do "<query>"` files it
 straight into Backlog with a full undo entry. This is the reason search exists
 at all — a dead end should still be one keystroke from being captured.
 
-### 5.4 What is searchable
+### 6.4 What is searchable
 
 **To-dos only.** Lists, labels, projects, and tabs are *not* searched — tabs
 appear as a static switcher group, and the rest have no navigation target. Rows
@@ -160,16 +228,16 @@ that do nothing on Enter are worse than absent rows.
 
 ---
 
-## 6. Known limits
+## 7. Known limits
 
-### 6.1 Commands are JSX, not a registry
+### 7.1 Commands are JSX, not a registry
 
 Every command is inline JSX with an inline `onSelect`. Nothing can enumerate,
 score, reorder, or filter them programmatically. This blocks: command ranking,
 frecency, "recently used", scoped modes, aliases, per-command keywords, and any
 custom filtering that requires `shouldFilter={false}`.
 
-**A command registry is the prerequisite for most of §7.** Shape it roughly as:
+**A command registry is the prerequisite for most of §8.** Shape it roughly as:
 
 ```ts
 interface PaletteCommand {
@@ -183,7 +251,7 @@ interface PaletteCommand {
 }
 ```
 
-### 6.2 Performance
+### 7.2 Performance
 
 `useTodos()` holds **every** to-do in memory and `searchTodos` linearly scans
 them on every keystroke. Synchronous, no debounce, no index. Fine at hundreds of
@@ -191,23 +259,25 @@ rows; it will not hold at tens of thousands. There is no full-text index in
 Dexie — options when it matters: a `multiEntry` token index, an in-memory
 inverted index rebuilt on write, or SQLite FTS5 server-side after sync (P3).
 
-### 6.3 Everything else missing
+### 7.3 Everything else missing
 
 - Result cap is a hard 8 with no "show more" and no pagination.
 - No highlighting of the matched substring in results.
-- No query syntax — no `list:`, `label:`, `is:done`, `due:`.
+- No query syntax for *filtering search results* — no `list:`, `label:`,
+  `is:done`, `due:`. (Not the same thing as §5's quick-add tokens, which
+  apply when *creating* a to-do, not searching for one.)
 - No search of description *content* beyond substring, no markdown awareness.
 - No recent searches, no empty-state suggestions, no zero-result guidance
   beyond the create fallback.
 - Query does not persist across open/close.
-- No actions on a result — Enter opens the sheet, that is all. No "schedule it
-  for tomorrow" without leaving the palette.
+- Row actions are complete/won't-do/delete only (§4) — no "schedule it for
+  tomorrow" or other edits without leaving the palette.
 - Search is client-only and local-first; it must stay that way on the
   interaction path even after sync lands.
 
 ---
 
-## 7. Ideas for a more powerful search
+## 8. Ideas for a more powerful search
 
 Roughly ordered by value-to-effort. Each notes what it depends on.
 
@@ -215,7 +285,7 @@ Roughly ordered by value-to-effort. Each notes what it depends on.
 
 1. **Own the filtering.** Set `shouldFilter={false}` and score both commands and
    results ourselves. Removes the double-filter constraint entirely and unlocks
-   fuzzy matching, token reordering, and honest ranking. *Requires §6.1.*
+   fuzzy matching, token reordering, and honest ranking. *Requires §7.1.*
 2. **Match highlighting.** Bold the matched range in each result. Trivial once
    we own the scorer and it returns match offsets.
 3. **Search lists, labels, projects, tabs.** Needs a destination for each:
@@ -231,33 +301,42 @@ Roughly ordered by value-to-effort. Each notes what it depends on.
    free text is the remainder. Worth a dedicated parser module with its own
    tests (`src/lib/query.ts`), kept pure like `search.ts`.
 6. **Scoped modes** — typing `>` restricts to commands, `#` to labels, `@` to
-   lists, mirroring Slack/Linear. Cheap once there is a registry and a parser.
+   lists, mirroring Slack/Linear. `@` for lists shipped (§5) — but as an
+   inline mention that resolves to a hidden field on a to-do being created,
+   not a mode that restricts the whole palette to a list-picker. `>`/`#` as
+   described here are still open. Cheap once there is a registry and a parser.
 7. **Ranking on more than text** — frecency (recently opened, frequently
    opened), deadline proximity, current tab first. Needs a small usage-log
    table, or reuse of `updatedAt`/`completedAt`.
 
 ### Tier 3 — scale and polish
 
-8. **Indexed search** — see §6.2. Only worth it with real data volume;
+8. **Indexed search** — see §7.2. Only worth it with real data volume;
    measure first.
 9. **Saved searches / smart lists** — a saved query rendered as a column. This
-   is a product feature, not a search feature, but it falls out of §5 for free.
+   is a product feature, not a search feature, but it falls out of §6 for free.
 10. **Semantic search** — embeddings over titles + descriptions. Only sensible
     post-sync (P3) with a server to compute them; must degrade to lexical
     search offline.
 
 ---
 
-## 8. Testing
+## 9. Testing
 
-Two layers, both required:
+Three layers, all required:
 
 - **`src/lib/search.test.ts`** — pure matcher. Node environment, no DOM. Tier
   ordering, status ordering, recency tiebreak, soft-delete exclusion, limit.
+- **`src/lib/quick-add.test.ts`** / **`src/lib/mention.test.ts`** — pure,
+  §5's token grammar and `@` trigger detection. Not palette-specific, but
+  the palette's behavior is only as correct as these.
 - **`src/components/board/command-palette.test.tsx`** — happy-dom, asserts on
   what actually reaches the DOM. This layer is not optional: the matcher can be
   perfectly correct while cmdk scores the row to zero and hides it. Any new
-  matcher behaviour needs a DOM test proving it survives cmdk.
+  matcher behaviour needs a DOM test proving it survives cmdk. The
+  `"CommandPalette — @list mention"` block covers §5: the popover opening in
+  both root and `New to-do` modes, selection stripping the token and showing
+  the chip, and the no-match case staying closed.
 
 Conventions: `// @vitest-environment happy-dom` pragma on line 1, explicit
 imports from `vitest` (no globals), explicit `afterEach(cleanup)`, plain
@@ -269,7 +348,7 @@ target; palette work must stay client-only.
 
 ---
 
-## 9. Gotchas that have already bitten
+## 10. Gotchas that have already bitten
 
 - **`CommandDialog` does not wrap children in `<Command>`.** shadcn renders them
   straight into `DialogContent`, so the `<Command>` must be established manually
@@ -281,3 +360,55 @@ target; palette work must stay client-only.
   this class of crash — open the surface in the test.
 - **cmdk hides non-matching items by unmounting them**, so `queryByText` on a
   filtered-out row correctly returns null. Useful for assertions.
+- **cmdk's root, not `CommandInput`, owns ArrowUp/ArrowDown/Enter** — it
+  listens on the `cmdk-root` div, and its source explicitly skips its own
+  switch statement when `e.defaultPrevented` is already true (not
+  documented; read the source). React bubbles one synthetic event
+  target-to-root, and `CommandInput` is the deeper element, so
+  `e.preventDefault()` inside `CommandInput`'s own `onKeyDown` — which fires
+  first — is enough to suppress cmdk's reaction. `e.stopPropagation()` is
+  not needed. This is what lets the §5 mention popover own arrow keys while
+  it's open without a fight over the same keystroke; assume the same trick
+  works for any future keydown-intercepting feature on this input.
+- **`CommandInput` didn't forward its `ref` before §5 needed one.** If a
+  future feature needs the DOM node again, it's already wired — but if
+  `ui/command.tsx` ever gets a second consumer, re-check that forwarding a
+  ref there doesn't collide with something that component also needs a ref
+  for.
+- **`TodoCard` cannot be rendered inside the palette.** Tried when adding
+  card-shaped result rows (§4). Three separate reasons:
+  - It calls `useSortable({ id: todo.id })` unconditionally — `draggable={false}`
+    only drops the grip and cursor classes, it does not gate the hook. The
+    palette renders *inside* the board's `<DndContext>`
+    (`board.tsx`, opened well before `<CommandPalette>` and closed after it —
+    `<DaySheet>` is deliberately mounted *outside* it for the same reason, see
+    the comment at its call site). A second `useSortable` registration under
+    an id the board already owns silently replaces the real card's dnd-kit
+    entry for as long as the palette stays open.
+  - The card nests a `<button>` (title), a `Checkbox`, and a grip `<button>`
+    inside what would need to be a `CommandItem` — itself a selectable row
+    with its own `onSelect`. Nested interactive controls swallow clicks before
+    cmdk's selection sees them.
+  - The card owns arrow keys via `onNavigate`/`data-nav-stop`; cmdk owns arrow
+    keys for its own list navigation.
+
+  Fix was to factor the presentational pieces — priority rail, deadline/
+  location/recurrence markers, label/date badges — out into
+  `todo-row-parts.tsx` and have both `TodoCard` and the palette's result rows
+  consume them. Same look, none of the card's drag/nav machinery.
+- **The highlighted result for row actions is read off the DOM, not from a
+  controlled `<Command value>`.** `listRef.current.querySelector('[cmdk-item][aria-selected="true"]')`
+  mirrors cmdk's own internal lookup. Controlling `value` was tempting but
+  wrong: cmdk only auto-selects the first item when `value` is *unset* — a
+  controlled value that stops matching any rendered item (e.g. after a status
+  change removes/re-sorts rows) would leave nothing selected instead of
+  falling back. The `e.preventDefault()` trick two bullets up is what keeps
+  `⌘⏎` from also firing cmdk's own Enter-selects-the-highlighted-row
+  behavior.
+- **`CommandList` isn't wrapped in `forwardRef`, and doesn't need to be.**
+  React 19 passes `ref` as a plain prop to function components; `CommandList`
+  spreads `...props` onto cmdk's (still-`forwardRef`'d) `List`, so
+  `<CommandList ref={listRef}>` reaches the DOM node with no change to
+  `ui/command.tsx`. Same caveat as the `CommandInput` bullet above: if this
+  component gains logic that reads its own props more explicitly, re-check
+  that `ref` still passes through the spread.

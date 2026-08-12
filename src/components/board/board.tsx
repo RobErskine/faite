@@ -55,7 +55,8 @@ import {
   type NavItem,
 } from "@/lib/column-nav";
 import { positionForIndex } from "@/lib/ordering";
-import { OVERFLOW, addDays, daysBetween, formatDay, todayIn } from "@/lib/scheduling";
+import { OVERFLOW, addDays, daysBetween, formatDay, formatShortDate, todayIn } from "@/lib/scheduling";
+import { parseQuickAdd } from "@/lib/quick-add";
 import { expandRecurrences, isRecurrenceTemplate } from "@/lib/recurrence-expand";
 import {
   nextOccurrenceAfter,
@@ -1025,6 +1026,25 @@ export function Board() {
   const backlogList = useMemo(() => lists.find((l) => l.isBacklog), [lists]);
 
   /**
+   * Quick-add's "@list" mention candidates, color-resolved up front — a list
+   * without its own color falls back to its tab's, the same rule `accentColor`
+   * applies at each `BoardColumn` call site below. Resolved here rather than
+   * inside `BoardColumn` because a mention list can belong to ANY tab, not
+   * just the active one, so the fallback needs the full `tabsById` map, not
+   * just `activeTabRecord`.
+   */
+  const tabsById = useMemo(() => new Map(tabs.map((t) => [t.id, t])), [tabs]);
+  const mentionLists = useMemo(
+    () =>
+      lists.map((list) => ({
+        id: list.id,
+        name: list.name,
+        color: list.color ?? (list.tabId ? (tabsById.get(list.tabId)?.color ?? null) : null),
+      })),
+    [lists, tabsById],
+  );
+
+  /**
    * Every place the arrow keys can put focus, as a grid — see
    * `lib/column-nav.ts` and docs/KEYBOARD.md §11.
    *
@@ -1651,17 +1671,48 @@ export function Board() {
   );
 
   const handleQuickAdd = useCallback(
-    async (title: string, target: { listId?: string; day?: string }) => {
+    async (
+      input: string,
+      target: { listId?: string; day?: string },
+      /** Set when the quick-add row's "@list" mention resolved one — see
+       * `board-column.tsx`. Overrides `target.listId` the same way a parsed
+       * date token overrides `target.day` below: what the user explicitly
+       * named beats the column they happened to be typing in. */
+      mentionedListId?: string,
+    ) => {
+      // Quick-add rows only render once `ctx` is loaded (the `!ctx` early
+      // return below gates the whole board), so this never actually fires
+      // null — the guard is here purely so the closure typechecks.
+      if (!ctx) return;
+      const parsed = parseQuickAdd(input, ctx.today);
+      const listId = mentionedListId ?? target.listId ?? null;
+      // An explicit date token beats the column it was typed into — the user
+      // said Friday. Only falls back to `target.day` (a day column drop) when
+      // nothing was parsed.
+      const scheduledDate = parsed.scheduledDate ?? target.day ?? null;
       // The only action that has to record AFTER the write, because the id it
       // needs to undo does not exist until then.
       const id = await createTodo({
-        title,
-        listId: target.listId ?? null,
-        scheduledDate: target.day ?? null,
+        title: parsed.title,
+        listId,
+        scheduledDate,
+        deadline: parsed.deadline,
+        priority: parsed.priority,
+        reminderTime: parsed.reminderTime,
       });
-      pushUndo(`Added “${short(title)}”`, [createUndoStep("todo", id)]);
+      // Name where it landed whenever a token or mention moved it off the
+      // column it was typed into — a card leaving its column is otherwise silent.
+      const parts: string[] = [];
+      if (scheduledDate && scheduledDate !== target.day) parts.push(formatShortDate(scheduledDate));
+      if (mentionedListId && mentionedListId !== (target.listId ?? null)) {
+        parts.push(listsById.get(mentionedListId)?.name ?? "another list");
+      }
+      const label = parts.length
+        ? `Added “${short(parsed.title)}” · ${parts.join(" · ")}`
+        : `Added “${short(parsed.title)}”`;
+      pushUndo(label, [createUndoStep("todo", id)]);
     },
-    [],
+    [ctx, listsById],
   );
 
   /**
@@ -2060,7 +2111,10 @@ export function Board() {
                     emphasis={isToday}
                     onToggle={handleToggle}
                     onOpen={(todo) => openTodoSheet(todo.id)}
-                    onQuickAdd={(title) => void handleQuickAdd(title, { day: column.day })}
+                    onQuickAdd={(title, listId) =>
+                      void handleQuickAdd(title, { day: column.day }, listId)
+                    }
+                    lists={mentionLists}
                     onNavigate={navigate}
                     isDragActive={!!activeTodo}
                     overTodoId={overTodoId}
@@ -2148,9 +2202,10 @@ export function Board() {
                 awayTodoIds={board.awayTodoIds}
                 onToggle={handleToggle}
                 onOpen={(todo) => openTodoSheet(todo.id)}
-                onQuickAdd={(title) =>
-                  void handleQuickAdd(title, { listId: backlogColumn.list.id })
+                onQuickAdd={(title, listId) =>
+                  void handleQuickAdd(title, { listId: backlogColumn.list.id }, listId)
                 }
+                lists={mentionLists}
                 onNavigate={navigate}
                 minRows={5}
                 isDragActive={!!activeTodo}
@@ -2227,9 +2282,10 @@ export function Board() {
                     awayTodoIds={board.awayTodoIds}
                     onToggle={handleToggle}
                     onOpen={(todo) => openTodoSheet(todo.id)}
-                    onQuickAdd={(title) =>
-                      void handleQuickAdd(title, { listId: column.list.id })
+                    onQuickAdd={(title, listId) =>
+                      void handleQuickAdd(title, { listId: column.list.id }, listId)
                     }
+                    lists={mentionLists}
                     onNavigate={navigate}
                     minRows={5}
                     isDragActive={!!activeTodo}
@@ -2326,6 +2382,7 @@ export function Board() {
 
       <TodoSheet
         todo={openTodo}
+        today={ctx.today}
         lists={lists}
         tabs={tabs}
         labels={labels}
@@ -2383,11 +2440,15 @@ export function Board() {
         // `visibleTodos`: a virtual recurrence occurrence is not a distinct
         // record to find, and a template renders nowhere for search to open.
         todos={nonTemplateTodos}
+        labels={labels}
+        recurrenceSummaries={recurrenceSummaries}
         tabs={tabs}
         settings={settings}
         activeTabId={activeTabId}
         onSelectTodo={(todo) => openTodoSheet(todo.id)}
         onSelectTab={selectTab}
+        onSetTodoStatus={handleSheetStatus}
+        onDeleteTodo={handleDelete}
       />
 
       <SessionProvider />
