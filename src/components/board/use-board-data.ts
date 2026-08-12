@@ -77,7 +77,7 @@ export interface UseBoardDataParams {
   horizon: number;
   cap: number;
   /**
-   * `useViewport()`'s layout class (mobile plan P3) — the ONE read-time
+   * `useViewport()`'s layout class (mobile plan M3) — the ONE read-time
    * override this hook makes, never a write: a collapsed weekend strip is a
    * 40px sliver that reads fine next to six other columns, and reads as
    * broken as an entire full-bleed pager page. `collapsingWeekends` below

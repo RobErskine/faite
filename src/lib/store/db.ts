@@ -53,7 +53,7 @@ export class FaiteDatabase extends Dexie {
     this.version(3).stores({
       todos: "id, listId, projectId, scheduledDate, status, position, deletedAt, recurrenceParentId",
     });
-    // Saved locations (`lib/schema.ts`'s `placeSchema`) — scaffold (P6.5), no
+    // Saved locations (`lib/schema.ts`'s `placeSchema`) — scaffold, no
     // Google Places lookup wired up yet. `placeId` indexed on todos so
     // `deletePlace` can find (and clear) every todo pointing at it, the same
     // pattern `deleteLabel` uses for `labelIds`.

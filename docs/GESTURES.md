@@ -1,6 +1,6 @@
 # Gestures — the phone pager's touch model
 
-How `PhoneBoard` (`src/components/board/phone-board.tsx`, mobile plan P3)
+How `PhoneBoard` (`src/components/board/phone-board.tsx`, mobile plan M3)
 turns raw touch input into page-swiping and per-column scrolling, and why it's
 built on native CSS scroll-snap rather than a JS carousel library. See
 `docs/MOBILE.md` §9–10 for the surrounding plan and phase history; this

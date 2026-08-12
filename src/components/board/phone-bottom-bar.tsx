@@ -8,7 +8,7 @@ interface PhoneBottomBarProps {
 }
 
 /**
- * The phone shell's mode switch (mobile plan P3) — declined the literal
+ * The phone shell's mode switch (mobile plan M3) — declined the literal
  * "swipe up/down between lists/day views" request in favor of this: any
  * vertical PAGING gesture either steals the primary reading scroll axis
  * (unusable while a column has any cards in it) or only fires at a scroll

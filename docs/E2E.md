@@ -8,7 +8,7 @@ look arbitrary but were arrived at by hitting the alternative first.
 
 ## 1. Why this exists
 
-Written as **P-1** of the mobile-responsive plan, before any mobile UI work,
+Written as **M-1** of the mobile-responsive plan, before any mobile UI work,
 specifically so the P2 extraction of `board.tsx` (2574 lines, no
 `board.test.tsx`) has a real regression net instead of just `tsc`. It runs
 against **today's unmodified desktop-only layout** and is meant to keep
@@ -98,7 +98,7 @@ flags). Two todo rows barely fit at all, and the reorder failed there
 consistently across a generous drop target and multiple repeats — not a
 locator bug, but the two-half board genuinely not working in that
 orientation on today's layout. That's real signal, not a harness bug: it's
-exactly the case the mobile plan's P3 phone shell has to fix, and
+exactly the case the mobile plan's M3 phone shell has to fix, and
 re-enabling this assertion once it exists is one way to prove it did.
 
 ## 4. Selector conventions

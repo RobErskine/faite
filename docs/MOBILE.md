@@ -2,8 +2,13 @@
 
 **Self-contained handoff.** Everything needed to continue the mobile work on
 Faite without re-deriving it. This is a living document, updated as each
-phase ships — read the phase table below before assuming anything past P0
+phase ships — read the phase table below before assuming anything past M0
 exists yet.
+
+> **Numbering.** This document's phases are **M-1…M6** — a separate axis from
+> the product roadmap's **P0…P7** (`docs/ARCHITECTURE.md` §7). They are not a
+> continuation of each other and they do not line up: M3 is the phone shell,
+> P3 was sync v0. A bare "P<n>" anywhere in this file means the roadmap phase.
 
 ---
 
@@ -27,8 +32,8 @@ mini portrait at 744px fits rail + two columns).
 ## 2. Layout classes
 
 ```
-phone   width < 640    — new IA: PhoneBoard, a scroll-snap pager (P3)
-tablet  640–1023       — existing two-half board, touch-tuned (P1)
+phone   width < 640    — new IA: PhoneBoard, a scroll-snap pager (M3)
+tablet  640–1023       — existing two-half board, touch-tuned (M1)
 desktop width >= 1024  — unchanged
 ```
 
@@ -53,25 +58,25 @@ desktop/fine/hoverable (correct for every route this app ships outside the
 board, and `/board` itself is `ssr:false` so the server snapshot is never
 actually shown for it).
 
-**`coarse` is consumed as of P1** — `board.tsx` reads it to tune
+**`coarse` is consumed as of M1** — `board.tsx` reads it to tune
 `TouchSensor`'s `activationConstraint` and gate the haptic nudge on drag
 start (see `docs/DRAG-AND-DROP.md` §4.9b). That's a behavior parameter, not a
 render branch, so it didn't need the `board.tsx` extraction to be safe: no
 duplicate `DndContext`/sheet mounts, no risk of the id-keyed-droppable-map
 bug. **`layout` is still unconsumed** — branching the actual render tree on
-it is still P2/P3's job, after the extraction gives it a seam to branch from.
+it is still M2/M3's job, after the extraction gives it a seam to branch from.
 
 **`?layout=phone` (or `tablet`/`desktop`) on any URL forces the layout
 class**, read once per navigation. This is the difference between testing
 the phone shell in a desktop browser tab and needing a physical device for
-every check — use it liberally once P3 exists. Tested in
+every check — use it liberally once M3 exists. Tested in
 `src/lib/use-viewport.test.ts`; still not covered in `e2e/` — `coarse` being
 consumed doesn't change that `layout` itself still drives no DOM effect to
 observe.
 
 ## 3. Hover-affordance and coarse-pointer variants
 
-**Corrected in P1** — P0 originally defined three custom variants
+**Corrected in M1** — M0 originally defined three custom variants
 (`hoverable`, `touch`, `coarse`); two were redundant and have been removed.
 Compiling this stylesheet and reading Tailwind's own output settled it:
 v4 already wraps `hover:`/`group-hover:` in `@media (hover: hover)` (so a
@@ -88,7 +93,7 @@ cover needed a custom variant:
 (`src/app/globals.css`, beside `@custom-variant dark`.) Nothing native
 provides "show this unconditionally on a device that can never hover" — the
 fallback a `group-hover:`-revealed control needs on touch. Use native
-`pointer-coarse:`/`pointer-fine:` for hit-target sizing (P1 uses this
+`pointer-coarse:`/`pointer-fine:` for hit-target sizing (M1 uses this
 throughout) and leave every existing `hover:`/`group-hover:` alone; they
 were already correct.
 
@@ -100,7 +105,7 @@ override leaves the loser silently in the DOM rather than deduped away.
 Always use the axis-specific form for any inset-based hit-area expansion,
 matching what's already there.
 
-P1 applies `touch:opacity-100` to the four hover-only reveals that break
+M1 applies `touch:opacity-100` to the four hover-only reveals that break
 discoverability on touch without it: the card drag grip (`todo-card.tsx`),
 the tab info button and tab drag grip (`tab-strip.tsx` — the grip is
 currently the *only* way to reorder tabs, so this one is a real gap, not
@@ -128,7 +133,7 @@ without real hardware, and the intent is stated once. **Resolve to 0 without
 vars, and it's easy to add the vars and forget the export that makes them
 non-zero.
 
-**`--safe-bottom` is consumed as of P3** — `PhoneBottomBar`'s root carries
+**`--safe-bottom` is consumed as of M3** — `PhoneBottomBar`'s root carries
 `pb-(--safe-bottom)`, so the Days/Lists switch clears a home-indicator bar
 rather than sitting under it. **`--safe-top`/`--safe-left`/`--safe-right`
 are still unconsumed.** `AppHeader` (compact or not) is a fixed `h-12` with
@@ -215,8 +220,8 @@ protect and no reason to opt out of the platform default.
 
 ## 8. Phase status
 
-**Paused after P3, deliberately.** P0–P3 are merged and deployed — the app is
-genuinely usable on phone and tablet, including gesture paging. P4 onward
+**Paused after M3, deliberately.** M0–M3 are merged and deployed — the app is
+genuinely usable on phone and tablet, including gesture paging. M4 onward
 (adaptive overlays, mobile-only QOL affordances like a lists overview or a
 which-days-have-tasks view) is intentionally on hold while the desktop core
 experience is still being iterated on. Reasoning: those features are
@@ -231,14 +236,14 @@ everything.
 
 | Phase | Scope | Status |
 |---|---|---|
-| **P-1** | Playwright E2E harness — desktop/tablet/phone projects, Tier A structural contract, Tier B real touch via CDP | **Shipped.** See docs/E2E.md. |
-| **P0** | `viewport` export, safe-area vars, manifest + placeholder icons, `@custom-variant`s, `use-viewport.ts` + `?layout=` override, `overscroll-none`, static-export entry fix | **Shipped.** This document. |
-| **P1** | Touch remediation on the *existing* desktop layout — the 4 hover-only reveals, `buttonVariants`/`SelectTrigger`/tab-pill coarse sizes, checkbox/resize-handle `::after` hit areas, coarse-tuned dnd-kit sensors + haptic, guard test | **Shipped.** §3, §9, `docs/DRAG-AND-DROP.md` §4.9b. |
-| **P2** | Extract `board.tsx` (2574 lines, no `board.test.tsx`) into `use-board-data`/`use-board-ui-state`/`use-board-actions` + a `DesktopBoard` seam | **Shipped.** See docs/ARCHITECTURE.md §4. |
-| **P3** | The phone shell — scroll-snap pager, bottom segmented control (Days / Lists), compact header, `layout` (the other half of `useViewport()`) finally consumed | **Shipped.** §10. |
-| **P4** | Adaptive overlays — `adaptive-sheet.tsx` swapping `Sheet`↔`Drawer` by layout, full-screen command palette on phone, row `⋯` action sheet (there is no per-row delete today — only in the TodoSheet footer and ⌘K) | Not started |
-| **P5** | `mention-menu.tsx` → `@floating-ui/react`, BlockNote-on-touch audit | Not started |
-| **P6** | Optional: `Drawer.SwipeArea` swipe-up-for-Lists, `Drawer.Indent` | Not started |
+| **M-1** | Playwright E2E harness — desktop/tablet/phone projects, Tier A structural contract, Tier B real touch via CDP | **Shipped.** See docs/E2E.md. |
+| **M0** | `viewport` export, safe-area vars, manifest + placeholder icons, `@custom-variant`s, `use-viewport.ts` + `?layout=` override, `overscroll-none`, static-export entry fix | **Shipped.** This document. |
+| **M1** | Touch remediation on the *existing* desktop layout — the 4 hover-only reveals, `buttonVariants`/`SelectTrigger`/tab-pill coarse sizes, checkbox/resize-handle `::after` hit areas, coarse-tuned dnd-kit sensors + haptic, guard test | **Shipped.** §3, §9, `docs/DRAG-AND-DROP.md` §4.9b. |
+| **M2** | Extract `board.tsx` (2574 lines, no `board.test.tsx`) into `use-board-data`/`use-board-ui-state`/`use-board-actions` + a `DesktopBoard` seam | **Shipped.** See docs/ARCHITECTURE.md §4. |
+| **M3** | The phone shell — scroll-snap pager, bottom segmented control (Days / Lists), compact header, `layout` (the other half of `useViewport()`) finally consumed | **Shipped.** §10. |
+| **M4** | Adaptive overlays — `adaptive-sheet.tsx` swapping `Sheet`↔`Drawer` by layout, full-screen command palette on phone, row `⋯` action sheet (there is no per-row delete today — only in the TodoSheet footer and ⌘K) | Not started |
+| **M5** | `mention-menu.tsx` → `@floating-ui/react`, BlockNote-on-touch audit | Not started |
+| **M6** | Optional: `Drawer.SwipeArea` swipe-up-for-Lists, `Drawer.Indent` | Not started |
 
 ## 9. Decisions already made (don't relitigate)
 
@@ -248,7 +253,7 @@ everything.
   (misfires constantly, unreachable on a short column). Landed on: a bottom
   segmented control (Days | Lists, `phone-bottom-bar.tsx`) — with vertical
   meaning "scroll" everywhere, always. `Drawer.SwipeArea` swipe-up-from-the-bar
-  is a P6 *optional* layer on top, not a replacement.
+  is a M6 *optional* layer on top, not a replacement.
   **Correction from the original plan:** this switch is a plain local
   `useState` (`phoneView` in `use-board-ui-state.ts`), NOT
   `settings.splitCollapsed` as originally sketched — `splitCollapsed` is in
@@ -268,7 +273,7 @@ everything.
   (`{delay: 250, tolerance: 8}`, `board.tsx` sensors) already owns
   horizontal touch gesture priority on every row, and the browser commits
   the scroll axis at `touchmove` before any JS gets to decide otherwise — a
-  card can't cede X to a pager AND claim it for a swipe action. P4's row `⋯`
+  card can't cede X to a pager AND claim it for a swipe action. M4's row `⋯`
   action sheet is the replacement: strictly better for a *destructive*
   action anyway (discoverable, keyboard/AT-accessible, testable) than a
   hidden gesture would have been.
@@ -279,7 +284,7 @@ everything.
   phone once permanently mangles the desktop layout on every other device.
   No type-system trick catches this — it's a review checklist item.
 
-## 10. P3 — the phone shell
+## 10. M3 — the phone shell
 
 `phone-board.tsx` renders exactly one of two full-width scroll-snap pagers at
 a time (`ui.phoneView`, §9): a Days pager (Overflow, then each day column)

@@ -29,7 +29,7 @@ interface DateNavProps {
   onJumpToDate: (target: number) => void;
   onToday: () => void;
   /**
-   * The phone shell's context bar (`phone-board.tsx`, mobile plan P3). Drops
+   * The phone shell's context bar (`phone-board.tsx`, mobile plan M3). Drops
    * `ViewSettings` (the day-count toggle is moot — the pager always shows
    * one) and the Quarter/Month/Week jump buttons, which don't fit at phone
    * width and duplicate what a swipe already does faster. Range label,

@@ -212,11 +212,27 @@ export const todoSchema = z.object({
   position: z.string(),
 
   /**
-   * Reserved for P6 recurrence: an RRULE string on a template row, with
-   * occurrences materialised lazily over the visible window. Declared now so
-   * the field exists before sync starts and does not require a migration.
+   * The repeat rule, as a versioned JSON blob — **not** an RRULE. See
+   * `lib/recurrence.ts` for the schema and the reasoning: RRULE's only
+   * advantage is interop, and that is gone the moment `anchor: "completed"`
+   * needs a non-standard extension.
+   *
+   * Stored verbatim as one field on purpose. `anchor` lives INSIDE the blob
+   * rather than as a sibling column so the whole rule moves as a single unit
+   * under field-level LWW — split across two fields, device A's anchor edit
+   * could merge with device B's interval edit into a schedule neither user
+   * asked for.
    */
   recurrenceRule: z.string().nullable().default(null),
+  /**
+   * Series linkage: the todo this occurrence was materialised from. Set on
+   * the origin todo too, so a freshly created series shows its repeat
+   * immediately rather than only from the second occurrence on.
+   *
+   * There is no exceptions table — occurrences are materialised on touch
+   * (`lib/recurrence-expand.ts`) over the visible window, so there is no
+   * pre-generated row to except.
+   */
   recurrenceParentId: idSchema.nullable().default(null),
 
   completedAt: z.string().nullable().default(null),
@@ -272,7 +288,7 @@ export type DayNote = z.infer<typeof dayNoteSchema>;
  * nickname ("Home", "Gym", "Mother-in-law's"), so it can be recalled by
  * that name instead of retyped.
  *
- * SCAFFOLD ONLY (P6.5) — this is the data model and sync plumbing, with no
+ * SCAFFOLD ONLY — this is the data model and sync plumbing, with no
  * Google Places lookup wired up yet. `googlePlaceId`/`lat`/`lng` are
  * populated once that lands (see `docs/GOOGLE-PLACES-SETUP.md`); until then
  * every place is entered by hand via `name`/`address` alone, exactly like

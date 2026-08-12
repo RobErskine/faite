@@ -9,7 +9,7 @@ import { usePlaces } from "@/lib/store/hooks";
 import { createPlace, deletePlace } from "@/lib/store/repositories";
 
 /**
- * Saved locations manager — SCAFFOLD (P6.5). Every place here is entered by
+ * Saved locations manager — SCAFFOLD. Every place here is entered by
  * hand: name (the nickname — "Home", "Gym") and address (whatever text the
  * user types). There is no Google Places typeahead wired up yet; see
  * `docs/GOOGLE-PLACES-SETUP.md` for what that would take.

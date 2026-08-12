@@ -101,7 +101,14 @@ Plan of record: `~/.claude/plans/please-check-this-image-starry-eich.md`
   P3 data-loss fixes that had never reached production). Cloudflare version
   17 (`3b7e83fa`), 2026-08-06 15:07 UTC. Live at https://myfaite.app
 
+> **The phase blocks below are the plan. The `Review —` sections further down
+> are the live record of what actually shipped.** When the two disagree, the
+> Review sections and `docs/` win. Last reconciled against Linear and `main`
+> on 2026-08-12.
+
 ## P5 — API + docs
+**Status: not started.** The only untouched phase, and now the largest single
+piece of remaining work.
 - [ ] Zod → OpenAPI, tokens, rate limits (EI-50) — **read `docs/API.md`
   first.** The load-bearing constraint: a REST/MCP write is not a database
   write, it is a *push*. Skip `sync_meta`'s version allocation and no device
@@ -121,18 +128,47 @@ Plan of record: `~/.claude/plans/please-check-this-image-starry-eich.md`
   that already has data.
 
 ## P6 — Fast follow
-- [ ] Projects + views · sub-tasks · recurrence (RRULE + exceptions)
 - [x] Priority 1–4 — editable since P1/P2, now also visible on the card (chip,
       pulled forward as EI-56's tail)
 - [x] List tabs (pulled forward — grouping, color, drag-sort, cross-tab carry)
 - [x] Location — editable since P1/P2, now also visible on the card (chip)
-- [ ] Markdown descriptions — punted on purpose; dropped the "Markdown
-      supported" placeholder promise instead of adding a dependency (EI-56,
-      unattended-session call, see Review below)
-- [ ] Search/saved views · icon upload
-- [ ] Magic-link auth (Google moved into P2)
+- [x] Markdown descriptions (EI-56) — the earlier "punted on purpose" call was
+      reversed: `components/ui/markdown-field.tsx` wraps BlockNote and backs
+      both `todo.description` and `dayNote.body`. Markdown stays the *stored*
+      format.
+- [x] Recurrence (EI-54) — **not RRULE.** A versioned JSON rule blob in
+      `Todo.recurrenceRule`, `anchor` inside the blob, occurrences materialized
+      on touch, no exceptions table. See `lib/recurrence.ts`.
+- [x] Saved places (EI-63) — shipped additively as the `place` kind;
+      `Todo.location` free text is UNCHANGED, `placeId` sits alongside it, so
+      the `location`→`locationId` LWW fork never has to happen. Google
+      typeahead split out to EI-83.
+- [x] Day notes + derived activity timeline (EI-87) — `dayNote`, the 7th sync
+      kind, deterministic id `daynote:YYYY-MM-DD`.
+- [x] Foreground reminders (EI-88) · resizable board split (EI-89) · board view
+      settings (EI-90) · ⌘K overhaul (EI-92)
+- [ ] Sub-tasks (EI-55) — `Todo.parentId` is reserved in the schema; no UI, no
+      logic. Deliberately not started.
+- [ ] Saved views (EI-65) — distinct from the view-settings dropdown that
+      shipped as EI-90.
+- [ ] Icon upload · magic-link auth (EI-66; Google moved into P2)
+- [ ] Palette command registry (EI-77) · shortcut help sheet (EI-75) · dnd-kit
+      screen-reader announcements (EI-84)
+
+## Mobile & responsive — M-1…M6 (separate axis, see `docs/MOBILE.md`)
+Numbered M, not P, on purpose: these do NOT line up with the roadmap phases
+above. M3 is the phone shell; P3 was sync v0.
+- [x] M-1 Playwright E2E harness (EI-85) — 5 device projects, real touch via
+      CDP, runs in CI
+- [x] M0 foundations · M1 touch remediation · M2 `board.tsx` extraction ·
+      M3 phone shell (EI-86)
+- [ ] M4 adaptive overlays · M5 `@floating-ui` mention menu + BlockNote-on-touch
+      audit · M6 optional swipe-up drawer — paused deliberately
 
 ## P7 — Capacitor + MCP
+Not started, but substantially pre-paid: the static-export app-shell entry,
+safe-area vars, `useViewport()`, and the E2E harness all landed with the mobile
+work.
 
 ## Review — P0
 

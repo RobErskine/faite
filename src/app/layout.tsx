@@ -42,7 +42,7 @@ export const viewport: Viewport = {
   viewportFit: "cover",
   // Shrinks the layout viewport when a software keyboard opens instead of
   // overlaying it, so `100dvh` inside an open TodoSheet/DaySheet actually
-  // means "the space left above the keyboard" (P4 in the mobile plan).
+  // means "the space left above the keyboard" (M4 in the mobile plan).
   interactiveWidget: "resizes-content",
   themeColor: [
     // Matches --background in globals.css: oklch(1 0 0) light / oklch(0.145

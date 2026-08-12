@@ -293,10 +293,10 @@ export function Board() {
       <Hotkeys registry={hotkeys} context={guardContext} />
 
       {/*
-        The mobile plan's P3 branch point — `layout` finally drives what
+        The mobile plan's M3 branch point — `layout` finally drives what
         renders. `tablet` gets `DesktopBoard` unchanged: the existing
         two-half board already fits at iPad-mini portrait (744px), so it
-        only needed P1's touch remediation, not a new layout. Every prop
+        only needed M1's touch remediation, not a new layout. Every prop
         below is identical between the two — both take exactly `data`/`ui`/
         `actions` plus the day-track values the shell hoists (see this
         file's own doc comment for why `dayTrackRef`/`navigate` live here

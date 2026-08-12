@@ -19,7 +19,7 @@ import type { NavigateFn } from "./use-column-nav";
 import type { ReadyBoardData } from "./desktop-board";
 
 /**
- * The phone shell (mobile plan P3) — one full-width column at a time, paged
+ * The phone shell (mobile plan M3) — one full-width column at a time, paged
  * through with native CSS scroll-snap rather than a JS carousel. See
  * docs/GESTURES.md for why scroll-snap specifically (dnd-kit's droppable
  * rect correction needs a real `scrollLeft`, which a transform-based

@@ -28,7 +28,7 @@ interface AppHeaderProps {
   /** Raw Dexie row; undefined until the store has read it. */
   settings: SettingsRow | undefined;
   /**
-   * The phone shell (`phone-board.tsx`, mobile plan P3). Swaps the search
+   * The phone shell (`phone-board.tsx`, mobile plan M3). Swaps the search
    * FIELD (text label + ⌘K kbd hint, sized for a pointer that can read "Search
    * or run a command…" in passing) for a search ICON — there's no room for
    * the field at phone width, and ⌘K itself is a desktop-keyboard shortcut

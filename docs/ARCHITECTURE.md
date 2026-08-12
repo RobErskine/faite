@@ -623,7 +623,7 @@ src/
     user-do.ts                UserDurableObject skeleton — filled in at P3
 ```
 
-**`board.tsx` was a single 2574-line component until the mobile plan's P2**
+**`board.tsx` was a single 2574-line component until the mobile plan's M2**
 (docs/MOBILE.md), extracted into the four files above. The split follows the
 real dependency graph rather than an artificial "pure data, zero inputs"
 ideal — several of `use-board-data.ts`'s derivations (`overTodoId`,
@@ -764,23 +764,41 @@ that build fails immediately instead of at P7 when it would be a rewrite.
 | P2 | Better Auth on D1 — email/password, GitHub + Google OAuth | **shipped and live** |
 | P3 | Sync v0 — per-user DO, HLC LWW, polling | **done, including transport** — see `docs/SYNC.md` |
 | P4 | Sync v1 — WebSocket push, hibernation | **shipped and live** |
-| P5 | API + OpenAPI docs | next up (EI-50) |
-| P6 | Fast follow (see below) | in progress |
-| P7 | Capacitor + MCP | not started |
+| P5 | API + OpenAPI docs | **not started** — the only untouched phase (EI-50) |
+| P6 | Fast follow (see below) | mostly shipped; see the split below |
+| P7 | Capacitor + MCP | not started, but substantially pre-paid |
+
+**A second axis runs alongside this one.** Mobile/responsive work is numbered
+**M-1…M6** in `docs/MOBILE.md` and is deliberately NOT a continuation of these
+phases — M3 is the phone shell, P3 was sync v0. M-1 through M3 are shipped and
+deployed; M4 onward is on hold. A bare "P<n>" in this repo always means the
+roadmap phase above.
 
 **P3 was the milestone that mattered most** — the app syncs between a work and
 a personal machine, verified on two real browsers. P4 then swapped the
 transport to WebSockets against the same semantics, also verified live.
 
+**P5 is now the largest single piece of remaining work.** Nothing of it exists:
+no `/api/v1`, no generated OpenAPI document, no tokens. `docs/API.md` is a
+design brief, not a spec, and names the constraint to read first — a REST write
+is a *push*, not a database write.
+
 **Projects is retired in favour of labels** as the cross-cutting organizing
-primitive (see §2.14, EI-62) — no longer part of P6 scope.
+primitive (see §2.14, EI-62) — no longer part of P6 scope. Note that `project`
+is still in `SYNC_KINDS` as of this writing; EI-62's retirement half is open.
 
-**P6 fast-follow, in priority order:** sub-tasks, recurrence (RRULE template +
-lazily materialized occurrences + exceptions table), locations library, saved
-views, icon upload, magic-link auth (Google moved into P2 — see §2.12).
+**P6 fast-follow — shipped:** recurrence (EI-54 — a versioned JSON rule blob,
+**not** RRULE, and no exceptions table; see `lib/recurrence.ts`), saved places
+(EI-63, additive — `Todo.location` was never migrated to a reference), day
+notes + derived timeline (EI-87), foreground reminders (EI-88), resizable board
+split (EI-89), board view settings (EI-90), the ⌘K overhaul (EI-92), plus list
+tabs, priority, and location pulled forward — see §2.8b.
 
-List tabs, priority, and location were pulled forward out of P6 and shipped —
-see §2.8b.
+**P6 fast-follow — still open:** sub-tasks (EI-55), saved views (EI-65 — a
+different thing from the view-settings dropdown that shipped), icon upload,
+magic-link auth (EI-66; Google moved into P2 — see §2.12), the palette command
+registry (EI-77), the shortcut help sheet (EI-75), and dnd-kit screen-reader
+announcements (EI-84).
 
 **Markdown descriptions shipped** alongside day notes: `MarkdownField`
 (`components/ui/markdown-field.tsx`) wraps BlockNote and now backs both
@@ -788,7 +806,7 @@ see §2.8b.
 rather than BlockNote's own JSON — the command palette substring-searches
 descriptions, and the field has declared itself markdown since P1.
 
-**Day notes are the seventh sync kind** (`dayNote`, migration 4). One row per
+**Day notes are the seventh sync kind** (`dayNote`, migration 5). One row per
 calendar day, keyed by a DETERMINISTIC id (`daynote:YYYY-MM-DD`) rather than a
 UUIDv7 — the one deliberate exception to that rule, because there is exactly
 one note per day and two offline devices must collide on a single entity for

@@ -1085,7 +1085,7 @@ list — see §4.7 and §4.9.)
    meant: each half has its own persistently-drawn horizontal scrollbar
    (§4.12), so "there is more board this way" is visible without a drag.
 4. ~~Touch is untested, but no longer asymmetric.~~ Done, as of the mobile
-   plan's P-1 and P1 (docs/MOBILE.md). `e2e/touch-smoke.spec.ts` drives a real
+   plan's M-1 and M1 (docs/MOBILE.md). `e2e/touch-smoke.spec.ts` drives a real
    long-press-and-drag through CDP `Input.dispatchTouchEvent` — an actual
    touch input event as far as the renderer is concerned, not a simulated DOM
    event (`locator.dispatchEvent()` doesn't set `Event.isTrusted` and native

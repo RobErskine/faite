@@ -808,7 +808,7 @@ export async function setDayNote(date: CivilDate, body: string): Promise<void> {
 // ---------------------------------------------------------------------------
 
 /**
- * A saved location — see `placeSchema` (`lib/schema.ts`). SCAFFOLD (P6.5):
+ * A saved location — see `placeSchema` (`lib/schema.ts`). SCAFFOLD:
  * `address` is whatever the user types by hand today; there is no Google
  * Places lookup wired up yet (see `docs/GOOGLE-PLACES-SETUP.md`).
  */

@@ -43,7 +43,7 @@ export type ReadyBoardData = BoardData & {
  * The two-half desktop board — ONLY the layout body. `DndContext`,
  * `Hotkeys`, `DragOverlay` and every sheet mount stay in the `Board` shell
  * (`board.tsx`), not here — that's what makes this the
- * `{Desktop,Phone}Board` seam the mobile plan's P3 needs: exactly one of
+ * `{Desktop,Phone}Board` seam the mobile plan's M3 needs: exactly one of
  * each regardless of which layout renders, so a future `PhoneBoard` can
  * never duplicate a droppable/draggable id into dnd-kit's id-keyed maps
  * (the documented failure mode behind `DaySheet`'s placement outside

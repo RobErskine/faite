@@ -107,7 +107,7 @@ export const dayNotes = sqliteTable("day_notes", {
   body: text("body").notNull().default(""),
 });
 
-/** A saved location — see `placeSchema` in `lib/schema.ts`. Scaffold (P6.5): no Google lookup yet. */
+/** A saved location — see `placeSchema` in `lib/schema.ts`. Scaffold: no Google lookup yet (see EI-83). */
 export const places = sqliteTable("places", {
   ...syncableColumns,
   name: text("name").notNull(),
