@@ -40,6 +40,13 @@ export function RailHandle({
       {...separatorProps}
       className={cn(
         "absolute inset-y-0 right-0 z-20 w-1.5 translate-x-1/2 touch-none",
+        // A genuine drag surface, unlike DragGrip — `touch-none` stays; the
+        // hit area grows on a coarse pointer via `::after` instead, keeping
+        // the 6px visual paint exactly as designed for a mouse. `absolute`
+        // on the parent already establishes its own containing block, so
+        // the pseudo-element positions relative to this div without an
+        // explicit `relative`.
+        "pointer-coarse:after:absolute pointer-coarse:after:inset-y-0 pointer-coarse:after:-inset-x-2.5 pointer-coarse:after:content-['']",
         disabled ? "cursor-default" : "cursor-col-resize",
         "transition-colors hover:bg-primary/40 focus-visible:bg-primary/60",
         "focus-visible:outline-none",

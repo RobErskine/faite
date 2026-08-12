@@ -24,7 +24,16 @@ function Checkbox({ className, ...props }: CheckboxPrimitive.Root.Props) {
           The unchecked box is the affordance that says a row can be completed,
           so it cannot depend on the backdrop to be seen.
         */
-        "peer relative flex size-4 shrink-0 items-center justify-center rounded-none border border-muted-foreground transition-colors outline-none group-has-disabled/field:opacity-50 after:absolute after:-inset-x-3 after:-inset-y-2 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 aria-invalid:aria-checked:border-primary dark:bg-input/30 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 data-checked:border-primary data-checked:bg-primary data-checked:text-primary-foreground dark:data-checked:bg-primary",
+        /*
+          `pointer-coarse:` grows the `::after` hit area from 40×32 to a
+          44×44 WCAG/HIG-comfortable square, matching DragGrip's established
+          pattern (components/board/drag-grip.tsx) of stating each axis
+          separately rather than as a single `-inset-N` shorthand —
+          tailwind-merge does not recognize that the shorthand and the
+          axis-specific forms target the same property, so mixing them here
+          would leave whichever one is undetected silently in the DOM.
+        */
+        "peer relative flex size-4 shrink-0 items-center justify-center rounded-none border border-muted-foreground transition-colors outline-none group-has-disabled/field:opacity-50 after:absolute after:-inset-x-3 after:-inset-y-2 pointer-coarse:after:-inset-x-3.5 pointer-coarse:after:-inset-y-3.5 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 aria-invalid:aria-checked:border-primary dark:bg-input/30 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 data-checked:border-primary data-checked:bg-primary data-checked:text-primary-foreground dark:data-checked:bg-primary",
         className
       )}
       {...props}

@@ -168,6 +168,11 @@ function TabPill({
       className={cn(
         "group/tab relative flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1",
         "transition-colors",
+        // `items-center` centers the (small) grip/label/info row within the
+        // taller box on a coarse pointer, rather than stretching them —
+        // invisible padding around a small tap target, the same trick native
+        // mobile UIs use.
+        "pointer-coarse:min-h-11",
         isActive ? "bg-background shadow-xs" : "hover:bg-background/60",
         isFocusCandidate && "ring-2 ring-primary ring-offset-1 ring-offset-muted",
       )}
@@ -215,9 +220,12 @@ function TabPill({
         className={cn(
           // Same bargain as ColumnInfoButton: quiet until hovered or focused,
           // and pinned open while its dialog is, so the control you just
-          // clicked does not vanish under the thing it opened.
+          // clicked does not vanish under the thing it opened. `touch:`
+          // because `group-hover` is gated to `(hover: hover)` (Tailwind
+          // v4) — a device that can never hover would otherwise never see
+          // this control exists.
           "size-4 text-muted-foreground/50 transition-opacity",
-          "opacity-0 group-hover/tab:opacity-100 focus-visible:opacity-100",
+          "opacity-0 group-hover/tab:opacity-100 touch:opacity-100 focus-visible:opacity-100",
           isInfoOpen && "opacity-100",
         )}
       >
@@ -259,6 +267,11 @@ function TabPill({
  * itself a button, so a pointerdown anywhere on it would race the drag gesture
  * against the click that switches tabs — and unlike a card's title, that click
  * changes what the entire board is showing.
+ *
+ * Which makes `touch:opacity-100` load-bearing here in a way it isn't on the
+ * other three reveals in this file: `group-hover/tab` is gated to
+ * `(hover: hover)` (Tailwind v4), so without the touch fallback, a tab is
+ * simply unreorderable on any device that can't hover — not degraded, gone.
  */
 function TabGrip({ tab }: { tab: Tab }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
@@ -270,7 +283,7 @@ function TabGrip({ tab }: { tab: Tab }) {
       ref={setNodeRef}
       aria-label={`Drag to reorder the ${tab.name} tab`}
       className={cn(
-        "opacity-0 group-hover/tab:opacity-100 focus-visible:opacity-100",
+        "opacity-0 group-hover/tab:opacity-100 touch:opacity-100 focus-visible:opacity-100",
         isDragging && "opacity-40",
       )}
       {...attributes}

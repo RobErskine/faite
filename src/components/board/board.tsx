@@ -24,6 +24,7 @@ import { GripVertical, MapPin, StickyNote } from "lucide-react";
 import { toast } from "sonner";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import { useViewport } from "@/lib/use-viewport";
 import type { CivilDate, List, Tab, Todo } from "@/lib/schema";
 import {
   buildBoard,
@@ -277,6 +278,10 @@ const collisionDetection: CollisionDetection = (args) => {
 };
 
 export function Board() {
+  // Only `coarse` is read here (P1 — sensor tuning). `layout` stays
+  // unconsumed until P2/P3 give it an actual branch point to drive; see
+  // docs/MOBILE.md.
+  const { coarse } = useViewport();
   const ready = useBootstrap();
   const todos = useTodos();
   const recurrenceChildren = useRecurrenceChildren();
@@ -502,15 +507,29 @@ export function Board() {
     */
     useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
     /*
-      Long-press to lift on touch. Under 250ms, or a move of more than 8px
-      inside it, the browser keeps the gesture and the column scrolls exactly as
-      before — which is why nothing needs `touch-action: none` any more.
-      TouchSensor.setup registers a non-passive `touchmove` so the sensor can
-      preventDefault scrolling once it *does* activate; that listener is what
-      the grip's `touch-none` used to stand in for, and it applies to the whole
-      row rather than to one 12px control.
+      Long-press to lift on touch. Under the delay, or a move of more than the
+      tolerance inside it, the browser keeps the gesture and the column
+      scrolls exactly as before — which is why nothing needs
+      `touch-action: none` any more. TouchSensor.setup registers a
+      non-passive `touchmove` so the sensor can preventDefault scrolling once
+      it *does* activate; that listener is what the grip's `touch-none` used
+      to stand in for, and it applies to the whole row rather than to one
+      12px control.
+
+      250/8 undersells real touch: it's shorter than iOS's own long-press
+      (~500ms) and Android's (~400ms), so a slow, deliberate finger-plant to
+      START a scroll reads as "lift the card" more often than it should — the
+      most likely "this app grabbed my card" complaint. `coarse` (P1,
+      useViewport) tightens both numbers on an actual touch-primary device:
+      400ms sits comfortably inside platform long-press muscle memory, and a
+      tighter 5px tolerance means less accidental cancellation from a hand
+      that isn't perfectly still while holding. A device that's merely
+      capable of touch but not primarily touch (a mouse-driven laptop with a
+      touchscreen) keeps the original, snappier values.
     */
-    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
+    useSensor(TouchSensor, {
+      activationConstraint: coarse ? { delay: 400, tolerance: 5 } : { delay: 250, tolerance: 8 },
+    }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
@@ -1303,6 +1322,15 @@ export function Board() {
 
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {
+      // A lift is the one moment worth a haptic nudge — everything after it
+      // (hover, drop) already has strong visual feedback. Android honors
+      // `vibrate()`; iOS Safari silently ignores it (no permission prompt,
+      // no error) — a free enhancement rather than something to feature-test
+      // for. Gated on `coarse`, not on this being a touch event specifically:
+      // the point is confirming a touch-primary user's own finger did what
+      // they meant, which a mouse/trackpad drag never needs.
+      if (coarse) navigator.vibrate?.(10);
+
       // Three gestures share one DndContext. `active.id` is what tells them
       // apart: reorder handles carry the `listdrag:` and `tabdrag:` prefixes,
       // everything else is a card.
@@ -1324,7 +1352,7 @@ export function Board() {
       // recurrence occurrence must still show a drag overlay.
       setActiveTodo(todosById.get(id) ?? null);
     },
-    [todosById, lists, tabs],
+    [todosById, lists, tabs, coarse],
   );
 
   const handleDragOver = useCallback((event: DragOverEvent) => {

@@ -17,21 +17,21 @@
 @custom-variant dark (&:is(.dark *));
 
 /*
-  Hover-affordance variants for the mobile work — see docs/MOBILE.md.
+  Hover-affordance variant for the mobile work — see docs/MOBILE.md.
 
-  `hover:` alone is wrong here: it fires on the FIRST TAP on most touch
-  browsers (the tap satisfies `:hover` until the next tap elsewhere), so an
-  action gated on `hover:opacity-100` half-shows on touch instead of just
-  showing. `hoverable`/`touch` are mutually exclusive by construction — a
-  device is one or the other — so a control can unconditionally show for
-  touch without also fighting a real `:hover` state on desktop.
+  Only ONE custom variant needed here, not three. Tailwind v4 already wraps
+  `hover:`/`group-hover:` in `@media (hover: hover)` — confirmed by compiling
+  this stylesheet and reading the output; a plain `group-hover:opacity-100`
+  never applies on a `hover: none` device, full stop, no "sticky until the
+  next tap" workaround required (that was true pre-v4). And `pointer-coarse:`
+  /`pointer-fine:` are native since v4.1 — no custom variant needed for hit-
+  target sizing either; see P1's use of `pointer-coarse:` throughout.
+
+  What's missing natively is the OTHER side: something that shows
+  unconditionally on a device that can never hover, as a fallback for a
+  control that's otherwise only reachable via `group-hover:`. That's this.
 */
-@custom-variant hoverable (@media (hover: hover) and (pointer: fine));
 @custom-variant touch (@media (hover: none));
-/* Independent of the two above: a touchscreen laptop is `hover: hover` (a
-   mouse is attached) AND `pointer: coarse` (the touchscreen itself), so hit-
-   target sizing needs its own query rather than reusing `touch`. */
-@custom-variant coarse (@media (pointer: coarse));
 
 @theme inline {
   --color-background: var(--background);

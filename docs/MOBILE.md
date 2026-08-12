@@ -51,42 +51,65 @@ const { layout, coarse, hover } = useViewport();
 `useSyncExternalStore` over `matchMedia` + `resize`, server snapshot fixed at
 desktop/fine/hoverable (correct for every route this app ships outside the
 board, and `/board` itself is `ssr:false` so the server snapshot is never
-actually shown for it). Not yet consumed anywhere — **P0 ships this hook
-unwired, on purpose.** Branching the actual layout on it is P2/P3's job,
-after the `board.tsx` extraction gives it a seam to branch from without
-duplicating `DndContext`/`Hotkeys`/every sheet mount (that duplication is
-exactly what breaks dnd-kit's id-keyed droppable maps — see `board.tsx`
-around the `DaySheet` mount for the documented precedent).
+actually shown for it).
+
+**`coarse` is consumed as of P1** — `board.tsx` reads it to tune
+`TouchSensor`'s `activationConstraint` and gate the haptic nudge on drag
+start (see `docs/DRAG-AND-DROP.md` §4.9b). That's a behavior parameter, not a
+render branch, so it didn't need the `board.tsx` extraction to be safe: no
+duplicate `DndContext`/sheet mounts, no risk of the id-keyed-droppable-map
+bug. **`layout` is still unconsumed** — branching the actual render tree on
+it is still P2/P3's job, after the extraction gives it a seam to branch from.
 
 **`?layout=phone` (or `tablet`/`desktop`) on any URL forces the layout
 class**, read once per navigation. This is the difference between testing
 the phone shell in a desktop browser tab and needing a physical device for
 every check — use it liberally once P3 exists. Tested in
-`src/lib/use-viewport.test.ts`; not yet covered in `e2e/` for the same reason
-the hook itself isn't — there's no DOM effect to observe until something
-consumes it.
+`src/lib/use-viewport.test.ts`; still not covered in `e2e/` — `coarse` being
+consumed doesn't change that `layout` itself still drives no DOM effect to
+observe.
 
-## 3. Hover-affordance variants
+## 3. Hover-affordance and coarse-pointer variants
+
+**Corrected in P1** — P0 originally defined three custom variants
+(`hoverable`, `touch`, `coarse`); two were redundant and have been removed.
+Compiling this stylesheet and reading Tailwind's own output settled it:
+v4 already wraps `hover:`/`group-hover:` in `@media (hover: hover)` (so a
+tap on a `hover: none` device genuinely never triggers them — no "sticky
+until the next tap elsewhere" workaround needed, which *was* true pre-v4 and
+is what the original comment here assumed), and `pointer-coarse:`/
+`pointer-fine:` have been native since v4.1. Only the gap those two don't
+cover needed a custom variant:
 
 ```css
-@custom-variant hoverable (@media (hover: hover) and (pointer: fine));
-@custom-variant touch     (@media (hover: none));
-@custom-variant coarse    (@media (pointer: coarse));
+@custom-variant touch (@media (hover: none));
 ```
 
-(`src/app/globals.css`, beside `@custom-variant dark`.) Plain `hover:` is the
-wrong tool for a "reveal on interaction" control: on most touch browsers the
-first tap satisfies `:hover` until the next tap elsewhere, so
-`hover:opacity-100` half-shows on touch rather than just showing normally.
-`hoverable`/`touch` are mutually exclusive by construction, so a control can
-say `touch:opacity-100` unconditionally without also fighting a real hover
-state on desktop.
+(`src/app/globals.css`, beside `@custom-variant dark`.) Nothing native
+provides "show this unconditionally on a device that can never hover" — the
+fallback a `group-hover:`-revealed control needs on touch. Use native
+`pointer-coarse:`/`pointer-fine:` for hit-target sizing (P1 uses this
+throughout) and leave every existing `hover:`/`group-hover:` alone; they
+were already correct.
 
-**Not yet applied anywhere.** P1 is the five hover-only reveals that need it
-— the card drag grip (`todo-card.tsx`), the tab info button and tab drag grip
-(`tab-strip.tsx` — the grip is currently the *only* way to reorder tabs, so
-this one is a real gap, not polish), the rail collapse chevron
-(`rail-collapse-button.tsx`), and the column subtitle (`board-column.tsx`).
+**One tailwind-merge caveat, inherited from `drag-grip.tsx`'s own comment on
+this exact class family:** `tailwind-merge` does not recognize that
+`-inset-3` (shorthand) and `-inset-x-3`/`-inset-y-2` (axis-specific) target
+the same property, so mixing the two forms across a base class and a variant
+override leaves the loser silently in the DOM rather than deduped away.
+Always use the axis-specific form for any inset-based hit-area expansion,
+matching what's already there.
+
+P1 applies `touch:opacity-100` to the four hover-only reveals that break
+discoverability on touch without it: the card drag grip (`todo-card.tsx`),
+the tab info button and tab drag grip (`tab-strip.tsx` — the grip is
+currently the *only* way to reorder tabs, so this one is a real gap, not
+polish), and the rail collapse chevron (`rail-collapse-button.tsx`). A fifth
+candidate — the list-column drag grip's `group-hover/column:text-muted-
+foreground` in `board-column.tsx` — turned out not to need one: unlike the
+other four, it's a color intensification on an already-visible-at-rest
+element (base state is `text-muted-foreground/30`, not `opacity-0`), so
+there's nothing invisible for touch to miss.
 
 ## 4. Safe-area insets
 
@@ -191,9 +214,9 @@ protect and no reason to opt out of the platform default.
 |---|---|---|
 | **P-1** | Playwright E2E harness — desktop/tablet/phone projects, Tier A structural contract, Tier B real touch via CDP | **Shipped.** See docs/E2E.md. |
 | **P0** | `viewport` export, safe-area vars, manifest + placeholder icons, `@custom-variant`s, `use-viewport.ts` + `?layout=` override, `overscroll-none`, static-export entry fix | **Shipped.** This document. |
-| **P1** | Touch remediation on the *existing* desktop layout — the 5 hover-only reveals, `buttonVariants` coarse sizes, checkbox/switch/select hit areas, coarse-tuned dnd-kit sensors, resize-handle hit areas | Not started |
+| **P1** | Touch remediation on the *existing* desktop layout — the 4 hover-only reveals, `buttonVariants`/`SelectTrigger`/tab-pill coarse sizes, checkbox/resize-handle `::after` hit areas, coarse-tuned dnd-kit sensors + haptic, guard test | **Shipped.** §3, §9, `docs/DRAG-AND-DROP.md` §4.9b. |
 | **P2** | Extract `board.tsx` (2574 lines, no `board.test.tsx`) into `use-board-data`/`use-board-ui-state`/`use-board-actions` + a `BoardContext` seam | Not started |
-| **P3** | The phone shell — scroll-snap pager, bottom segmented control (Days / Lists), compact header, sticky quick-add, `useViewport()` finally consumed | Not started |
+| **P3** | The phone shell — scroll-snap pager, bottom segmented control (Days / Lists), compact header, sticky quick-add, `layout` (the other half of `useViewport()`) finally consumed | Not started |
 | **P4** | Adaptive overlays — `adaptive-sheet.tsx` swapping `Sheet`↔`Drawer` by layout, full-screen command palette on phone, row `⋯` action sheet (there is no per-row delete today — only in the TodoSheet footer and ⌘K) | Not started |
 | **P5** | `mention-menu.tsx` → `@floating-ui/react`, BlockNote-on-touch audit | Not started |
 | **P6** | Optional: `Drawer.SwipeArea` swipe-up-for-Lists, `Drawer.Indent` | Not started |

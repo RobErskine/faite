@@ -344,14 +344,18 @@ grip:
   screen-reader semantics. The grip is already a real focusable control, so it
   keeps them, and `Space` on it still lifts.
 
-**`touch-none` used to be the second thing, and no longer is.** `touch-action:
-none` on the grip was what stopped the browser claiming a touch gesture before
-dnd-kit's distance threshold was met, which made the grip the only touch drag
-surface on a card — an asymmetry with the pointer path that was never good, only
-necessary. The `TouchSensor` long press (§4.8) replaces it: touch now drags from
-anywhere on the row, and nothing needs `touch-action: none` to make that work.
-The declaration is still in `drag-grip.tsx` and is now vestigial; it costs a
-touch-scroll start on top of a 12px control and nothing else.
+**`touch-none` used to be the second thing, and no longer is — as of P1 of the
+mobile plan (docs/MOBILE.md), it's actually gone.** `touch-action: none` on the
+grip was what stopped the browser claiming a touch gesture before dnd-kit's
+distance threshold was met, which made the grip the only touch drag surface on
+a card — an asymmetry with the pointer path that was never good, only
+necessary. The `TouchSensor` long press (§4.8) replaces it: touch now drags
+from anywhere on the row, and nothing needs `touch-action: none` to make that
+work. The declaration sat in `drag-grip.tsx` as vestigial dead weight for a
+while — costing a touch-scroll start on top of a 12px control and nothing
+else — and P1 removed it once `e2e/touch-smoke.spec.ts` (a real CDP long-press
+against a real touch input pipeline, not a simulated event) could actually
+prove nothing depended on it.
 
 **Two objections that the old code was built around turn out to be dnd-kit's
 job, not ours** — worth knowing before "restoring" any of this:
@@ -372,6 +376,48 @@ left to inherit. `cursor` is an inherited property and Tailwind v4's preflight
 does not set one on `button`, so the children would otherwise silently pick up
 `grab` — including the checkbox, which should not advertise itself as a drag
 surface even though it is one.
+
+---
+
+### 4.9b Coarse pointers (P1, docs/MOBILE.md)
+
+`useSensor(TouchSensor, ...)`'s `activationConstraint` is coarse-aware:
+
+```ts
+activationConstraint: coarse ? { delay: 400, tolerance: 5 } : { delay: 250, tolerance: 8 }
+```
+
+`coarse` from `useViewport()` (`pointer: coarse`). 250/8 was tuned against
+nothing — no real touch input pipeline existed to test it against until
+`e2e/touch-smoke.spec.ts` (CDP `Input.dispatchTouchEvent`, real dnd-kit
+sensors, not a simulated event). Once that existed, the number was worth
+checking against actual platform behavior: **250ms is shorter than iOS's own
+long-press (~500ms) and Android's (~400ms)**, so a slow, deliberate
+finger-plant at the *start* of a scroll — completely normal touch behavior —
+read as "lift the card" more often than it should. 400/5 sits inside platform
+long-press muscle memory instead of ahead of it, and the tighter 5px
+tolerance (vs 8) trades a little accidental-cancellation margin for a smaller
+window where a case that was a genuine drag gets read as a scroll.
+
+A device that's merely touch-*capable* but not touch-*primary* — a
+mouse-driven laptop with a touchscreen, `hover: hover` and `pointer: fine`
+plus a touchscreen that can still fire `TouchSensor` events — keeps the
+original 250/8. The distinction that matters is which input is doing the
+asking, not whether touch is possible at all.
+
+**Haptic feedback on lift**, gated the same way: `navigator.vibrate?.(10)` in
+`handleDragStart` when `coarse`. Android honors it; iOS Safari silently
+ignores it — no permission prompt, no error, so it costs nothing to leave
+unconditional-on-touch rather than feature-testing for it.
+
+**The grip is now visible at rest on touch**, not hover-revealed. Tailwind v4
+gates `hover:`/`group-hover:` behind `@media (hover: hover)` — confirmed by
+compiling the actual generated CSS during P1, not assumed — so a device that
+can never hover would never see `group-hover:opacity-100` apply at all, ever,
+by any interaction. `todo-card.tsx`'s grip adds `touch:opacity-100`
+(`@media (hover: none)`, the one custom variant P1 kept — see
+docs/MOBILE.md §3) specifically because there is no native equivalent for
+"show this unconditionally where hover can't reach."
 
 ---
 
@@ -1038,13 +1084,21 @@ list — see §4.7 and §4.9.)
 3. ~~No cross-half scroll affordance.~~ Done, though not the way this entry
    meant: each half has its own persistently-drawn horizontal scrollbar
    (§4.12), so "there is more board this way" is visible without a drag.
-4. **Touch is untested, but no longer asymmetric.** The grip-only-on-touch
-   asymmetry is gone: `TouchSensor` with `{delay: 250, tolerance: 8}` lifts from
-   anywhere on a row or column header, and nothing relies on `touch-action: none`
-   any more (§4.8, §4.9). What is untested is whether 250ms/8px is the right pair
-   on a real device — too eager and it fights column scrolling, too lazy and it
-   feels broken. Still matters for Capacitor (P7), and still the most likely place
-   this all falls over.
+4. ~~Touch is untested, but no longer asymmetric.~~ Done, as of the mobile
+   plan's P-1 and P1 (docs/MOBILE.md). `e2e/touch-smoke.spec.ts` drives a real
+   long-press-and-drag through CDP `Input.dispatchTouchEvent` — an actual
+   touch input event as far as the renderer is concerned, not a simulated DOM
+   event (`locator.dispatchEvent()` doesn't set `Event.isTrusted` and native
+   scroll/`TouchSensor` ignore it) — and confirms a reorder actually commits.
+   The grip-only-on-touch asymmetry stays gone: `TouchSensor` lifts from
+   anywhere on a row or column header, and nothing relies on
+   `touch-action: none` any more (§4.8, §4.9). The 250ms/8px pair *was*
+   untested-on-a-real-pipeline guesswork; P1 retuned it to `{delay: 400,
+   tolerance: 5}` on a coarse pointer specifically because it no longer had
+   to be guesswork — see §4.9b. **Still open:** everything here is Chromium
+   via CDP, not an actual phone; §4.9b's numbers are a reasoned default, not
+   field-tested, and remain the most likely place a real device surprises
+   this app. Revisit once Capacitor (P7) makes that testable.
 5. **No multi-select drag.**
 6. **Overlay width vs. cursor.** The overlay is `max-w-xs`; on a narrow column
    it visually overhangs neighbours while only the cursor's column highlights.

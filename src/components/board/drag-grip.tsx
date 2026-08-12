@@ -24,6 +24,11 @@ import { cn } from "@/lib/utils";
  *
  * Hover is a color change, not a background: a filled box around a 12px icon
  * would undo the point of making the mark small.
+ *
+ * No `touch-action: none` — it used to be the only touch drag surface, but
+ * the `TouchSensor` long press (board.tsx sensors) now drags from anywhere on
+ * the row, and the declaration only cost this control a touch-scroll start.
+ * See docs/DRAG-AND-DROP.md §4.9.
  */
 export function DragGrip({ className, ...props }: ComponentProps<"button">) {
   return (
@@ -32,10 +37,6 @@ export function DragGrip({ className, ...props }: ComponentProps<"button">) {
       className={cn(
         "relative shrink-0 rounded text-muted-foreground/30",
         "cursor-grab transition-colors active:cursor-grabbing",
-        // The only touch drag surface — `touch-action: none` keeps the browser
-        // from claiming the gesture for scrolling before dnd-kit's 4px
-        // threshold is met. See DRAG-AND-DROP.md §4.9.
-        "touch-none",
         /*
           The hit expansion is stated per AXIS rather than as `-inset-1.5`, so a
           caller can override one axis without the other.

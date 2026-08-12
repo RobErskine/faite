@@ -287,8 +287,10 @@ export function TodoCard({
           "text-muted-foreground opacity-0 transition-opacity",
           // `group-focus-within` also fires for the row itself, so arrowing onto
           // a card reveals the grip — which is how a keyboard user learns the
-          // row can be lifted at all.
-          "group-hover:opacity-100 group-focus-within:opacity-100",
+          // row can be lifted at all. `touch:` because `group-hover` is gated
+          // to `(hover: hover)` (Tailwind v4) — a device that can never hover
+          // would otherwise never see this control exists at all.
+          "group-hover:opacity-100 group-focus-within:opacity-100 touch:opacity-100",
           "focus-visible:opacity-100",
           "before:-inset-y-1.5 before:inset-x-0",
         )}
@@ -308,6 +310,13 @@ export function TodoCard({
         grip entirely, so a click meant for the grip would toggle done. At 4px the
         target is still 24px wide — the WCAG 2.2 minimum — and stops clear of the
         grip's glyph, which is painted between x≈4.5 and x≈7.5.
+
+        `pointer-coarse:after:-inset-x-1` restates the same narrowing under
+        `ui/checkbox.tsx`'s own `pointer-coarse:` hit-area growth (P1) —
+        without it, the coarse-pointer rule would win on specificity-tie
+        source order (it's declared later in the stylesheet) and silently
+        widen the tap target back into the grip on exactly the devices where
+        a stray tap is most likely.
       */}
       <Checkbox
         checked={todo.status === "done"}
@@ -316,7 +325,7 @@ export function TodoCard({
         // Cursor is inherited, so without this the checkbox would read as a
         // drag surface. It still drags if you pull from it; it just should not
         // advertise that over being a checkbox.
-        className="absolute left-3 top-2 cursor-pointer after:-inset-x-1"
+        className="absolute left-3 top-2 cursor-pointer after:-inset-x-1 pointer-coarse:after:-inset-x-1"
       />
 
       <button

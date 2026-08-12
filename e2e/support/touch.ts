@@ -70,9 +70,13 @@ export async function swipe(
  * Touch-and-hold past dnd-kit's `TouchSensor` activation delay, then drag to
  * `to` and release — the touch equivalent of a mouse-based drag-and-drop.
  *
- * `holdMs` must clear the 250ms `activationConstraint.delay` (board.tsx
- * sensors) before the first move, or the gesture reads as a flick/scroll
- * instead of a drag. Defaults to 400ms for margin.
+ * `holdMs` must clear `activationConstraint.delay` (board.tsx sensors)
+ * before the first move, or the gesture reads as a flick/scroll instead of a
+ * drag. That delay is itself coarse-aware as of P1 — 400ms on a coarse
+ * pointer, which every project this helper runs under is (see
+ * playwright.config.ts's `defaultBrowserType: "chromium"` override) — so
+ * 550ms leaves real margin rather than sitting right on the boundary a
+ * `waitForTimeout` can occasionally undershoot under CI scheduling jitter.
  */
 export async function longPressDrag(
   page: Page,
@@ -80,7 +84,7 @@ export async function longPressDrag(
   to: Point,
   opts: { holdMs?: number; steps?: number; stepDelayMs?: number } = {},
 ): Promise<void> {
-  const { holdMs = 400, steps = 8, stepDelayMs = 16 } = opts;
+  const { holdMs = 550, steps = 8, stepDelayMs = 16 } = opts;
   const cdp = await session(page);
   try {
     await dispatch(cdp, "touchStart", [from]);
