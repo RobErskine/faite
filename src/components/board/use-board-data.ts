@@ -76,6 +76,17 @@ export interface UseBoardDataParams {
   expandedWeekends: ReadonlySet<string>;
   horizon: number;
   cap: number;
+  /**
+   * `useViewport()`'s layout class (mobile plan P3) — the ONE read-time
+   * override this hook makes, never a write: a collapsed weekend strip is a
+   * 40px sliver that reads fine next to six other columns, and reads as
+   * broken as an entire full-bleed pager page. `collapsingWeekends` below
+   * ignores `settings.showWeekends` outright on phone rather than gating
+   * the strip's rendering in `PhoneBoard` — cheaper, and it also keeps
+   * `trackSlots`/`navGrid`/`dayIds` internally consistent with what
+   * actually renders, rather than one flag two different layers.
+   */
+  layout: "phone" | "tablet" | "desktop";
 }
 
 export function useBoardData(params: UseBoardDataParams) {
@@ -91,6 +102,7 @@ export function useBoardData(params: UseBoardDataParams) {
     expandedWeekends,
     horizon,
     cap,
+    layout,
   } = params;
 
   const ready = useBootstrap();
@@ -236,7 +248,7 @@ export function useBoardData(params: UseBoardDataParams) {
     () => weekendDaysFrom(settings?.workdays ?? DEFAULT_WORKDAYS),
     [settings?.workdays],
   );
-  const collapsingWeekends = settings?.showWeekends === false;
+  const collapsingWeekends = layout !== "phone" && settings?.showWeekends === false;
   const minDays = useMemo(() => {
     const wanted = settings?.visibleDays ?? 7;
     if (!collapsingWeekends || !todayCivil) return wanted;

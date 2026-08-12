@@ -199,6 +199,13 @@ interface BoardColumnProps {
    * virtual, wherever it renders — not just Overflow.
    */
   recurrenceSummaries?: ReadonlyMap<string, string>;
+  /**
+   * Escape hatch, merged onto the root `<section>` after every other class
+   * here. The phone pager (`phone-board.tsx`) uses it to add `pager-column`
+   * (globals.css) — Y-axis scroll ownership for a column that fills the
+   * whole page — without this component needing to know a pager exists.
+   */
+  className?: string;
 }
 
 export function BoardColumn({
@@ -238,6 +245,7 @@ export function BoardColumn({
   dayTrackColumn,
   missedCounts,
   recurrenceSummaries,
+  className,
 }: BoardColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id });
   const [draft, setDraft] = useState("");
@@ -463,6 +471,7 @@ export function BoardColumn({
           "outline-dashed outline-1 outline-offset-[-2px] outline-destructive/30",
         isOver && rejectsDrop && !isColumnDragActive &&
           "bg-destructive/5 outline outline-2 outline-offset-[-2px] outline-destructive/60",
+        className,
       )}
       data-drop-indicator={isColumnDragActive && isColumnDropTarget ? "" : undefined}
       data-day-column={dayTrackColumn ? "" : undefined}

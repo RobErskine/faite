@@ -229,7 +229,12 @@ function columnByTarget(
  * concern neither hook owns) because a handler's whole job is combining
  * "what's true right now" with "what the user just did."
  */
-export function useBoardActions(data: BoardData, ui: BoardUiState, coarse: boolean) {
+export function useBoardActions(
+  data: BoardData,
+  ui: BoardUiState,
+  coarse: boolean,
+  layout: "phone" | "tablet" | "desktop",
+) {
   const sensors = useSensors(
     /*
       MouseSensor rather than PointerSensor, and the split is load bearing.
@@ -971,9 +976,24 @@ export function useBoardActions(data: BoardData, ui: BoardUiState, coarse: boole
     };
   }, [openTodo, todosById, recurrenceExpansion, materializeIfNeeded, closeTodoSheet]);
 
+  /**
+   * Off on phone, on everywhere else. Incremental auto-scroll (dnd-kit's
+   * default) nudges the track a few pixels per frame as a drag nears the
+   * edge — fine against ordinary `overflow-x: auto`, but fighting a
+   * `scroll-snap-type: mandatory` pager it judders, since the snap engine
+   * keeps trying to pull the fractional scroll position back to a page
+   * boundary every frame the auto-scroll moves it away from one. Dragging
+   * a card to a day/list off the current page happens through the row `⋯`
+   * action sheet on phone instead (P4) — a more reliable interaction than
+   * blind-dragging toward a page you can't see, not just a workaround for
+   * this.
+   */
+  const autoScroll = layout !== "phone";
+
   return {
     sensors,
     collisionDetection,
+    autoScroll,
     handleDragStart,
     handleDragOver,
     handleDragEnd,

@@ -1,0 +1,341 @@
+"use client";
+
+import { useRef } from "react";
+import { StickyNote } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
+import { cn } from "@/lib/utils";
+import { NAV_LOAD_MORE, navKeyOf } from "@/lib/column-nav";
+import { formatDay } from "@/lib/scheduling";
+import { AppHeader } from "./app-header";
+import { SignedOutBanner } from "@/components/auth/signed-out-banner";
+import { BoardColumn } from "./board-column";
+import { CreateListColumn } from "./create-list-column";
+import { DateNav } from "./date-nav";
+import { TabStrip } from "./tab-strip";
+import { PhoneBottomBar } from "./phone-bottom-bar";
+import type { BoardUiState } from "./use-board-ui-state";
+import type { useBoardActions } from "./use-board-actions";
+import type { NavigateFn } from "./use-column-nav";
+import type { ReadyBoardData } from "./desktop-board";
+
+/**
+ * The phone shell (mobile plan P3) — one full-width column at a time, paged
+ * through with native CSS scroll-snap rather than a JS carousel. See
+ * docs/GESTURES.md for why scroll-snap specifically (dnd-kit's droppable
+ * rect correction needs a real `scrollLeft`, which a transform-based
+ * carousel doesn't have) and docs/MOBILE.md §9 for why the "swipe up/down
+ * between lists and days" request became the bottom bar below instead.
+ *
+ * Same seam contract as `DesktopBoard` (see its own doc comment): only the
+ * layout body. `DndContext`/`Hotkeys`/`DragOverlay`/every sheet mount stay
+ * in the `Board` shell.
+ */
+interface PhoneBoardProps {
+  data: ReadyBoardData;
+  ui: BoardUiState;
+  actions: ReturnType<typeof useBoardActions>;
+  navigate: NavigateFn;
+  dayTrackRef: React.RefObject<HTMLDivElement | null>;
+  anchorIndex: number;
+  visibleCount: number;
+  canJumpBack: (delta: number) => boolean;
+  canJumpForward: (delta: number) => boolean;
+  jumpBy: (delta: number) => void;
+  jumpToIndex: (target: number) => void;
+  jumpToToday: () => void;
+}
+
+const LOAD_MORE_STEP = 30;
+
+export function PhoneBoard({
+  data,
+  ui,
+  actions,
+  navigate,
+  dayTrackRef,
+  anchorIndex,
+  visibleCount,
+  canJumpBack,
+  canJumpForward,
+  jumpBy,
+  jumpToIndex,
+  jumpToToday,
+}: PhoneBoardProps) {
+  const {
+    todos,
+    tabs,
+    labels,
+    archivedLists,
+    archivedTabs,
+    settings,
+    ctx,
+    board,
+    trackSlots,
+    backlogColumn,
+    otherListColumns,
+    mentionLists,
+    deadlineCounts,
+    overTodoId,
+    overGroupId,
+    columnDropTargetId,
+    tabDrop,
+    activeTabId,
+    activeTabRecord,
+    recurrenceSummaries,
+    recurrenceExpansion,
+    renderedDays,
+  } = data;
+
+  const {
+    activeTodo,
+    activeList,
+    collapsedGroups,
+    toggleGroup,
+    landingTodoId,
+    infoTabId,
+    setInfoListId,
+    setInfoTabId,
+    setArchivedOpen,
+    openTodoSheet,
+    selectTab,
+    cap,
+    loadMoreDays,
+    setOpenDay,
+    setPaletteOpen,
+    setSettingsOpen,
+    phoneView,
+    setPhoneView,
+    dragging,
+  } = ui;
+
+  const { handleToggle, handleQuickAdd, handleCreateTab } = actions;
+
+  // The Lists pager has no jump/scroll-position consumer outside this
+  // component (no date to jump to), so it keeps its own local ref rather
+  // than being hoisted to the shell the way `dayTrackRef` is.
+  const listTrackRef = useRef<HTMLDivElement>(null);
+
+  return (
+    <div className="flex h-dvh flex-col overscroll-none">
+      <SignedOutBanner hasUserData={todos.length > 0} />
+
+      <AppHeader
+        compact
+        onOpenPalette={() => setPaletteOpen(true)}
+        onOpenSettings={() => setSettingsOpen(true)}
+        settings={settings}
+      />
+
+      {phoneView === "days" && (
+        <DateNav
+          compact
+          settings={settings}
+          today={ctx.today}
+          anchorIndex={anchorIndex}
+          visibleCount={visibleCount}
+          canJumpBack={canJumpBack}
+          canJumpForward={canJumpForward}
+          onJump={jumpBy}
+          onJumpToDate={jumpToIndex}
+          onToday={jumpToToday}
+        />
+      )}
+
+      <div className="min-h-0 flex-1">
+        {phoneView === "days" ? (
+          <div
+            ref={dayTrackRef}
+            // Set directly from `ui.dragging`, read by the `[data-dragging]`
+            // rule on `column-track-pager` (globals.css) — suspends the
+            // mandatory snap type for the duration of a drag so it can't
+            // fight dnd-kit's own scroll compensation near a page edge.
+            data-dragging={dragging ? "" : undefined}
+            className="column-track-pager flex h-full"
+          >
+            {/* Overflow — page −1. Pinned on desktop as a fixed sibling
+                outside the scrolling track; on phone it's simply the first
+                page IN the track, since there's no "outside" to pin it to. */}
+            <BoardColumn
+              className="pager-column"
+              id={board.overflow.id}
+              title="Overflow"
+              subtitle="Put off too long"
+              todos={board.overflow.todos}
+              labels={labels}
+              ctx={ctx}
+              groups={board.overflow.groups}
+              collapsedGroups={collapsedGroups}
+              onToggleGroup={toggleGroup}
+              onToggle={handleToggle}
+              onOpen={(todo) => openTodoSheet(todo.id)}
+              missedCounts={recurrenceExpansion?.missedCounts}
+              recurrenceSummaries={recurrenceSummaries}
+              onNavigate={navigate}
+              emphasis
+              isDragActive={!!activeTodo}
+              overTodoId={overTodoId}
+              landingTodoId={landingTodoId}
+              rejectsDrop
+            />
+            {trackSlots.map((slot) => {
+              // Unreachable on phone: `useBoardData` forces
+              // `collapsingWeekends` false whenever `layout === "phone"`
+              // (see its comment), so `trackSlots` never contains a
+              // "weekend" slot here. Guarded anyway because the type is a
+              // union either way, and a full second WeekendColumn render
+              // path isn't worth maintaining for a case that can't occur.
+              if (slot.kind === "weekend") return null;
+              const { column } = slot;
+              const { weekday, label } = formatDay(column.day);
+              const isToday = column.day === ctx.today;
+              return (
+                <BoardColumn
+                  key={column.id}
+                  className="pager-column"
+                  id={column.id}
+                  dayTrackColumn
+                  title={weekday}
+                  subtitle={
+                    <span className="num">
+                      {label}
+                      {data.dayNotes.has(column.day) && (
+                        <>
+                          <StickyNote
+                            className="ml-1 inline-block size-3 align-[-0.125em] text-muted-foreground"
+                            aria-hidden
+                          />
+                          <span className="sr-only"> — has notes</span>
+                        </>
+                      )}
+                    </span>
+                  }
+                  onOpenInfo={() => setOpenDay(column.day)}
+                  todos={column.todos}
+                  labels={labels}
+                  ctx={ctx}
+                  dueCount={deadlineCounts.get(column.day)}
+                  recurrenceSummaries={recurrenceSummaries}
+                  groups={column.groups}
+                  collapsedGroups={collapsedGroups}
+                  onToggleGroup={toggleGroup}
+                  overGroupId={overGroupId}
+                  emphasis={isToday}
+                  onToggle={handleToggle}
+                  onOpen={(todo) => openTodoSheet(todo.id)}
+                  onQuickAdd={(title, listId) =>
+                    void handleQuickAdd(title, { day: column.day }, listId)
+                  }
+                  lists={mentionLists}
+                  onNavigate={navigate}
+                  isDragActive={!!activeTodo}
+                  overTodoId={overTodoId}
+                  landingTodoId={landingTodoId}
+                />
+              );
+            })}
+            {renderedDays < cap && (
+              <button
+                type="button"
+                data-nav-stop={NAV_LOAD_MORE}
+                onClick={loadMoreDays}
+                onKeyDown={(e) => {
+                  const key = navKeyOf(e);
+                  if (key && navigate(NAV_LOAD_MORE, key)) e.preventDefault();
+                }}
+                className={cn(
+                  "pager-column flex shrink-0 flex-col items-center justify-center",
+                  "border border-dashed border-border px-2 text-center text-sm text-muted-foreground",
+                  "transition-colors hover:border-foreground/30 hover:bg-background/60 hover:text-foreground",
+                  "focus-visible:outline-2 focus-visible:outline-ring",
+                )}
+              >
+                Load {LOAD_MORE_STEP} more days
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="flex h-full flex-col">
+            <TabStrip
+              tabs={tabs}
+              activeTabId={activeTabId}
+              archivedCount={archivedLists.length + archivedTabs.length}
+              infoTabId={infoTabId}
+              drop={tabDrop}
+              isCardDragActive={!!activeTodo}
+              onSelect={selectTab}
+              onOpenInfo={setInfoTabId}
+              onCreate={(name) => void handleCreateTab(name)}
+              onOpenArchive={() => setArchivedOpen(true)}
+            />
+            <Separator />
+            <div
+              ref={listTrackRef}
+              data-dragging={dragging ? "" : undefined}
+              className="column-track-pager flex h-full flex-1"
+            >
+              {backlogColumn && (
+                <BoardColumn
+                  className="pager-column"
+                  id={backlogColumn.id}
+                  title={backlogColumn.list.name}
+                  todos={backlogColumn.todos}
+                  labels={labels}
+                  ctx={ctx}
+                  awayTodoIds={board.awayTodoIds}
+                  onToggle={handleToggle}
+                  onOpen={(todo) => openTodoSheet(todo.id)}
+                  onQuickAdd={(title, listId) =>
+                    void handleQuickAdd(title, { listId: backlogColumn.list.id }, listId)
+                  }
+                  lists={mentionLists}
+                  onNavigate={navigate}
+                  isDragActive={!!activeTodo}
+                  overTodoId={overTodoId}
+                  landingTodoId={landingTodoId}
+                  recurrenceSummaries={recurrenceSummaries}
+                  isColumnDragActive={!!activeList}
+                  accentColor={null}
+                />
+              )}
+              {otherListColumns.map((column) => (
+                <BoardColumn
+                  key={column.id}
+                  className="pager-column"
+                  id={column.id}
+                  title={column.list.name}
+                  todos={column.todos}
+                  labels={labels}
+                  ctx={ctx}
+                  awayTodoIds={board.awayTodoIds}
+                  onToggle={handleToggle}
+                  onOpen={(todo) => openTodoSheet(todo.id)}
+                  onQuickAdd={(title, listId) =>
+                    void handleQuickAdd(title, { listId: column.list.id }, listId)
+                  }
+                  lists={mentionLists}
+                  onNavigate={navigate}
+                  isDragActive={!!activeTodo}
+                  overTodoId={overTodoId}
+                  landingTodoId={landingTodoId}
+                  recurrenceSummaries={recurrenceSummaries}
+                  reorderListId={column.list.id}
+                  onOpenInfo={() => setInfoListId(column.list.id)}
+                  isColumnDropTarget={columnDropTargetId === column.list.id}
+                  isColumnDragActive={!!activeList}
+                  accentColor={column.list.color ?? activeTabRecord?.color}
+                />
+              ))}
+              <CreateListColumn
+                className="pager-column"
+                tabId={activeTabId}
+                onNavigate={navigate}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
+      <PhoneBottomBar view={phoneView} onSelectView={setPhoneView} />
+    </div>
+  );
+}

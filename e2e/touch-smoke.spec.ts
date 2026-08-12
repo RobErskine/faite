@@ -1,5 +1,6 @@
 import { test, expect } from "./support/fixtures";
 import { swipe, longPressDrag } from "./support/touch";
+import { switchToLists } from "./support/phone";
 
 /**
  * Tier B — real touch input via CDP (see support/touch.ts for why
@@ -21,11 +22,13 @@ test.describe("touch input", () => {
   });
 
   test("a horizontal swipe scrolls the day track", async ({ page }) => {
-    // `.column-track` is a real CSS @utility (globals.css), applied to
-    // exactly two elements — the day track and the list track, in that DOM
-    // order — so `.first()` is the day track without needing a test-only
-    // hook in app source.
-    const track = page.locator(".column-track").first();
+    // `.column-track` (`DesktopBoard`) and `.column-track-pager`
+    // (`PhoneBoard`, P3) are the two shapes the day track can take — real CSS
+    // @utilities (globals.css). On phone this is the only track in the DOM at
+    // all (Lists' track doesn't mount until `switchToLists()`), so `.first()`
+    // is the day track either way without needing a test-only hook in app
+    // source.
+    const track = page.locator(".column-track, .column-track-pager").first();
     await expect(track).toBeVisible();
 
     const before = await track.evaluate((el) => el.scrollLeft);
@@ -61,6 +64,9 @@ test.describe("touch input", () => {
       testInfo.project.name === "phone-iphone-landscape",
       "Backlog rail is too short in landscape to reliably fit + reorder two rows — see comment above",
     );
+    // Backlog (`PhoneBoard`, P3) only exists in the "Lists" pager — a no-op
+    // on the landscape project above, which still uses `DesktopBoard`.
+    await switchToLists(page);
     const backlog = page.getByRole("region", { name: "Backlog" });
     const addField = backlog.getByPlaceholder("Add a to-do");
 

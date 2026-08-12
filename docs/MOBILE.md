@@ -27,7 +27,7 @@ mini portrait at 744px fits rail + two columns).
 ## 2. Layout classes
 
 ```
-phone   width < 640    — new IA, not yet built (P3)
+phone   width < 640    — new IA: PhoneBoard, a scroll-snap pager (P3)
 tablet  640–1023       — existing two-half board, touch-tuned (P1)
 desktop width >= 1024  — unchanged
 ```
@@ -128,11 +128,16 @@ without real hardware, and the intent is stated once. **Resolve to 0 without
 vars, and it's easy to add the vars and forget the export that makes them
 non-zero.
 
-**Not yet consumed anywhere.** There's no bottom bar, sticky quick-add, or
-phone-specific chrome to pad yet — that's P3. Landscape will matter more
-than it looks: on a notched phone the pager's first/last column sits under
-the notch, so the eventual consumer needs `--safe-left`/`--safe-right` on the
-shell too, not just top/bottom.
+**`--safe-bottom` is consumed as of P3** — `PhoneBottomBar`'s root carries
+`pb-(--safe-bottom)`, so the Days/Lists switch clears a home-indicator bar
+rather than sitting under it. **`--safe-top`/`--safe-left`/`--safe-right`
+are still unconsumed.** `AppHeader` (compact or not) is a fixed `h-12` with
+no top padding, and the pager's shell has none on the sides — on a notched
+phone in landscape, where the pager's first/last column sits directly under
+the notch, that's a real gap, not a hypothetical. Worth picking up whenever
+mobile work resumes, but low urgency: portrait (the primary orientation)
+only needs `--safe-top`, and even that is cosmetic (content tucks under the
+status bar, doesn't get clipped) rather than broken.
 
 ## 5. Viewport meta + PWA
 
@@ -210,13 +215,27 @@ protect and no reason to opt out of the platform default.
 
 ## 8. Phase status
 
+**Paused after P3, deliberately.** P0–P3 are merged and deployed — the app is
+genuinely usable on phone and tablet, including gesture paging. P4 onward
+(adaptive overlays, mobile-only QOL affordances like a lists overview or a
+which-days-have-tasks view) is intentionally on hold while the desktop core
+experience is still being iterated on. Reasoning: those features are
+navigation *over* the core IA, so they're the most exposed to churn if the
+core changes; two more layout-consumers of a still-moving core also raises
+the tax described in the plan's Risk 6 ("two layouts means every future board
+feature costs ~1.5×"). Resume once desktop is stable. Anything that's purely
+additive inside `phone-board.tsx`/`phone-bottom-bar.tsx` and needs no new
+shared state (see `use-board-data.ts`/`use-board-ui-state.ts`) is cheap
+enough to be an exception — evaluate case by case rather than blanket-holding
+everything.
+
 | Phase | Scope | Status |
 |---|---|---|
 | **P-1** | Playwright E2E harness — desktop/tablet/phone projects, Tier A structural contract, Tier B real touch via CDP | **Shipped.** See docs/E2E.md. |
 | **P0** | `viewport` export, safe-area vars, manifest + placeholder icons, `@custom-variant`s, `use-viewport.ts` + `?layout=` override, `overscroll-none`, static-export entry fix | **Shipped.** This document. |
 | **P1** | Touch remediation on the *existing* desktop layout — the 4 hover-only reveals, `buttonVariants`/`SelectTrigger`/tab-pill coarse sizes, checkbox/resize-handle `::after` hit areas, coarse-tuned dnd-kit sensors + haptic, guard test | **Shipped.** §3, §9, `docs/DRAG-AND-DROP.md` §4.9b. |
 | **P2** | Extract `board.tsx` (2574 lines, no `board.test.tsx`) into `use-board-data`/`use-board-ui-state`/`use-board-actions` + a `DesktopBoard` seam | **Shipped.** See docs/ARCHITECTURE.md §4. |
-| **P3** | The phone shell — scroll-snap pager, bottom segmented control (Days / Lists), compact header, sticky quick-add, `layout` (the other half of `useViewport()`) finally consumed | Not started |
+| **P3** | The phone shell — scroll-snap pager, bottom segmented control (Days / Lists), compact header, `layout` (the other half of `useViewport()`) finally consumed | **Shipped.** §10. |
 | **P4** | Adaptive overlays — `adaptive-sheet.tsx` swapping `Sheet`↔`Drawer` by layout, full-screen command palette on phone, row `⋯` action sheet (there is no per-row delete today — only in the TodoSheet footer and ⌘K) | Not started |
 | **P5** | `mention-menu.tsx` → `@floating-ui/react`, BlockNote-on-touch audit | Not started |
 | **P6** | Optional: `Drawer.SwipeArea` swipe-up-for-Lists, `Drawer.Indent` | Not started |
@@ -227,10 +246,16 @@ protect and no reason to opt out of the platform default.
   literally requested.** Any vertical *paging* gesture either steals the
   primary reading scroll axis (unusable) or fires only at scroll boundaries
   (misfires constantly, unreachable on a short column). Landed on: a bottom
-  segmented control (Days | Lists) — maps onto the existing
-  `settings.splitCollapsed` enum, no new schema — with vertical meaning
-  "scroll" everywhere, always. `Drawer.SwipeArea` swipe-up-from-the-bar is a
-  P6 *optional* layer on top, not a replacement.
+  segmented control (Days | Lists, `phone-bottom-bar.tsx`) — with vertical
+  meaning "scroll" everywhere, always. `Drawer.SwipeArea` swipe-up-from-the-bar
+  is a P6 *optional* layer on top, not a replacement.
+  **Correction from the original plan:** this switch is a plain local
+  `useState` (`phoneView` in `use-board-ui-state.ts`), NOT
+  `settings.splitCollapsed` as originally sketched — `splitCollapsed` is in
+  `SETTINGS_SYNCED_FIELDS` (`src/lib/sync/wire.ts`), so wiring the phone
+  switch to it would sync which pager a phone is showing to every other
+  device on the account, including desktops that have no such concept. Local,
+  unsynced, per-device state is correct here.
 - **Horizontal paging is CSS scroll-snap, not a JS gesture library.**
   dnd-kit corrects each droppable's rect by the scroll delta of its
   scrollable ancestors (this is why Overflow/Backlog are pinned flex
@@ -253,3 +278,69 @@ protect and no reason to opt out of the platform default.
   sync across devices; a write-time override means opening the app on a
   phone once permanently mangles the desktop layout on every other device.
   No type-system trick catches this — it's a review checklist item.
+
+## 10. P3 — the phone shell
+
+`phone-board.tsx` renders exactly one of two full-width scroll-snap pagers at
+a time (`ui.phoneView`, §9): a Days pager (Overflow, then each day column)
+and a Lists pager (Backlog, then each list column, then "create list"),
+switched via `PhoneBottomBar`. Weekend collapse is force-disabled on phone
+(`use-board-data.ts`: `collapsingWeekends = layout !== "phone" &&
+settings?.showWeekends === false`) — a 40px weekend strip as a full pager page
+is unusable. `DndContext`'s `autoScroll` is off on phone
+(`use-board-actions.ts`) — incremental auto-scroll against a mandatory snap
+type judders every frame; cross-page moves go through the sheet instead.
+
+**Overflow as page −1.** On desktop/tablet Overflow is a pinned flex sibling
+outside the scrolling track; on phone there's no "outside" to pin it to, so
+it's simply the Days pager's first page. `use-day-track.ts` gained an
+`indexOffset` option (1 on phone, 0 elsewhere) so `anchorIndex` stays "0 =
+today" for `jumpBy`/`jumpToIndex`/`jumpToToday` regardless of Overflow's extra
+page — every read/write of `scrollLeft` in that hook translates through
+`indexOffset` at exactly two points (the scroll listener's anchor
+computation, the jump effect's `scrollTo`).
+
+**Bug found and fixed: `useEffect`/`useLayoutEffect` deps don't see a ref
+attach.** A `React.RefObject`'s `.current` going from `null` to an element
+does not itself re-trigger effects with an empty/unrelated dep array — and
+`Board`'s loading gate means `dayTrackRef`/`listTrackRef` can still be `null`
+on an effect's first run. This silently broke the pager's initial
+scroll-to-today alignment (it opened on Overflow instead), and turned out to
+be a **pre-existing bug**, not phone-specific — verified by reproducing the
+same failure on desktop's date-range label after a programmatic scroll.
+Fixed with a shared `whenTrackReady(trackRef, setup)` helper in
+`use-day-track.ts` (polls via `requestAnimationFrame` until the ref resolves,
+then runs `setup` and returns its cleanup) — applied to all three track-ref
+effects in that file, not just the new alignment one.
+
+**Bug found and fixed: `pager-column`'s `touch-action: pan-y` broke
+horizontal swipe-paging everywhere.** The original axis-ownership design
+(§9's scroll-snap decision, docs/GESTURES.md) gave the track `pan-x` and each
+column `pan-y`, intending a clean split. In practice every column fills the
+whole page — there is no "track background" left for a touch to start on
+instead — so *every* touch on the pager lands inside a `pan-y` element, and
+Chromium honors that column's own restriction over the ancestor track's
+`pan-x` for that touch: horizontal swipe-to-page never engaged, on real touch
+input, on either portrait phone project. Confirmed live via CDP touch
+dispatch (`e2e/support/touch.ts`) before and after the fix. Fixed by removing
+`touch-action: pan-y` from `@utility pager-column` (`globals.css`) entirely —
+left at its default (`auto`), the browser's own scroll-chaining routes a
+vertical drag to the column (the nearest Y-scrollable ancestor, since it's
+`overflow-x: hidden` and never contests X) and a horizontal drag to the track
+(the nearest X-scrollable ancestor, since the column never scrolls X at all).
+For genuinely disjoint-axis ancestors like these two, unrestricted panning
+resolves the routing correctly on its own — explicit `touch-action` per level
+is only needed where JS (dnd-kit) needs to preempt native scrolling, not here.
+Regression-covered by `e2e/touch-smoke.spec.ts`'s "a horizontal swipe scrolls
+the day track" on `phone-iphone`/`phone-pixel`.
+
+**E2E**: `e2e/support/fixtures.ts`'s bootstrap wait switched from the
+"Backlog" region to "Overflow" — the only region both pagers ever render
+unconditionally (Backlog only exists in the Lists pager, which isn't the
+default view). `e2e/support/phone.ts` adds `switchToLists()`, a no-op on
+tablet/desktop, used by any assertion in `core-flows.spec.ts`,
+`touch-affordances.spec.ts`, and `touch-smoke.spec.ts` that needs Backlog or
+the tab strip. `AppHeader`'s compact (icon-only) palette trigger has no
+`aria-keyshortcuts` the way the wide desktop field does — `core-flows.spec.ts`
+now matches on the shared "search or run a command" wording instead of that
+attribute so the same test reaches both shapes.

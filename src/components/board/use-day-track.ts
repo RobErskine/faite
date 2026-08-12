@@ -90,6 +90,22 @@ interface UseDayTrackOptions {
    * the effect a reason to check again once the track exists.
    */
   trackReady?: boolean;
+  /**
+   * How many non-day pages sit BEFORE index 0 in the DOM, so index 0 still
+   * means "today" everywhere in this hook's public surface even though it
+   * isn't the first scrollable child. `1` on the phone pager (P3,
+   * `phone-board.tsx`): Overflow is spliced into the SAME scroll-snap track
+   * as the day columns there (there's no "pinned sibling outside the track"
+   * on phone the way there is on desktop — see `board.tsx`'s comment on why
+   * Overflow is pinned there), so `scrollLeft` of 0 lands on Overflow, not
+   * today. Applied at exactly the two points that translate between index
+   * space and scroll space — `anchorIndex`'s derivation and `jumpToIndex`'s
+   * actual `scrollTo` — so every other formula in this hook (`jumpBy`,
+   * `canJumpBack`/`canJumpForward`, `jumpToToday`) stays written in terms of
+   * "today is 0" and needs no changes. Defaults to 0, a no-op for every
+   * existing desktop caller.
+   */
+  indexOffset?: number;
 }
 
 interface UseDayTrackResult {
@@ -126,11 +142,52 @@ interface JumpRequest {
   seq: number;
 }
 
+/**
+ * Retries `setup(track)` on every animation frame until `trackRef.current`
+ * is attached, runs it exactly once, and returns its cleanup.
+ *
+ * Every effect in this hook that touches the DOM needs this: a plain object
+ * ref becoming non-null is NOT something a `useEffect` dependency array can
+ * observe — ref identity never changes, only `.current` does, and React
+ * deliberately does not re-run effects for that. `Board`'s loading gate
+ * (`!data.ready || !ctx || !board || !settings`) means the element this hook
+ * measures may not exist yet on the exact render where an effect's
+ * dependency array first settles — true on any load slow enough to still
+ * show "Loading your board…" at that moment, which turned out to be far
+ * from a rare timing accident once `PhoneBoard` (P3) started exercising it.
+ * Without this, the affected effect would attach nothing for the rest of
+ * the component's life: not a delayed update, a permanently stale one.
+ */
+function whenTrackReady(
+  trackRef: React.RefObject<HTMLDivElement | null>,
+  setup: (track: HTMLDivElement) => (() => void) | void,
+): () => void {
+  let cancelled = false;
+  let raf = 0;
+  let cleanup: (() => void) | void;
+  const attempt = () => {
+    if (cancelled) return;
+    const track = trackRef.current;
+    if (!track) {
+      raf = requestAnimationFrame(attempt);
+      return;
+    }
+    cleanup = setup(track);
+  };
+  attempt();
+  return () => {
+    cancelled = true;
+    if (raf) cancelAnimationFrame(raf);
+    cleanup?.();
+  };
+}
+
 export function useDayTrack({
   trackRef,
   cap,
   onExtend,
   trackReady = true,
+  indexOffset = 0,
 }: UseDayTrackOptions): UseDayTrackResult {
   const [anchorIndex, setAnchorIndex] = useState(0);
   const [visibleCount, setVisibleCount] = useState(1);
@@ -167,34 +224,37 @@ export function useDayTrack({
   }, [trackRef]);
 
   useEffect(() => {
-    const track = trackRef.current;
-    if (!track) return;
-    let raf = 0;
-    const onScroll = () => {
-      if (raf) return;
-      raf = requestAnimationFrame(() => {
-        raf = 0;
-        const pitch = measurePitch();
-        if (pitch > 0) setAnchorIndex(computeAnchorIndex(track.scrollLeft, pitch));
-      });
-    };
-    track.addEventListener("scroll", onScroll, { passive: true });
-    return () => {
-      track.removeEventListener("scroll", onScroll);
-      if (raf) cancelAnimationFrame(raf);
-    };
-  }, [trackRef, measurePitch]);
+    return whenTrackReady(trackRef, (track) => {
+      let raf = 0;
+      const onScroll = () => {
+        if (raf) return;
+        raf = requestAnimationFrame(() => {
+          raf = 0;
+          const pitch = measurePitch();
+          if (pitch > 0) {
+            setAnchorIndex(computeAnchorIndex(track.scrollLeft, pitch) - indexOffset);
+          }
+        });
+      };
+      track.addEventListener("scroll", onScroll, { passive: true });
+      return () => {
+        track.removeEventListener("scroll", onScroll);
+        if (raf) cancelAnimationFrame(raf);
+      };
+    });
+  }, [trackRef, measurePitch, indexOffset]);
 
   /** Recomputes `visibleCount` whenever the track's own width changes. */
   useEffect(() => {
-    const track = trackRef.current;
-    if (!track || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(() => {
-      const pitch = measurePitch();
-      if (pitch > 0) setVisibleCount(computeVisibleCount(track.clientWidth, pitch));
+    if (typeof ResizeObserver === "undefined") return;
+    return whenTrackReady(trackRef, (track) => {
+      const observer = new ResizeObserver(() => {
+        const pitch = measurePitch();
+        if (pitch > 0) setVisibleCount(computeVisibleCount(track.clientWidth, pitch));
+      });
+      observer.observe(track);
+      return () => observer.disconnect();
     });
-    observer.observe(track);
-    return () => observer.disconnect();
   }, [trackRef, measurePitch]);
 
   /**
@@ -217,7 +277,7 @@ export function useDayTrack({
 
     handledSeq.current = jump.seq;
     track.scrollTo({
-      left: jump.target * pitch,
+      left: (jump.target + indexOffset) * pitch,
       behavior: scrollBehaviorFor(jump.target - anchorIndex),
     });
     // `anchorIndex` deliberately excluded: it changes as a RESULT of this
@@ -226,7 +286,7 @@ export function useDayTrack({
     // `trackReady` included though this branch never reads it: it flipping
     // true is exactly the "later run" the pitch<=0 bail above is waiting for.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jump, trackRef, measurePitch, trackReady]);
+  }, [jump, trackRef, measurePitch, trackReady, indexOffset]);
 
   /**
    * The one place that actually moves the track: floors at day 0, extends the
@@ -251,6 +311,51 @@ export function useDayTrack({
   );
 
   const jumpToToday = useCallback(() => jumpToIndex(0), [jumpToIndex]);
+
+  /**
+   * Initial alignment for a track with leading non-day pages. Without this,
+   * the browser's natural `scrollLeft: 0` on first paint lands on whatever
+   * sits before index 0 (Overflow, on the phone pager) while `anchorIndex`'s
+   * own initial state (`useState(0)` above) already correctly means "today"
+   * — state and the actual scroll position would disagree until the user's
+   * first manual scroll.
+   *
+   * Deliberately a raw DOM `scrollTo`, not a `jumpToIndex(0)` call: that
+   * would set `jump` state from inside an effect, exactly the cascading-
+   * render pattern the `JumpRequest`/`seq` design a few lines up exists to
+   * avoid (see that comment). `anchorIndex` needs no correcting alongside
+   * it — it's already 0 by construction — so there is no React state to
+   * update here at all, only the DOM to bring into agreement with it.
+   *
+   * A no-op for every desktop/tablet caller: they never pass a nonzero
+   * `indexOffset`, so `scrollLeft: 0` and index 0 already agree.
+   *
+   * Uses `whenTrackReady` for the track itself, then polls a second time
+   * inside it for the PITCH specifically — the track can exist before any
+   * `[data-day-column]` child inside it has a measurable width.
+   */
+  useLayoutEffect(() => {
+    if (indexOffset === 0) return;
+    return whenTrackReady(trackRef, (track) => {
+      let raf = 0;
+      const tryAlign = () => {
+        const pitch = measurePitch();
+        if (pitch > 0) {
+          track.scrollTo({ left: indexOffset * pitch, behavior: "auto" });
+          return;
+        }
+        raf = requestAnimationFrame(tryAlign);
+      };
+      tryAlign();
+      return () => {
+        if (raf) cancelAnimationFrame(raf);
+      };
+    });
+    // Re-runs if `indexOffset` itself changes (a live resize across the
+    // phone breakpoint mid-session), always re-aligning to today rather
+    // than trying to preserve a scroll position whose meaning just changed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [indexOffset]);
 
   return {
     anchorIndex,

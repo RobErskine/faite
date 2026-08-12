@@ -39,6 +39,7 @@ import { useBoardData } from "./use-board-data";
 import { computeModalOpen, useBoardUiState } from "./use-board-ui-state";
 import { useBoardActions } from "./use-board-actions";
 import { DesktopBoard, type ReadyBoardData } from "./desktop-board";
+import { PhoneBoard } from "./phone-board";
 import { setDayNote } from "@/lib/store/repositories";
 
 /**
@@ -72,10 +73,8 @@ import { setDayNote } from "@/lib/store/repositories";
  * real card's entry for as long as the sheet stayed open.
  */
 export function Board() {
-  // Only `coarse` is read here (P1 — sensor tuning, in useBoardActions).
-  // `layout` stays unconsumed until P3 gives it a render branch; see
-  // docs/MOBILE.md.
-  const { coarse } = useViewport();
+  // `layout` finally gets a render branch as of P3 — see docs/MOBILE.md.
+  const { layout, coarse } = useViewport();
 
   const ui = useBoardUiState();
   const data = useBoardData({
@@ -90,8 +89,9 @@ export function Board() {
     expandedWeekends: ui.expandedWeekends,
     horizon: ui.horizon,
     cap: ui.cap,
+    layout,
   });
-  const actions = useBoardActions(data, ui, coarse);
+  const actions = useBoardActions(data, ui, coarse, layout);
 
   const { settings, navGrid, dayIds } = data;
 
@@ -200,6 +200,10 @@ export function Board() {
     // jump requested in that state parks (see the comment on `trackReady` in
     // use-day-track.ts) and is served once this flips back to true.
     trackReady: splitCollapsed !== "calendar",
+    // Overflow is spliced into the SAME scroll-snap track as the day
+    // columns on phone (there's no pinned-sibling-outside-the-track the way
+    // desktop has) — see use-day-track.ts's own comment on this option.
+    indexOffset: layout === "phone" ? 1 : 0,
   });
 
   const jumpBy = useCallback(
@@ -269,6 +273,7 @@ export function Board() {
     <DndContext
       sensors={actions.sensors}
       collisionDetection={actions.collisionDetection}
+      autoScroll={actions.autoScroll}
       /**
        * Re-measure droppables continuously, not once at drag start.
        *
@@ -287,23 +292,50 @@ export function Board() {
     >
       <Hotkeys registry={hotkeys} context={guardContext} />
 
-      <DesktopBoard
-        // Narrowed by the `!data.ready || !data.ctx || ...` gate above, which
-        // TypeScript can't see across this component boundary on its own —
-        // see `ReadyBoardData`'s comment in desktop-board.tsx.
-        data={data as ReadyBoardData}
-        ui={ui}
-        actions={actions}
-        navigate={navigate}
-        dayTrackRef={dayTrackRef}
-        anchorIndex={anchorIndex}
-        visibleCount={visibleCount}
-        canJumpBack={canJumpBack}
-        canJumpForward={canJumpForward}
-        jumpBy={jumpBy}
-        jumpToIndex={jumpToIndex}
-        jumpToToday={jumpToToday}
-      />
+      {/*
+        The mobile plan's P3 branch point — `layout` finally drives what
+        renders. `tablet` gets `DesktopBoard` unchanged: the existing
+        two-half board already fits at iPad-mini portrait (744px), so it
+        only needed P1's touch remediation, not a new layout. Every prop
+        below is identical between the two — both take exactly `data`/`ui`/
+        `actions` plus the day-track values the shell hoists (see this
+        file's own doc comment for why `dayTrackRef`/`navigate` live here
+        rather than in either board component).
+      */}
+      {layout === "phone" ? (
+        <PhoneBoard
+          data={data as ReadyBoardData}
+          ui={ui}
+          actions={actions}
+          navigate={navigate}
+          dayTrackRef={dayTrackRef}
+          anchorIndex={anchorIndex}
+          visibleCount={visibleCount}
+          canJumpBack={canJumpBack}
+          canJumpForward={canJumpForward}
+          jumpBy={jumpBy}
+          jumpToIndex={jumpToIndex}
+          jumpToToday={jumpToToday}
+        />
+      ) : (
+        <DesktopBoard
+          // Narrowed by the `!data.ready || !data.ctx || ...` gate above,
+          // which TypeScript can't see across this component boundary on
+          // its own — see `ReadyBoardData`'s comment in desktop-board.tsx.
+          data={data as ReadyBoardData}
+          ui={ui}
+          actions={actions}
+          navigate={navigate}
+          dayTrackRef={dayTrackRef}
+          anchorIndex={anchorIndex}
+          visibleCount={visibleCount}
+          canJumpBack={canJumpBack}
+          canJumpForward={canJumpForward}
+          jumpBy={jumpBy}
+          jumpToIndex={jumpToIndex}
+          jumpToToday={jumpToToday}
+        />
+      )}
 
       {/*
         The overlay follows the cursor at a slight tilt and scale so the item

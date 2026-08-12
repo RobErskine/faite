@@ -28,6 +28,15 @@ interface DateNavProps {
   /** Jumps to an absolute day index — the date picker's only use of the hook. */
   onJumpToDate: (target: number) => void;
   onToday: () => void;
+  /**
+   * The phone shell's context bar (`phone-board.tsx`, mobile plan P3). Drops
+   * `ViewSettings` (the day-count toggle is moot — the pager always shows
+   * one) and the Quarter/Month/Week jump buttons, which don't fit at phone
+   * width and duplicate what a swipe already does faster. Range label,
+   * Today, and the date picker survive: swipe has no equivalent for "jump to
+   * a specific far-out date."
+   */
+  compact?: boolean;
 }
 
 /**
@@ -55,6 +64,7 @@ export function DateNav({
   onJump,
   onJumpToDate,
   onToday,
+  compact,
 }: DateNavProps) {
   const rangeStart = addDays(today, anchorIndex);
   const rangeEnd = addDays(today, anchorIndex + Math.max(visibleCount - 1, 0));
@@ -62,6 +72,20 @@ export function DateNav({
     rangeStart === rangeEnd
       ? formatShortDate(rangeStart)
       : `${formatShortDate(rangeStart)} – ${formatShortDate(rangeEnd)}`;
+
+  if (compact) {
+    return (
+      <div className="flex items-center gap-2 px-4 py-2">
+        <span className="num min-w-0 flex-1 truncate text-sm font-medium">{range}</span>
+        {anchorIndex > 0 && (
+          <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={onToday}>
+            Today
+          </Button>
+        )}
+        <JumpToDatePicker today={today} onSelect={onJumpToDate} />
+      </div>
+    );
+  }
 
   return (
     /*

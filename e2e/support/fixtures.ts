@@ -39,11 +39,16 @@ export const test = base.extend({
       .getByRole("button", { name: "Continue without an account" })
       .click({ timeout: 15_000 });
 
-    // `useBootstrap()` seeds Backlog + the default tab asynchronously; the
-    // Backlog column's aria-label ("Backlog", set via BoardColumn's
-    // aria-label={title} on <section>) is the first thing to depend on it,
-    // so waiting on it is waiting on bootstrap being done.
-    await expect(page.getByRole("region", { name: "Backlog" })).toBeVisible({
+    // `useBootstrap()` seeds Backlog + the default tab asynchronously, and
+    // the Overflow region (aria-label="Overflow" on BoardColumn's root
+    // <section>) is the first thing to depend on it either way — waiting on
+    // it is waiting on bootstrap being done. Overflow specifically, not
+    // Backlog: `PhoneBoard` (P3) shows exactly one of its two pagers at a
+    // time, defaulting to "Days" (Overflow's pager), so Backlog isn't in the
+    // DOM at all until a test explicitly switches to "Lists" — see
+    // `switchToLists()` in core-flows.spec.ts. Overflow is the one region
+    // every layout renders unconditionally, immediately, always.
+    await expect(page.getByRole("region", { name: "Overflow" })).toBeVisible({
       timeout: 15_000,
     });
     await use(page);

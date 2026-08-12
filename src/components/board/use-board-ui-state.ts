@@ -80,6 +80,22 @@ export function useBoardUiState() {
   /** The day whose details sheet is open, if any. */
   const [openDay, setOpenDay] = useState<CivilDate | null>(null);
 
+  /**
+   * Which page the phone shell's bottom bar shows (`phone-board.tsx`, P3).
+   *
+   * Deliberately plain React state, NOT `settings.splitCollapsed` — the
+   * mobile plan's original sketch called for reusing that enum ("no new
+   * schema"), but `splitCollapsed` is in `SETTINGS_SYNCED_FIELDS`
+   * (lib/sync/wire.ts): writing it from a phone-only control would sync a
+   * phone session's Days/Lists choice into a desktop session's split state
+   * on next pull, silently collapsing a desktop half nobody asked to
+   * collapse there. That's precisely the failure mode Decision 1 in
+   * docs/MOBILE.md warns about, just via a shared field rather than a
+   * missing read-time guard. Resets to "days" on reload — a real UX rough
+   * edge, but a far smaller one than corrupting another device's layout.
+   */
+  const [phoneView, setPhoneView] = useState<"days" | "lists">("days");
+
   const selectTab = useCallback((tabId: string) => {
     void mutateSettings(LOCAL_OWNER_ID, { activeTabId: tabId });
   }, []);
@@ -252,6 +268,8 @@ export function useBoardUiState() {
     setSettingsOpen,
     openDay,
     setOpenDay,
+    phoneView,
+    setPhoneView,
     landingTodoId,
     setLandingTodoId,
     landingRectRef,

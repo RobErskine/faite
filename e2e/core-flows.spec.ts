@@ -1,18 +1,22 @@
 import { test, expect } from "./support/fixtures";
+import { switchToLists } from "./support/phone";
 
 /**
  * Cross-viewport functional contract — runs on every project in
  * playwright.config.ts (desktop, tablet, phone portrait/landscape).
  *
- * The board has no responsive layout yet, so every project renders the same
- * desktop DOM today; the point of running these here, before any mobile work
- * lands, is to lock in the functional behaviour (not the layout) that must
- * survive both the P2 extraction and the P3 phone shell. Once P3 ships a
- * real phone layout, these same assertions are what prove the new shell
- * didn't just change the chrome around a broken feature.
+ * Written before P3's phone shell existed, to lock in behaviour (not
+ * layout) that had to survive both the P2 extraction and P3 landing.
+ * `PhoneBoard` genuinely differs from `DesktopBoard` now — it shows exactly
+ * one of its two pagers at a time, defaulting to "Days" — so a few of these
+ * tests need `switchToLists()` (support/phone.ts) to reach Backlog/the tab
+ * strip at all. The point stands either way: these assertions are what
+ * prove the new shell didn't just change the chrome around a broken
+ * feature.
  */
 
 test("quick-add creates a todo and the row checkbox completes it", async ({ page }) => {
+  await switchToLists(page);
   const backlog = page.getByRole("region", { name: "Backlog" });
   const title = "Buy stamps";
 
@@ -38,6 +42,7 @@ test("quick-add creates a todo and the row checkbox completes it", async ({ page
 });
 
 test("a todo opens and deletes from the sheet footer", async ({ page }) => {
+  await switchToLists(page);
   const backlog = page.getByRole("region", { name: "Backlog" });
   const title = "Return library book";
 
@@ -58,11 +63,18 @@ test("a todo opens and deletes from the sheet footer", async ({ page }) => {
 });
 
 test("default tab and the ⌘K command palette are reachable", async ({ page }) => {
+  await switchToLists(page);
   // TabPill (tab-strip.tsx) renders as a plain <button>, not role="tab" —
   // the strip has no ARIA tablist semantics today.
   await expect(page.getByRole("button", { name: "My Lists", exact: true })).toBeVisible();
 
-  await page.locator('[aria-keyshortcuts="Meta+K Control+K"]').click();
+  // `AppHeader`'s palette trigger (app-header.tsx) has two shapes: the wide
+  // desktop field (`aria-keyshortcuts="Meta+K Control+K"`, visible "Search or
+  // run a command…" text + ⌘K hint) and `PhoneBoard`'s compact icon button
+  // (`aria-label="Search or run a command"`, no keyboard hint — nothing to
+  // hint at without a keyboard). A substring match on the shared wording
+  // reaches the trigger either way without caring which shape rendered.
+  await page.getByRole("button", { name: /search or run a command/i }).click();
   const input = page.getByPlaceholder("Search to-dos or run a command…");
   await expect(input).toBeVisible();
   await page.keyboard.press("Escape");

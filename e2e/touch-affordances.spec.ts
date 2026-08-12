@@ -1,4 +1,5 @@
 import { test, expect } from "./support/fixtures";
+import { switchToLists } from "./support/phone";
 
 /**
  * Tier A coverage for P1 (docs/MOBILE.md) — the two claims that phase makes:
@@ -16,6 +17,11 @@ import { test, expect } from "./support/fixtures";
  * §3); redoing that as a `getComputedStyle(el, "::after")` E2E assertion
  * would mostly be testing that Tailwind's compiler still works, not that
  * this app's classes are correct.
+ *
+ * `PhoneBoard` (P3) splits Overflow (Days pager) and Backlog/the tab strip
+ * (Lists pager) across two mutually-exclusive views — `switchToLists()`
+ * (support/phone.ts) reaches the latter; it's a no-op on tablet/desktop,
+ * which show both at once.
  */
 test.describe("touch affordances", () => {
   test.beforeEach(async ({}, testInfo) => {
@@ -25,7 +31,21 @@ test.describe("touch affordances", () => {
     );
   });
 
-  test("hover-only reveals are visible without hovering", async ({ page }) => {
+  test("hover-only reveals are visible without hovering", async ({ page }, testInfo) => {
+    // Overflow's rail-collapse affordance only exists when Overflow renders
+    // as a pinned rail (tablet/desktop layout) — on phone (P3) Overflow is a
+    // full pager page instead, with no collapse concept at all, so there's
+    // nothing to assert there. Checked in the default "Days" view, before
+    // `switchToLists()` navigates away from it.
+    const isPhonePortrait =
+      testInfo.project.name === "phone-iphone" || testInfo.project.name === "phone-pixel";
+    if (!isPhonePortrait) {
+      await expect(
+        page.getByRole("button", { name: "Collapse the Overflow column" }),
+      ).toBeVisible();
+    }
+
+    await switchToLists(page);
     const title = "Touch-visible todo";
     await page
       .getByRole("region", { name: "Backlog" })
@@ -47,12 +67,11 @@ test.describe("touch affordances", () => {
     await expect(
       page.getByRole("button", { name: "Drag to reorder the My Lists tab" }),
     ).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: "Collapse the Overflow column" }),
-    ).toBeVisible();
   });
 
   test("small icon buttons meet the 44px comfortable-touch-target floor", async ({ page }) => {
+    // "New tab" (tab-strip.tsx) only exists in `PhoneBoard`'s "Lists" view.
+    await switchToLists(page);
     // "New tab" is `size="icon-xs"` (tab-strip.tsx) — the buttonVariants
     // entry P1 grows via `pointer-coarse:min-h-11 pointer-coarse:min-w-11`,
     // and it's on screen with no setup needed.
@@ -63,6 +82,8 @@ test.describe("touch affordances", () => {
   });
 
   test("the tab pill meets the 44px floor", async ({ page }) => {
+    // The tab strip (tab-strip.tsx) only exists in `PhoneBoard`'s "Lists" view.
+    await switchToLists(page);
     // `pointer-coarse:min-h-11` (tab-strip.tsx) sizes the whole pill row,
     // not the label button inside it — checking the button directly would
     // only see its unpadded label height, not the tap target a thumb

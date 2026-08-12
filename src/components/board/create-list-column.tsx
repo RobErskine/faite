@@ -23,10 +23,15 @@ import { createUndoStep, pushUndo, undoById } from "@/lib/undo";
 export function CreateListColumn({
   tabId,
   onNavigate,
+  className,
 }: {
   tabId: string;
   /** Arrow-key navigation off the button. See docs/KEYBOARD.md §11. */
   onNavigate?: (fromStopId: string, key: NavKey) => boolean;
+  /** Same escape hatch as `BoardColumn`'s — the phone pager (P3) adds
+   * `pager-column` so this stays a valid scroll-snap target as the track's
+   * trailing page. */
+  className?: string;
 }) {
   /** `null` is idle. A string — including "" — means the field is open. */
   const [draft, setDraft] = useState<string | null>(null);
@@ -59,6 +64,7 @@ export function CreateListColumn({
         // inherits the planning half's wider --column-min.
         "flex flex-1 flex-col rounded-md",
         "min-w-(--column-min) max-w-(--column-max)",
+        className,
       )}
     >
       {draft === null ? (

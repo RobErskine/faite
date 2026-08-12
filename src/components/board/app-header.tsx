@@ -27,6 +27,14 @@ interface AppHeaderProps {
   onOpenSettings: () => void;
   /** Raw Dexie row; undefined until the store has read it. */
   settings: SettingsRow | undefined;
+  /**
+   * The phone shell (`phone-board.tsx`, mobile plan P3). Swaps the search
+   * FIELD (text label + ⌘K kbd hint, sized for a pointer that can read "Search
+   * or run a command…" in passing) for a search ICON — there's no room for
+   * the field at phone width, and ⌘K itself is a desktop-keyboard shortcut
+   * with nothing to hint at on a device with no keyboard attached.
+   */
+  compact?: boolean;
 }
 
 /**
@@ -38,7 +46,7 @@ interface AppHeaderProps {
  * the real field, and a second live input would duplicate value state and
  * fight it for focus.
  */
-export function AppHeader({ onOpenPalette, onOpenSettings, settings }: AppHeaderProps) {
+export function AppHeader({ onOpenPalette, onOpenSettings, settings, compact }: AppHeaderProps) {
   const { data: session } = useSession();
   const identity = useIdentity();
   const avatar = resolveAvatar(settings, identity);
@@ -58,22 +66,33 @@ export function AppHeader({ onOpenPalette, onOpenSettings, settings }: AppHeader
         Faite
       </Link>
 
-      <div className="flex flex-1 justify-center">
+      {compact ? (
         <button
           type="button"
           onClick={onOpenPalette}
-          aria-keyshortcuts="Meta+K Control+K"
-          className="flex h-8 w-full max-w-md items-center gap-2 rounded-lg border bg-muted/40 px-2.5 text-left transition-colors outline-none hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+          aria-label="Search or run a command"
+          className="ml-auto flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors outline-none hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
         >
-          <Search className="size-3.5 text-muted-foreground" aria-hidden />
-          <span className="text-xs text-muted-foreground">
-            Search or run a command…
-          </span>
-          <kbd className="ml-auto rounded border bg-background px-1 font-mono text-2xs text-muted-foreground">
-            ⌘K
-          </kbd>
+          <Search className="size-4" aria-hidden />
         </button>
-      </div>
+      ) : (
+        <div className="flex flex-1 justify-center">
+          <button
+            type="button"
+            onClick={onOpenPalette}
+            aria-keyshortcuts="Meta+K Control+K"
+            className="flex h-8 w-full max-w-md items-center gap-2 rounded-lg border bg-muted/40 px-2.5 text-left transition-colors outline-none hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+          >
+            <Search className="size-3.5 text-muted-foreground" aria-hidden />
+            <span className="text-xs text-muted-foreground">
+              Search or run a command…
+            </span>
+            <kbd className="ml-auto rounded border bg-background px-1 font-mono text-2xs text-muted-foreground">
+              ⌘K
+            </kbd>
+          </button>
+        </div>
+      )}
 
       {shouldShowAuthNudges ? (
         <Button size="sm" nativeButton={false} render={<Link href="/signup" />}>

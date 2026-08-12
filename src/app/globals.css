@@ -336,6 +336,78 @@
 }
 
 /*
+  The phone pager (P3, docs/GESTURES.md) — one column fills the whole page,
+  paged through via native scroll-snap rather than a JS carousel/transform
+  library. That choice is load-bearing, not a style preference: dnd-kit
+  corrects each droppable's cached rect by the scroll delta of its
+  scrollable ancestors (see the comment on Overflow's pinning above), and a
+  transform-based carousel gives it nothing to correct against — every
+  droppable rect in the track would silently be wrong mid-drag. Scroll-snap
+  keeps a real `scrollLeft`, so `use-day-track.ts`'s existing pager math
+  keeps working unmodified.
+
+  `--column-min`/`--column-max` set to 100% here is the whole trick that
+  makes a column exactly one page wide: `BoardColumn`'s root already reads
+  `min-w-(--column-min) max-w-(--column-max)` for every non-pinned column, so
+  this needs no change to that component at all.
+*/
+@utility column-track-pager {
+  overflow-x: auto;
+  overflow-y: hidden;
+  touch-action: pan-x;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scroll-snap-stop: always;
+  --column-min: 100%;
+  --column-max: 100%;
+
+  /*
+    Suspended mid-drag, not left mandatory. Reordering within a page drags a
+    card near the page's own edge sometimes, and a snap point fighting
+    dnd-kit's own scroll compensation there reads as the column yanking back
+    under the cursor. `[data-dragging]` is set by PhoneBoard directly from
+    `ui.dragging` — no JS scroll-locking needed, just relaxing the CSS
+    constraint for the duration.
+  */
+  &[data-dragging] {
+    scroll-snap-type: none;
+  }
+}
+
+/**
+ * Applied per column inside a `column-track-pager` (`pager-column` on
+ * `BoardColumn` via its `className` passthrough). `scroll-snap-align: start`
+ * is what actually makes each column the snap target the mandatory type
+ * above snaps to.
+ *
+ * Deliberately NO `touch-action: pan-y` here, despite that being the
+ * original design (see the axis-ownership table in docs/GESTURES.md). Each
+ * column fills the whole page, so every touch on the pager necessarily
+ * starts inside one — there is no "track background" region left for a
+ * touch to start on instead. An explicit `pan-y` here, nested under the
+ * track's `pan-x`, doesn't cleanly split the axes the way it does for
+ * disjoint siblings: verified live (CDP touch dispatch, both phone-width
+ * projects) that it makes Chromium refuse ANY native panning starting on a
+ * column — horizontal swipe-to-page never engages, because the column's own
+ * `pan-y` overrides the ancestor's `pan-x` for that touch, full stop. The
+ * fix is to leave this axis unrestricted (the property's own default) and
+ * let the browser's ordinary scroll-chaining route the gesture: vertical
+ * drags go to this column (the nearest scrollable-in-Y ancestor, since it's
+ * `overflow-x: hidden` so it never contests X), horizontal drags fall
+ * through to the track (the nearest scrollable-in-X ancestor, since this
+ * element doesn't scroll X at all). That's the same routing an explicit
+ * `touch-action` would have tried to hand-roll — for two ancestors that
+ * genuinely own disjoint axes, unrestricted panning already resolves it.
+ */
+@utility pager-column {
+  scroll-snap-align: start;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior-y: contain;
+  min-height: 0;
+}
+
+/*
   Sonner's Undo button.
 
   This has to be CSS rather than `toastOptions.classNames.actionButton`, and
