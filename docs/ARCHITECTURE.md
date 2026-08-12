@@ -606,6 +606,11 @@ src/
       hooks.ts                reactive reads (useLiveQuery)
   components/
     board/                    board, columns, cards, sheet, command palette
+      board.tsx                 composition root only — see below
+      use-board-data.ts         Dexie reads + every derived value
+      use-board-ui-state.ts     every local useState + computeModalOpen()
+      use-board-actions.ts      every handler, dnd-kit sensors/collision
+      desktop-board.tsx         the two-half layout body
     auth/                     SessionProvider, welcome dialog, signed-out banner
     marketing/                landing page header — see §2.13
     ui/                       shadcn components
@@ -617,6 +622,37 @@ src/
     email.ts                  sendEmail() over the EMAIL binding
     user-do.ts                UserDurableObject skeleton — filled in at P3
 ```
+
+**`board.tsx` was a single 2574-line component until the mobile plan's P2**
+(docs/MOBILE.md), extracted into the four files above. The split follows the
+real dependency graph rather than an artificial "pure data, zero inputs"
+ideal — several of `use-board-data.ts`'s derivations (`overTodoId`,
+`navGrid`, `openTodo`, `guardContext`'s `modalOpen` half) need to know what's
+currently being interacted with, so the hook takes the relevant
+`use-board-ui-state.ts` fields as parameters rather than pretending to be
+argument-free. `use-board-actions.ts` takes both `data` and `ui`, because a
+handler's whole job is combining "what's true right now" with "what the user
+just did."
+
+What stays in `board.tsx` itself, and why none of it moved: `dayTrackRef` +
+`useDayTrack` (a ref has to attach to whichever element is actually
+scrolling, a layout fact — hoisting it here is what lets a future
+`PhoneBoard`, P3, attach the same ref to a different element and get
+`anchorIndex`/`jumpBy` for free); `navigate` (`useColumnNav`, which needs
+`anchorIndex`/`jumpToIndex` — only available after `useDayTrack` has run);
+`DndContext`/`Hotkeys`/`DragOverlay`/every sheet mount, deliberately never
+inside `DesktopBoard` — exactly one of each regardless of which layout
+renders, which is what stops a future `PhoneBoard` from duplicating a
+droppable/draggable id into dnd-kit's id-keyed maps (the documented failure
+mode behind `DaySheet`'s placement outside `DndContext`).
+
+`DesktopBoard` takes `data`/`ui`/`actions` as three plain props, not a React
+Context — the mobile plan's original sketch called this a "Context
+boundary," which described *where* the seam sits (`Board` →
+`{Desktop,Phone}Board`), not literally React's Context API. With exactly one
+consumer per render (never both layouts at once — see above), a Context
+provider would add an indirection layer with nothing to justify it; three
+props do the same job.
 
 ---
 

@@ -215,7 +215,7 @@ protect and no reason to opt out of the platform default.
 | **P-1** | Playwright E2E harness — desktop/tablet/phone projects, Tier A structural contract, Tier B real touch via CDP | **Shipped.** See docs/E2E.md. |
 | **P0** | `viewport` export, safe-area vars, manifest + placeholder icons, `@custom-variant`s, `use-viewport.ts` + `?layout=` override, `overscroll-none`, static-export entry fix | **Shipped.** This document. |
 | **P1** | Touch remediation on the *existing* desktop layout — the 4 hover-only reveals, `buttonVariants`/`SelectTrigger`/tab-pill coarse sizes, checkbox/resize-handle `::after` hit areas, coarse-tuned dnd-kit sensors + haptic, guard test | **Shipped.** §3, §9, `docs/DRAG-AND-DROP.md` §4.9b. |
-| **P2** | Extract `board.tsx` (2574 lines, no `board.test.tsx`) into `use-board-data`/`use-board-ui-state`/`use-board-actions` + a `BoardContext` seam | Not started |
+| **P2** | Extract `board.tsx` (2574 lines, no `board.test.tsx`) into `use-board-data`/`use-board-ui-state`/`use-board-actions` + a `DesktopBoard` seam | **Shipped.** See docs/ARCHITECTURE.md §4. |
 | **P3** | The phone shell — scroll-snap pager, bottom segmented control (Days / Lists), compact header, sticky quick-add, `layout` (the other half of `useViewport()`) finally consumed | Not started |
 | **P4** | Adaptive overlays — `adaptive-sheet.tsx` swapping `Sheet`↔`Drawer` by layout, full-screen command palette on phone, row `⋯` action sheet (there is no per-row delete today — only in the TodoSheet footer and ⌘K) | Not started |
 | **P5** | `mention-menu.tsx` → `@floating-ui/react`, BlockNote-on-touch audit | Not started |
