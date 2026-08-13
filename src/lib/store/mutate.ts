@@ -141,12 +141,18 @@ export interface MutateOptions {
  * (e.g. a virtual recurrence occurrence) must materialize it first — see
  * `materialize()` below.
  */
+/**
+ * Returns the ids of any `opts.events` rows written — empty when none were
+ * passed. Callers that need to reverse an event's visibility later (undo
+ * tombstoning, `lib/undo.ts`) capture these; every other caller already
+ * ignores a `Promise<void>`-shaped return, so this is a non-breaking change.
+ */
 export async function mutate<K extends RecordTable>(
   kind: K,
   entityId: string,
   patch: Record<string, unknown>,
   opts?: MutateOptions,
-): Promise<void> {
+): Promise<string[]> {
   const db = getDb();
   const table = TABLE_BY_KIND[kind];
   const stamped = { ...patch, updatedAt: now() };
@@ -165,6 +171,8 @@ export async function mutate<K extends RecordTable>(
       await db.outbox.add(enqueue("todoEvent", event.id, event));
     }
   });
+
+  return events.map((event) => event.id);
 }
 
 /**

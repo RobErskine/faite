@@ -35,6 +35,19 @@ export interface UndoStep {
   kind: UndoKind;
   entityId: string;
   patch: Record<string, unknown>;
+  /**
+   * `todoEvent` ids to tombstone when this step is replayed (EI-94 Phase 3).
+   *
+   * Attached AFTER `pushUndo`, via `attachEventIds` — the forward mutation
+   * (and the event it logs) hasn't happened yet at push time, since every
+   * call site pushes the undo entry before awaiting the write, so the toast's
+   * "Undo" button is wired to a real entry immediately. Not present on most
+   * steps: only ones whose forward action logs a `todoEvent` need this, and
+   * only where undoing it INSTANTLY (not later editing) should erase the
+   * event too — see `setTodoStatus`'s doc comment for the concrete case
+   * ("Marked done" left behind on something un-done a second later).
+   */
+  eventIds?: string[];
 }
 
 export interface UndoEntry {
@@ -106,15 +119,41 @@ export function pushUndo(label: string, steps: UndoStep[]): string {
 }
 
 /**
+ * Attaches `todoEvent` ids to an already-pushed entry's first step, once the
+ * forward write that logged them has completed — see `UndoStep.eventIds`.
+ *
+ * A no-op if the entry is gone by the time this runs (already undone, or
+ * evicted past `MAX_UNDO`): there is nothing left to attach to, and nothing
+ * left that would ever tombstone the event anyway.
+ */
+export function attachEventIds(entryId: string, eventIds: string[]): void {
+  if (eventIds.length === 0) return;
+  const entry = stack.find((e) => e.id === entryId);
+  const step = entry?.steps[0];
+  if (step) step.eventIds = eventIds;
+}
+
+/**
  * Apply an entry's steps as ordinary writes.
  *
  * Kept standalone because it is the seam redo will need: computing the
  * forward-again patch means reading each row here, just before it is
  * overwritten. See the follow-up section of the plan.
+ *
+ * `eventIds` tombstoning happens AFTER the patch replay, in the same spirit
+ * as `logTodoEvent` being written atomically with the change it describes —
+ * here the reverse: the tombstone only makes sense once the reversed state
+ * has actually landed. `mutate("todoEvent", …)` is an ordinary generic write
+ * (todoEvent is a ordinary RecordTable, see `mutate.ts`'s `TABLE_BY_KIND`),
+ * not a special case — it just happens to be the one sanctioned writer of
+ * `todoEvent.deletedAt` (`schema.ts`'s doc comment on `todoEventSchema`).
  */
 async function apply(entry: UndoEntry): Promise<UndoEntry> {
   for (const step of entry.steps) {
     await mutate(step.kind, step.entityId, step.patch);
+    for (const eventId of step.eventIds ?? []) {
+      await mutate("todoEvent", eventId, { deletedAt: now() });
+    }
   }
   return entry;
 }

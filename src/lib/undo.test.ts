@@ -10,6 +10,7 @@ import {
 } from "@/lib/store/repositories";
 import {
   MAX_UNDO,
+  attachEventIds,
   clearUndo,
   deleteListUndoSteps,
   inversePatch,
@@ -260,5 +261,35 @@ describe("undo against the real store", () => {
      */
     expect(await getDb().outbox.count()).toBe(outboxAfterCreate + 3);
     expect(after.updatedAt >= before.updatedAt).toBe(true);
+  });
+
+  describe("attachEventIds — undo tombstoning (EI-94 Phase 3)", () => {
+    it("tombstones the attached event when the entry is undone", async () => {
+      const id = await createTodo({ title: "Buy milk" });
+      const before = (await getDb().todos.get(id))!;
+      const eventId = await setTodoStatus(id, "done");
+      expect(eventId).toBeTruthy();
+
+      const entryId = pushUndo("Completed", [
+        { kind: "todo", entityId: id, patch: inversePatch(before, statusPatch("done")) },
+      ]);
+      attachEventIds(entryId, [eventId!]);
+
+      await undoById(entryId);
+
+      const event = await getDb().todoEvents.get(eventId!);
+      expect(event?.deletedAt).toBeTruthy();
+    });
+
+    it("does nothing if the entry was already undone (or evicted) by the time it's called", () => {
+      // No throw, no crash — a stale entryId is a legitimate race (the
+      // forward write and the undo can, in principle, land either order).
+      expect(() => attachEventIds("does-not-exist", ["event-1"])).not.toThrow();
+    });
+
+    it("is a no-op for an empty eventIds array — an unchanged status logs nothing to attach", () => {
+      const entryId = pushUndo("No-op", [{ kind: "todo", entityId: "t1", patch: {} }]);
+      expect(() => attachEventIds(entryId, [])).not.toThrow();
+    });
   });
 });

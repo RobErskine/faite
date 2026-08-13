@@ -200,7 +200,14 @@ export const dayGroupPatch = (
  * `dropped` ("won't do") is deliberately a separate status from `done` — the
  * distinction is the whole point of the Overflow column's triage.
  */
-export async function setTodoStatus(id: string, status: TodoStatus): Promise<void> {
+/**
+ * Returns the id of the `done`/`dropped`/`reopened` event this call logged,
+ * or `null` when the status didn't actually change — `handleToggle`/
+ * `handleSheetStatus` (`use-board-actions.ts`) pass this to `attachEventIds`
+ * so undoing an instant status change tombstones the event rather than
+ * leaving e.g. "Completed" on something un-done a second later (EI-94 Phase 3).
+ */
+export async function setTodoStatus(id: string, status: TodoStatus): Promise<string | null> {
   // Read-before-write to know the PREVIOUS status: `reopened` only means
   // something relative to what it was, and a status set to what it already
   // was (unreachable from the UI today, but not from undo/redo replay of a
@@ -214,9 +221,10 @@ export async function setTodoStatus(id: string, status: TodoStatus): Promise<voi
         : status === "dropped"
           ? "dropped"
           : "reopened";
-  await mutate("todo", id, statusPatch(status), {
+  const eventIds = await mutate("todo", id, statusPatch(status), {
     events: kind ? [logTodoEvent(id, kind)] : [],
   });
+  return eventIds[0] ?? null;
 }
 
 /** Schedule onto a day. Does NOT clear listId or labels — membership is kept. */

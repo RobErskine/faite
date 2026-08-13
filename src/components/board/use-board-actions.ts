@@ -67,6 +67,7 @@ import {
 } from "@/lib/store/repositories";
 import { now } from "@/lib/store/mutate";
 import {
+  attachEventIds,
   createUndoStep,
   inversePatch,
   pushUndo,
@@ -733,7 +734,11 @@ export function useBoardActions(
       // materialize before writing. A no-op when it already has one.
       void (async () => {
         await materializeIfNeeded(todo);
-        await setTodoStatus(todo.id, "done");
+        const eventId = await setTodoStatus(todo.id, "done");
+        // EI-94 Phase 3: an instant undo tombstones the `done` event too, so
+        // history doesn't show "Completed" for something un-done a second
+        // later.
+        if (eventId) attachEventIds(entryId, [eventId]);
       })();
       toast.success(`Completed “${short(todo.title)}”`, {
         duration: 6000,
@@ -787,7 +792,8 @@ export function useBoardActions(
       ]);
       void (async () => {
         await materializeIfNeeded(before);
-        await setTodoStatus(id, status);
+        const eventId = await setTodoStatus(id, status);
+        if (eventId) attachEventIds(entryId, [eventId]);
       })();
       // Same reasoning as the card checkbox: anything but `open` drops the
       // todo off the board, so there is nothing left on screen to confirm it.
