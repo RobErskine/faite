@@ -1,6 +1,8 @@
 import type { CivilDate, DayEventKind, Todo } from "./schema";
 import { formatEventTime } from "./event-time";
-import { civilDateOf, formatShortDate } from "./scheduling";
+import { civilDateOf, formatShortDate, type PlacementContext } from "./scheduling";
+import { rollEventsFor } from "./rollover-events";
+import { zonedInstant } from "./zoned";
 
 export { formatEventTime };
 
@@ -52,6 +54,11 @@ export { formatEventTime };
  * 7. **`createdAt` is a device wall clock.** A skewed or long-offline device
  *    can stamp an instant landing on the wrong civil day for the viewer.
  *    STILL TRUE for both — neither timeline corrects for clock skew.
+ * 8. **Rollover history is derived from the CURRENT `scheduledDate`.**
+ *    `rolledOver`/`overflowed` (the Faite Loop, EI-96 — see
+ *    `lib/rollover-events.ts`) are recomputed from `scheduledDate` on every
+ *    render, same as everything else here — so rescheduling a todo rewrites
+ *    which days it appears to have rolled through, same trade as 5 above.
  */
 
 export type { DayEventKind };
@@ -69,6 +76,11 @@ export interface DayEvent {
    * something from today onto tomorrow is an event that belongs on tomorrow's
    * timeline, timestamped with today's instant. Render it accordingly; see
    * `formatEventWhen`.
+   *
+   * `rolledOver`/`overflowed` are synthetic: there is no real timestamp for a
+   * roll (it isn't a write), so this is `day` at 00:00 in the viewer's
+   * timezone — which sorts a roll to the top of its day, matching when it
+   * actually takes effect.
    */
   at: string;
   todo: Todo;
@@ -85,12 +97,25 @@ export function buildDayTimeline(
   todos: readonly Todo[],
   day: CivilDate,
   timezone: string,
+  ctx: PlacementContext,
 ): DayEvent[] {
   const events: DayEvent[] = [];
 
   for (const todo of todos) {
     if (civilDateOf(todo.createdAt, timezone) === day) {
       events.push({ key: `${todo.id}:created`, kind: "created", at: todo.createdAt, todo });
+    }
+
+    // The Faite Loop, made visible: `rollEventsFor` already filters to open,
+    // non-recurring, scheduled todos, so this is a no-op for everything else.
+    for (const roll of rollEventsFor(todo, ctx)) {
+      if (roll.day !== day) continue;
+      events.push({
+        key: `${todo.id}:${roll.kind}:${roll.day}`,
+        kind: roll.kind,
+        at: zonedInstant(day, "00:00", timezone),
+        todo,
+      });
     }
 
     /*

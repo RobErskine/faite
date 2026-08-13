@@ -262,6 +262,30 @@ describe("timeline", () => {
     ]);
   });
 
+  it("labels rolledOver and overflowed entries — the Faite Loop", () => {
+    // ctx.today is DAY (2026-08-10), overflowAfterDays is 3.
+    render(
+      <Harness
+        todos={[
+          todo({
+            id: "rolling",
+            createdAt: "2026-08-01T00:00:00.000Z",
+            scheduledDate: "2026-08-08", // 2 rolls as of DAY — still rolling
+          }),
+          todo({
+            id: "overflowed",
+            createdAt: "2026-08-01T00:00:00.000Z",
+            scheduledDate: "2026-08-06", // 4 rolls as of DAY — crossed today
+          }),
+        ]}
+      />,
+    );
+    expect(entryLabels()).toEqual([
+      "Fell into Overflow·12:00 AM",
+      "Rolled over·12:00 AM",
+    ]);
+  });
+
   it("renders two entries for a todo created and finished the same day", () => {
     render(
       <Harness
@@ -378,7 +402,14 @@ describe("timeline — kind filter", () => {
     ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Show all" }));
     expect(lastPatch()).toEqual({
-      visibleEventKinds: ["created", "scheduled", "done", "dropped"],
+      visibleEventKinds: [
+        "created",
+        "scheduled",
+        "done",
+        "dropped",
+        "rolledOver",
+        "overflowed",
+      ],
     });
   });
 

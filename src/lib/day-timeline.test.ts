@@ -1,9 +1,24 @@
 import { describe, expect, it } from "vitest";
 import { buildDayTimeline, formatEventTime, formatEventWhen } from "./day-timeline";
+import type { PlacementContext } from "./scheduling";
 import type { Todo } from "./schema";
 
 const DAY = "2026-08-10";
 const UTC = "UTC";
+
+/**
+ * `today` fixed well before every scheduledDate used by tests that aren't
+ * about the Faite Loop, so `rollEventsFor` returns `[]` for them regardless
+ * of which day is being viewed — a roll is about `scheduledDate` vs.
+ * `ctx.today`, not about the viewed day.
+ */
+const DEFAULT_CTX: PlacementContext = {
+  today: "2026-08-01",
+  visibleWindow: [DAY],
+  workdaysOnly: false,
+  workdays: [1, 2, 3, 4, 5],
+  overflowAfterDays: 3,
+};
 
 function todo(overrides: Partial<Todo> & { id: string }): Todo {
   return {
@@ -33,8 +48,8 @@ function todo(overrides: Partial<Todo> & { id: string }): Todo {
   };
 }
 
-const kinds = (todos: Todo[], day = DAY, tz = UTC) =>
-  buildDayTimeline(todos, day, tz).map((event) => `${event.todo.id}:${event.kind}`);
+const kinds = (todos: Todo[], day = DAY, tz = UTC, ctx = DEFAULT_CTX) =>
+  buildDayTimeline(todos, day, tz, ctx).map((event) => `${event.todo.id}:${event.kind}`);
 
 describe("buildDayTimeline", () => {
   it("reports a todo created that day", () => {
@@ -127,6 +142,7 @@ describe("buildDayTimeline", () => {
       [todo({ id: "a", status: "done", completedAt: `${DAY}T17:00:00.000Z` })],
       DAY,
       UTC,
+      DEFAULT_CTX,
     );
     expect(events.map((e) => e.key)).toEqual(["a:created", "a:done"]);
     expect(events[1].at).toBe(`${DAY}T17:00:00.000Z`);
@@ -197,6 +213,60 @@ describe("buildDayTimeline", () => {
         }),
       ];
       expect(kinds(rows)).toEqual(["a:created", "a:scheduled", "a:done"]);
+    });
+  });
+
+  describe("the Faite Loop", () => {
+    const ctx: PlacementContext = {
+      today: "2026-08-13",
+      visibleWindow: ["2026-08-13"],
+      workdaysOnly: false,
+      workdays: [1, 2, 3, 4, 5],
+      overflowAfterDays: 3,
+    };
+    const early = { createdAt: "2026-08-01T09:00:00.000Z" };
+
+    it("emits rolledOver on each day the todo rolls onto, including today", () => {
+      const rows = [todo({ id: "a", ...early, scheduledDate: "2026-08-10" })]; // 3 rolls as of today
+      expect(kinds(rows, "2026-08-11", UTC, ctx)).toEqual(["a:rolledOver"]);
+      expect(kinds(rows, "2026-08-12", UTC, ctx)).toEqual(["a:rolledOver"]);
+      expect(kinds(rows, "2026-08-13", UTC, ctx)).toEqual(["a:rolledOver"]);
+    });
+
+    it("emits nothing on the originally scheduled day — that isn't a roll", () => {
+      const rows = [todo({ id: "a", ...early, scheduledDate: "2026-08-10" })];
+      expect(kinds(rows, "2026-08-10", UTC, ctx)).toEqual([]);
+    });
+
+    it("emits overflowed once, the day it crosses the threshold, not rolledOver", () => {
+      const rows = [todo({ id: "a", ...early, scheduledDate: "2026-08-09" })]; // 4 rolls as of today
+      expect(kinds(rows, "2026-08-12", UTC, ctx)).toEqual(["a:rolledOver"]);
+      expect(kinds(rows, "2026-08-13", UTC, ctx)).toEqual(["a:overflowed"]);
+    });
+
+    it("times a roll at the start of the viewed day, in the viewer's timezone", () => {
+      const rows = [todo({ id: "a", ...early, scheduledDate: "2026-08-10" })];
+      const events = buildDayTimeline(rows, "2026-08-11", UTC, ctx);
+      expect(events[0].at).toBe("2026-08-11T00:00:00.000Z");
+    });
+
+    it("emits nothing for a recurring occurrence — one miss bypasses the loop", () => {
+      const rows = [
+        todo({
+          id: "a",
+          ...early,
+          scheduledDate: "2026-08-09",
+          recurrenceParentId: "template-1",
+        }),
+      ];
+      expect(kinds(rows, "2026-08-13", UTC, ctx)).toEqual([]);
+    });
+
+    it("emits nothing for a settled todo, however stale", () => {
+      const rows = [
+        todo({ id: "a", ...early, scheduledDate: "2026-08-09", status: "done" }),
+      ];
+      expect(kinds(rows, "2026-08-13", UTC, ctx)).toEqual([]);
     });
   });
 });

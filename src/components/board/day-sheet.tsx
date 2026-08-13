@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { ArrowRight, Check, ChevronDown, Plus, X } from "lucide-react";
+import { Archive, ArrowRight, Check, ChevronDown, CornerDownRight, Plus, X } from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -84,6 +84,8 @@ const EVENT_LABEL: Record<DayEventKind, string> = {
   scheduled: "Assigned here",
   done: "Completed",
   dropped: "Won't do",
+  rolledOver: "Rolled over",
+  overflowed: "Fell into Overflow",
 };
 
 const EVENT_ICON: Record<DayEventKind, typeof Plus> = {
@@ -91,6 +93,8 @@ const EVENT_ICON: Record<DayEventKind, typeof Plus> = {
   scheduled: ArrowRight,
   done: Check,
   dropped: X,
+  rolledOver: CornerDownRight,
+  overflowed: Archive,
 };
 
 /**
@@ -104,6 +108,8 @@ const KIND_FILTER_OPTIONS: ReadonlyArray<{ value: DayEventKind; label: string }>
   { value: "scheduled", label: "Assigned" },
   { value: "done", label: "Completed" },
   { value: "dropped", label: "Won't do" },
+  { value: "rolledOver", label: "Rolled over" },
+  { value: "overflowed", label: "Fell into Overflow" },
 ];
 
 const ALL_EVENT_KINDS: DayEventKind[] = KIND_FILTER_OPTIONS.map((o) => o.value);
@@ -133,8 +139,8 @@ function DaySheetContent({
 }: DaySheetProps & { day: CivilDate }) {
   const { weekday, label } = formatDay(day);
   const events = useMemo(
-    () => buildDayTimeline(todos, day, timezone),
-    [todos, day, timezone],
+    () => buildDayTimeline(todos, day, timezone, ctx),
+    [todos, day, timezone, ctx],
   );
 
   const visibleKinds = settings?.visibleEventKinds ?? ALL_EVENT_KINDS;
