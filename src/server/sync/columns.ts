@@ -2,7 +2,7 @@ import { getTableColumns, getTableName } from "drizzle-orm";
 import type { SQLiteTable } from "drizzle-orm/sqlite-core";
 import type { SyncKind } from "@/lib/sync/wire";
 import { SERVER_ONLY_FIELDS, SETTINGS_SYNCED_FIELDS } from "@/lib/sync/wire";
-import { dayNotes, labels, lists, places, projects, settings, tabs, todos } from "../db/user-schema";
+import { dayNotes, labels, lists, places, projects, settings, tabs, todoEvents, todos } from "../db/user-schema";
 
 /**
  * Whitelists and JS↔SQLite coercion for the sync tables, derived from the
@@ -27,6 +27,7 @@ const TABLES: Record<SyncKind, SQLiteTable> = {
   tab: tabs,
   dayNote: dayNotes,
   place: places,
+  todoEvent: todoEvents,
   settings,
 };
 

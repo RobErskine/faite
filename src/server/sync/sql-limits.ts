@@ -8,7 +8,7 @@
  * that blows it is built from a row count rather than written literally.
  *
  * `user-do.ts`'s `readFieldClocksBulk` did exactly that: `pull()` gathers
- * entity ids from all six `SYNC_KINDS`, each capped at `limit` rows, then
+ * entity ids from every `SYNC_KINDS` entry, each capped at `limit` rows, then
  * builds one `... WHERE entity_id IN (?, ?, …)` over the union. At
  * `DEFAULT_PULL_LIMIT` (100) that is up to 600 parameters; at `MAX_PULL_LIMIT`
  * (200), up to 1200. It stayed latent only because the one production account

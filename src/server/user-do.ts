@@ -554,8 +554,8 @@ export class UserDurableObject extends DurableObject {
   /**
    * Chunked at `IN_CLAUSE_CHUNK`, not because the id list is large in
    * practice, but because it is UNBOUNDED BY CONSTRUCTION: `pull()` unions up
-   * to `limit` rows from each of the six `SYNC_KINDS`, so a `DEFAULT_PULL_
-   * LIMIT` pull can reach 600 ids against SQLite's documented 100-bound-
+   * to `limit` rows from each of the `SYNC_KINDS`, so a `DEFAULT_PULL_
+   * LIMIT` pull can reach 900 ids against SQLite's documented 100-bound-
    * parameter ceiling. See `sql-limits.ts` for the full reasoning; it fires
    * first on a long-offline catch-up pull, which is exactly the path P4's
    * reconnect story depends on.

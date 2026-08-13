@@ -36,6 +36,13 @@
       "when": 1786424342095,
       "tag": "0004_panoramic_dreadnoughts",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1786587361197,
+      "tag": "0005_overrated_hellion",
+      "breakpoints": true
     }
   ]
 }

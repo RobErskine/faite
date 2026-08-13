@@ -32,6 +32,7 @@ export const SYNC_KINDS = [
   "tab",
   "dayNote",
   "place",
+  "todoEvent",
   "settings",
 ] as const satisfies readonly SyncKind[];
 

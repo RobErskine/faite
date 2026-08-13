@@ -310,6 +310,41 @@ export const placeSchema = z.object({
 export type Place = z.infer<typeof placeSchema>;
 
 /**
+ * One entry in a todo's history log — created, moved, scheduled, edited,
+ * completed, dropped, reopened, deleted. Append-only; nothing updates a row
+ * after it's written except `deletedAt` (undo tombstoning only, see below).
+ *
+ * `kind` is `z.string()`, NOT an enum. `apply-remote.ts` skips a row that
+ * fails Zod validation on a remote apply, and its cursor still advances —
+ * an enum would mean shipping a new event kind permanently drops it on any
+ * device running a stale cached bundle. Unknown kinds render as a neutral
+ * "Updated" row instead. See `src/lib/todo-events.ts` for the known kinds
+ * and their `payload` shapes.
+ *
+ * `id` is UUIDv7 like everything else here — NOT deterministic like
+ * `dayNoteSchema.id`. Two devices marking the same todo done offline are two
+ * genuine events, not one fact two devices raced to write.
+ *
+ * `at` is when the FACT happened; `createdAt` is when the row was written.
+ * They differ only for the one synthetic `created` entry (see
+ * `HISTORY_STARTS_AT` in `todo-timeline.ts`). Sort by `at`, tiebreak by `id`.
+ *
+ * `updatedAt`/`deletedAt`/`version` are inert by policy — there is no
+ * `updateTodoEvent`. `deletedAt` has exactly one writer: undo tombstoning
+ * (Phase 3), so an instantly-undone action doesn't leave a stray row.
+ */
+export const todoEventSchema = z.object({
+  ...syncableFields,
+  /** Advisory only — never cleared if the todo is later deleted. */
+  todoId: idSchema,
+  kind: z.string().min(1),
+  at: z.string(),
+  /** Pre-serialized JSON, same convention as `todoSchema.recurrenceRule`. */
+  payload: z.string().nullable().default(null),
+});
+export type TodoEvent = z.infer<typeof todoEventSchema>;
+
+/**
  * Per-user settings.
  *
  * `timezone` is load-bearing: the overflow rule counts days, so the day
@@ -483,6 +518,7 @@ export const entityKindSchema = z.enum([
   "tab",
   "dayNote",
   "place",
+  "todoEvent",
   "settings",
 ]);
 export type EntityKind = z.infer<typeof entityKindSchema>;

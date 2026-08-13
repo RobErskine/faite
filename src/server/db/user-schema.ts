@@ -117,6 +117,28 @@ export const places = sqliteTable("places", {
   lng: real("lng"),
 });
 
+/**
+ * Per-todo history log — see `todoEventSchema` in `lib/schema.ts`. Append-only:
+ * `version` is the only field ever rewritten after insert (undo tombstoning
+ * sets `deletedAt`, Phase 3). `kind` and `payload` are untyped `text` on
+ * purpose — see the Zod schema doc comment for why `kind` can't be an enum.
+ *
+ * `todoId`/`kind`/`at` are required in the Zod schema but deliberately
+ * NULLABLE here: none has a natural `FIELD_DEFAULTS` fallback in
+ * `upsert.ts`, and a NOT NULL column with no fallback means
+ * `buildInsertColumns` omits it from a partial-first-write INSERT and
+ * SQLite throws inside `push()`'s `transactionSync` — the permanent,
+ * silent push-break `docs/SCHEMA-CHANGES.md:38-53` exists to prevent. Zod
+ * is the real enforcement; the SQL column just refuses to brick the DO.
+ */
+export const todoEvents = sqliteTable("todo_events", {
+  ...syncableColumns,
+  todoId: text("todo_id"),
+  kind: text("kind"),
+  at: text("at"),
+  payload: text("payload"),
+});
+
 /** Singleton row, keyed by `ownerId` — one settings row per DO (one owner per DO). */
 export const settings = sqliteTable("settings", {
   ownerId: text("owner_id").primaryKey(),

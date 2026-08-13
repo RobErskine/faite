@@ -23,6 +23,7 @@ type RecordTable =
   | "tabs"
   | "dayNotes"
   | "places"
+  | "todoEvents"
   | "settings";
 
 const TABLE_BY_KIND: Record<EntityKind, RecordTable> = {
@@ -33,6 +34,7 @@ const TABLE_BY_KIND: Record<EntityKind, RecordTable> = {
   tab: "tabs",
   dayNote: "dayNotes",
   place: "places",
+  todoEvent: "todoEvents",
   settings: "settings",
 };
 
@@ -60,6 +62,7 @@ export async function applyPulledChanges(changes: WireChange[]): Promise<ApplyPl
       db.tabs,
       db.dayNotes,
       db.places,
+      db.todoEvents,
       db.settings,
       db.outbox,
     ],

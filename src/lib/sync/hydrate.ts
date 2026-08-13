@@ -7,6 +7,7 @@ import {
   projectSchema,
   settingsSchema,
   tabSchema,
+  todoEventSchema,
   todoSchema,
 } from "@/lib/schema";
 import { positionAtEnd } from "@/lib/ordering";
@@ -34,6 +35,7 @@ const SCHEMA_BY_KIND: Record<SyncKind, ZodType> = {
   tab: tabSchema,
   dayNote: dayNoteSchema,
   place: placeSchema,
+  todoEvent: todoEventSchema,
   settings: settingsSchema,
 };
 

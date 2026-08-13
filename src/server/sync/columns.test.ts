@@ -11,6 +11,7 @@ describe("TABLE_NAME_BY_KIND / COLUMNS_BY_KIND", () => {
       tab: "tabs",
       dayNote: "day_notes",
       place: "places",
+      todoEvent: "todo_events",
       settings: "settings",
     });
   });

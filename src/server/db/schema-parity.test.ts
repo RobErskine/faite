@@ -9,6 +9,7 @@ import {
   projectSchema,
   settingsSchema,
   tabSchema,
+  todoEventSchema,
   todoSchema,
 } from "@/lib/schema";
 import { SYNC_KINDS } from "@/lib/sync/wire";
@@ -45,6 +46,7 @@ const ZOD_BY_KIND: Record<SyncKindName, { shape: Record<string, unknown> }> = {
   tab: tabSchema,
   dayNote: dayNoteSchema,
   place: placeSchema,
+  todoEvent: todoEventSchema,
   settings: settingsSchema,
 };
 
@@ -56,6 +58,7 @@ const TABLES_BY_KIND: Record<SyncKindName, SQLiteTable> = {
   tab: userSchema.tabs,
   dayNote: userSchema.dayNotes,
   place: userSchema.places,
+  todoEvent: userSchema.todoEvents,
   settings: userSchema.settings,
 };
 
@@ -68,6 +71,7 @@ const ALL_TABLES: SQLiteTable[] = [
   userSchema.tabs,
   userSchema.dayNotes,
   userSchema.places,
+  userSchema.todoEvents,
   userSchema.settings,
   userSchema.fieldClocks,
   userSchema.syncMeta,
@@ -91,6 +95,7 @@ const KNOWN_DIVERGENCES: Record<string, { drizzleOnly?: string[]; zodOnly?: stri
   tab: { drizzleOnly: ["version"] },
   dayNote: { drizzleOnly: ["version"] },
   place: { drizzleOnly: ["version"] },
+  todoEvent: { drizzleOnly: ["version"] },
   settings: { drizzleOnly: ["version"] },
 };
 

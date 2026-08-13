@@ -9,6 +9,7 @@ import type {
   Settings,
   Tab,
   Todo,
+  TodoEvent,
 } from "@/lib/schema";
 
 /**
@@ -27,6 +28,7 @@ export class FaiteDatabase extends Dexie {
   tabs!: EntityTable<Tab, "id">;
   dayNotes!: EntityTable<DayNote, "id">;
   places!: EntityTable<Place, "id">;
+  todoEvents!: EntityTable<TodoEvent, "id">;
   settings!: EntityTable<Settings, "ownerId">;
   outbox!: EntityTable<OutboxEntry, "id">;
 
@@ -60,6 +62,13 @@ export class FaiteDatabase extends Dexie {
     this.version(4).stores({
       todos: "id, listId, projectId, scheduledDate, status, position, deletedAt, recurrenceParentId, placeId",
       places: "id, deletedAt",
+    });
+    // Per-todo history log (`lib/schema.ts`'s `todoEventSchema`). Append-only,
+    // so no `deletedAt` filter is needed on reads — only undo tombstoning
+    // (Phase 3) ever sets it. `[todoId+at]` compound index backs
+    // `useTodoEvents()`'s `.where("todoId").equals(id)` sorted by `at`.
+    this.version(5).stores({
+      todoEvents: "id, todoId, [todoId+at], deletedAt",
     });
   }
 }
