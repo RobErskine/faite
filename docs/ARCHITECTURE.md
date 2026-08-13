@@ -521,6 +521,23 @@ placeholder for a fact that legitimately does not exist.
 
 The payoff: the cheapest schema change is the one you don't make.
 
+**The one that came out the other way: the per-todo History timeline
+(`todoEvent`, EI-94).** The day sheet's timeline (`day-timeline.ts`) derives
+events from three columns on the todo row, and that was fine for "what
+happened on this day" — but pointed at ONE todo across its whole life, the
+same derivation answers Q1 wrong: reopening a todo writes `completedAt: null`
+(question 1's "does it change when its inputs change?" — yes, and that's
+exactly the bug), which erases Monday's completion the moment the todo is
+reopened Wednesday. "Rob moved this to Groceries on Tuesday" is Q3's decision,
+not a consequence of the todo's current `listId` — it must survive Groceries
+being renamed (Q2), which a derived read of the current list can never do
+once the rename has happened. `todoEvent` is the first entity here that
+persists specifically BECAUSE the answer to all three questions pointed at
+persisting: it fails Q1 (derivation loses history on every status flip), it
+needs Q2 (a moved-list fact must outlive the list's own name), and it's
+squarely Q3 (a decision, not a consequence). See `docs/SCHEMA-CHANGES.md`'s
+worked example and `todo-timeline.ts` for the shape.
+
 **Projects is retired in favour of labels**, decided 2026-08-06. The first
 worked example above (tab-from-list) is what made this legible: once "which
 tab" is a derived selector rather than a stored field, a `project` entity
@@ -791,7 +808,8 @@ is still in `SYNC_KINDS` as of this writing; EI-62's retirement half is open.
 **not** RRULE, and no exceptions table; see `lib/recurrence.ts`), saved places
 (EI-63, additive — `Todo.location` was never migrated to a reference), day
 notes + derived timeline (EI-87), foreground reminders (EI-88), resizable board
-split (EI-89), board view settings (EI-90), the ⌘K overhaul (EI-92), plus list
+split (EI-89), board view settings (EI-90), the ⌘K overhaul (EI-92), per-todo
+History timeline (EI-94 — `todoEvent`, the 9th sync kind, see below), plus list
 tabs, priority, and location pulled forward — see §2.8b.
 
 **P6 fast-follow — still open:** sub-tasks (EI-55), saved views (EI-65 — a
@@ -812,9 +830,26 @@ UUIDv7 — the one deliberate exception to that rule, because there is exactly
 one note per day and two offline devices must collide on a single entity for
 LWW to resolve rather than producing two rows nothing merges. See
 `dayNoteSchema` in `lib/schema.ts`. Surfaced by `DaySheet`, which also renders
-a DERIVED timeline of that day's todo events (`lib/day-timeline.ts`) — there is
-still no events table, and the limits that follow from deriving history out of
-`createdAt`/`completedAt` are documented in that module's header.
+a DERIVED timeline of that day's todo events (`lib/day-timeline.ts`); the
+limits that follow from deriving history out of `createdAt`/`completedAt` are
+documented in that module's header, and five of the seven are exactly what
+motivated the real log below. This derived timeline is unchanged and stays
+derived for now — migrating it to the real log is a later, triggered
+follow-up (`todo-timeline.ts`'s header) once the log has enough coverage.
+
+**`todoEvent` is the ninth sync kind** (migration 10, EI-94) — an append-only
+per-todo history log, the first entity in this codebase that PERSISTS a fact
+§2.14 would otherwise derive (see the worked example there). One JSON
+`payload` column, `kind` is `z.string()` rather than an enum (a stale cached
+bundle must not permanently drop an event kind it doesn't recognize yet — see
+`todoEventSchema`'s doc comment), UUIDv7 ids (unlike `dayNote`'s deterministic
+one — two offline devices completing the same todo are two genuine events,
+not one fact to converge on). Written per-operation at the `repositories.ts`
+call site, atomic with the change it describes (`mutate()`'s `opts.events`),
+never by diffing. Rendered by `todo-timeline.ts`'s `buildTodoTimeline` below
+the todo sheet's Notes field, behind a collapsed disclosure. See
+`docs/SCHEMA-CHANGES.md` for the plumbing and `lib/store/todo-events.ts` for
+the payload shapes and the write-site table.
 
 ### P2 is live
 

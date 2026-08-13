@@ -8,36 +8,50 @@ export { formatEventTime };
  * What happened to a to-do on one calendar day.
  *
  * DERIVED from the timestamps a todo already carries, not read from an event
- * log — there is no events table, and adding one would be a different shape
- * from anything else that syncs here (every table is one mutable row per id,
- * merged field-by-field; an append-only log is neither). That trade is the same
- * one the board already makes with Overflow: history is computed from current
- * state, and current state is the only truth.
+ * log. That trade is the same one the board already makes with Overflow:
+ * history is computed from current state, and current state is the only
+ * truth. Deliberately UNCHANGED even though a real log now exists
+ * (`todoEvent`, EI-94, see below) — migrating this specific timeline is a
+ * later, triggered follow-up (`todo-timeline.ts`'s header), not a rip-and-
+ * replace: pre-existing todos have no events, so a naive migration would
+ * show yesterday as empty, a visible regression on the app's most-used
+ * surface.
  *
  * The limits that follow are real, and worth knowing before trusting this as a
- * journal:
+ * journal. Limits 1, 2, 5, and 6 are exactly what motivated the real log —
+ * `lib/todo-timeline.ts`'s `buildTodoTimeline`, surfaced in the todo sheet's
+ * History section — which doesn't have them; 3, 4, and 7 are either shared
+ * with it or don't apply to a per-todo (rather than per-day) view:
  *
  * 1. **Reopening erases history.** `statusPatch` (`store/repositories.ts`)
  *    writes `completedAt: null` when a todo goes back to `open`, so completing
  *    something on Monday and reopening it on Wednesday retroactively removes
- *    Monday's entry. Nothing can recover it.
+ *    Monday's entry. Nothing can recover it. FIXED for the per-todo log: a
+ *    `done`/`dropped` event is a real row, immune to a later status change.
  * 2. **Only the latest settle survives.** Done Monday, reopened, dropped Friday
- *    leaves one `completedAt`. Monday is gone.
+ *    leaves one `completedAt`. Monday is gone. FIXED for the per-todo log,
+ *    same reason as 1 — every settle is its own row.
  * 3. **`done` vs `dropped` is read from the CURRENT status.** `completedAt` is
  *    one column shared by both, so a todo dropped Monday and re-done Friday
- *    reads as done, on Friday only.
+ *    reads as done, on Friday only. STILL TRUE here; the per-todo log sidesteps
+ *    it by construction — `kind` is stamped at write time, not re-derived.
  * 4. **Deleted todos vanish from past days.** Callers pass `useTodos()`, which
  *    filters tombstones. Deliberate: a timeline showing items the board says
- *    do not exist is worse than one that agrees with the board.
+ *    do not exist is worse than one that agrees with the board. Doesn't apply
+ *    to the per-todo log — it's reached FROM the (still-live) todo it belongs
+ *    to, never listed independently.
  * 5. **Only the LATEST placement is knowable.** `scheduled` (below) reads
  *    `scheduledAt`, one column like `completedAt` — reschedule a todo twice and
  *    only the second move is recoverable. And it disappears retroactively the
  *    moment the todo is unscheduled or moved elsewhere, same as `done`/`dropped`
- *    disappearing on reopen.
+ *    disappearing on reopen. FIXED for the per-todo log — every reschedule and
+ *    every list move is its own `scheduled`/`unscheduled`/`moved` row.
  * 6. **No moved-list / edited-field events.** `updatedAt` is a single
  *    last-write stamp, not a log; only scheduling changes get their own field.
+ *    FIXED for the per-todo log — `moved` and `edited` are real kinds.
  * 7. **`createdAt` is a device wall clock.** A skewed or long-offline device
  *    can stamp an instant landing on the wrong civil day for the viewer.
+ *    STILL TRUE for both — neither timeline corrects for clock skew.
  */
 
 export type { DayEventKind };

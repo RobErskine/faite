@@ -45,6 +45,16 @@ strings on purpose.** The timeline row's `EVENT_LABEL` says "Assigned here"
 because "here" refers to the day the sheet is open on. A dropdown checkbox item
 has no such referent, so `KIND_FILTER_OPTIONS` labels the same kind "Assigned".
 
+**Addendum (EI-94):** the rail/dot/meta-line chrome this section describes —
+`TimelineEntry`'s `<li>`, the accent dot, the stop-at-the-last-node rail — was
+later extracted into `TimelineList`/`TimelineRow`
+(`src/components/board/timeline.tsx`) when the todo sheet grew its own History
+timeline and needed the same chrome. `EVENT_LABEL`/`EVENT_ICON` and
+`KIND_FILTER_OPTIONS` above stayed local to `day-sheet.tsx` — a different
+vocabulary (~4 kinds here vs. ~10 on a todo, and "Assigned here" specifically
+doesn't generalize) — only the rail/dot/meta-line rendering moved. See
+`todo-timeline.ts` for the todo-side timeline builder this fed.
+
 ---
 
 ## 2. Sheet width: a pre-existing CSS specificity bug

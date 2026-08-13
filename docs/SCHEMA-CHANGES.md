@@ -172,8 +172,13 @@ More involved; the kind has to be threaded through the sync machinery.
    **Prefer leaving `bootstrap.ts` alone.** Putting the statement in both is
    sanctioned and idempotent, but it buys nothing — a fresh DO runs the whole
    ledger, not just migration 1 — while costing you the bootstrap-fingerprint
-   snapshot dance in `schema-parity.test.ts`. `dayNote` (migration 4) is the
-   worked example.
+   snapshot dance in `schema-parity.test.ts`. `dayNote` (migration 5) and
+   `todoEvent` (migration 10, EI-94 — the per-todo History timeline) are both
+   worked examples. `todoEvent` is also the one place a NOT NULL-in-Zod field
+   (`todoId`/`kind`/`at`) was made nullable in SQL on purpose — see the doc
+   comment on `todoEvents` in `user-schema.ts` for why: a NOT NULL column with
+   no `FIELD_DEFAULTS` fallback throws inside `push()` on a partial write
+   instead of just leaving the column null.
 5. `TABLE_NAME_BY_KIND` and `COLUMNS_BY_KIND` in `columns.ts`.
 6. `mutate.ts`'s table dispatch and `apply-remote.ts`'s dispatch (including
    `apply-remote`'s transaction scope array).
@@ -187,8 +192,11 @@ More involved; the kind has to be threaded through the sync machinery.
 **Cost to know about:** `pull()` runs one query per kind, so the worst-case id
 count feeding `readFieldClocksBulk` grows by `limit` per kind. That is already
 chunked (`sql-limits.ts`), and `sql-limits.test.ts` pins the arithmetic — a
-seventh kind will fail a test rather than production if it ever exceeds the
-100-bound-parameter ceiling.
+tenth kind will fail a test rather than production if it ever exceeds the
+100-bound-parameter ceiling. `todoEvent` (the 9th) is immutable-per-row and
+delivered exactly once per device ever, so it's strictly cheaper than a
+mutable table of the same row count — but see `todo-timeline.ts`'s header for
+the first-sync round-trip cost that still applies to any new kind.
 
 ---
 
