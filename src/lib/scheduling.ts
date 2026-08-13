@@ -181,12 +181,12 @@ export function formatShortDate(date: CivilDate): string {
 // Rollover
 // ---------------------------------------------------------------------------
 
-interface RolloverOptions {
+export interface RolloverOptions {
   workdaysOnly: boolean;
   workdays: number[];
 }
 
-function isEligible(date: CivilDate, opts: RolloverOptions): boolean {
+export function isEligible(date: CivilDate, opts: RolloverOptions): boolean {
   if (!opts.workdaysOnly) return true;
   return opts.workdays.includes(dayOfWeek(date));
 }

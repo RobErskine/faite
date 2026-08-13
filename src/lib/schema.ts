@@ -363,8 +363,13 @@ export const settingsSchema = z.object({
   workdaysOnly: z.boolean().default(false),
   /** 0 = Sunday. Defaults to Mon–Fri. */
   workdays: z.array(z.number().int().min(0).max(6)).default([1, 2, 3, 4, 5]),
-  /** How many days a missed todo rolls before dropping into Overflow. */
-  overflowAfterDays: z.number().int().min(1).default(3),
+  /**
+   * How many days a missed todo rolls before dropping into Overflow — the
+   * "Faite Loop" length. 0 means an item falls straight into Overflow the day
+   * after it's missed; capped at 30 (there is deliberately no "never
+   * overflow" option — see docs/FAITE-LOOP.md).
+   */
+  overflowAfterDays: z.number().int().min(0).max(30).default(3),
   /**
    * Day columns VISIBLE in the calendar half: 1, 3, 5, or 7.
    *
