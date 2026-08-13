@@ -400,18 +400,15 @@ describe("History — the Faite Loop (EI-96)", () => {
     overflowAfterDays: 3,
   };
 
-  const openHistory = () =>
-    fireEvent.click(screen.getByRole("button", { name: /^History/ }));
+  // History is open by default (EI-96 follow-up) — no toggle click needed.
 
   it("shows no roll rows without ctx — History is unchanged from before EI-96", () => {
     render(<Harness todo={{ ...TODO, scheduledDate: "2026-08-08" }} />);
-    openHistory();
     expect(screen.queryByText("Rolled over")).toBeNull();
   });
 
   it("shows a collapsed 'Rolled over' row while still on today's column", () => {
     render(<Harness todo={{ ...TODO, scheduledDate: "2026-08-08" }} ctx={ctx} />);
-    openHistory();
     expect(screen.getByText("Rolled over")).toBeTruthy();
     expect(screen.getByText("3 days, from Aug 8")).toBeTruthy();
     expect(screen.queryByText("Fell into Overflow")).toBeNull();
@@ -419,7 +416,6 @@ describe("History — the Faite Loop (EI-96)", () => {
 
   it("shows 'Fell into Overflow' once past the threshold", () => {
     render(<Harness todo={{ ...TODO, scheduledDate: "2026-08-07" }} ctx={ctx} />);
-    openHistory();
     expect(screen.getByText("Fell into Overflow")).toBeTruthy();
     expect(screen.getByText("from Aug 7")).toBeTruthy();
   });
@@ -431,7 +427,6 @@ describe("History — the Faite Loop (EI-96)", () => {
         ctx={ctx}
       />,
     );
-    openHistory();
     expect(screen.queryByText("Rolled over")).toBeNull();
     expect(screen.queryByText("Fell into Overflow")).toBeNull();
   });

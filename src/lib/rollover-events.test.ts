@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeLoop, rollEventsFor } from "./rollover-events";
+import { describeLoop, loopExample, rollEventsFor } from "./rollover-events";
 import { type PlacementContext, addDays, buildWindow } from "./scheduling";
 
 const WORKDAYS = [1, 2, 3, 4, 5];
@@ -45,9 +45,9 @@ describe("rollEventsFor", () => {
     // Scheduled 2026-07-31 (Fri), viewed 2026-08-03 (Mon), overflowAfterDays 3.
     const todo = { status: "open" as const, scheduledDate: "2026-07-31", recurrenceParentId: null };
     expect(rollEventsFor(todo, ctx({ overflowAfterDays: 3 }))).toEqual([
-      { kind: "rolledOver", day: "2026-08-01", from: "2026-07-31", rolls: 1 },
-      { kind: "rolledOver", day: "2026-08-02", from: "2026-07-31", rolls: 2 },
-      { kind: "rolledOver", day: "2026-08-03", from: "2026-07-31", rolls: 3 },
+      { kind: "rolledOver", day: "2026-08-01", from: "2026-07-31", rolls: 1, overflowsIn: 3 },
+      { kind: "rolledOver", day: "2026-08-02", from: "2026-07-31", rolls: 2, overflowsIn: 2 },
+      { kind: "rolledOver", day: "2026-08-03", from: "2026-07-31", rolls: 3, overflowsIn: 1 },
     ]);
   });
 
@@ -55,10 +55,10 @@ describe("rollEventsFor", () => {
     // One more day than the previous case: 4 rolls, threshold 3.
     const todo = { status: "open" as const, scheduledDate: "2026-07-30", recurrenceParentId: null };
     expect(rollEventsFor(todo, ctx({ overflowAfterDays: 3 }))).toEqual([
-      { kind: "rolledOver", day: "2026-07-31", from: "2026-07-30", rolls: 1 },
-      { kind: "rolledOver", day: "2026-08-01", from: "2026-07-30", rolls: 2 },
-      { kind: "rolledOver", day: "2026-08-02", from: "2026-07-30", rolls: 3 },
-      { kind: "overflowed", day: "2026-08-03", from: "2026-07-30", rolls: 4 },
+      { kind: "rolledOver", day: "2026-07-31", from: "2026-07-30", rolls: 1, overflowsIn: 3 },
+      { kind: "rolledOver", day: "2026-08-01", from: "2026-07-30", rolls: 2, overflowsIn: 2 },
+      { kind: "rolledOver", day: "2026-08-02", from: "2026-07-30", rolls: 3, overflowsIn: 1 },
+      { kind: "overflowed", day: "2026-08-03", from: "2026-07-30", rolls: 4, overflowsIn: 0 },
     ]);
   });
 
@@ -72,8 +72,16 @@ describe("rollEventsFor", () => {
   it("handles the N=0 boundary: overflows the very next eligible day", () => {
     const todo = { status: "open" as const, scheduledDate: "2026-08-02", recurrenceParentId: null };
     expect(rollEventsFor(todo, ctx({ overflowAfterDays: 0 }))).toEqual([
-      { kind: "overflowed", day: "2026-08-03", from: "2026-08-02", rolls: 1 },
+      { kind: "overflowed", day: "2026-08-03", from: "2026-08-02", rolls: 1, overflowsIn: 0 },
     ]);
+  });
+
+  it("counts overflowsIn down as more rolls elapse, hitting 0 exactly on overflow", () => {
+    const todo = { status: "open" as const, scheduledDate: "2026-07-31", recurrenceParentId: null };
+    const dayOne = rollEventsFor(todo, ctx({ today: "2026-08-01", overflowAfterDays: 3 }));
+    const dayThree = rollEventsFor(todo, ctx({ today: "2026-08-03", overflowAfterDays: 3 }));
+    expect(dayOne.at(-1)?.overflowsIn).toBe(3);
+    expect(dayThree.at(-1)?.overflowsIn).toBe(1);
   });
 
   it("respects workdaysOnly when spacing roll days", () => {
@@ -90,8 +98,26 @@ describe("rollEventsFor", () => {
   it("agrees with rollsElapsed's day-after-scheduled boundary", () => {
     const todo = { status: "open" as const, scheduledDate: addDays("2026-08-03", -1), recurrenceParentId: null };
     expect(rollEventsFor(todo, ctx({ overflowAfterDays: 3 }))).toEqual([
-      { kind: "rolledOver", day: "2026-08-03", from: "2026-08-02", rolls: 1 },
+      { kind: "rolledOver", day: "2026-08-03", from: "2026-08-02", rolls: 1, overflowsIn: 3 },
     ]);
+  });
+});
+
+describe("loopExample", () => {
+  it("returns the structured dates describeLoop's sentence is built from", () => {
+    expect(loopExample(ctx({ overflowAfterDays: 3 }))).toEqual({
+      missed: "2026-08-03",
+      rollDays: ["2026-08-04", "2026-08-05", "2026-08-06"],
+      overflowDay: "2026-08-07",
+    });
+  });
+
+  it("returns no rollDays at N=0 — straight to Overflow", () => {
+    expect(loopExample(ctx({ overflowAfterDays: 0 }))).toEqual({
+      missed: "2026-08-03",
+      rollDays: [],
+      overflowDay: "2026-08-04",
+    });
   });
 });
 

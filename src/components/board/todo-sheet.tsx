@@ -870,12 +870,12 @@ interface HistorySectionProps {
 }
 
 /**
- * Collapsed behind a disclosure with a count in the heading — the sheet's
- * default height must not change just because a todo has history, and most
- * of the time a user opening a todo wants the fields above, not its past.
+ * Behind a disclosure with a count in the heading, open by default — a
+ * todo's history is usually exactly what someone opening the sheet wants to
+ * see, so it no longer costs an extra click to reveal.
  */
 function HistorySection({ todo, events, timezone, ctx, listsById }: HistorySectionProps) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
   const items = useMemo(
     () => buildTodoTimeline(events, todo, ctx, timezone),
     [events, todo, ctx, timezone],

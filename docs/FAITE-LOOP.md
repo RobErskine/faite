@@ -49,20 +49,34 @@ roll.
   explicitly scheduled on a Saturday still shows on Saturday regardless.
 
 Both live in **Settings → Faite Loop**
-(`src/components/settings/loop-section.tsx`), added by EI-96 — previously
-`overflowAfterDays` was reachable only via its DB default, and `workdaysOnly`
-only via the ⌘K palette (`"Roll over on workdays only ⇄ every day"`, still
-there — it writes the same setting). The section renders a **live worked
-example** via `describeLoop()`, e.g.:
+(`src/components/settings/loop-section.tsx`, second in the nav — right after
+Profile, and sharing the card's `CornerDownRight` rollover icon), added by
+EI-96 — previously `overflowAfterDays` was reachable only via its DB
+default, and `workdaysOnly` only via the ⌘K palette (`"Roll over on
+workdays only ⇄ every day"`, still there — it writes the same setting).
+
+The section renders a **live worked example** as three boxes
+(`loop-example.tsx`'s `LoopExampleCards`) — the same fake to-do ("Renew
+passport") shown at each moment the loop can put it in: **Scheduled** →
+**Rolled over** (omitted entirely when `overflowAfterDays` is 0 — nothing
+to show) → **Overflow**. Each box renders the **real** `TitleMarkers`/
+`TodoMetaBadges` (`todo-row-parts.tsx`), fed real `rollEventsFor()` output
+for the fake todo — not a lookalike — so hovering the glyph or badge pops
+the exact same tooltip a real card would, and the example can never drift
+out of sync with what the board actually renders. `loopExample()` supplies
+the dates and `describeLoop()` — still the single sentence-builder, kept as
+an `sr-only` summary for screen readers — both read from the same
+primitive, so they can't disagree. This replaced a plain-text sentence:
 
 > Miss Aug 12 → rolls to Aug 13, Aug 14, Aug 15 → Overflow on Aug 16
 
-so the off-by-one (does "3 rolls" mean 3 days on the board, or 3 days plus
-the original?) is demonstrated rather than left to the setting's label to
-explain. Both settings sync (`SETTINGS_SYNCED_FIELDS`, `lib/sync/wire.ts`)
-and needed **no schema migration** — the server column and sync allowlist
-already existed; only the Zod range (`.min(0).max(30)`, previously
-`.min(1)`) and the UI were new.
+which is now the sr-only fallback rather than the sighted UI, but the goal
+is the same: the off-by-one (does "3 rolls" mean 3 days on the board, or 3
+days plus the original?) is demonstrated rather than left to the setting's
+label to explain. Both settings sync (`SETTINGS_SYNCED_FIELDS`,
+`lib/sync/wire.ts`) and needed **no schema migration** — the server column
+and sync allowlist already existed; only the Zod range (`.min(0).max(30)`,
+previously `.min(1)`) and the UI were new.
 
 ## 3. Recurring to-dos bypass the loop entirely
 
@@ -86,8 +100,8 @@ can't drift between the card, the day timeline, and the todo History.
 
 ```ts
 type RollEvent =
-  | { kind: "rolledOver"; day: CivilDate; from: CivilDate; rolls: number }
-  | { kind: "overflowed"; day: CivilDate; from: CivilDate; rolls: number };
+  | { kind: "rolledOver"; day: CivilDate; from: CivilDate; rolls: number; overflowsIn: number }
+  | { kind: "overflowed"; day: CivilDate; from: CivilDate; rolls: number; overflowsIn: number };
 
 rollEventsFor(todo, ctx): RollEvent[]
 ```
@@ -106,7 +120,8 @@ The loop that builds the sequence is bounded by `overflowAfterDays + 1`
 year ago costs the same as one missed yesterday, because the function stops
 the moment it reaches `overflowed`.
 
-`describeLoop(ctx)` builds the Settings worked example from the same
+`loopExample(ctx)` and `describeLoop(ctx)` build the Settings worked example
+(the three boxes and its sr-only sentence, respectively) from the same
 primitive (`rolloverTarget`) — the demonstration and the real placement
 logic can't disagree because they're built from the same piece.
 
@@ -120,8 +135,17 @@ no new prop plumbing through `board-column.tsx` or `use-board-data.ts`.
 
 - **Rollover marker** — a quiet `CornerDownRight` glyph in `TitleMarkers`,
   alongside the deadline/location/recurrence markers, shown only while still
-  rolling (`rolls > 0`, not yet in Overflow). Tooltip: "Rolled over from Aug
-  12 · 3 days".
+  rolling (`rolls > 0`, not yet in Overflow). Two-line tooltip: "Rolled from
+  Aug 12 - 3 days" / "Overflow in 2 days" — pairing how long it's rolled with
+  when it will fall into Overflow, the two questions the marker exists to
+  answer. `overflowsIn` (`RollEvent`, `rollover-events.ts`) counts down in
+  the same eligible-day units as `rolls`, computed from `rolls` and
+  `overflowAfterDays` alone, so it's known — and shown — from the very first
+  roll, not just once the todo is close to the threshold.
+  `TooltipContent`'s popup is `inline-flex` (row direction, `ui/tooltip.tsx`),
+  so two direct `<span>` children sit side by side rather than stack —
+  actual multi-line content needs one wrapping `flex flex-col` span as the
+  single flex item, which stacks its own children as a column.
 - **Overflow age badge** — a loud destructive badge in `TodoMetaBadges`,
   shown only once in Overflow: "In Overflow N days". `N` counts **eligible
   days since the original scheduled date** (`rollsElapsed`'s count) — the
@@ -158,6 +182,10 @@ in identical-looking rows. `overflowed` stays its own row. `ctx` is
 (as in a test with nothing to show), History renders exactly as it did
 before EI-96, no roll rows at all.
 
+`HistorySection` opens **by default** — a todo's history, roll rows
+included, is usually exactly what someone opening the sheet wants to see,
+so it no longer costs an extra click.
+
 ## 6. The documented trade: derived history can be rewritten
 
 Because every roll row is recomputed from the **current** `scheduledDate` on
@@ -178,8 +206,8 @@ here, in contrast with `todoEvent` (EI-94), which persists specifically
 |---|---|
 | `lib/scheduling.ts` | `deriveColumn()`, `rollsElapsed()`, `rolloverTarget()`, `isEligible()` — the placement rule itself |
 | `lib/schema.ts` | `overflowAfterDays`, `workdaysOnly`, `workdays` on `settingsSchema`; `rolledOver`/`overflowed` in `dayEventKindSchema` |
-| `lib/rollover-events.ts` | `rollEventsFor()`, `describeLoop()` — the one derivation everything else reads |
-| `components/settings/loop-section.tsx`, `loop-rolls-field.tsx` | Settings → Faite Loop |
+| `lib/rollover-events.ts` | `rollEventsFor()`, `loopExample()`, `describeLoop()` — the one derivation everything else reads |
+| `components/settings/loop-section.tsx`, `loop-rolls-field.tsx`, `loop-example.tsx` | Settings → Faite Loop |
 | `components/board/todo-row-parts.tsx`, `todo-card.tsx` | rollover marker + Overflow age badge |
 | `lib/day-timeline.ts`, `components/board/day-sheet.tsx` | day timeline rollover rows |
 | `lib/todo-timeline.ts`, `components/board/todo-sheet.tsx` | per-todo History rollover rows |

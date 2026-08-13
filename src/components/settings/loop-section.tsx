@@ -7,6 +7,7 @@ import { todayIn } from "@/lib/scheduling";
 import { LOCAL_OWNER_ID } from "@/lib/store/repositories";
 import { mutateSettings } from "@/lib/store/mutate";
 import type { SettingsSectionProps } from "./types";
+import { LoopExampleCards } from "./loop-example";
 import { LoopRollsField } from "./loop-rolls-field";
 
 /**
@@ -21,12 +22,16 @@ export function LoopSection({ settings }: SettingsSectionProps) {
   const workdaysOnly = settings?.workdaysOnly ?? false;
   const workdays = settings?.workdays ?? [1, 2, 3, 4, 5];
 
-  const example = describeLoop({
+  const loopCtx = {
     today: todayIn(timezone),
     overflowAfterDays,
     workdaysOnly,
     workdays,
-  });
+  };
+  /** Kept for screen readers — the three boxes below are its visual
+   * replacement, but a sighted-only redesign would leave AT users with
+   * nothing. See feedback item #5. */
+  const example = describeLoop(loopCtx);
 
   return (
     <div className="space-y-6">
@@ -46,9 +51,10 @@ export function LoopSection({ settings }: SettingsSectionProps) {
         }
       />
 
-      <p className="num rounded-lg border bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-        {example}
-      </p>
+      <div>
+        <p className="sr-only">{example}</p>
+        <LoopExampleCards ctx={loopCtx} />
+      </div>
 
       <div className="flex items-center justify-between gap-4">
         <div className="space-y-0.5">

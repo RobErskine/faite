@@ -361,7 +361,7 @@ describe("the Faite Loop", () => {
     render(<Harness todo={todo({ scheduledDate: "2026-08-08" })} />); // 1 roll
     const marker = row().querySelector("[data-rollover-marker]");
     expect(marker).not.toBeNull();
-    expect(marker?.textContent).toContain("Rolled over from Aug 8");
+    expect(marker?.textContent).toContain("Rolled from Aug 8");
     expect(badgeRow()).toBeNull();
   });
 

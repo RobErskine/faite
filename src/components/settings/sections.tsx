@@ -1,4 +1,4 @@
-import { Bell, MapPin, Palette, RefreshCw, User, Wrench } from "lucide-react";
+import { Bell, CornerDownRight, MapPin, Palette, User, Wrench } from "lucide-react";
 import type { SettingsSection } from "./types";
 import { ProfileSection } from "./profile-section";
 import { DesignSection } from "./design-section";
@@ -20,18 +20,18 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     Component: ProfileSection,
   },
   {
+    id: "loop",
+    label: "Faite Loop",
+    description: "How long a missed to-do rolls before it falls into Overflow.",
+    icon: CornerDownRight,
+    Component: LoopSection,
+  },
+  {
     id: "design",
     label: "Design",
     description: "How the board looks: typeface and appearance.",
     icon: Palette,
     Component: DesignSection,
-  },
-  {
-    id: "loop",
-    label: "Faite Loop",
-    description: "How long a missed to-do rolls before it falls into Overflow.",
-    icon: RefreshCw,
-    Component: LoopSection,
   },
   {
     id: "notifications",

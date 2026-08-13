@@ -23,6 +23,11 @@ export interface RollEvent {
   from: CivilDate;
   /** How many eligible days elapsed as of `day`. 1-indexed. */
   rolls: number;
+  /** Eligible days from `day` until this todo crosses into Overflow — the
+   * same units as `rolls`, so a still-rolling card can say when that's
+   * coming, not just how far it's come. 0 on the `overflowed` event itself
+   * (it already happened, as of `day`). */
+  overflowsIn: number;
 }
 
 /**
@@ -54,10 +59,13 @@ export function rollEventsFor(
   let day = scheduledDate;
   for (let rolls = 1; rolls <= totalRolls; rolls++) {
     day = rolloverTarget(day, opts);
+    // Fixed by rolls/overflowAfterDays alone — 0 exactly when this event IS
+    // the overflow (rolls === overflowAfterDays + 1).
+    const overflowsIn = ctx.overflowAfterDays - rolls + 1;
     if (rolls <= ctx.overflowAfterDays) {
-      events.push({ kind: "rolledOver", day, from: scheduledDate, rolls });
+      events.push({ kind: "rolledOver", day, from: scheduledDate, rolls, overflowsIn });
     } else {
-      events.push({ kind: "overflowed", day, from: scheduledDate, rolls });
+      events.push({ kind: "overflowed", day, from: scheduledDate, rolls, overflowsIn });
       break;
     }
   }
@@ -71,16 +79,28 @@ export function rollEventsFor(
  * Anchored at `ctx.today` purely for realistic-looking dates — it is not
  * claiming anything was actually missed today.
  */
-export function describeLoop(
+export interface LoopExample {
+  /** The example's "missed" day — `ctx.today`, purely for realistic dates. */
+  missed: CivilDate;
+  /** Each day the example rolls through on its way to Overflow, oldest
+   * first. Empty when `overflowAfterDays` is 0 — no rolling, straight to
+   * Overflow the next eligible day. */
+  rollDays: CivilDate[];
+  /** The day the example crosses into Overflow. */
+  overflowDay: CivilDate;
+}
+
+/**
+ * The dates behind the Settings → Faite Loop worked example — shared by
+ * `describeLoop` (the sentence) and the Settings UI's three-box illustration
+ * (`loop-example.tsx`), so they can never show different dates for the same
+ * settings.
+ */
+export function loopExample(
   ctx: Pick<PlacementContext, "today" | "overflowAfterDays" | "workdaysOnly" | "workdays">,
-): string {
+): LoopExample {
   const opts = { workdaysOnly: ctx.workdaysOnly, workdays: ctx.workdays };
   const missed = ctx.today;
-
-  if (ctx.overflowAfterDays === 0) {
-    const overflowDay = rolloverTarget(missed, opts);
-    return `Miss ${formatShortDate(missed)} → Overflow on ${formatShortDate(overflowDay)}`;
-  }
 
   const rollDays: CivilDate[] = [];
   let day = missed;
@@ -89,6 +109,18 @@ export function describeLoop(
     rollDays.push(day);
   }
   const overflowDay = rolloverTarget(day, opts);
+
+  return { missed, rollDays, overflowDay };
+}
+
+export function describeLoop(
+  ctx: Pick<PlacementContext, "today" | "overflowAfterDays" | "workdaysOnly" | "workdays">,
+): string {
+  const { missed, rollDays, overflowDay } = loopExample(ctx);
+
+  if (rollDays.length === 0) {
+    return `Miss ${formatShortDate(missed)} → Overflow on ${formatShortDate(overflowDay)}`;
+  }
 
   const rollSummary =
     rollDays.length <= 4

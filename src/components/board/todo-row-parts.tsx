@@ -61,7 +61,7 @@ export function TitleMarkers({
   recurrenceSummary?: string;
   /** Set only while the todo is still rolling — on today's column, not yet
    * in Overflow. See `rollEventsFor` in `lib/rollover-events.ts`. */
-  rolledFrom?: { from: CivilDate; rolls: number };
+  rolledFrom?: { from: CivilDate; rolls: number; overflowsIn: number };
 }) {
   const deadlineMissed = isDeadlineMissed(todo, { today });
   /** Quiet inline marker for a deadline still ahead; a missed one gets the loud badge. */
@@ -79,15 +79,26 @@ export function TitleMarkers({
               >
                 <CornerDownRight className="size-3" aria-hidden />
                 <span className="sr-only">
-                  Rolled over from {formatShortDate(rolledFrom.from)},{" "}
-                  {rolledFrom.rolls} {rolledFrom.rolls === 1 ? "day" : "days"} ago.{" "}
+                  Rolled from {formatShortDate(rolledFrom.from)},{" "}
+                  {rolledFrom.rolls} {rolledFrom.rolls === 1 ? "day" : "days"} ago. Overflow in{" "}
+                  {rolledFrom.overflowsIn} {rolledFrom.overflowsIn === 1 ? "day" : "days"}.{" "}
                 </span>
               </span>
             }
           />
           <TooltipContent>
-            Rolled over from {formatShortDate(rolledFrom.from)} ·{" "}
-            {rolledFrom.rolls} {rolledFrom.rolls === 1 ? "day" : "days"}
+            {/* `TooltipContent`'s popup is `inline-flex` (row), so two direct
+              children sit side by side, not stacked — this wrapper is the
+              flex item, and stacks its own children as a column. */}
+            <span className="flex flex-col text-center">
+              <span>
+                Rolled from {formatShortDate(rolledFrom.from)} - {rolledFrom.rolls}{" "}
+                {rolledFrom.rolls === 1 ? "day" : "days"}
+              </span>
+              <span>
+                Overflow in {rolledFrom.overflowsIn} {rolledFrom.overflowsIn === 1 ? "day" : "days"}
+              </span>
+            </span>
           </TooltipContent>
         </Tooltip>
       )}

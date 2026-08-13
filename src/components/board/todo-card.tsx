@@ -117,7 +117,9 @@ export function TodoCard({
    */
   const lastRoll = rollEventsFor(todo, ctx).at(-1);
   const rolledFrom =
-    lastRoll?.kind === "rolledOver" ? { from: lastRoll.from, rolls: lastRoll.rolls } : undefined;
+    lastRoll?.kind === "rolledOver"
+      ? { from: lastRoll.from, rolls: lastRoll.rolls, overflowsIn: lastRoll.overflowsIn }
+      : undefined;
   const overflowInfo =
     lastRoll?.kind === "overflowed"
       ? { from: lastRoll.from, since: lastRoll.day, rolls: lastRoll.rolls }
