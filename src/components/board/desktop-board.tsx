@@ -333,8 +333,8 @@ export function DesktopBoard({
                   emphasis={isToday}
                   onToggle={handleToggle}
                   onOpen={(todo) => openTodoSheet(todo.id)}
-                  onQuickAdd={(title, listId) =>
-                    void handleQuickAdd(title, { day: column.day }, listId)
+                  onQuickAdd={(title, listId, labelIds) =>
+                    void handleQuickAdd(title, { day: column.day }, listId, labelIds)
                   }
                   lists={mentionLists}
                   onNavigate={navigate}
@@ -424,8 +424,8 @@ export function DesktopBoard({
               awayTodoIds={board.awayTodoIds}
               onToggle={handleToggle}
               onOpen={(todo) => openTodoSheet(todo.id)}
-              onQuickAdd={(title, listId) =>
-                void handleQuickAdd(title, { listId: backlogColumn.list.id }, listId)
+              onQuickAdd={(title, listId, labelIds) =>
+                void handleQuickAdd(title, { listId: backlogColumn.list.id }, listId, labelIds)
               }
               lists={mentionLists}
               onNavigate={navigate}
@@ -504,8 +504,8 @@ export function DesktopBoard({
                   awayTodoIds={board.awayTodoIds}
                   onToggle={handleToggle}
                   onOpen={(todo) => openTodoSheet(todo.id)}
-                  onQuickAdd={(title, listId) =>
-                    void handleQuickAdd(title, { listId: column.list.id }, listId)
+                  onQuickAdd={(title, listId, labelIds) =>
+                    void handleQuickAdd(title, { listId: column.list.id }, listId, labelIds)
                   }
                   lists={mentionLists}
                   onNavigate={navigate}

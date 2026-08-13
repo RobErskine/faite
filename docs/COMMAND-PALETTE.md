@@ -11,10 +11,11 @@ interesting ranking ideas are in direct conflict with that.
 Status at time of writing: palette does creates, deletes, tab switching, view
 settings, substring search over to-do titles/descriptions, row actions
 (complete/won't-do/delete a search hit without leaving the palette — §4, §7.3),
-and (§5) quick-add tokens — priority, dates, deadlines, times, and an `@list`
-mention — when creating a to-do from typed text. Font pairing moved to
-Settings → Design (`src/components/settings/design-section.tsx`); it is no
-longer a palette command.
+and (§5) quick-add tokens — priority, dates, deadlines, times, an `@list`
+mention, and a `#label` mention (which can also create the label inline) —
+when creating a to-do from typed text. Font pairing moved to Settings → Design
+(`src/components/settings/design-section.tsx`); it is no longer a palette
+command.
 
 ---
 
@@ -132,38 +133,44 @@ obstacle to everything in §8 — see §7.1.
 
 ---
 
-## 5. Quick-add tokens & the `@list` mention
+## 5. Quick-add tokens & the `@list`/`#label` mentions
 
 Typed text in `Create to-do "<query>"` and `New to-do` is not literal — it is
 parsed the same way a column's quick-add row parses a title, so
-`buy milk p2 fri 2pm @groceries` creates one to-do with `priority: 2`,
-`scheduledDate` set to the next Friday, `reminderTime: "14:00"`, and files it
-into the "Groceries" list instead of Backlog. `quickAdd` (the parsed result)
-is computed once from `value` and reused by both creation paths, so root's
-fallback and `New to-do` can never disagree about what the same typed text
-means.
+`buy milk p2 fri 2pm @groceries #urgent` creates one to-do with `priority: 2`,
+`scheduledDate` set to the next Friday, `reminderTime: "14:00"`, files it into
+the "Groceries" list instead of Backlog, and applies the "Urgent" label.
+`quickAdd` (the parsed result) is computed once from `value` and reused by
+both creation paths, so root's fallback and `New to-do` can never disagree
+about what the same typed text means.
 
-This is the `@` half of the "scoped modes" idea in §8 item 6 below, shipped —
-but as an **inline mention inside free text**, not a mode that restricts the
-whole palette to a list-picker. Typing `@` doesn't leave `mode.kind === "root"`
-or `"new-todo"`; it opens a small popover *over* the input, and picking a
-result resolves to a hidden field (`mentionedList` state, alongside `mode` and
-`value`) rather than to visible text. Full mechanics — trigger detection, the
-cursor-tracking contract, why positioning is a plain anchored popover rather
-than portaled — live in `docs/AT-MENTION.md`; this section only covers what's
-specific to wiring it into `CommandInput`.
+This is the "scoped modes" idea in §8 item 6 below, shipped — but as an
+**inline mention inside free text**, not a mode that restricts the whole
+palette to a picker. Typing `@` or `#` doesn't leave `mode.kind === "root"` or
+`"new-todo"`; it opens a small popover *over* the input, and picking a result
+resolves to a hidden field rather than to visible text: `@` sets
+`mentionedList` (a single value — picking again replaces it), `#` appends to
+`mentionedLabels` (an array — every `#` mention accumulates, rendered as its
+own removable chip). A `#` query that matches no existing label offers a
+"Create label" row; picking it creates the label on the spot and adds it the
+same way. Full mechanics — trigger detection, the cursor-tracking contract,
+the `MentionSource`/`onNoMatch` shape, why positioning is a plain anchored
+popover rather than portaled — live in `docs/AT-MENTION.md`; this section
+only covers what's specific to wiring it into `CommandInput`.
 
 **Grammar** (source of truth: `src/lib/quick-add.ts`'s own comments):
 `p1`-`p4` for priority, a weekday/`next <weekday>`/`M/D`/month-day/ISO date,
 `!` before any of those for a deadline instead of a scheduled date, and a
 time (`2pm`, `14:00`). Tokens are only recognized at the edges of the string
 (trailing run for all kinds, leading run for priority only) — see the module
-for why: it's what keeps "call mom about p1 stuff" from parsing anything.
+for why: it's what keeps "call mom about p1 stuff" from parsing anything. The
+`@`/`#` mentions are **not** part of this grammar — they're a UI pick, not
+text the parser sees (see `quick-add-preview.tsx`'s doc comment).
 
 **Where it's live:** root mode's search box (via the `Create to-do` fallback)
 and `New to-do`. **Not** `new-list`/`new-label`/`new-project`/`new-tab`/
-`delete-*` — those aren't creating a to-do, so `mentionItems` is `[]` there
-and the popover never opens (an empty item list is how `useMention` stays
+`delete-*` — those aren't creating a to-do, so `mentionSources` is `[]` there
+and the popover never opens (an empty source list is how `useMention` stays
 permanently closed, rather than a special case per mode).
 
 **The one cmdk-specific wrinkle:** `useMention` needs the underlying
@@ -301,10 +308,12 @@ Roughly ordered by value-to-effort. Each notes what it depends on.
    free text is the remainder. Worth a dedicated parser module with its own
    tests (`src/lib/query.ts`), kept pure like `search.ts`.
 6. **Scoped modes** — typing `>` restricts to commands, `#` to labels, `@` to
-   lists, mirroring Slack/Linear. `@` for lists shipped (§5) — but as an
-   inline mention that resolves to a hidden field on a to-do being created,
-   not a mode that restricts the whole palette to a list-picker. `>`/`#` as
-   described here are still open. Cheap once there is a registry and a parser.
+   lists, mirroring Slack/Linear. `@` for lists and `#` for labels both
+   shipped (§5) — but as inline mentions that resolve to hidden fields (or, on
+   the `#` side, an inline label-creation row) on a to-do being created, not a
+   mode that restricts the whole palette to a picker. Only `>` (command
+   filtering) as described here is still open. Cheap once there is a registry
+   and a parser.
 7. **Ranking on more than text** — frecency (recently opened, frequently
    opened), deadline proximity, current tab first. Needs a small usage-log
    table, or reuse of `updatedAt`/`completedAt`.
@@ -328,15 +337,20 @@ Three layers, all required:
 - **`src/lib/search.test.ts`** — pure matcher. Node environment, no DOM. Tier
   ordering, status ordering, recency tiebreak, soft-delete exclusion, limit.
 - **`src/lib/quick-add.test.ts`** / **`src/lib/mention.test.ts`** — pure,
-  §5's token grammar and `@` trigger detection. Not palette-specific, but
+  §5's token grammar and `@`/`#` trigger detection. Not palette-specific, but
   the palette's behavior is only as correct as these.
+- **`src/components/mention-menu.test.ts`** — pure-ish (`renderHook`),
+  `onNoMatch`'s append-after-slice behavior and multi-source arbitration.
 - **`src/components/board/command-palette.test.tsx`** — happy-dom, asserts on
   what actually reaches the DOM. This layer is not optional: the matcher can be
   perfectly correct while cmdk scores the row to zero and hides it. Any new
   matcher behaviour needs a DOM test proving it survives cmdk. The
-  `"CommandPalette — @list mention"` block covers §5: the popover opening in
-  both root and `New to-do` modes, selection stripping the token and showing
-  the chip, and the no-match case staying closed.
+  `"CommandPalette — @list mention"` block covers §5's list half: the popover
+  opening in both root and `New to-do` modes, selection stripping the token
+  and showing the chip, and the no-match case staying closed. The
+  `"CommandPalette — #label mention"` block covers the label half, including
+  accumulation, exclusion of an already-picked label, and the inline
+  create-label row.
 
 Conventions: `// @vitest-environment happy-dom` pragma on line 1, explicit
 imports from `vitest` (no globals), explicit `afterEach(cleanup)`, plain

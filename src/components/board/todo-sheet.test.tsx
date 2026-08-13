@@ -1,9 +1,10 @@
 // @vitest-environment happy-dom
+import "fake-indexeddb/auto";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { TodoSheet, type RecurrenceInfo } from "./todo-sheet";
 import { defaultRule } from "@/lib/recurrence";
-import type { Todo } from "@/lib/schema";
+import type { Label as LabelRecord, List, Todo } from "@/lib/schema";
 
 /**
  * Same reason `day-sheet.test.tsx` stubs this: BlockNote is ProseMirror, which
@@ -53,6 +54,10 @@ interface HarnessProps {
   onSetStatus?: (id: string, status: Todo["status"]) => void;
   onDelete?: (id: string) => void;
   onSave?: (id: string, patch: Partial<Todo>) => void;
+  onToggleLabel?: (todoId: string, labelId: string) => void;
+  todo?: Todo;
+  lists?: List[];
+  labels?: LabelRecord[];
 }
 
 function Harness({
@@ -61,20 +66,24 @@ function Harness({
   onSetStatus = vi.fn(),
   onDelete = vi.fn(),
   onSave = vi.fn(),
+  onToggleLabel = vi.fn(),
+  todo = TODO,
+  lists = [],
+  labels = [],
 }: HarnessProps) {
   return (
     <TodoSheet
-      todo={TODO}
+      todo={todo}
       today="2026-08-11"
-      lists={[]}
+      lists={lists}
       tabs={[]}
-      labels={[]}
+      labels={labels}
       projects={[]}
       places={[]}
       onClose={vi.fn()}
       onSave={onSave}
       onSetStatus={onSetStatus}
-      onToggleLabel={vi.fn()}
+      onToggleLabel={onToggleLabel}
       onDelete={onDelete}
       backToDay={backToDay}
       onBackToDay={onBackToDay}
@@ -214,6 +223,97 @@ describe("title quick-update", () => {
     const title = screen.getByLabelText("Title");
     fireEvent.blur(title);
     expect(onSave).not.toHaveBeenCalled();
+  });
+});
+
+const LIST: List = {
+  id: "l2",
+  ownerId: "local-user",
+  createdAt: "2026-08-03T00:00:00.000Z",
+  updatedAt: "2026-08-03T00:00:00.000Z",
+  deletedAt: null,
+  name: "Grocery List",
+  isBacklog: false,
+  archivedAt: null,
+  archivedWithTabId: null,
+  position: "a0",
+  tabId: null,
+  color: null,
+  emoji: null,
+  iconUrl: null,
+};
+
+const mkLabel = (id: string, name: string): LabelRecord => ({
+  id,
+  ownerId: "local-user",
+  createdAt: "2026-08-03T00:00:00.000Z",
+  updatedAt: "2026-08-03T00:00:00.000Z",
+  deletedAt: null,
+  name,
+  position: "a0",
+  color: null,
+  emoji: null,
+  iconUrl: null,
+});
+
+const URGENT = mkLabel("lb1", "Urgent");
+const ERRAND = mkLabel("lb2", "Errand");
+
+/**
+ * `@` and `#` mentions in the title, resolving as an immediate field write —
+ * see `todo-sheet.tsx`'s `applyMention`. Mirrors the `@list`/`#label` mention
+ * coverage in `command-palette.test.tsx`, but this sheet resolves through
+ * `onSave`/`onToggleLabel` directly rather than staging a chip.
+ */
+describe("title mentions — @list and #label", () => {
+  it("picking a list mention calls onSave with just { listId }, not a scheduledDate clear", () => {
+    const onSave = vi.fn();
+    render(<Harness onSave={onSave} lists={[LIST]} />);
+    const title = screen.getByLabelText("Title");
+    fireEvent.change(title, { target: { value: "Reply to the design feedback @groc" } });
+
+    fireEvent.mouseDown(screen.getByRole("option", { name: "Grocery List" }));
+
+    expect(onSave).toHaveBeenCalledWith(TODO.id, { listId: "l2" });
+  });
+
+  it("picking a label mention calls onToggleLabel and strips the token from the title", () => {
+    const onToggleLabel = vi.fn();
+    render(<Harness onToggleLabel={onToggleLabel} labels={[URGENT]} />);
+    const title = screen.getByLabelText("Title");
+    fireEvent.change(title, { target: { value: "Reply to the design feedback #urg" } });
+
+    fireEvent.mouseDown(screen.getByRole("option", { name: "Urgent" }));
+
+    expect(onToggleLabel).toHaveBeenCalledWith(TODO.id, "lb1");
+    expect(screen.getByLabelText("Title")).toHaveProperty(
+      "value",
+      "Reply to the design feedback",
+    );
+  });
+
+  it("excludes an already-applied label from the # popover", () => {
+    render(
+      <Harness labels={[URGENT, ERRAND]} todo={{ ...TODO, labelIds: ["lb1"] }} />,
+    );
+    const title = screen.getByLabelText("Title");
+    fireEvent.change(title, { target: { value: "Reply to the design feedback #" } });
+
+    expect(screen.queryByRole("option", { name: "Urgent" })).toBeNull();
+    expect(screen.getByRole("option", { name: "Errand" })).toBeTruthy();
+  });
+
+  it("a # query with no match offers to create the label, and picking it toggles the new one on", async () => {
+    const onToggleLabel = vi.fn();
+    render(<Harness onToggleLabel={onToggleLabel} labels={[]} />);
+    const title = screen.getByLabelText("Title");
+    fireEvent.change(title, { target: { value: "Reply to the design feedback #new-one" } });
+
+    fireEvent.mouseDown(screen.getByRole("option", { name: 'Create label "new-one"' }));
+
+    await vi.waitFor(() => expect(onToggleLabel).toHaveBeenCalledTimes(1));
+    expect(onToggleLabel.mock.calls[0][0]).toBe(TODO.id);
+    expect(typeof onToggleLabel.mock.calls[0][1]).toBe("string");
   });
 });
 

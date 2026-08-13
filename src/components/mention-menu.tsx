@@ -16,14 +16,36 @@ export interface MentionItem<T> {
   data: T;
 }
 
+/**
+ * One "@" or "#" (etc.) picker's candidate pool. A field wires one of these
+ * per sigil it wants to support; `useMention` below arbitrates which one (if
+ * any) is live at the cursor.
+ */
+export interface MentionSource<T> {
+  /** Single character, e.g. "@" or "#". */
+  trigger: string;
+  items: readonly MentionItem<T>[];
+  /**
+   * Builds the "create new" row shown when `query` is non-empty and matches
+   * no existing item's label case-insensitively (exact match, not substring —
+   * a partial match like "urg" against "Urgent" still offers to create "urg"
+   * unless "urgent" itself already exists). Appended after `items` is
+   * filtered and capped, so it is never the thing pushed out by real matches.
+   */
+  onNoMatch?: (query: string) => MentionItem<T> | null;
+}
+
 interface UseMentionOptions<T> {
   value: string;
   cursor: number;
-  items: readonly MentionItem<T>[];
+  sources: readonly MentionSource<T>[];
 }
 
 interface UseMentionResult<T> {
   trigger: MentionTrigger | null;
+  /** Which source's sigil is live, e.g. "@" or "#" — null when `trigger` is.
+   * Lets a caller with more than one source label the popover accordingly. */
+  sigil: string | null;
   results: MentionItem<T>[];
   /** False once the caller has dismissed an otherwise-live trigger — see `dismiss`. */
   isOpen: boolean;
@@ -39,28 +61,56 @@ interface UseMentionResult<T> {
 }
 
 /**
- * Drives an "@mention" popover for any text field: pass the field's current
- * value and cursor position, get back whether a picker should be open, its
- * filtered results, and the keyboard/selection plumbing for it.
+ * Drives an inline-mention popover for any text field: pass the field's
+ * current value, cursor position, and one `MentionSource` per sigil it
+ * supports, get back whether a picker should be open, its filtered results,
+ * and the keyboard/selection plumbing for it.
+ *
+ * A single hook instance handles every sigil rather than one `useMention`
+ * call per sigil — two calls would mean two `isOpen` states and two popovers
+ * to arbitrate. Only one sigil can ever be live at the cursor at once (a live
+ * run has no whitespace in it, and the other sigil needs whitespace before it
+ * to trigger at all — see `mention.ts`), so arbitration only matters as a
+ * defensive tiebreak: the source whose trigger starts nearest the cursor wins.
  *
  * Read docs/AT-MENTION.md before wiring this into a new field — it covers the
  * cursor-tracking contract this hook expects from its caller, and the
  * positioning tradeoff `MentionMenu` below makes.
  */
-export function useMention<T>({ value, cursor, items }: UseMentionOptions<T>): UseMentionResult<T> {
+export function useMention<T>({ value, cursor, sources }: UseMentionOptions<T>): UseMentionResult<T> {
   const [highlightedIndex, setHighlightedIndex] = useState(0);
+
+  const active = useMemo(() => {
+    let best: { source: MentionSource<T>; trigger: MentionTrigger } | null = null;
+    for (const source of sources) {
+      const trigger = findMentionTrigger(value, cursor, source.trigger);
+      if (trigger && (!best || trigger.start > best.trigger.start)) {
+        best = { source, trigger };
+      }
+    }
+    return best;
+  }, [value, cursor, sources]);
+
+  const trigger = active?.trigger ?? null;
+
+  const results = useMemo(() => {
+    if (!active) return [];
+    const { source, trigger } = active;
+    const filtered = filterMentionItems(source.items, trigger.query);
+    const query = trigger.query.trim().toLowerCase();
+    if (!query || !source.onNoMatch) return filtered;
+    const hasExactMatch = source.items.some((item) => item.label.toLowerCase() === query);
+    if (hasExactMatch) return filtered;
+    const extra = source.onNoMatch(trigger.query);
+    return extra ? [...filtered, extra] : filtered;
+  }, [active]);
+
   // Keyed on the cursor position at the moment of dismissal, not a bare
   // boolean: any further keystroke moves the cursor (typing extends it,
   // deleting retracts it, arrow keys move it), which is exactly the signal
   // that should reopen the popover. A boolean flag would stay dismissed for
   // the rest of the same "@word" no matter how much more you typed into it.
   const [dismissedAt, setDismissedAt] = useState<number | null>(null);
-
-  const trigger = useMemo(() => findMentionTrigger(value, cursor), [value, cursor]);
-  const results = useMemo(
-    () => (trigger ? filterMentionItems(items, trigger.query) : []),
-    [trigger, items],
-  );
 
   /**
    * Resets the highlight back to the top match whenever the query changes —
@@ -75,7 +125,7 @@ export function useMention<T>({ value, cursor, items }: UseMentionOptions<T>): U
    * would add, and is exactly what the pattern exists for.
    */
   const [resetKey, setResetKey] = useState<string | null>(null);
-  const currentKey = trigger ? `${trigger.start}:${trigger.query}` : null;
+  const currentKey = active ? `${active.source.trigger}:${active.trigger.start}:${active.trigger.query}` : null;
   if (currentKey !== resetKey) {
     setResetKey(currentKey);
     if (highlightedIndex !== 0) setHighlightedIndex(0);
@@ -103,6 +153,7 @@ export function useMention<T>({ value, cursor, items }: UseMentionOptions<T>): U
 
   return {
     trigger,
+    sigil: active?.source.trigger ?? null,
     results,
     isOpen,
     highlightedIndex: clampedIndex,

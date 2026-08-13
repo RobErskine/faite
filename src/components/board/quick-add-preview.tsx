@@ -11,6 +11,13 @@ export interface QuickAddChip {
    * date, a time) stays neutral; they don't have a color to borrow.
    */
   color?: string | null;
+  /**
+   * A mis-picked "#label" mention can't be corrected by picking again the way
+   * "@list" can — it accumulates rather than replaces — so its chip needs a
+   * way back out. Every other chip is parsed straight out of the typed text
+   * and has no independent removal, so this stays optional.
+   */
+  onRemove?: () => void;
 }
 
 /**
@@ -36,22 +43,41 @@ export function QuickAddPreview({
 
   return (
     <div className={cn("flex flex-wrap items-center gap-1 px-2 pb-1.5", className)}>
-      {chips.map((chip) => (
-        <span
-          key={chip.key}
-          className={cn(
-            "rounded-full border px-1.5 py-0.5 text-[10px] font-medium leading-none",
-            !chip.color && "border-border/60 bg-muted/60 text-muted-foreground",
-          )}
-          style={
-            chip.color
-              ? { backgroundColor: tint(chip.color), borderColor: edge(chip.color), color: chip.color }
-              : undefined
-          }
-        >
-          {chip.label}
-        </span>
-      ))}
+      {chips.map((chip) => {
+        const style = chip.color
+          ? { backgroundColor: tint(chip.color), borderColor: edge(chip.color), color: chip.color }
+          : undefined;
+        const classes = cn(
+          "rounded-full border px-1.5 py-0.5 text-[10px] font-medium leading-none",
+          !chip.color && "border-border/60 bg-muted/60 text-muted-foreground",
+        );
+        if (!chip.onRemove) {
+          return (
+            <span key={chip.key} className={classes} style={style}>
+              {chip.label}
+            </span>
+          );
+        }
+        return (
+          <button
+            key={chip.key}
+            type="button"
+            aria-label={`Remove ${chip.label}`}
+            className={cn(classes, "inline-flex items-center gap-1")}
+            style={style}
+            // mousedown with preventDefault, not onClick: the quick-add field
+            // commits on blur, so a plain click would create the to-do before
+            // the removal landed — same reason MentionMenu's rows do this.
+            onMouseDown={(e) => {
+              e.preventDefault();
+              chip.onRemove?.();
+            }}
+          >
+            {chip.label}
+            <span aria-hidden>×</span>
+          </button>
+        );
+      })}
     </div>
   );
 }

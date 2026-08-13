@@ -109,7 +109,21 @@ const tab = (id: string, name: string, isDefault = false): Tab => ({
   iconUrl: null,
 });
 
+const mkLabel = (id: string, name: string): LabelRecord => ({
+  id,
+  ownerId: "local-user",
+  createdAt: "2026-08-03T00:00:00.000Z",
+  updatedAt: "2026-08-03T00:00:00.000Z",
+  deletedAt: null,
+  name,
+  position: "a0",
+  color: null,
+  emoji: null,
+  iconUrl: null,
+});
+
 const LISTS = [list("l1", "Backlog", true), list("l2", "Grocery List")];
+const LABELS = [mkLabel("lb1", "Urgent"), mkLabel("lb2", "Errand")];
 
 const TABS = [tab("tab1", "My Lists", true), tab("tab2", "Work")];
 
@@ -273,6 +287,64 @@ describe("CommandPalette — @list mention", () => {
     search("buy milk @nonexistent");
 
     expect(screen.queryByRole("listbox", { name: "Lists" })).toBeNull();
+  });
+});
+
+describe("CommandPalette — #label mention", () => {
+  it("opens a filtered popover when typing # + a label name, with aria-label Labels", () => {
+    renderPalette({ labels: LABELS });
+
+    search("buy milk #urg");
+
+    expect(screen.getByRole("listbox", { name: "Labels" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "Urgent" })).toBeTruthy();
+  });
+
+  it("selecting a mention strips the #token and shows a label chip; picking accumulates", () => {
+    renderPalette({ labels: LABELS });
+
+    search("buy milk #urg");
+    fireEvent.mouseDown(screen.getByRole("option", { name: "Urgent" }));
+
+    expect(screen.getByPlaceholderText(PLACEHOLDER)).toHaveProperty("value", "buy milk");
+    expect(screen.getByText("#Urgent")).toBeTruthy();
+
+    search("buy milk #err");
+    fireEvent.mouseDown(screen.getByRole("option", { name: "Errand" }));
+
+    expect(screen.getByText("#Urgent")).toBeTruthy();
+    expect(screen.getByText("#Errand")).toBeTruthy();
+  });
+
+  it("excludes an already-picked label from further results", () => {
+    renderPalette({ labels: LABELS });
+
+    search("buy milk #urg");
+    fireEvent.mouseDown(screen.getByRole("option", { name: "Urgent" }));
+
+    search("buy milk #");
+
+    expect(screen.queryByRole("option", { name: "Urgent" })).toBeNull();
+    expect(screen.getByRole("option", { name: "Errand" })).toBeTruthy();
+  });
+
+  it("offers to create a label with no match, and picking it adds the chip once created", async () => {
+    renderPalette({ labels: LABELS });
+
+    search("buy milk #brandnew");
+
+    const createRow = screen.getByRole("option", { name: 'Create label "brandnew"' });
+    fireEvent.mouseDown(createRow);
+
+    expect(await screen.findByText("#brandnew")).toBeTruthy();
+  });
+
+  it("does not open for a query with an exact existing label name", () => {
+    renderPalette({ labels: LABELS });
+
+    search("buy milk #Urgent");
+
+    expect(screen.queryByText(/Create label/)).toBeNull();
   });
 });
 

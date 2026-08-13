@@ -40,6 +40,40 @@ describe("findMentionTrigger", () => {
   });
 });
 
+describe("findMentionTrigger — a non-default sigil", () => {
+  it("finds a '#' trigger at the start of a word", () => {
+    expect(findMentionTrigger("buy milk #urg", 13, "#")).toEqual({
+      query: "urg",
+      start: 9,
+      end: 13,
+    });
+  });
+
+  it("does not trigger mid-word, e.g. 'C#'", () => {
+    expect(findMentionTrigger("write C# code", 8, "#")).toBeNull();
+  });
+
+  it("does not trigger mid-word, e.g. 'foo#bar'", () => {
+    expect(findMentionTrigger("see foo#bar here", 11, "#")).toBeNull();
+  });
+
+  it("does not trigger once a space ends the run", () => {
+    expect(findMentionTrigger("buy milk #urg done", 19, "#")).toBeNull();
+  });
+
+  it("'@' and '#' triggers cannot both be live: the far one always has whitespace in its run", () => {
+    const value = "buy @groc #urg";
+    // Cursor right after "#urg" — the "#" trigger is live, the "@" one is dead
+    // because its run ("groc #urg") contains a space.
+    expect(findMentionTrigger(value, value.length, "@")).toBeNull();
+    expect(findMentionTrigger(value, value.length, "#")).toEqual({
+      query: "urg",
+      start: 10,
+      end: 14,
+    });
+  });
+});
+
 describe("resolveMentionTrigger", () => {
   it("removes a mid-sentence mention and rejoins with a single space", () => {
     const trigger = findMentionTrigger("buy milk @groc fri", 14)!;

@@ -125,6 +125,13 @@ function AutocompleteList({
  * matches nothing bubbles past this popup and closes whatever it's nested
  * in (a Sheet, a Dialog), rather than just closing the popup. See
  * `combobox/root/AriaCombobox.js`'s `escape-key` handling.
+ *
+ * Because the root element has to stay mounted even with matches (only its
+ * `children` become `null` then), `py-6` alone left a blank ~48px band
+ * above every non-empty result list — the div still renders full padding
+ * with nothing inside it. `empty:hidden` (the CSS `:empty` pseudo-class)
+ * collapses it exactly when `children` is `null`, without touching whether
+ * the element itself is mounted.
  */
 function AutocompleteEmpty({
   className,
@@ -133,7 +140,7 @@ function AutocompleteEmpty({
   return (
     <AutocompletePrimitive.Empty
       data-slot="autocomplete-empty"
-      className={cn("py-6 text-center text-sm text-muted-foreground", className)}
+      className={cn("empty:hidden py-6 text-center text-sm text-muted-foreground", className)}
       {...props}
     />
   )

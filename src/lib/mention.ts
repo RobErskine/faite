@@ -1,16 +1,17 @@
 /**
- * Pure "@mention" trigger detection, shared by every field that wants an
- * inline picker — quick-add today, notes/description fields later. Framework-
- * agnostic on purpose: it takes a string and a cursor offset and returns data,
- * so it works the same behind a single-line `<input>` or a `<textarea>`.
+ * Pure inline-mention trigger detection, shared by every field that wants an
+ * inline picker — quick-add's "@list" and "#label" today, notes/description
+ * fields later. Framework-agnostic on purpose: it takes a string and a cursor
+ * offset and returns data, so it works the same behind a single-line
+ * `<input>` or a `<textarea>`.
  *
  * See docs/AT-MENTION.md for how to wire this into a new field.
  */
 
 export interface MentionTrigger {
-  /** Text typed after the "@", not including it. */
+  /** Text typed after the sigil, not including it. */
   query: string;
-  /** Index of the "@" itself. */
+  /** Index of the sigil itself. */
   start: number;
   /** Index the query ends at — always the cursor, since a trigger is only
    * "live" while the cursor sits at the end of the run being typed. */
@@ -20,21 +21,25 @@ export interface MentionTrigger {
 /**
  * Finds the mention trigger active at `cursor`, or null.
  *
- * An "@" only starts a trigger when it begins a word — string start or
+ * `sigil` only starts a trigger when it begins a word — string start or
  * preceded by whitespace — matching Slack/Linear/Notion: `foo@bar.com` never
- * triggers. The trigger stays live only while the run after the "@" has no
- * whitespace in it yet; typing a space (or moving the cursor away) ends it,
- * which is what makes the popover disappear once you've finished typing past
- * the query or moved on.
+ * triggers, nor does `C#`. The trigger stays live only while the run after
+ * the sigil has no whitespace in it yet; typing a space (or moving the cursor
+ * away) ends it, which is what makes the popover disappear once you've
+ * finished typing past the query or moved on.
  */
-export function findMentionTrigger(value: string, cursor: number): MentionTrigger | null {
+export function findMentionTrigger(
+  value: string,
+  cursor: number,
+  sigil = "@",
+): MentionTrigger | null {
   if (cursor < 0 || cursor > value.length) return null;
   const before = value.slice(0, cursor);
-  const at = before.lastIndexOf("@");
+  const at = before.lastIndexOf(sigil);
   if (at === -1) return null;
   if (at > 0 && !/\s/.test(value[at - 1])) return null;
 
-  const query = before.slice(at + 1);
+  const query = before.slice(at + sigil.length);
   if (/\s/.test(query)) return null;
 
   return { query, start: at, end: cursor };

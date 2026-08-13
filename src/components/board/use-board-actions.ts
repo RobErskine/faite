@@ -677,6 +677,8 @@ export function useBoardActions(
        * date token overrides `target.day` below: what the user explicitly
        * named beats the column they happened to be typing in. */
       mentionedListId?: string,
+      /** Every "#label" mention picked, in pick order — see `board-column.tsx`. */
+      mentionedLabelIds?: string[],
     ) => {
       // Quick-add rows only render once `ctx` is loaded (the `!ctx` early
       // return below gates the whole board), so this never actually fires
@@ -697,6 +699,7 @@ export function useBoardActions(
         deadline: parsed.deadline,
         priority: parsed.priority,
         reminderTime: parsed.reminderTime,
+        labelIds: mentionedLabelIds,
       });
       // Name where it landed whenever a token or mention moved it off the
       // column it was typed into — a card leaving its column is otherwise silent.

@@ -19,7 +19,8 @@ import { edge, tint, wash } from "@/lib/colors";
 import { listDragId, type TodoGroup } from "@/lib/board";
 import { addStop, groupStop, navKeyOf, type NavKey } from "@/lib/column-nav";
 import { parseQuickAdd } from "@/lib/quick-add";
-import { MentionMenu, useMention } from "@/components/mention-menu";
+import { MentionMenu, useMention, type MentionSource } from "@/components/mention-menu";
+import { createLabel } from "@/lib/store/repositories";
 import type { Label as LabelRecord, Todo } from "@/lib/schema";
 import type { PlacementContext } from "@/lib/scheduling";
 import { DragGrip } from "./drag-grip";
@@ -55,6 +56,26 @@ export interface MentionListOption {
   name: string;
   color: string | null;
 }
+
+/**
+ * A quick-add "#label" mention candidate. Its own light projection, not the
+ * full `Label` record — same idea as `MentionListOption` — so a freshly
+ * created label (picked from the inline "Create label" row) can be
+ * represented immediately, before it round-trips through `useLabels()`'s
+ * live query.
+ */
+export interface MentionLabelOption {
+  id: string;
+  name: string;
+  color: string | null;
+  emoji: string | null;
+}
+
+/** What a mention resolved to — the tagged union `useMention`'s `T` carries. */
+export type MentionPick =
+  | { kind: "list"; list: MentionListOption }
+  | { kind: "label"; label: MentionLabelOption }
+  | { kind: "create-label"; name: string };
 
 interface BoardColumnProps {
   id: string;
@@ -94,9 +115,10 @@ interface BoardColumnProps {
    *
    * `listId` is set when the "@list" mention resolved one — it overrides
    * whatever list this column would otherwise file into (see `handleQuickAdd`
-   * in board.tsx).
+   * in board.tsx). `labelIds` carries every "#label" mention picked, in the
+   * order they were picked.
    */
-  onQuickAdd?: (title: string, listId?: string) => void;
+  onQuickAdd?: (title: string, listId?: string, labelIds?: string[]) => void;
   /**
    * Every list, for the quick-add row's "@list" mention — `color` already
    * resolved to what the list actually shows elsewhere on the board (its own
@@ -305,6 +327,7 @@ export function BoardColumn({
   const quickAddInputRef = useRef<HTMLInputElement>(null);
   const [quickAddCursor, setQuickAddCursor] = useState(0);
   const [mentionedList, setMentionedList] = useState<MentionListOption | null>(null);
+  const [mentionedLabels, setMentionedLabels] = useState<MentionLabelOption[]>([]);
   /**
    * Set right after a mention resolves, so an effect can move the DOM caret
    * there once the controlled input's value has actually updated — React
@@ -318,11 +341,33 @@ export function BoardColumn({
    */
   const pendingCaretRef = useRef<number | null>(null);
 
-  const mentionItems = useMemo(
-    () => (lists ?? []).map((list) => ({ id: list.id, label: list.name, data: list })),
-    [lists],
-  );
-  const mention = useMention({ value: draft, cursor: quickAddCursor, items: mentionItems });
+  const mentionedLabelIds = useMemo(() => new Set(mentionedLabels.map((l) => l.id)), [mentionedLabels]);
+  const mentionSources = useMemo((): MentionSource<MentionPick>[] => [
+    {
+      trigger: "@",
+      items: (lists ?? []).map((list) => ({
+        id: list.id,
+        label: list.name,
+        data: { kind: "list" as const, list },
+      })),
+    },
+    {
+      trigger: "#",
+      items: labels
+        .filter((label) => !mentionedLabelIds.has(label.id))
+        .map((label) => ({
+          id: label.id,
+          label: label.emoji ? `${label.emoji} ${label.name}` : label.name,
+          data: { kind: "label" as const, label },
+        })),
+      onNoMatch: (query) => ({
+        id: "__create-label__",
+        label: `Create label "${query}"`,
+        data: { kind: "create-label" as const, name: query },
+      }),
+    },
+  ], [lists, labels, mentionedLabelIds]);
+  const mention = useMention({ value: draft, cursor: quickAddCursor, sources: mentionSources });
 
   useEffect(() => {
     if (pendingCaretRef.current === null) return;
@@ -333,20 +378,28 @@ export function BoardColumn({
   const syncQuickAddCursor = (el: HTMLInputElement) =>
     setQuickAddCursor(el.selectionStart ?? el.value.length);
 
-  const applyMention = (resolved: ReturnType<typeof mention.resolve>) => {
+  const applyMention = async (resolved: ReturnType<typeof mention.resolve>) => {
     setDraft(resolved.text);
     setQuickAddCursor(resolved.caretIndex);
     pendingCaretRef.current = resolved.caretIndex;
-    setMentionedList(resolved.item.data);
+
+    const pick = resolved.item.data;
+    if (pick.kind === "list") setMentionedList(pick.list);
+    else if (pick.kind === "label") setMentionedLabels((ls) => [...ls, pick.label]);
+    else if (pick.kind === "create-label") {
+      const id = await createLabel(pick.name);
+      setMentionedLabels((ls) => [...ls, { id, name: pick.name, color: null, emoji: null }]);
+    }
   };
 
   const commit = () => {
     const title = draft.trim();
     if (!title || !onQuickAdd) return;
-    onQuickAdd(title, mentionedList?.id);
+    onQuickAdd(title, mentionedList?.id, mentionedLabels.map((l) => l.id));
     setDraft(""); // Keep focus so several todos can be typed in a row.
     setQuickAddCursor(0);
     setMentionedList(null);
+    setMentionedLabels([]);
   };
 
   // Parsed only for the live preview — `handleQuickAdd` (board.tsx) re-parses
@@ -365,8 +418,16 @@ export function BoardColumn({
         color: mentionedList.color,
       });
     }
+    for (const label of mentionedLabels) {
+      chips.push({
+        key: `label:${label.id}`,
+        label: label.emoji ? `#${label.emoji} ${label.name}` : `#${label.name}`,
+        color: label.color,
+        onRemove: () => setMentionedLabels((ls) => ls.filter((l) => l.id !== label.id)),
+      });
+    }
     return chips;
-  }, [draft, ctx.today, mentionedList]);
+  }, [draft, ctx.today, mentionedList, mentionedLabels]);
 
   /**
    * The groups to render, or null for a flat column.
@@ -723,7 +784,7 @@ export function BoardColumn({
                       if (e.key === "Enter") {
                         e.preventDefault();
                         const resolved = mention.resolveHighlighted();
-                        if (resolved) applyMention(resolved);
+                        if (resolved) void applyMention(resolved);
                         return;
                       }
                       if (e.key === "Escape") {
@@ -744,6 +805,7 @@ export function BoardColumn({
                     if (e.key === "Escape") {
                       setDraft("");
                       setMentionedList(null);
+                      setMentionedLabels([]);
                     }
 
                     const key = navKeyOf(e);
@@ -780,9 +842,9 @@ export function BoardColumn({
                     results={mention.results}
                     highlightedIndex={mention.highlightedIndex}
                     onHighlight={mention.setHighlightedIndex}
-                    onSelect={(item) => applyMention(mention.resolve(item))}
+                    onSelect={(item) => void applyMention(mention.resolve(item))}
                     side="up"
-                    ariaLabel="Lists"
+                    ariaLabel={mention.sigil === "#" ? "Labels" : "Lists"}
                   />
                 )}
               </div>

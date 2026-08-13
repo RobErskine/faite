@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ArrowLeft, Clock, Repeat, Trash2, X } from "lucide-react";
 import {
   Sheet,
@@ -15,7 +15,6 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { MarkdownField } from "@/components/ui/markdown-field";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -29,13 +28,17 @@ import { RepeatDialog } from "@/components/board/repeat-dialog";
 import { RepeatSection, type RecurrenceInfo } from "@/components/board/repeat-section";
 import { LocationField } from "@/components/board/location-field";
 import { ListField } from "@/components/board/list-field";
+import { LabelPicker } from "@/components/board/label-picker";
 import { QuickAddPreview, type QuickAddChip } from "@/components/board/quick-add-preview";
+import { MentionMenu, useMention, type MentionSource } from "@/components/mention-menu";
+import type { MentionListOption, MentionPick } from "@/components/board/board-column";
 import { cn } from "@/lib/utils";
 import { TITLE_LINES } from "@/lib/title";
 import { formatShortDate } from "@/lib/scheduling";
 import { parseQuickAdd } from "@/lib/quick-add";
 import { isTextEntry } from "@/lib/undo";
 import { detectPlatform, formatCombo, type Platform } from "@/lib/keyboard";
+import { createLabel } from "@/lib/store/repositories";
 import type { RecurrenceRule } from "@/lib/recurrence";
 import type {
   CivilDate,
@@ -146,6 +149,79 @@ function TodoSheetContent({
   const [title, setTitle] = useState(todo.title);
   const [repeatDialogOpen, setRepeatDialogOpen] = useState(false);
   const platform = usePlatform();
+
+  /**
+   * "@list" and "#label" mentions in the title, resolving as an immediate
+   * field write — matching every other control in this sheet (`ListField`,
+   * the Labels toggle row below) rather than quick-add's "hold it until
+   * commit" pattern, since this sheet is always editing a todo that already
+   * exists. See `docs/AT-MENTION.md`.
+   */
+  const titleRef = useRef<HTMLTextAreaElement>(null);
+  const [titleCursor, setTitleCursor] = useState(0);
+  const pendingCaretRef = useRef<number | null>(null);
+
+  const tabsById = useMemo(() => new Map(tabs.map((t) => [t.id, t])), [tabs]);
+  const mentionListOptions = useMemo(
+    (): MentionListOption[] =>
+      lists.map((list) => ({
+        id: list.id,
+        name: list.name,
+        color: list.color ?? (list.tabId ? (tabsById.get(list.tabId)?.color ?? null) : null),
+      })),
+    [lists, tabsById],
+  );
+  const mentionSources = useMemo((): MentionSource<MentionPick>[] => [
+    {
+      trigger: "@",
+      items: mentionListOptions.map((list) => ({
+        id: list.id,
+        label: list.name,
+        data: { kind: "list" as const, list },
+      })),
+    },
+    {
+      trigger: "#",
+      // Already-applied labels are excluded — `onToggleLabel` is a toggle,
+      // so mentioning one again would silently remove it.
+      items: labels
+        .filter((label) => !todo.labelIds.includes(label.id))
+        .map((label) => ({
+          id: label.id,
+          label: label.emoji ? `${label.emoji} ${label.name}` : label.name,
+          data: { kind: "label" as const, label },
+        })),
+      onNoMatch: (query) => ({
+        id: "__create-label__",
+        label: `Create label "${query}"`,
+        data: { kind: "create-label" as const, name: query },
+      }),
+    },
+  ], [mentionListOptions, labels, todo.labelIds]);
+  const mention = useMention({ value: title, cursor: titleCursor, sources: mentionSources });
+
+  useEffect(() => {
+    if (pendingCaretRef.current === null) return;
+    titleRef.current?.setSelectionRange(pendingCaretRef.current, pendingCaretRef.current);
+    pendingCaretRef.current = null;
+  });
+
+  const syncTitleCursor = (el: HTMLTextAreaElement) =>
+    setTitleCursor(el.selectionStart ?? el.value.length);
+
+  const applyMention = async (resolved: ReturnType<typeof mention.resolve>) => {
+    setTitle(resolved.text);
+    setTitleCursor(resolved.caretIndex);
+    pendingCaretRef.current = resolved.caretIndex;
+
+    const pick = resolved.item.data;
+    if (pick.kind === "list") onSave(todo.id, { listId: pick.list.id });
+    else if (pick.kind === "label") onToggleLabel(todo.id, pick.label.id);
+    else if (pick.kind === "create-label") {
+      const id = await createLabel(pick.name);
+      onToggleLabel(todo.id, id);
+    }
+  };
 
   /**
    * Same grammar quick-add uses to CREATE a todo (`p2`, `fri`, `2pm`, `!fri`
@@ -282,24 +358,65 @@ function TodoSheetContent({
             Enter still commits rather than inserting a newline: a title is one
             line of text, and `commitTitle` already runs on blur.
           */}
-          <Textarea
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            onBlur={commitTitle}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                e.currentTarget.blur();
-              }
-            }}
-            rows={1}
-            style={{ maxHeight: `calc(${TITLE_LINES} * 1.5rem)` }}
-            aria-label="Title"
-            className={cn(
-              "min-h-0 resize-none border-0 px-0 py-0 text-base font-medium leading-6",
-              "shadow-none focus-visible:border-0 focus-visible:ring-0",
+          <div className="relative">
+            <Textarea
+              ref={titleRef}
+              value={title}
+              onChange={(e) => {
+                setTitle(e.target.value);
+                syncTitleCursor(e.target);
+              }}
+              onSelect={(e) => syncTitleCursor(e.currentTarget)}
+              onBlur={commitTitle}
+              onKeyDown={(e) => {
+                if (mention.isOpen) {
+                  if (e.key === "ArrowDown") {
+                    e.preventDefault();
+                    mention.moveHighlight(1);
+                    return;
+                  }
+                  if (e.key === "ArrowUp") {
+                    e.preventDefault();
+                    mention.moveHighlight(-1);
+                    return;
+                  }
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    const resolved = mention.resolveHighlighted();
+                    if (resolved) void applyMention(resolved);
+                    return;
+                  }
+                  if (e.key === "Escape") {
+                    e.preventDefault();
+                    mention.dismiss();
+                    return;
+                  }
+                }
+
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  e.currentTarget.blur();
+                }
+              }}
+              rows={1}
+              style={{ maxHeight: `calc(${TITLE_LINES} * 1.5rem)` }}
+              aria-label="Title"
+              className={cn(
+                "min-h-0 resize-none border-0 px-0 py-0 text-base font-medium leading-6",
+                "shadow-none focus-visible:border-0 focus-visible:ring-0",
+              )}
+            />
+            {mention.isOpen && (
+              <MentionMenu
+                results={mention.results}
+                highlightedIndex={mention.highlightedIndex}
+                onHighlight={mention.setHighlightedIndex}
+                onSelect={(item) => void applyMention(mention.resolve(item))}
+                side="down"
+                ariaLabel={mention.sigil === "#" ? "Labels" : "Lists"}
+              />
             )}
-          />
+          </div>
           <QuickAddPreview chips={titleChips} className="px-0 pt-1 pb-0" />
         </SheetHeader>
 
@@ -454,36 +571,7 @@ function TodoSheetContent({
             </Select>
           </div>
 
-          <div className="space-y-1.5">
-            <Label>Labels</Label>
-            <div className="flex flex-wrap gap-1.5">
-              {labels.length === 0 && (
-                <p className="text-xs text-muted-foreground">
-                  No labels yet — create one with the command palette.
-                </p>
-              )}
-              {labels.map((label) => {
-                const active = todo.labelIds.includes(label.id);
-                return (
-                  <button
-                    key={label.id}
-                    type="button"
-                    onClick={() => onToggleLabel(todo.id, label.id)}
-                    aria-pressed={active}
-                    className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    <Badge
-                      variant={active ? "default" : "outline"}
-                      className={cn("cursor-pointer font-normal")}
-                    >
-                      {label.emoji ? `${label.emoji} ` : ""}
-                      {label.name}
-                    </Badge>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          <LabelPicker todo={todo} labels={labels} onToggleLabel={onToggleLabel} />
 
           <LocationField todo={todo} places={places} onSave={onSave} />
 

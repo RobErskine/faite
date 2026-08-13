@@ -25,13 +25,13 @@ import { deleteListWithUndo } from "./list-actions";
 import { createTabWithUndo, deleteTabWithUndo } from "./tab-actions";
 import { todayIn } from "@/lib/scheduling";
 import { parseQuickAdd } from "@/lib/quick-add";
-import { useMention, MentionMenu } from "@/components/mention-menu";
+import { useMention, MentionMenu, type MentionSource } from "@/components/mention-menu";
 import { searchTodos } from "@/lib/search";
 import { cn } from "@/lib/utils";
 import { PriorityRail, TitleMarkers, TodoMetaBadges } from "./todo-row-parts";
 import { TITLE_CLAMP_CLASS } from "@/lib/title";
 import type { Label as LabelRecord, List, Settings, Tab, Todo, TodoStatus } from "@/lib/schema";
-import type { MentionListOption } from "./board-column";
+import type { MentionLabelOption, MentionListOption, MentionPick } from "./board-column";
 import { QuickAddPreview } from "./quick-add-preview";
 
 /**
@@ -106,6 +106,7 @@ export function CommandPalette({
   const listRef = useRef<HTMLDivElement>(null);
   const [cursor, setCursor] = useState(0);
   const [mentionedList, setMentionedList] = useState<MentionListOption | null>(null);
+  const [mentionedLabels, setMentionedLabels] = useState<MentionLabelOption[]>([]);
   /** Same reason `board-column.tsx`'s quick-add row uses one: moves the DOM
    * caret only after the controlled input's value has actually updated. */
   const pendingCaretRef = useRef<number | null>(null);
@@ -158,20 +159,43 @@ export function CommandPalette({
     [lists, tabsById],
   );
 
+  const mentionedLabelIds = useMemo(() => new Set(mentionedLabels.map((l) => l.id)), [mentionedLabels]);
+
   /**
    * Only live where typed text becomes a todo — root's search box (via the
-   * "Create to-do" fallback) and the "New to-do" entry mode. An empty item
+   * "Create to-do" fallback) and the "New to-do" entry mode. An empty source
    * list keeps `useMention` permanently closed everywhere else, rather than
    * gating the hook call itself (hooks cannot be conditional).
    */
-  const mentionItems = useMemo(
-    () =>
-      mode.kind === "root" || mode.kind === "new-todo"
-        ? mentionListOptions.map((list) => ({ id: list.id, label: list.name, data: list }))
-        : [],
-    [mode.kind, mentionListOptions],
-  );
-  const mention = useMention({ value, cursor, items: mentionItems });
+  const mentionSources = useMemo((): MentionSource<MentionPick>[] => {
+    if (mode.kind !== "root" && mode.kind !== "new-todo") return [];
+    return [
+      {
+        trigger: "@",
+        items: mentionListOptions.map((list) => ({
+          id: list.id,
+          label: list.name,
+          data: { kind: "list" as const, list },
+        })),
+      },
+      {
+        trigger: "#",
+        items: labels
+          .filter((label) => !mentionedLabelIds.has(label.id))
+          .map((label) => ({
+            id: label.id,
+            label: label.emoji ? `${label.emoji} ${label.name}` : label.name,
+            data: { kind: "label" as const, label },
+          })),
+        onNoMatch: (q) => ({
+          id: "__create-label__",
+          label: `Create label "${q}"`,
+          data: { kind: "create-label" as const, name: q },
+        }),
+      },
+    ];
+  }, [mode.kind, mentionListOptions, labels, mentionedLabelIds]);
+  const mention = useMention({ value, cursor, sources: mentionSources });
 
   useEffect(() => {
     if (pendingCaretRef.current === null) return;
@@ -181,11 +205,18 @@ export function CommandPalette({
 
   const syncCursor = (el: HTMLInputElement) => setCursor(el.selectionStart ?? el.value.length);
 
-  const applyMention = (resolved: ReturnType<typeof mention.resolve>) => {
+  const applyMention = async (resolved: ReturnType<typeof mention.resolve>) => {
     setValue(resolved.text);
     setCursor(resolved.caretIndex);
     pendingCaretRef.current = resolved.caretIndex;
-    setMentionedList(resolved.item.data);
+
+    const pick = resolved.item.data;
+    if (pick.kind === "list") setMentionedList(pick.list);
+    else if (pick.kind === "label") setMentionedLabels((ls) => [...ls, pick.label]);
+    else if (pick.kind === "create-label") {
+      const id = await createLabel(pick.name);
+      setMentionedLabels((ls) => [...ls, { id, name: pick.name, color: null, emoji: null }]);
+    }
   };
 
   /**
@@ -201,6 +232,7 @@ export function CommandPalette({
       setValue("");
       setCursor(0);
       setMentionedList(null);
+      setMentionedLabels([]);
     }
     onOpenChange(next);
   };
@@ -243,6 +275,7 @@ export function CommandPalette({
         deadline: quickAdd.deadline,
         priority: quickAdd.priority,
         reminderTime: quickAdd.reminderTime,
+        labelIds: mentionedLabels.map((l) => l.id),
       }),
     );
     close();
@@ -289,6 +322,7 @@ export function CommandPalette({
             deadline: quickAdd.deadline,
             priority: quickAdd.priority,
             reminderTime: quickAdd.reminderTime,
+            labelIds: mentionedLabels.map((l) => l.id),
           }),
         );
         break;
@@ -373,7 +407,7 @@ export function CommandPalette({
               if (e.key === "Enter") {
                 e.preventDefault();
                 const resolved = mention.resolveHighlighted();
-                if (resolved) applyMention(resolved);
+                if (resolved) void applyMention(resolved);
                 return;
               }
               if (e.key === "Escape") {
@@ -430,9 +464,9 @@ export function CommandPalette({
             results={mention.results}
             highlightedIndex={mention.highlightedIndex}
             onHighlight={mention.setHighlightedIndex}
-            onSelect={(item) => applyMention(mention.resolve(item))}
+            onSelect={(item) => void applyMention(mention.resolve(item))}
             side="down"
-            ariaLabel="Lists"
+            ariaLabel={mention.sigil === "#" ? "Labels" : "Lists"}
           />
         )}
       </div>
@@ -449,6 +483,13 @@ export function CommandPalette({
                   },
                 ]
               : []),
+            ...mentionedLabels.map((label) => ({
+              key: `label:${label.id}`,
+              label: label.emoji ? `#${label.emoji} ${label.name}` : `#${label.name}`,
+              color: label.color,
+              onRemove: () =>
+                setMentionedLabels((ls) => ls.filter((l) => l.id !== label.id)),
+            })),
           ]}
         />
       )}

@@ -27,6 +27,11 @@ Companion docs, referenced rather than duplicated here:
 | `position` | Fractional index — ordering, not an integer rank |
 | `listId`, `projectId`, `labelIds` | `labelIds` is JSON-encoded text in SQLite |
 
+`labelIds` is writable at creation time too, not only through the sheet's
+Labels toggle row — quick-add and the ⌘K palette both resolve a `#label`
+inline mention (alongside `@list`) into `createTodo`'s `labelIds`. See
+`docs/AT-MENTION.md`.
+
 ### `dropped` is not `done`
 
 Three states, not a boolean. Finishing something and abandoning it are
