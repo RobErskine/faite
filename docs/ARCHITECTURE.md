@@ -75,6 +75,15 @@ Instead `deriveColumn()` computes placement from stored data plus the clock. No
 jobs, works offline, survives undo, and every device independently arrives at
 the same answer — which matters enormously once sync exists.
 
+The user-facing name for this mechanic is **the Faite Loop** (EI-96): missed →
+rolls forward onto today → falls into Overflow after `settings.overflowAfterDays`
+rolls (0–30, default 3, configurable in Settings → Faite Loop). The "derived,
+never stored" rule above extends to every visible trace of it — the card's
+rollover marker and Overflow-age badge, and the `rolledOver`/`overflowed` rows
+in both timelines (§2.14) — all recomputed from `scheduledDate` on every
+render via `rollEventsFor()` (`lib/rollover-events.ts`), never written. Full
+design in **[FAITE-LOOP.md](FAITE-LOOP.md)**.
+
 ### 2.3 Dates are civil dates, not timestamps
 
 `scheduledDate` and `deadline` are `"YYYY-MM-DD"` strings.
@@ -538,6 +547,16 @@ needs Q2 (a moved-list fact must outlive the list's own name), and it's
 squarely Q3 (a decision, not a consequence). See `docs/SCHEMA-CHANGES.md`'s
 worked example and `todo-timeline.ts` for the shape.
 
+**The Faite Loop's `rolledOver`/`overflowed` rows (EI-96) are the ordinary
+case, right next to that exception.** Which days a todo rolled through
+answers Q1 the opposite way `todoEvent` does: it changes every time
+`scheduledDate` or `overflowAfterDays` changes (reschedule it, and the roll
+history is different — a documented trade, not a bug, see `day-timeline.ts`'s
+limitation list), it has no identity to survive a rename (Q2 doesn't apply),
+and it's a pure consequence of the placement rule, not a decision (Q3). So it
+derives, merges into both timelines at render time, and needed zero schema
+changes — see [FAITE-LOOP.md](FAITE-LOOP.md).
+
 **Projects is retired in favour of labels**, decided 2026-08-06. The first
 worked example above (tab-from-list) is what made this legible: once "which
 tab" is a derived selector rather than a stored field, a `project` entity
@@ -608,6 +627,7 @@ src/
   lib/
     schema.ts                 Zod source of truth for every entity
     scheduling.ts             deriveColumn(), civil-date arithmetic, rollover
+    rollover-events.ts        the Faite Loop made visible — rollEventsFor(), describeLoop() (EI-96)
     ordering.ts               fractional index helpers
     board.ts                  groups todos into columns; drop-target id codec
     column-nav.ts             arrow-key focus grid — see KEYBOARD.md §11
@@ -725,6 +745,11 @@ Subtleties that are easy to get wrong:
 - **Deadlines never affect placement.** They never exempt a todo from overflow
   and never change its column; they render as a missed badge.
 - **Status is three-valued**: `open | done | dropped`. "Won't do" is not "done".
+- **Recurring todos bypass the Faite Loop entirely.** One overdue occurrence
+  goes straight to Overflow (`recurrence-expand.ts`'s `forceOverflow`), no
+  grace period — the series comes around again, so there's no gradual roll to
+  show. `rollEventsFor()` returns `[]` for any todo with `recurrenceParentId`.
+  See [FAITE-LOOP.md](FAITE-LOOP.md).
 
 ---
 

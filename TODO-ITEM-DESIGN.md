@@ -85,6 +85,17 @@ plus the clock, so every device agrees without coordinating.
 Friday miss seen on Monday has rolled **once**, not three times. That is what
 makes "overflow after 3" mean three working days.
 
+### The Faite Loop is configurable and visible (EI-96)
+
+`overflowAfterDays` (0–30, default 3) is a Settings → Faite Loop control, not
+a hardcoded constant. Every visible trace of it — the card's rollover marker,
+the Overflow age badge, and the `rolledOver`/`overflowed` rows in both the
+day timeline and the per-todo History — comes from ONE derivation,
+`rollEventsFor()` (`src/lib/rollover-events.ts`), so the rule can't drift
+between surfaces. Recurring to-dos bypass the loop entirely (one miss →
+Overflow, no grace period — the series comes around again). Full design:
+**[docs/FAITE-LOOP.md](docs/FAITE-LOOP.md)**.
+
 ### ⚠ The window must stay contiguous from today
 
 `deriveColumn` answers "is this day rendered?" with an O(1) offset check —

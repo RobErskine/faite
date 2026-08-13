@@ -110,7 +110,7 @@ At root, in render order:
 | **Tabs** | one row per tab, active marked `current` | hidden when `tabs.length <= 1` |
 | **Manage** | Delete a list… / Delete a tab… | each enters a picker mode |
 | **View** | Show 1 / 3 / 5 / 7 days | writes `settings.visibleDays` |
-| | Roll over on workdays only ⇄ every day | writes `settings.workdaysOnly` |
+| | Roll over on workdays only ⇄ every day | writes `settings.workdaysOnly` — same setting also lives in Settings → Faite Loop (`loop-section.tsx`, EI-96), which additionally exposes `overflowAfterDays`; see [FAITE-LOOP.md](FAITE-LOOP.md) |
 
 Every mutating item routes through the shared undo helpers (`recordCreate`,
 `deleteListWithUndo`, `deleteTabWithUndo`) so palette actions and their
