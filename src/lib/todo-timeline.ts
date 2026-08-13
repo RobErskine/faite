@@ -1,11 +1,18 @@
-import type { Todo, TodoEvent } from "./schema";
+import type { CivilDate, Todo, TodoEvent } from "./schema";
 import type { TodoEventKind } from "./store/todo-events";
 import { parseEventPayload } from "./store/todo-events";
+import { rollEventsFor } from "./rollover-events";
+import type { PlacementContext } from "./scheduling";
+import { zonedInstant } from "./zoned";
 
 /**
  * Builds the per-todo History timeline (EI-94) from the real event log plus
  * one synthesized entry for todos that predate it — the render-time half of
  * the feature; `logTodoEvent` (`store/todo-events.ts`) is the write-time half.
+ *
+ * Also merges in the Faite Loop's `rolledOver`/`overflowed` rows (EI-96,
+ * `lib/rollover-events.ts`), which are pure derivation like everything else
+ * about rollover — there is no write path for them at all.
  */
 
 export interface TodoTimelineEvent {
@@ -56,6 +63,16 @@ export const HISTORY_STARTS_AT = "2026-08-01T00:00:00.000Z";
 /** Adjacent `edited` events within this window coalesce into one row. */
 const COALESCE_WINDOW_MS = 2 * 60 * 1000;
 
+/** Payload for the two Faite Loop (EI-96) rows below — derived, never
+ * written, so this has no counterpart in `lib/store/todo-events.ts`. */
+export interface RollSummaryPayload {
+  v: 1;
+  from: CivilDate;
+  /** Eligible days elapsed as of this row's `at` — for `rolledOver` this is
+   * the LAST roll in the collapsed run, matching the card badge's count. */
+  rolls: number;
+}
+
 function editedFields(payload: unknown): string[] {
   if (!payload || typeof payload !== "object") return [];
   const fields = (payload as { fields?: unknown }).fields;
@@ -101,9 +118,58 @@ function coalesceEdited(events: readonly TodoTimelineEvent[]): TodoTimelineEvent
   return result;
 }
 
+/**
+ * The Faite Loop, summarized for History: every `rolledOver` day this todo
+ * has passed through collapses into ONE row (a 30-day-old Overflow item
+ * would otherwise drown the real log in identical rows), timestamped at the
+ * first roll; `overflowed` — the day it crossed the threshold — stays its
+ * own row, since that's the one fact worth calling out on its own.
+ *
+ * Unlike `coalesceEdited`, this doesn't need to scan for ADJACENT rows: a
+ * todo has exactly one roll sequence, and `rollEventsFor` already returns it
+ * in order, so the whole run is collapsed in one pass rather than merged
+ * post-hoc against interleaved real events.
+ */
+function rollTimelineEvents(
+  todo: Pick<Todo, "status" | "scheduledDate" | "recurrenceParentId">,
+  ctx: PlacementContext,
+  timezone: string,
+): TodoTimelineEvent[] {
+  const rolls = rollEventsFor(todo, ctx);
+  if (rolls.length === 0) return [];
+
+  const rolledOver = rolls.filter((r) => r.kind === "rolledOver");
+  const overflowed = rolls.find((r) => r.kind === "overflowed");
+  const events: TodoTimelineEvent[] = [];
+
+  if (rolledOver.length > 0) {
+    const first = rolledOver[0];
+    const last = rolledOver[rolledOver.length - 1];
+    events.push({
+      key: `rollover:rolledOver:${first.day}`,
+      kind: "rolledOver",
+      at: zonedInstant(first.day, "00:00", timezone),
+      payload: { v: 1, from: last.from, rolls: last.rolls } satisfies RollSummaryPayload,
+    });
+  }
+  if (overflowed) {
+    events.push({
+      key: `rollover:overflowed:${overflowed.day}`,
+      kind: "overflowed",
+      at: zonedInstant(overflowed.day, "00:00", timezone),
+      payload: { v: 1, from: overflowed.from, rolls: overflowed.rolls } satisfies RollSummaryPayload,
+    });
+  }
+  return events;
+}
+
 export function buildTodoTimeline(
   events: readonly TodoEvent[],
-  todo: Pick<Todo, "id" | "createdAt">,
+  todo: Pick<Todo, "id" | "createdAt" | "status" | "scheduledDate" | "recurrenceParentId">,
+  /** Omitted by callers/tests with no rollover to show — History then
+   * renders the real log alone, same as before EI-96. */
+  ctx?: PlacementContext,
+  timezone = "UTC",
 ): TodoTimelineItem[] {
   // Sort by `at`, tiebreak by `id` — UUIDv7 sorts by creation, mirroring
   // `day-timeline.ts`'s total-order rule.
@@ -112,9 +178,13 @@ export function buildTodoTimeline(
   );
 
   const hasRealCreated = sorted.some((e) => e.kind === "created");
-  const timelineEvents = coalesceEdited(sorted.map(toTimelineEvent)).map(
-    (event): TodoTimelineItem => ({ type: "event", event }),
-  );
+  const coalesced = coalesceEdited(sorted.map(toTimelineEvent));
+  const rollEvents = ctx ? rollTimelineEvents(todo, ctx, timezone) : [];
+  // Re-sort after merging: a roll's synthetic midnight instant can interleave
+  // anywhere among the todo's real events.
+  const timelineEvents: TodoTimelineItem[] = [...coalesced, ...rollEvents]
+    .sort((a, b) => a.at.localeCompare(b.at) || a.key.localeCompare(b.key))
+    .map((event): TodoTimelineItem => ({ type: "event", event }));
 
   if (hasRealCreated) return timelineEvents;
 

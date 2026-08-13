@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { ComponentType } from "react";
 import {
+  Archive,
   ArrowLeft,
   ArrowRightLeft,
   Calendar,
@@ -10,6 +11,7 @@ import {
   Check,
   ChevronDown,
   Clock,
+  CornerDownRight,
   Pencil,
   Plus,
   Repeat,
@@ -52,13 +54,17 @@ import { cn } from "@/lib/utils";
 import { edge } from "@/lib/colors";
 import { TITLE_LINES } from "@/lib/title";
 import { formatEventStamp } from "@/lib/event-time";
-import { formatShortDate } from "@/lib/scheduling";
+import { formatShortDate, type PlacementContext } from "@/lib/scheduling";
 import { parseQuickAdd } from "@/lib/quick-add";
 import { isTextEntry } from "@/lib/undo";
 import { detectPlatform, formatCombo, type Platform } from "@/lib/keyboard";
 import { createLabel } from "@/lib/store/repositories";
 import type { TodoEventKind } from "@/lib/store/todo-events";
-import { buildTodoTimeline, type TodoTimelineEvent } from "@/lib/todo-timeline";
+import {
+  buildTodoTimeline,
+  type RollSummaryPayload,
+  type TodoTimelineEvent,
+} from "@/lib/todo-timeline";
 import type { RecurrenceRule } from "@/lib/recurrence";
 import type {
   CivilDate,
@@ -96,6 +102,14 @@ interface TodoSheetProps {
    * have to thread empty collections through. */
   events?: TodoEvent[];
   timezone?: string;
+  /**
+   * The board's placement context — needed by the History section to derive
+   * this todo's Faite Loop rows (EI-96, `rolledOver`/`overflowed`) the same
+   * way the board derives its column. Optional so callers/tests with no
+   * rollover to show don't have to thread it through; when omitted, History
+   * simply shows no roll rows.
+   */
+  ctx?: PlacementContext;
   /** Live AND archived lists, so a `moved` event still colours its dot after
    * the target list is filed. Mirrors `DaySheet`'s `listsById`. */
   listsById?: ReadonlyMap<string, List>;
@@ -171,6 +185,7 @@ function TodoSheetContent({
   places,
   events = [],
   timezone = "UTC",
+  ctx,
   listsById = EMPTY_LISTS_BY_ID,
   onClose,
   onSave,
@@ -660,7 +675,13 @@ function TodoSheetContent({
 
           <Separator />
 
-          <HistorySection todo={todo} events={events} timezone={timezone} listsById={listsById} />
+          <HistorySection
+            todo={todo}
+            events={events}
+            timezone={timezone}
+            ctx={ctx}
+            listsById={listsById}
+          />
         </div>
 
         {/*
@@ -733,9 +754,17 @@ function TodoSheetContent({
 }
 
 /**
+ * `rolledOver`/`overflowed` (EI-96, the Faite Loop) are never written —
+ * `buildTodoTimeline` synthesizes them from `scheduledDate` the same way the
+ * board derives placement — so they have no counterpart in `TodoEventKind`
+ * (`lib/store/todo-events.ts`), which enumerates only real write-path kinds.
+ */
+type HistoryEventKind = TodoEventKind | "rolledOver" | "overflowed";
+
+/**
  * Human labels/icons for the todo history log's kinds (EI-94) — a different
  * vocabulary from the day sheet's `EVENT_LABEL`/`EVENT_ICON`
- * (`day-sheet.tsx`), which cover only 4 kinds and word `scheduled` as
+ * (`day-sheet.tsx`), which cover only 6 kinds and word `scheduled` as
  * "Assigned here" (a referent — "here" — this sheet doesn't have).
  *
  * A `kind` outside this map (a newer build's event, read on an older cached
@@ -743,7 +772,7 @@ function TodoSheetContent({
  * `todoEventSchema`'s doc comment in `lib/schema.ts` for why `kind` is
  * `z.string()`, not an enum.
  */
-const HISTORY_EVENT_LABEL: Partial<Record<TodoEventKind, string>> = {
+const HISTORY_EVENT_LABEL: Partial<Record<HistoryEventKind, string>> = {
   created: "Created",
   scheduled: "Scheduled",
   unscheduled: "Unscheduled",
@@ -753,9 +782,11 @@ const HISTORY_EVENT_LABEL: Partial<Record<TodoEventKind, string>> = {
   reopened: "Reopened",
   edited: "Edited",
   deleted: "Deleted",
+  rolledOver: "Rolled over",
+  overflowed: "Fell into Overflow",
 };
 
-const HISTORY_EVENT_ICON: Partial<Record<TodoEventKind, ComponentType<{ className?: string; "aria-hidden"?: boolean }>>> = {
+const HISTORY_EVENT_ICON: Partial<Record<HistoryEventKind, ComponentType<{ className?: string; "aria-hidden"?: boolean }>>> = {
   created: Plus,
   scheduled: Calendar,
   unscheduled: CalendarOff,
@@ -765,6 +796,8 @@ const HISTORY_EVENT_ICON: Partial<Record<TodoEventKind, ComponentType<{ classNam
   reopened: RotateCcw,
   edited: Pencil,
   deleted: Trash2,
+  rolledOver: CornerDownRight,
+  overflowed: Archive,
 };
 
 const FALLBACK_LABEL = "Updated";
@@ -785,8 +818,8 @@ const FIELD_LABELS: Record<string, string> = {
   recurrenceRule: "Repeat rule",
 };
 
-/** The optional one-line detail under `moved`/`scheduled`/`edited` rows —
- * everything else is fully said by the meta line alone. */
+/** The optional one-line detail under `moved`/`scheduled`/`edited`/rollover
+ * rows — everything else is fully said by the meta line alone. */
 function historyDetail(event: TodoTimelineEvent): string | null {
   if (event.kind === "moved") {
     const payload = event.payload as { toListId?: string | null; toListName?: string | null } | null;
@@ -800,6 +833,14 @@ function historyDetail(event: TodoTimelineEvent): string | null {
     const fields = event.fields ?? [];
     if (fields.length === 0) return null;
     return fields.map((field) => FIELD_LABELS[field] ?? field).join(", ");
+  }
+  if (event.kind === "rolledOver" || event.kind === "overflowed") {
+    const payload = event.payload as RollSummaryPayload | null;
+    if (!payload) return null;
+    const days = payload.rolls === 1 ? "1 day" : `${payload.rolls} days`;
+    return event.kind === "rolledOver"
+      ? `${days}, from ${formatShortDate(payload.from)}`
+      : `from ${formatShortDate(payload.from)}`;
   }
   return null;
 }
@@ -822,6 +863,9 @@ interface HistorySectionProps {
   todo: Todo;
   events: TodoEvent[];
   timezone: string;
+  /** Omitted renders the real log alone — no Faite Loop rows. See the note
+   * on `TodoSheetProps.ctx`. */
+  ctx?: PlacementContext;
   listsById: ReadonlyMap<string, List>;
 }
 
@@ -830,9 +874,12 @@ interface HistorySectionProps {
  * default height must not change just because a todo has history, and most
  * of the time a user opening a todo wants the fields above, not its past.
  */
-function HistorySection({ todo, events, timezone, listsById }: HistorySectionProps) {
+function HistorySection({ todo, events, timezone, ctx, listsById }: HistorySectionProps) {
   const [open, setOpen] = useState(false);
-  const items = useMemo(() => buildTodoTimeline(events, todo), [events, todo]);
+  const items = useMemo(
+    () => buildTodoTimeline(events, todo, ctx, timezone),
+    [events, todo, ctx, timezone],
+  );
   const count = items.filter((item) => item.type === "event").length;
 
   return (
@@ -862,8 +909,8 @@ function HistorySection({ todo, events, timezone, listsById }: HistorySectionPro
             }
             const { event } = item;
             const Icon =
-              HISTORY_EVENT_ICON[event.kind as TodoEventKind] ?? FALLBACK_ICON;
-            const label = HISTORY_EVENT_LABEL[event.kind as TodoEventKind] ?? FALLBACK_LABEL;
+              HISTORY_EVENT_ICON[event.kind as HistoryEventKind] ?? FALLBACK_ICON;
+            const label = HISTORY_EVENT_LABEL[event.kind as HistoryEventKind] ?? FALLBACK_LABEL;
             const detail = historyDetail(event);
             return (
               <TimelineRow

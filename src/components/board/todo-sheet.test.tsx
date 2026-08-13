@@ -4,7 +4,8 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { TodoSheet, type RecurrenceInfo } from "./todo-sheet";
 import { defaultRule } from "@/lib/recurrence";
-import type { Label as LabelRecord, List, Todo } from "@/lib/schema";
+import type { Label as LabelRecord, List, Todo, TodoEvent } from "@/lib/schema";
+import type { PlacementContext } from "@/lib/scheduling";
 
 /**
  * Same reason `day-sheet.test.tsx` stubs this: BlockNote is ProseMirror, which
@@ -58,6 +59,8 @@ interface HarnessProps {
   todo?: Todo;
   lists?: List[];
   labels?: LabelRecord[];
+  events?: TodoEvent[];
+  ctx?: PlacementContext;
 }
 
 function Harness({
@@ -70,6 +73,8 @@ function Harness({
   todo = TODO,
   lists = [],
   labels = [],
+  events,
+  ctx,
 }: HarnessProps) {
   return (
     <TodoSheet
@@ -80,6 +85,8 @@ function Harness({
       labels={labels}
       projects={[]}
       places={[]}
+      events={events}
+      ctx={ctx}
       onClose={vi.fn()}
       onSave={onSave}
       onSetStatus={onSetStatus}
@@ -381,5 +388,51 @@ describe("back-to-day affordance", () => {
   it("is absent if backToDay is set but no handler is wired (defensive)", () => {
     render(<Harness backToDay="2026-08-11" />);
     expect(screen.queryByRole("button", { name: /Back to/ })).toBeNull();
+  });
+});
+
+describe("History — the Faite Loop (EI-96)", () => {
+  const ctx: PlacementContext = {
+    today: "2026-08-11",
+    visibleWindow: ["2026-08-11"],
+    workdaysOnly: false,
+    workdays: [1, 2, 3, 4, 5],
+    overflowAfterDays: 3,
+  };
+
+  const openHistory = () =>
+    fireEvent.click(screen.getByRole("button", { name: /^History/ }));
+
+  it("shows no roll rows without ctx — History is unchanged from before EI-96", () => {
+    render(<Harness todo={{ ...TODO, scheduledDate: "2026-08-08" }} />);
+    openHistory();
+    expect(screen.queryByText("Rolled over")).toBeNull();
+  });
+
+  it("shows a collapsed 'Rolled over' row while still on today's column", () => {
+    render(<Harness todo={{ ...TODO, scheduledDate: "2026-08-08" }} ctx={ctx} />);
+    openHistory();
+    expect(screen.getByText("Rolled over")).toBeTruthy();
+    expect(screen.getByText("3 days, from Aug 8")).toBeTruthy();
+    expect(screen.queryByText("Fell into Overflow")).toBeNull();
+  });
+
+  it("shows 'Fell into Overflow' once past the threshold", () => {
+    render(<Harness todo={{ ...TODO, scheduledDate: "2026-08-07" }} ctx={ctx} />);
+    openHistory();
+    expect(screen.getByText("Fell into Overflow")).toBeTruthy();
+    expect(screen.getByText("from Aug 7")).toBeTruthy();
+  });
+
+  it("shows no roll rows for a recurring occurrence", () => {
+    render(
+      <Harness
+        todo={{ ...TODO, scheduledDate: "2026-08-07", recurrenceParentId: "template-1" }}
+        ctx={ctx}
+      />,
+    );
+    openHistory();
+    expect(screen.queryByText("Rolled over")).toBeNull();
+    expect(screen.queryByText("Fell into Overflow")).toBeNull();
   });
 });

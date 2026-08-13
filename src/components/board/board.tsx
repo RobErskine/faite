@@ -408,6 +408,7 @@ export function Board() {
       <TodoSheet
         todo={data.openTodo}
         today={data.ctx.today}
+        ctx={data.ctx}
         lists={data.lists}
         tabs={data.tabs}
         labels={data.labels}
