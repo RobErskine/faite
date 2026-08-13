@@ -87,6 +87,7 @@ export function Board() {
     openTodoId: ui.openTodoId,
     collapsedGroups: ui.collapsedGroups,
     expandedWeekends: ui.expandedWeekends,
+    columnFilters: ui.columnFilters,
     horizon: ui.horizon,
     cap: ui.cap,
     layout,

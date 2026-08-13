@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SEARCH_LIMIT, searchTodos } from "./search";
+import { SEARCH_LIMIT, matchesQuery, normalizeQuery, searchTodos } from "./search";
 import type { Todo } from "./schema";
 
 function todo(overrides: Partial<Todo> & { id: string }): Todo {
@@ -109,5 +109,54 @@ describe("searchTodos", () => {
 
     expect(searchTodos("milk", todos)).toHaveLength(SEARCH_LIMIT);
     expect(searchTodos("milk", todos, 3)).toHaveLength(3);
+  });
+});
+
+describe("normalizeQuery", () => {
+  it("trims and lower-cases", () => {
+    expect(normalizeQuery("  MiLk  ")).toBe("milk");
+  });
+});
+
+describe("matchesQuery", () => {
+  it("matches at the title-prefix tier", () => {
+    expect(matchesQuery(todo({ id: "1", title: "Groceries" }), "gro")).toBe(true);
+  });
+
+  it("matches at the word-prefix tier", () => {
+    expect(matchesQuery(todo({ id: "1", title: "Buy groceries" }), "gro")).toBe(true);
+  });
+
+  it("matches at the title-substring tier", () => {
+    expect(matchesQuery(todo({ id: "1", title: "Regrouping notes" }), "gro")).toBe(true);
+  });
+
+  it("matches at the description tier", () => {
+    expect(
+      matchesQuery(
+        todo({ id: "1", title: "Errands", description: "buy groceries" }),
+        "gro",
+      ),
+    ).toBe(true);
+  });
+
+  it("returns false for a non-match", () => {
+    expect(matchesQuery(todo({ id: "1", title: "Errands" }), "gro")).toBe(false);
+  });
+
+  it("agrees with searchTodos on which to-dos match, tiers aside", () => {
+    const todos = [
+      todo({ id: "description", title: "Errands", description: "groceries" }),
+      todo({ id: "substring", title: "Regrouping notes" }),
+      todo({ id: "word", title: "Buy groceries" }),
+      todo({ id: "prefix", title: "Groceries for the week" }),
+      todo({ id: "none", title: "Nothing relevant" }),
+    ];
+    const q = normalizeQuery("gro");
+    const ranked = new Set(searchTodos("gro", todos).map((t) => t.id));
+
+    for (const t of todos) {
+      expect(matchesQuery(t, q)).toBe(ranked.has(t.id));
+    }
   });
 });

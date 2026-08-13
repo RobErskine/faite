@@ -188,3 +188,79 @@ describe("arrow-key navigation wiring", () => {
     expect(screen.queryByLabelText("Add a to-do to Overflow")).toBeNull();
   });
 });
+
+/**
+ * `use-board-data.ts` filters `todos` BEFORE building the nav grid — see
+ * `FILTER_MIN_TODOS` / `filterListColumn` — precisely so this stays true: the
+ * grid and the DOM must agree on what's reachable, or an arrow key dies
+ * silently on a hidden card's stop.
+ */
+describe("a pre-filtered column", () => {
+  const VISIBLE = [todo("v1", "Groceries")];
+  const HIDDEN_ID = "h1"; // Never rendered — stands in for a filtered-out card.
+
+  function FilteredHarness() {
+    const grid = buildNavGrid({
+      overflow: null,
+      days: [],
+      hasLoadMore: false,
+      backlog: null,
+      lists: [{ id: "list:overall", items: cardItems(VISIBLE.map((t) => t.id)) }],
+    });
+
+    const navigate = useColumnNav({
+      grid,
+      dayIds: [],
+      dragging: false,
+      anchorIndex: 0,
+      visibleCount: 1,
+      jumpToIndex: () => {},
+    });
+
+    return (
+      <DndContext>
+        <BoardColumn
+          id="list:overall"
+          title="Overall"
+          todos={VISIBLE}
+          labels={[]}
+          ctx={ctx}
+          onToggle={() => {}}
+          onOpen={() => {}}
+          onQuickAdd={() => {}}
+          onNavigate={navigate}
+          filter="gro"
+          onFilterChange={() => {}}
+          totalCount={2}
+        />
+      </DndContext>
+    );
+  }
+
+  it("has no data-nav-stop for the filtered-out card", () => {
+    render(<FilteredHarness />);
+    expect(document.querySelector(`[data-nav-stop="${cardStop(HIDDEN_ID)}"]`)).toBeNull();
+    expect(document.querySelector(`[data-nav-stop="${cardStop("v1")}"]`)).toBeTruthy();
+  });
+
+  it("arrow-navigates only into the visible card, never past it", () => {
+    render(<FilteredHarness />);
+    const from = quickAdd("list:overall")!;
+    from.focus();
+    fireEvent.keyDown(from, { key: "ArrowUp" });
+    expect(document.activeElement).toBe(
+      document.querySelector(`[data-nav-stop="${cardStop("v1")}"]`),
+    );
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowUp" });
+    // Nothing above the one visible card — focus does not move again.
+    expect(document.activeElement).toBe(
+      document.querySelector(`[data-nav-stop="${cardStop("v1")}"]`),
+    );
+  });
+
+  it("gives the filter input itself no data-nav-stop", () => {
+    render(<FilteredHarness />);
+    const filterInput = screen.getByRole("textbox", { name: "Filter Overall" });
+    expect(filterInput.getAttribute("data-nav-stop")).toBeNull();
+  });
+});

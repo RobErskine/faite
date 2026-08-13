@@ -43,6 +43,23 @@ function tier(todo: Todo, query: string): number | null {
   return null;
 }
 
+/** Trimmed + lower-cased — the shape every matcher in this module assumes. */
+export const normalizeQuery = (query: string): string => query.trim().toLowerCase();
+
+/**
+ * Does this to-do match `query` at all?
+ *
+ * The palette RANKS by `tier` because a fixed order is the whole point there.
+ * A column filter only needs the yes/no and must never re-order — reordering
+ * mid-column would scramble the hand-arranged `position` order the moment you
+ * typed a character, and un-scramble it when you cleared. So it takes this.
+ *
+ * `query` must already be `normalizeQuery`d and non-empty.
+ */
+export function matchesQuery(todo: Todo, query: string): boolean {
+  return tier(todo, query) !== null;
+}
+
 /** Open work outranks finished work at the same tier. */
 const statusRank = (todo: Todo): number => (todo.status === "open" ? 0 : 1);
 

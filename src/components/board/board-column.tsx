@@ -13,16 +13,23 @@ import {
   verticalListSortingStrategy,
   type SortingStrategy,
 } from "@dnd-kit/sortable";
-import { CalendarCheck, ChevronDown, Plus } from "lucide-react";
+import { CalendarCheck, ChevronDown, Plus, Search, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { edge, tint, wash } from "@/lib/colors";
 import { listDragId, type TodoGroup } from "@/lib/board";
 import { addStop, groupStop, navKeyOf, type NavKey } from "@/lib/column-nav";
 import { parseQuickAdd } from "@/lib/quick-add";
+import { isTextEntry } from "@/lib/undo";
 import { MentionMenu, useMention, type MentionSource } from "@/components/mention-menu";
 import { createLabel } from "@/lib/store/repositories";
 import type { Label as LabelRecord, Todo } from "@/lib/schema";
 import type { PlacementContext } from "@/lib/scheduling";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupButton,
+  InputGroupInput,
+} from "@/components/ui/input-group";
 import { DragGrip } from "./drag-grip";
 import { QuickAddPreview, type QuickAddChip } from "./quick-add-preview";
 import { TodoCard } from "./todo-card";
@@ -49,6 +56,15 @@ const NO_SORTING: SortingStrategy = () => null;
  * longer name a card in this half.
  */
 const CARDS_NOT_DROPPABLE = { draggable: false, droppable: true } as const;
+
+/**
+ * How many to-dos a column needs before it earns a filter row.
+ *
+ * Below this you can see every row at a glance, so the input would be pure
+ * chrome. A count rather than a measured height: deterministic, screen-
+ * independent, and it never pops in a frame late once layout settles.
+ */
+export const FILTER_MIN_TODOS = 8;
 
 /** A quick-add "@list" mention candidate — see `BoardColumnProps.lists`. */
 export interface MentionListOption {
@@ -135,6 +151,16 @@ interface BoardColumnProps {
   onNavigate?: (fromStopId: string, key: NavKey) => boolean;
   /** Ruled lines fill the empty space, matching the reference UI's paper feel. */
   minRows?: number;
+  /**
+   * In-column filter text. `todos`/`groups` above must already be narrowed to
+   * it — this prop only drives the row's own UI (the input's value, the
+   * clear button, the `n of m` readout, the reveal threshold with
+   * `totalCount`). Omit `onFilterChange` to drop the row entirely.
+   */
+  filter?: string;
+  onFilterChange?: (query: string) => void;
+  /** Unfiltered count, for the reveal threshold and the `n of m` readout. */
+  totalCount?: number;
   /**
    * Opens this column's detail surface — the list settings dialog for a list
    * column, the day details sheet for a day column. A single click on the
@@ -251,6 +277,9 @@ export function BoardColumn({
   lists,
   onNavigate,
   minRows = 8,
+  filter,
+  onFilterChange,
+  totalCount,
   onOpenInfo,
   isDragActive,
   overTodoId,
@@ -271,6 +300,13 @@ export function BoardColumn({
 }: BoardColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id });
   const [draft, setDraft] = useState("");
+  const filterInputRef = useRef<HTMLInputElement>(null);
+  const filterActive = (filter ?? "") !== "";
+  // Stays mounted while a filter is active — otherwise clearing one would
+  // yank the input out from under the cursor the moment the count drops
+  // back under the threshold.
+  const showsFilter =
+    !collapsed && !!onFilterChange && ((totalCount ?? 0) >= FILTER_MIN_TODOS || filterActive);
 
   /**
    * The list name when this column can be reordered, null when it cannot.
@@ -396,6 +432,9 @@ export function BoardColumn({
     const title = draft.trim();
     if (!title || !onQuickAdd) return;
     onQuickAdd(title, mentionedList?.id, mentionedLabels.map((l) => l.id));
+    // The new to-do almost never matches whatever was typed — an add that
+    // appears to do nothing reads as broken, not as filtered.
+    if (filterActive) onFilterChange?.("");
     setDraft(""); // Keep focus so several todos can be typed in a row.
     setQuickAddCursor(0);
     setMentionedList(null);
@@ -439,10 +478,17 @@ export function BoardColumn({
    */
   const grouped = groups && groups.length > 0 ? groups : null;
 
+  // `todos`/`groups` already arrive pre-filtered (use-board-data.ts), so no
+  // structural change is needed here beyond making room for the message row.
+  const showsNoMatches = filterActive && todos.length === 0;
+
   // Group headers occupy vertical space the filler arithmetic did not know
   // about. A header is ~19px against a 32px filler row, so counting them 1:1
   // slightly under-fills — the safe direction.
-  const fillerRows = Math.max(0, minRows - todos.length - (groups?.length ?? 0));
+  const fillerRows = Math.max(
+    0,
+    minRows - todos.length - (groups?.length ?? 0) - (showsNoMatches ? 1 : 0),
+  );
 
   /**
    * The card rows, so the markup exists once whether or not the column groups.
@@ -495,7 +541,18 @@ export function BoardColumn({
                 onExpand?.();
               }
             }
-          : undefined
+          : showsFilter
+            ? (e) => {
+                if (e.key !== "/") return;
+                if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+                // A slash typed into quick-add (or any other field) is a
+                // slash. `isTextEntry` is false for a focused card row, so
+                // that's the case this exists to catch.
+                if (isTextEntry(e.target)) return;
+                e.preventDefault();
+                filterInputRef.current?.focus();
+              }
+            : undefined
       }
       className={cn(
         "group/column relative flex flex-col rounded-md transition-all",
@@ -694,6 +751,77 @@ export function BoardColumn({
         </div>
       )}
 
+      {showsFilter && (
+        <div className="flex items-center gap-1.5 px-2 pt-1.5 pb-1">
+          {/*
+            Below the header ON PURPOSE: the header is the column's drag
+            surface (onMouseDown/onTouchStart above), and a text input inside
+            it would start a column drag on every text selection.
+
+            `pt-1.5`: a colored list's header carries a bottom rule
+            (`accentColor` → `border-b-2`), which the filter row would
+            otherwise butt straight up against.
+          */}
+          <InputGroup className="h-6 min-w-0 flex-1 rounded-md">
+            <InputGroupAddon className="pl-1.5">
+              <Search className="size-3" aria-hidden />
+            </InputGroupAddon>
+            <InputGroupInput
+              ref={filterInputRef}
+              value={filter ?? ""}
+              onChange={(e) => onFilterChange?.(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key !== "Escape") return;
+                e.preventDefault();
+                e.stopPropagation();
+                if (filterActive) onFilterChange?.(""); // first press clears, keeps focus
+                else e.currentTarget.blur(); // second press leaves
+              }}
+              placeholder="Filter"
+              aria-label={typeof title === "string" ? `Filter ${title}` : "Filter this column"}
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
+              enterKeyHint="search"
+              className="h-6 px-1 py-0 text-xs placeholder:text-xs"
+              // No data-nav-stop — see docs/KEYBOARD.md §11.4.
+            />
+            {filterActive && (
+              <InputGroupAddon align="inline-end" className="pr-1">
+                <InputGroupButton
+                  aria-label="Clear the filter"
+                  onClick={() => {
+                    onFilterChange?.("");
+                    filterInputRef.current?.focus();
+                  }}
+                >
+                  <X className="size-3" aria-hidden />
+                </InputGroupButton>
+              </InputGroupAddon>
+            )}
+          </InputGroup>
+          {/*
+            Outside the input group, as its own bordered chip — an inline
+            addon read as a third control crammed against the clear button at
+            this width. Only the two counts switch to `num` (monospace); "of"
+            and "todos" stay in the body font, which is what keeps a one-line
+            phrase from reading as two disconnected fragments.
+          */}
+          {filterActive && (
+            <span
+              className={cn(
+                "shrink-0 whitespace-nowrap rounded-md border border-border bg-muted/50",
+                "px-1.5 py-1 text-2xs text-muted-foreground",
+              )}
+            >
+              <span className="num">{todos.length}</span> of{" "}
+              <span className="num">{totalCount ?? todos.length}</span> todos
+            </span>
+          )}
+        </div>
+      )}
+
       {!collapsed && (
         <div className="flex flex-1 flex-col">
           {/*
@@ -725,6 +853,12 @@ export function BoardColumn({
               renderCards(todos)
             )}
           </SortableContext>
+
+          {showsNoMatches && (
+            <p className="border-b border-border/40 px-2 py-1.5 text-2xs text-muted-foreground">
+              No matches
+            </p>
+          )}
 
           {/*
             Hovering the column itself rather than a specific card means the item

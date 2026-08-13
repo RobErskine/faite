@@ -4,6 +4,8 @@ import {
   byListGroup,
   dayColumnId,
   dayGroupId,
+  filterComputedColumn,
+  filterListColumn,
   isColumnId,
   isDropZoneId,
   listColumnId,
@@ -21,6 +23,7 @@ import {
   tabDragId,
   tabDropId,
   weekendColumnId,
+  type ListColumn,
   type TodoGroup,
 } from "./board";
 import { OVERFLOW, buildWindow } from "./scheduling";
@@ -879,5 +882,116 @@ describe("buildBoard forceOverflow", () => {
     const forcedDone = todo({ id: "forced-done", scheduledDate: "2026-08-06", status: "done" });
     const board = buildBoard([], LISTS, ctx, [], { forceOverflow: [forcedDone] });
     expect(board.overflow.todos).toHaveLength(0);
+  });
+});
+
+describe("filterComputedColumn", () => {
+  it("returns the identical reference for an empty query", () => {
+    const forced = todo({ id: "forced", scheduledDate: "2026-08-06", listId: "groceries" });
+    const board = buildBoard([], LISTS, ctx, [], { forceOverflow: [forced] });
+
+    expect(filterComputedColumn(board.overflow, "")).toBe(board.overflow);
+    expect(filterComputedColumn(board.overflow, "   ")).toBe(board.overflow);
+  });
+
+  it("preserves order — a description match does not jump ahead of a title match", () => {
+    // `positions[2]` sorts before `positions[5]`, so buildBoard orders
+    // "desc" before "title" within the group. A description hit outranks a
+    // title-prefix hit under `searchTodos`'s tiers — if this function
+    // re-ranked, "title" would come first instead.
+    const descMatch = todo({
+      id: "desc",
+      title: "Errands",
+      description: "buy groceries later",
+      scheduledDate: "2026-08-06",
+      listId: "groceries",
+      position: positions[2],
+    });
+    const titleMatch = todo({
+      id: "title",
+      title: "Groceries run",
+      scheduledDate: "2026-08-06",
+      listId: "groceries",
+      position: positions[5],
+    });
+    const board = buildBoard([], LISTS, ctx, [], {
+      forceOverflow: [descMatch, titleMatch],
+    });
+
+    const filtered = filterComputedColumn(board.overflow, "gro");
+    expect(filtered.todos.map((t) => t.id)).toEqual(["desc", "title"]);
+    expect(filtered.groups[0].todos.map((t) => t.id)).toEqual(["desc", "title"]);
+  });
+
+  it("drops a group emptied by the filter", () => {
+    const match = todo({
+      id: "match",
+      title: "Groceries",
+      scheduledDate: "2026-08-06",
+      listId: "groceries",
+    });
+    const noMatch = todo({
+      id: "no-match",
+      title: "Call the dentist",
+      scheduledDate: "2026-08-06",
+      listId: "backlog",
+    });
+    const board = buildBoard([], LISTS, ctx, [], { forceOverflow: [match, noMatch] });
+
+    const filtered = filterComputedColumn(board.overflow, "gro");
+    expect(filtered.groups.map((g) => g.key)).toEqual(["groceries"]);
+  });
+
+  it("keeps todos derived from groups", () => {
+    const match = todo({
+      id: "match",
+      title: "Groceries",
+      scheduledDate: "2026-08-06",
+      listId: "groceries",
+    });
+    const board = buildBoard([], LISTS, ctx, [], { forceOverflow: [match] });
+
+    const filtered = filterComputedColumn(board.overflow, "gro");
+    expect(filtered.todos).toEqual(filtered.groups.flatMap((g) => g.todos));
+  });
+
+  it("filters the flat array directly on a degenerate no-groups column", () => {
+    const column = {
+      id: "day:2026-08-06",
+      day: "2026-08-06",
+      todos: [todo({ id: "match", title: "Groceries" }), todo({ id: "no-match", title: "Call" })],
+      groups: [] as TodoGroup[],
+    };
+
+    const filtered = filterComputedColumn(column, "gro");
+    expect(filtered.todos.map((t) => t.id)).toEqual(["match"]);
+    expect(filtered.groups).toEqual([]);
+  });
+});
+
+describe("filterListColumn", () => {
+  const backlog = list("backlog", "Backlog", true);
+
+  it("returns the identical reference for an empty query", () => {
+    const column: ListColumn = { id: listColumnId(backlog.id), list: backlog, todos: [] };
+    expect(filterListColumn(column, "")).toBe(column);
+  });
+
+  it("filters without re-ranking", () => {
+    const descMatch = todo({
+      id: "desc",
+      title: "Errands",
+      description: "buy groceries later",
+      position: positions[2],
+    });
+    const titleMatch = todo({ id: "title", title: "Groceries run", position: positions[5] });
+    const column: ListColumn = {
+      id: listColumnId(backlog.id),
+      list: backlog,
+      todos: [descMatch, titleMatch],
+    };
+
+    const filtered = filterListColumn(column, "gro");
+    expect(filtered.todos.map((t) => t.id)).toEqual(["desc", "title"]);
   });
 });

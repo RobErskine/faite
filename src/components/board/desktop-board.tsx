@@ -37,6 +37,10 @@ export type ReadyBoardData = BoardData & {
   ctx: NonNullable<BoardData["ctx"]>;
   board: NonNullable<BoardData["board"]>;
   settings: NonNullable<BoardData["settings"]>;
+  // Derived from `board` in `use-board-data.ts`, so non-null follows for the
+  // same reason — narrowed here rather than there for the same boundary
+  // reason as the three above.
+  filteredOverflow: NonNullable<BoardData["filteredOverflow"]>;
 };
 
 /**
@@ -99,6 +103,9 @@ export function DesktopBoard({
     trackSlots,
     backlogColumn,
     otherListColumns,
+    filteredOverflow,
+    filteredBacklogColumn,
+    filteredListColumns,
     calendarCount,
     planningCount,
     mentionLists,
@@ -122,6 +129,8 @@ export function DesktopBoard({
     collapsedGroups,
     toggleGroup,
     expandWeekend,
+    columnFilters,
+    setColumnFilter,
     landingTodoId,
     infoTabId,
     setInfoListId,
@@ -226,13 +235,13 @@ export function DesktopBoard({
             id={board.overflow.id}
             title="Overflow"
             subtitle="Put off too long"
-            todos={board.overflow.todos}
+            todos={filteredOverflow.todos}
             labels={labels}
             ctx={ctx}
             // Grouped like a day column — the origin of a stale to-do is as
             // useful as anything here. `rejectsDrop` below means its groups
             // register no droppable, so they read but do not receive.
-            groups={board.overflow.groups}
+            groups={filteredOverflow.groups}
             collapsedGroups={collapsedGroups}
             onToggleGroup={toggleGroup}
             onToggle={handleToggle}
@@ -242,6 +251,9 @@ export function DesktopBoard({
             // No `onQuickAdd`, so no quick-add row: nothing can be scheduled
             // INTO Overflow, only out of it.
             onNavigate={navigate}
+            filter={columnFilters.get(board.overflow.id)}
+            onFilterChange={(query) => setColumnFilter(board.overflow.id, query)}
+            totalCount={board.overflow.todos.length}
             emphasis
             isDragActive={!!activeTodo}
             overTodoId={overTodoId}
@@ -338,6 +350,9 @@ export function DesktopBoard({
                   }
                   lists={mentionLists}
                   onNavigate={navigate}
+                  filter={columnFilters.get(column.id)}
+                  onFilterChange={(query) => setColumnFilter(column.id, query)}
+                  totalCount={board.days.find((d) => d.id === column.id)?.todos.length}
                   isDragActive={!!activeTodo}
                   overTodoId={overTodoId}
                   landingTodoId={landingTodoId}
@@ -405,7 +420,7 @@ export function DesktopBoard({
           splitCollapsed === "calendar" ? "flex-1" : "grow-[calc(100_-_var(--split-top))]",
         )}
       >
-        {backlogColumn && (
+        {filteredBacklogColumn && (
           <div
             ref={backlogPanelRef}
             className={cn(PINNED_PANEL, "pt-3")}
@@ -416,26 +431,32 @@ export function DesktopBoard({
             }
           >
             <BoardColumn
-              id={backlogColumn.id}
-              title={backlogColumn.list.name}
-              todos={backlogColumn.todos}
+              id={filteredBacklogColumn.id}
+              title={filteredBacklogColumn.list.name}
+              todos={filteredBacklogColumn.todos}
               labels={labels}
               ctx={ctx}
               awayTodoIds={board.awayTodoIds}
               onToggle={handleToggle}
               onOpen={(todo) => openTodoSheet(todo.id)}
               onQuickAdd={(title, listId, labelIds) =>
-                void handleQuickAdd(title, { listId: backlogColumn.list.id }, listId, labelIds)
+                void handleQuickAdd(
+                  title,
+                  { listId: filteredBacklogColumn.list.id },
+                  listId,
+                  labelIds,
+                )
               }
               lists={mentionLists}
               onNavigate={navigate}
+              filter={columnFilters.get(filteredBacklogColumn.id)}
+              onFilterChange={(query) => setColumnFilter(filteredBacklogColumn.id, query)}
+              totalCount={backlogColumn?.todos.length}
               minRows={5}
               isDragActive={!!activeTodo}
               overTodoId={overTodoId}
               landingTodoId={landingTodoId}
               recurrenceSummaries={recurrenceSummaries}
-              // Pinned leftmost, so it gets no reorder handle.
-              reservesGripSlot
               // Backlog cannot be renamed, archived, or deleted, so its one
               // real action is collapsing the rail — see RailCollapseButton.
               isColumnDragActive={!!activeList}
@@ -493,7 +514,12 @@ export function DesktopBoard({
           */}
           <div className="flex flex-1 gap-px bg-border/40 px-4 pt-3 [--column-min:var(--list-column-min)]">
             <div className="column-track flex flex-1 gap-px">
-              {otherListColumns.map((column) => (
+              {/*
+                Index-zipped with `otherListColumns`, not a second `.find`:
+                both arrays come from the same `.map` in use-board-data.ts, so
+                they stay index-aligned by construction — see `filteredListColumns`.
+              */}
+              {filteredListColumns.map((column, i) => (
                 <BoardColumn
                   key={column.id}
                   id={column.id}
@@ -509,6 +535,9 @@ export function DesktopBoard({
                   }
                   lists={mentionLists}
                   onNavigate={navigate}
+                  filter={columnFilters.get(column.id)}
+                  onFilterChange={(query) => setColumnFilter(column.id, query)}
+                  totalCount={otherListColumns[i]?.todos.length}
                   minRows={5}
                   isDragActive={!!activeTodo}
                   overTodoId={overTodoId}

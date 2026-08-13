@@ -73,6 +73,9 @@ export function PhoneBoard({
     trackSlots,
     backlogColumn,
     otherListColumns,
+    filteredOverflow,
+    filteredBacklogColumn,
+    filteredListColumns,
     mentionLists,
     deadlineCounts,
     overTodoId,
@@ -91,6 +94,8 @@ export function PhoneBoard({
     activeList,
     collapsedGroups,
     toggleGroup,
+    columnFilters,
+    setColumnFilter,
     landingTodoId,
     infoTabId,
     setInfoListId,
@@ -160,10 +165,10 @@ export function PhoneBoard({
               id={board.overflow.id}
               title="Overflow"
               subtitle="Put off too long"
-              todos={board.overflow.todos}
+              todos={filteredOverflow.todos}
               labels={labels}
               ctx={ctx}
-              groups={board.overflow.groups}
+              groups={filteredOverflow.groups}
               collapsedGroups={collapsedGroups}
               onToggleGroup={toggleGroup}
               onToggle={handleToggle}
@@ -171,6 +176,9 @@ export function PhoneBoard({
               missedCounts={recurrenceExpansion?.missedCounts}
               recurrenceSummaries={recurrenceSummaries}
               onNavigate={navigate}
+              filter={columnFilters.get(board.overflow.id)}
+              onFilterChange={(query) => setColumnFilter(board.overflow.id, query)}
+              totalCount={board.overflow.todos.length}
               emphasis
               isDragActive={!!activeTodo}
               overTodoId={overTodoId}
@@ -227,6 +235,9 @@ export function PhoneBoard({
                   }
                   lists={mentionLists}
                   onNavigate={navigate}
+                  filter={columnFilters.get(column.id)}
+                  onFilterChange={(query) => setColumnFilter(column.id, query)}
+                  totalCount={board.days.find((d) => d.id === column.id)?.todos.length}
                   isDragActive={!!activeTodo}
                   overTodoId={overTodoId}
                   landingTodoId={landingTodoId}
@@ -273,22 +284,30 @@ export function PhoneBoard({
               data-dragging={dragging ? "" : undefined}
               className="column-track-pager flex h-full flex-1"
             >
-              {backlogColumn && (
+              {filteredBacklogColumn && (
                 <BoardColumn
                   className="pager-column"
-                  id={backlogColumn.id}
-                  title={backlogColumn.list.name}
-                  todos={backlogColumn.todos}
+                  id={filteredBacklogColumn.id}
+                  title={filteredBacklogColumn.list.name}
+                  todos={filteredBacklogColumn.todos}
                   labels={labels}
                   ctx={ctx}
                   awayTodoIds={board.awayTodoIds}
                   onToggle={handleToggle}
                   onOpen={(todo) => openTodoSheet(todo.id)}
                   onQuickAdd={(title, listId, labelIds) =>
-                    void handleQuickAdd(title, { listId: backlogColumn.list.id }, listId, labelIds)
+                    void handleQuickAdd(
+                      title,
+                      { listId: filteredBacklogColumn.list.id },
+                      listId,
+                      labelIds,
+                    )
                   }
                   lists={mentionLists}
                   onNavigate={navigate}
+                  filter={columnFilters.get(filteredBacklogColumn.id)}
+                  onFilterChange={(query) => setColumnFilter(filteredBacklogColumn.id, query)}
+                  totalCount={backlogColumn?.todos.length}
                   isDragActive={!!activeTodo}
                   overTodoId={overTodoId}
                   landingTodoId={landingTodoId}
@@ -297,7 +316,12 @@ export function PhoneBoard({
                   accentColor={null}
                 />
               )}
-              {otherListColumns.map((column) => (
+              {/*
+                Index-zipped with `otherListColumns` — see the desktop
+                board's identical comment. Both arrays share one `.map` in
+                use-board-data.ts, so they stay aligned by construction.
+              */}
+              {filteredListColumns.map((column, i) => (
                 <BoardColumn
                   key={column.id}
                   className="pager-column"
@@ -314,6 +338,9 @@ export function PhoneBoard({
                   }
                   lists={mentionLists}
                   onNavigate={navigate}
+                  filter={columnFilters.get(column.id)}
+                  onFilterChange={(query) => setColumnFilter(column.id, query)}
+                  totalCount={otherListColumns[i]?.todos.length}
                   isDragActive={!!activeTodo}
                   overTodoId={overTodoId}
                   landingTodoId={landingTodoId}

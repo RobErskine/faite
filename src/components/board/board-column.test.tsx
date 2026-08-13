@@ -3,9 +3,9 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { DndContext } from "@dnd-kit/core";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { BoardColumn } from "./board-column";
+import { BoardColumn, FILTER_MIN_TODOS } from "./board-column";
 import { dayGroupId, type TodoGroup } from "@/lib/board";
-import { groupStop } from "@/lib/column-nav";
+import { cardStop, groupStop } from "@/lib/column-nav";
 import type { Todo } from "@/lib/schema";
 import type { PlacementContext } from "@/lib/scheduling";
 
@@ -81,17 +81,23 @@ interface HarnessProps {
   overGroupId?: string | null;
   minRows?: number;
   onOpenInfo?: () => void;
+  todos?: Todo[];
+  collapsed?: boolean;
+  filter?: string;
+  onFilterChange?: (query: string) => void;
+  totalCount?: number;
+  onQuickAdd?: (title: string, listId?: string, labelIds?: string[]) => void;
 }
 
-function Harness({ groups, ...rest }: HarnessProps) {
-  const todos = groups ? groups.flatMap((g) => g.todos) : [todo("flat")];
+function Harness({ groups, todos, ...rest }: HarnessProps) {
+  const resolvedTodos = todos ?? (groups ? groups.flatMap((g) => g.todos) : [todo("flat")]);
   return (
     <TooltipProvider>
       <DndContext>
         <BoardColumn
           id="day:2026-08-09"
           title="Sunday"
-          todos={todos}
+          todos={resolvedTodos}
           labels={[]}
           ctx={ctx}
           groups={groups}
@@ -213,5 +219,174 @@ describe("column heading", () => {
     render(<Harness />);
     expect(screen.queryByRole("button", { name: "Sunday" })).toBeNull();
     expect(screen.getByText("Sunday")).toBeTruthy();
+  });
+});
+
+describe("in-column filter", () => {
+  const manyTodos = (n: number) => Array.from({ length: n }, (_, i) => todo(`t${i}`));
+  const filterInput = () => screen.queryByRole("textbox", { name: "Filter Sunday" });
+
+  it("stays hidden below the threshold", () => {
+    render(
+      <Harness
+        todos={manyTodos(FILTER_MIN_TODOS - 1)}
+        onFilterChange={vi.fn()}
+        totalCount={FILTER_MIN_TODOS - 1}
+      />,
+    );
+    expect(filterInput()).toBeNull();
+  });
+
+  it("appears once the column reaches the threshold", () => {
+    render(
+      <Harness
+        todos={manyTodos(FILTER_MIN_TODOS)}
+        onFilterChange={vi.fn()}
+        totalCount={FILTER_MIN_TODOS}
+      />,
+    );
+    expect(filterInput()).toBeTruthy();
+  });
+
+  it("stays mounted while a filter is active even below the threshold", () => {
+    render(
+      <Harness
+        todos={[todo("only")]}
+        filter="on"
+        onFilterChange={vi.fn()}
+        totalCount={FILTER_MIN_TODOS - 1}
+      />,
+    );
+    expect(filterInput()).toBeTruthy();
+  });
+
+  it("never renders when the column is collapsed", () => {
+    render(
+      <Harness
+        todos={manyTodos(FILTER_MIN_TODOS)}
+        onFilterChange={vi.fn()}
+        totalCount={FILTER_MIN_TODOS}
+        collapsed
+      />,
+    );
+    expect(filterInput()).toBeNull();
+  });
+
+  it("calls onFilterChange as the user types", () => {
+    const onFilterChange = vi.fn();
+    render(
+      <Harness
+        todos={manyTodos(FILTER_MIN_TODOS)}
+        onFilterChange={onFilterChange}
+        totalCount={FILTER_MIN_TODOS}
+      />,
+    );
+    fireEvent.change(filterInput()!, { target: { value: "gro" } });
+    expect(onFilterChange).toHaveBeenCalledWith("gro");
+  });
+
+  it("Escape clears an active filter, then blurs on the next press", () => {
+    const onFilterChange = vi.fn();
+    const { rerender } = render(
+      <Harness
+        todos={[todo("only")]}
+        filter="gro"
+        onFilterChange={onFilterChange}
+        totalCount={FILTER_MIN_TODOS}
+      />,
+    );
+    const input = filterInput()!;
+    input.focus();
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(onFilterChange).toHaveBeenCalledWith("");
+    expect(document.activeElement).toBe(input);
+
+    // Simulate the controlling parent applying the clear, as
+    // `use-board-ui-state.ts`'s `setColumnFilter` would.
+    onFilterChange.mockClear();
+    rerender(
+      <Harness
+        todos={[todo("only")]}
+        filter=""
+        onFilterChange={onFilterChange}
+        totalCount={FILTER_MIN_TODOS}
+      />,
+    );
+    fireEvent.keyDown(filterInput()!, { key: "Escape" });
+    expect(onFilterChange).not.toHaveBeenCalled();
+    expect(document.activeElement).not.toBe(filterInput());
+  });
+
+  it("focuses the filter on '/' from a focused card row", () => {
+    const todos = manyTodos(FILTER_MIN_TODOS);
+    render(<Harness todos={todos} onFilterChange={vi.fn()} totalCount={FILTER_MIN_TODOS} />);
+    const row = document.querySelector(`[data-nav-stop="${cardStop("t0")}"]`) as HTMLElement;
+    row.focus();
+    fireEvent.keyDown(row, { key: "/" });
+    expect(document.activeElement).toBe(filterInput());
+  });
+
+  it("does not steal '/' typed into quick-add", () => {
+    const todos = manyTodos(FILTER_MIN_TODOS);
+    render(<Harness todos={todos} onFilterChange={vi.fn()} totalCount={FILTER_MIN_TODOS} />);
+    const addInput = screen.getByRole("textbox", { name: "Add a to-do to Sunday" });
+    addInput.focus();
+    fireEvent.keyDown(addInput, { key: "/" });
+    expect(document.activeElement).toBe(addInput);
+  });
+
+  it("shows a bordered 'n of m todos' chip, outside the input group, only while a filter is active", () => {
+    const { rerender } = render(
+      <Harness
+        todos={manyTodos(FILTER_MIN_TODOS)}
+        onFilterChange={vi.fn()}
+        totalCount={FILTER_MIN_TODOS}
+      />,
+    );
+    expect(document.querySelector("span.num")).toBeNull();
+
+    rerender(
+      <Harness
+        todos={[todo("t0")]}
+        filter="t0"
+        onFilterChange={vi.fn()}
+        totalCount={FILTER_MIN_TODOS}
+      />,
+    );
+    // Only the two counts are `num` (monospace); "of"/"todos" stay in the
+    // body font, so they render as separate elements from the chip's words.
+    const counts = document.querySelectorAll("span.num");
+    expect(Array.from(counts).map((el) => el.textContent)).toEqual(["1", "8"]);
+
+    const chip = counts[0].closest("span.rounded-md");
+    expect(chip?.textContent?.replace(/\s+/g, " ").trim()).toBe("1 of 8 todos");
+    expect(chip?.className).toContain("border");
+    // Outside the input group, not one of its addons — see the component's
+    // comment on why this moved.
+    expect(chip?.closest('[data-slot="input-group"]')).toBeNull();
+  });
+
+  it("renders 'No matches' when the filter leaves nothing, without losing the ruled height", () => {
+    render(<Harness todos={[]} filter="nothing" onFilterChange={vi.fn()} totalCount={12} />);
+    expect(screen.getByText("No matches")).toBeTruthy();
+  });
+
+  it("clears the filter when a quick-add commits", () => {
+    const onFilterChange = vi.fn();
+    const onQuickAdd = vi.fn();
+    render(
+      <Harness
+        todos={[todo("only")]}
+        filter="gro"
+        onFilterChange={onFilterChange}
+        onQuickAdd={onQuickAdd}
+        totalCount={FILTER_MIN_TODOS}
+      />,
+    );
+    const addInput = screen.getByRole("textbox", { name: "Add a to-do to Sunday" });
+    fireEvent.change(addInput, { target: { value: "New task" } });
+    fireEvent.keyDown(addInput, { key: "Enter" });
+    expect(onQuickAdd).toHaveBeenCalledWith("New task", undefined, []);
+    expect(onFilterChange).toHaveBeenCalledWith("");
   });
 });

@@ -212,6 +212,25 @@ export function useBoardUiState() {
   }, []);
 
   /**
+   * In-column filter text, by droppable column id (`list:<id>`, `day:<id>`,
+   * `day:overflow`). Unpersisted, like `collapsedGroups` above — a filter
+   * surviving reload would hide cards with no visible cause.
+   */
+  const [columnFilters, setColumnFilters] = useState<ReadonlyMap<string, string>>(
+    () => new Map(),
+  );
+
+  const setColumnFilter = useCallback((columnId: string, query: string) => {
+    setColumnFilters((prev) => {
+      if ((prev.get(columnId) ?? "") === query) return prev;
+      const next = new Map(prev);
+      if (query) next.set(columnId, query);
+      else next.delete(columnId);
+      return next;
+    });
+  }, []);
+
+  /**
    * How many day columns to render — see `useBoardData`'s `renderedDays` for
    * the full derivation. `horizon` grows on scroll (`loadMoreDays`) and
    * `cap` is the ceiling the date picker can raise (see `onExtend` in
@@ -281,6 +300,8 @@ export function useBoardUiState() {
     toggleGroup,
     expandedWeekends,
     expandWeekend,
+    columnFilters,
+    setColumnFilter,
     horizon,
     setHorizon,
     cap,

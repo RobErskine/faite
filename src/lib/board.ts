@@ -1,6 +1,7 @@
 import type { CivilDate, List, Tab, Todo, TodoStatus } from "@/lib/schema";
 import { byPosition, positionForIndex, type Position } from "@/lib/ordering";
 import { byPriorityThenPosition, openFirst } from "@/lib/priority";
+import { matchesQuery, normalizeQuery } from "@/lib/search";
 import {
   OVERFLOW,
   PLANNING,
@@ -389,6 +390,43 @@ export interface BoardModel {
   lists: ListColumn[];
   /** Scheduled but outside the visible window — rendered dimmed in its list. */
   awayTodoIds: Set<string>;
+}
+
+/**
+ * Narrows a grouped column (a day, or Overflow) to `query`, for the in-column
+ * filter — a RENDER-ONLY view. Never feed this into a drop calculation:
+ * fractional positions are computed from the true board, not from what a
+ * query happens to match.
+ *
+ * Returns the same reference for an empty query, so an unfiltered board's
+ * memos and nav grid never churn.
+ */
+export function filterComputedColumn<C extends { todos: Todo[]; groups: TodoGroup[] }>(
+  column: C,
+  query: string,
+): C {
+  const q = normalizeQuery(query);
+  if (!q) return column;
+  // `groups.length === 0` is buildBoard's degenerate no-lists fallback, where
+  // the flat array is the column's real contents — see BoardColumn's `grouped`.
+  if (column.groups.length === 0) {
+    return { ...column, todos: column.todos.filter((t) => matchesQuery(t, q)) };
+  }
+  // A group emptied by the filter is dropped — a header over nothing lies
+  // about the column's shape.
+  const groups = column.groups
+    .map((group) => ({ ...group, todos: group.todos.filter((t) => matchesQuery(t, q)) }))
+    .filter((group) => group.todos.length > 0);
+  // `todos` stays DERIVED from `groups`, matching DayColumn's own contract —
+  // the render, the nav grid and the filler-row arithmetic all read `todos`.
+  return { ...column, groups, todos: groups.flatMap((group) => group.todos) };
+}
+
+/** The flat-column sibling of `filterComputedColumn`, for Backlog and custom lists. */
+export function filterListColumn(column: ListColumn, query: string): ListColumn {
+  const q = normalizeQuery(query);
+  if (!q) return column;
+  return { ...column, todos: column.todos.filter((t) => matchesQuery(t, q)) };
 }
 
 /**

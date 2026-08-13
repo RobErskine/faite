@@ -4,6 +4,8 @@ import { useMemo, useCallback } from "react";
 import type { List, Tab, Todo } from "@/lib/schema";
 import {
   buildBoard,
+  filterComputedColumn,
+  filterListColumn,
   parseColumnId,
   parseDayGroupId,
   parseTabDropId,
@@ -75,6 +77,8 @@ export interface UseBoardDataParams {
   openTodoId: string | null;
   collapsedGroups: ReadonlySet<string>;
   expandedWeekends: ReadonlySet<string>;
+  /** In-column filter text, by droppable column id — see `use-board-ui-state.ts`. */
+  columnFilters: ReadonlyMap<string, string>;
   horizon: number;
   cap: number;
   /**
@@ -101,6 +105,7 @@ export function useBoardData(params: UseBoardDataParams) {
     openTodoId,
     collapsedGroups,
     expandedWeekends,
+    columnFilters,
     horizon,
     cap,
     layout,
@@ -385,7 +390,7 @@ export function useBoardData(params: UseBoardDataParams) {
    * grid, the pitch measurement — sees exactly what it sees when weekends are
    * shown, and none of them needs to know this feature exists.
    */
-  const trackSlots = useMemo<TrackSlot[]>(() => {
+  const rawTrackSlots = useMemo<TrackSlot[]>(() => {
     if (!board) return [];
     if (!collapsingWeekends) {
       return board.days.map((column) => ({ kind: "day" as const, column }));
@@ -396,6 +401,27 @@ export function useBoardData(params: UseBoardDataParams) {
         : [slot],
     );
   }, [board, collapsingWeekends, weekendDays, expandedWeekends]);
+
+  /**
+   * `rawTrackSlots` narrowed by each day's own filter — RENDER + NAV only,
+   * same rule as `filteredOverflow` below. Grouping into weekend runs happens
+   * on `board.days` first (above), so a query never changes which days fold
+   * into a strip, and a collapsed run's own filter is left unapplied: its
+   * `WeekendColumn` shows only a summed count (`weekend-column.tsx`), and
+   * filtering it would make that count lie about what expanding reveals.
+   */
+  const trackSlots = useMemo<TrackSlot[]>(
+    () =>
+      rawTrackSlots.map((slot) =>
+        slot.kind === "day"
+          ? {
+              ...slot,
+              column: filterComputedColumn(slot.column, columnFilters.get(slot.column.id) ?? ""),
+            }
+          : slot,
+      ),
+    [rawTrackSlots, columnFilters],
+  );
 
   /**
    * Backlog rendered as a pinned sibling of the planning track, split out
@@ -410,6 +436,38 @@ export function useBoardData(params: UseBoardDataParams) {
   const otherListColumns = useMemo(
     () => board?.lists.filter((c) => !c.list.isBacklog) ?? [],
     [board],
+  );
+
+  const overflowCollapsed = settings?.overflowCollapsed ?? false;
+  const backlogCollapsed = settings?.backlogCollapsed ?? false;
+
+  /**
+   * Filtered views for RENDER + NAV only — never for a write path or a count.
+   * `findColumn`/`columnByTarget` (use-board-actions.ts) and every count below
+   * keep reading the unfiltered `board`/`backlogColumn`/`otherListColumns`: a
+   * fractional index computed from a filtered sample would be arithmetic on a
+   * sequence the store does not hold.
+   *
+   * Collapsed columns are left unfiltered — a collapsed rail's strip shows
+   * only `todos.length` (`board-column.tsx`), and filtering it would make
+   * that count lie about what expanding reveals. It also means expanding
+   * restores the query intact rather than discarding it.
+   */
+  const filteredOverflow = useMemo(() => {
+    if (!board) return null;
+    if (overflowCollapsed) return board.overflow;
+    return filterComputedColumn(board.overflow, columnFilters.get(board.overflow.id) ?? "");
+  }, [board, overflowCollapsed, columnFilters]);
+
+  const filteredBacklogColumn = useMemo(() => {
+    if (!backlogColumn) return null;
+    if (backlogCollapsed) return backlogColumn;
+    return filterListColumn(backlogColumn, columnFilters.get(backlogColumn.id) ?? "");
+  }, [backlogColumn, backlogCollapsed, columnFilters]);
+
+  const filteredListColumns = useMemo(
+    () => otherListColumns.map((c) => filterListColumn(c, columnFilters.get(c.id) ?? "")),
+    [otherListColumns, columnFilters],
   );
 
   /** To-do counts for the two `SplitStrip`s — everything in the half, pinned column included. */
@@ -483,22 +541,19 @@ export function useBoardData(params: UseBoardDataParams) {
     [collapsedGroups],
   );
 
-  const overflowCollapsed = settings?.overflowCollapsed ?? false;
-  const backlogCollapsed = settings?.backlogCollapsed ?? false;
-
   const navGrid = useMemo<NavGrid>(
     () =>
       buildNavGrid({
         overflow:
-          board && !overflowCollapsed
-            ? { id: board.overflow.id, items: groupedItems(board.overflow) }
+          filteredOverflow && !overflowCollapsed
+            ? { id: filteredOverflow.id, items: groupedItems(filteredOverflow) }
             : null,
         /*
           Slots, not `board.days`: a collapsed strip is a real thing on screen
           and has to be in the grid, or `→` steps from Friday to Monday past a
           control the user can see and never reaches it. It contributes one
           stop — itself — and no quick-add, since there is no single day it
-          would add to.
+          would add to. Already filtered — see `trackSlots` above.
         */
         days: trackSlots.map((slot) =>
           slot.kind === "day"
@@ -507,23 +562,26 @@ export function useBoardData(params: UseBoardDataParams) {
         ),
         hasLoadMore: renderedDays < cap,
         backlog:
-          backlogColumn && !backlogCollapsed
-            ? { id: backlogColumn.id, items: cardItems(backlogColumn.todos.map((t) => t.id)) }
+          filteredBacklogColumn && !backlogCollapsed
+            ? {
+                id: filteredBacklogColumn.id,
+                items: cardItems(filteredBacklogColumn.todos.map((t) => t.id)),
+              }
             : null,
-        lists: otherListColumns.map((c) => ({
+        lists: filteredListColumns.map((c) => ({
           id: c.id,
           items: cardItems(c.todos.map((t) => t.id)),
         })),
       }),
     [
-      board,
+      filteredOverflow,
       trackSlots,
       overflowCollapsed,
       renderedDays,
       cap,
-      backlogColumn,
+      filteredBacklogColumn,
       backlogCollapsed,
-      otherListColumns,
+      filteredListColumns,
       groupedItems,
     ],
   );
@@ -684,6 +742,9 @@ export function useBoardData(params: UseBoardDataParams) {
     trackSlots,
     backlogColumn,
     otherListColumns,
+    filteredOverflow,
+    filteredBacklogColumn,
+    filteredListColumns,
     calendarCount,
     planningCount,
     listsById,

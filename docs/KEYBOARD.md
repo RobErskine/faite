@@ -29,7 +29,7 @@ planning session never needs the mouse.
 | Where | Keys |
 |---|---|
 | `command-palette.tsx` | `Enter` submits an entry mode, `Escape` returns to root |
-| `board-column.tsx` | `Enter` commits a quick-add, `Escape` clears the draft, `←→↑↓` navigate (§6) |
+| `board-column.tsx` | `Enter` commits a quick-add, `Escape` clears the draft, `←→↑↓` navigate (§6); `/` (on the column, not registered globally) focuses the in-column filter when one is showing, `Escape` in the filter clears it then blurs on the next press |
 | `create-list-column.tsx` | `Enter` commits, `Escape` cancels, `←→↑↓` navigate off the idle button (§6) |
 | `list-info-dialog.tsx` | `Enter` saves the list name |
 | `todo-sheet.tsx` | `Enter` blurs the title (commit-on-blur does the write); on `SheetContent`, `⌘Enter`/`Ctrl+Enter` marks done, `⌘⌫`/`Ctrl+Backspace` marks won't-do, `⇧⌘⌫`/`Ctrl+Shift+Backspace` deletes — local rather than global because these are meaningless with no sheet open, and the registry's `GuardContext` has no per-surface discriminator (§4.3) to scope a global entry to just this sheet |
@@ -483,6 +483,13 @@ Scrolling is deliberate, never native: the hook calls
 falls outside `useDayTrack`'s `[anchorIndex, anchorIndex + visibleCount)` — or
 `scrollIntoView({ block: "nearest" })`. Letting the browser scroll the day track
 would land it between columns and fight the anchor the next `jumpBy` reads.
+
+The in-column filter input (§1) is deliberately **not** a nav stop. Anchor
+preservation across `←`/`→` is index-based (`resolveNavTarget` in
+`lib/column-nav.ts`: `next.stops[Math.min(at.idx, next.stops.length - 1)]`),
+so a stop that exists on one column and not another would shift every later
+index — `→` from card 3 of a day column would land on card 2 of a list
+column instead. `/` and Tab both already reach the filter without it.
 
 ### 11.5 Files
 

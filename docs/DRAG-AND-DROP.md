@@ -1225,6 +1225,14 @@ logic cannot be meaningfully tested there.
 32. Switch tabs, then look at a day holding a card from the *other* tab's list. It
     must group under **that list's name**, not Backlog. This is what `hiddenLists`
     passing records rather than ids buys.
+33. Type an in-column filter, then drag a **visible** card above another
+    **visible** card. Clear the filter and confirm it landed exactly where you
+    pointed, relative to the cards the filter was hiding — positions come from
+    the unfiltered board (`use-board-actions.ts`), not the rendered array, so
+    this must always be correct. Then drop a card on empty column space while
+    filtered: it lands at the true end, past whatever the filter is hiding,
+    even though the end-of-column indicator draws below the last *visible*
+    card.
 
 **Manual checklist — column reordering**
 
