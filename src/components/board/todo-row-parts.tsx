@@ -1,7 +1,7 @@
 "use client";
 
-import { CalendarCheck, CalendarClock, MapPin, Repeat } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { CalendarCheck, CalendarClock, CornerDownRight, MapPin, Repeat } from "lucide-react";
+import { Badge, badgeVariants } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { priorityRail } from "@/lib/priority";
@@ -43,19 +43,25 @@ export function PriorityRail({
 }
 
 /**
- * The inline glyph run — deadline-ahead, location, recurrence — meant to sit
- * inside a title's inline flow, immediately before the title text. Each
- * glyph is its own tooltip trigger; a missed deadline is NOT included here,
- * it gets the loud badge in `TodoMetaBadges` instead.
+ * The inline glyph run — deadline-ahead, rollover, location, recurrence —
+ * meant to sit inside a title's inline flow, immediately before the title
+ * text. Each glyph is its own tooltip trigger; a missed deadline is NOT
+ * included here, it gets the loud badge in `TodoMetaBadges` instead. Neither
+ * is an overflowed todo's rollover history — see `TodoMetaBadges`'s "In
+ * Overflow" badge for that.
  */
 export function TitleMarkers({
   todo,
   today,
   recurrenceSummary,
+  rolledFrom,
 }: {
   todo: Todo;
   today: CivilDate;
   recurrenceSummary?: string;
+  /** Set only while the todo is still rolling — on today's column, not yet
+   * in Overflow. See `rollEventsFor` in `lib/rollover-events.ts`. */
+  rolledFrom?: { from: CivilDate; rolls: number };
 }) {
   const deadlineMissed = isDeadlineMissed(todo, { today });
   /** Quiet inline marker for a deadline still ahead; a missed one gets the loud badge. */
@@ -63,6 +69,28 @@ export function TitleMarkers({
 
   return (
     <>
+      {rolledFrom && (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <span
+                data-rollover-marker
+                className="mr-1 inline-block align-[-0.1875em] text-muted-foreground"
+              >
+                <CornerDownRight className="size-3" aria-hidden />
+                <span className="sr-only">
+                  Rolled over from {formatShortDate(rolledFrom.from)},{" "}
+                  {rolledFrom.rolls} {rolledFrom.rolls === 1 ? "day" : "days"} ago.{" "}
+                </span>
+              </span>
+            }
+          />
+          <TooltipContent>
+            Rolled over from {formatShortDate(rolledFrom.from)} ·{" "}
+            {rolledFrom.rolls} {rolledFrom.rolls === 1 ? "day" : "days"}
+          </TooltipContent>
+        </Tooltip>
+      )}
       {dueAhead && (
         <Tooltip>
           <TooltipTrigger
@@ -130,8 +158,8 @@ export function TitleMarkers({
  * The badge row: a missed deadline, an outstanding-occurrences count, a
  * scheduled date (only when the caller opts in via `showScheduledDate` — the
  * board card only wants this away from its own column, the palette always
- * wants it since it has no column to imply the date), and labels. Renders
- * `null` when there is nothing to show.
+ * wants it since it has no column to imply the date), an Overflow-age badge,
+ * and labels. Renders `null` when there is nothing to show.
  */
 export function TodoMetaBadges({
   todo,
@@ -139,12 +167,17 @@ export function TodoMetaBadges({
   today,
   showScheduledDate,
   missedCount,
+  overflow,
 }: {
   todo: Todo;
   labels: LabelRecord[];
   today: CivilDate;
   showScheduledDate?: boolean;
   missedCount?: number | null;
+  /** Set only once the todo has crossed into Overflow. See `rollEventsFor`
+   * in `lib/rollover-events.ts` — `rolls` counts eligible days since
+   * `from`, the same clock that put it here. */
+  overflow?: { from: CivilDate; since: CivilDate; rolls: number };
 }) {
   const deadlineMissed = isDeadlineMissed(todo, { today });
   const todoLabels = labels.filter((l) => todo.labelIds.includes(l.id));
@@ -153,7 +186,8 @@ export function TodoMetaBadges({
     todoLabels.length > 0 ||
     (deadlineMissed && todo.deadline) ||
     (showScheduledDate && todo.scheduledDate) ||
-    (missedCount ?? 0) > 1;
+    (missedCount ?? 0) > 1 ||
+    Boolean(overflow);
 
   if (!hasContent) return null;
 
@@ -164,6 +198,30 @@ export function TodoMetaBadges({
           <CalendarClock className="size-2.5" aria-hidden />
           {formatShortDate(todo.scheduledDate)}
         </Badge>
+      )}
+      {overflow && (
+        <Tooltip>
+          {/*
+            A styled `span`, not a `<Badge>`, as the trigger itself — every
+            other trigger in this file is a plain element for the same
+            reason (§ location pin above): the badge's visual classes are
+            applied directly rather than composing two render-prop components.
+          */}
+          <TooltipTrigger
+            render={
+              <span
+                className={cn(badgeVariants({ variant: "destructive" }), "num gap-1 text-2xs font-normal")}
+              >
+                <CornerDownRight className="size-2.5" aria-hidden />
+                In Overflow {overflow.rolls} {overflow.rolls === 1 ? "day" : "days"}
+              </span>
+            }
+          />
+          <TooltipContent>
+            Scheduled {formatShortDate(overflow.from)} · in Overflow since{" "}
+            {formatShortDate(overflow.since)}
+          </TooltipContent>
+        </Tooltip>
       )}
       {deadlineMissed && todo.deadline && (
         <Badge variant="destructive" className="text-2xs font-normal">

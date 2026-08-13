@@ -16,6 +16,7 @@ import { PriorityRail, TitleMarkers, TodoMetaBadges } from "./todo-row-parts";
 import { cardStop, navKeyOf, type NavKey } from "@/lib/column-nav";
 import { priorityRail } from "@/lib/priority";
 import { TITLE_CLAMP_CLASS } from "@/lib/title";
+import { rollEventsFor } from "@/lib/rollover-events";
 import type { Label as LabelRecord, Todo } from "@/lib/schema";
 import type { PlacementContext } from "@/lib/scheduling";
 
@@ -106,6 +107,21 @@ export function TodoCard({
   /** Kept locally only for the sr-only priority label below — the visual
    * rail itself is rendered by `<PriorityRail>`. */
   const rail = priorityRail(todo.priority);
+
+  /**
+   * The Faite Loop, made visible: the last roll event tells us whether this
+   * card is still rolling (show the marker) or has fallen into Overflow
+   * (show the age badge) — never both, they're mutually exclusive states of
+   * the same sequence. `rollEventsFor` already returns `[]` for settled and
+   * recurring todos, so this is a no-op for both.
+   */
+  const lastRoll = rollEventsFor(todo, ctx).at(-1);
+  const rolledFrom =
+    lastRoll?.kind === "rolledOver" ? { from: lastRoll.from, rolls: lastRoll.rolls } : undefined;
+  const overflowInfo =
+    lastRoll?.kind === "overflowed"
+      ? { from: lastRoll.from, since: lastRoll.day, rolls: lastRoll.rolls }
+      : undefined;
 
   /**
    * Whether the clamp is actually cutting the title off — the gate on the
@@ -390,7 +406,12 @@ export function TodoCard({
                 data-todo-title
                 className={cn("indent-6 wrap-break-word", TITLE_CLAMP_CLASS)}
               >
-                <TitleMarkers todo={todo} today={ctx.today} recurrenceSummary={recurrenceSummary} />
+                <TitleMarkers
+                  todo={todo}
+                  today={ctx.today}
+                  recurrenceSummary={recurrenceSummary}
+                  rolledFrom={rolledFrom}
+                />
                 {todo.title}
                 {rail && <span className="sr-only"> — {rail.label}</span>}
               </span>
@@ -405,6 +426,7 @@ export function TodoCard({
           today={ctx.today}
           showScheduledDate={isAway}
           missedCount={missedCount}
+          overflow={overflowInfo}
         />
       </button>
     </div>

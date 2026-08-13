@@ -347,3 +347,52 @@ describe("recurrence", () => {
     expect(badgeRow()?.textContent).toContain("×3");
   });
 });
+
+describe("the Faite Loop", () => {
+  // ctx.today is 2026-08-09, overflowAfterDays is 3.
+
+  it("shows no rollover marker for a todo due today", () => {
+    render(<Harness todo={todo({ scheduledDate: "2026-08-09" })} />);
+    expect(row().querySelector("[data-rollover-marker]")).toBeNull();
+    expect(badgeRow()).toBeNull();
+  });
+
+  it("shows the rollover marker once a todo has rolled, up to the threshold", () => {
+    render(<Harness todo={todo({ scheduledDate: "2026-08-08" })} />); // 1 roll
+    const marker = row().querySelector("[data-rollover-marker]");
+    expect(marker).not.toBeNull();
+    expect(marker?.textContent).toContain("Rolled over from Aug 8");
+    expect(badgeRow()).toBeNull();
+  });
+
+  it("still shows the marker, not the badge, exactly at the threshold", () => {
+    render(<Harness todo={todo({ scheduledDate: "2026-08-06" })} />); // 3 rolls
+    expect(row().querySelector("[data-rollover-marker]")).not.toBeNull();
+    expect(badgeRow()).toBeNull();
+  });
+
+  it("switches to the Overflow age badge one roll past the threshold", () => {
+    render(<Harness todo={todo({ scheduledDate: "2026-08-05" })} />); // 4 rolls
+    expect(row().querySelector("[data-rollover-marker]")).toBeNull();
+    expect(badgeRow()?.textContent).toContain("In Overflow 4 days");
+  });
+
+  it("shows neither for a settled todo, however stale", () => {
+    render(
+      <Harness todo={todo({ scheduledDate: "2026-07-01", status: "done" })} />,
+    );
+    expect(row().querySelector("[data-rollover-marker]")).toBeNull();
+    expect(badgeRow()).toBeNull();
+  });
+
+  it("shows neither for a recurring occurrence — one miss bypasses the loop", () => {
+    render(
+      <Harness
+        todo={todo({ scheduledDate: "2026-08-05", recurrenceParentId: "template-1" })}
+      />,
+    );
+    expect(row().querySelector("[data-rollover-marker]")).toBeNull();
+    // The repeat marker still shows; the badge row exists only for it.
+    expect(badgeRow()).toBeNull();
+  });
+});
