@@ -168,4 +168,55 @@ describe("SettingsSheet", () => {
 
     expect(screen.getByText("LU")).toBeTruthy();
   });
+
+  it("marks the current rolls preset and describes the loop in the Faite Loop panel", () => {
+    render(
+      <SettingsSheet
+        open
+        onOpenChange={() => {}}
+        settings={settingsWith({ overflowAfterDays: 3, timezone: "UTC" })}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Faite Loop"));
+
+    const pressed = screen
+      .getAllByRole("button")
+      .filter((el) => el.getAttribute("aria-pressed") === "true");
+    expect(pressed.some((el) => el.textContent?.trim() === "3")).toBe(true);
+    expect(screen.getByText(/rolls to/)).toBeTruthy();
+    expect(screen.getByText(/Overflow on/)).toBeTruthy();
+  });
+
+  it("marks 'None' pressed and skips the roll list when overflowAfterDays is 0", () => {
+    render(
+      <SettingsSheet
+        open
+        onOpenChange={() => {}}
+        settings={settingsWith({ overflowAfterDays: 0, timezone: "UTC" })}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Faite Loop"));
+
+    const pressed = screen
+      .getAllByRole("button")
+      .filter((el) => el.getAttribute("aria-pressed") === "true");
+    expect(pressed.some((el) => el.textContent?.trim() === "None")).toBe(true);
+    expect(screen.queryByText(/rolls to/)).toBeNull();
+  });
+
+  it("reflects workdaysOnly as the Faite Loop switch state", () => {
+    render(
+      <SettingsSheet
+        open
+        onOpenChange={() => {}}
+        settings={settingsWith({ workdaysOnly: true })}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Faite Loop"));
+
+    expect(screen.getByRole("switch").getAttribute("aria-checked")).toBe("true");
+  });
 });
