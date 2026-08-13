@@ -41,6 +41,7 @@ import {
   useRecurrenceChildren,
   useSettings,
   useTabs,
+  useTodoEvents,
   useTodos,
 } from "@/lib/store/hooks";
 import { DEFAULT_TAB_ID } from "@/lib/store/repositories";
@@ -117,6 +118,7 @@ export function useBoardData(params: UseBoardDataParams) {
   const places = usePlaces();
   const settings = useSettings();
   const dayNotes = useDayNotes();
+  const todoEvents = useTodoEvents(openTodoId);
 
   /**
    * Which tab the planning half is showing.
@@ -657,6 +659,7 @@ export function useBoardData(params: UseBoardDataParams) {
     places,
     settings,
     dayNotes,
+    todoEvents,
     activeTabId,
     activeTabRecord,
     infoList,

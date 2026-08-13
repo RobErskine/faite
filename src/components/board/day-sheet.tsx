@@ -39,6 +39,7 @@ import type {
   Todo,
 } from "@/lib/schema";
 import { cn } from "@/lib/utils";
+import { TimelineList, TimelineRow } from "./timeline";
 import { TodoCard } from "./todo-card";
 
 /**
@@ -238,7 +239,7 @@ function DaySheetContent({
               <HiddenByFilterNotice count={hiddenCount} onShowAll={showAllKinds} />
             ) : (
               <>
-                <ol className="space-y-3">
+                <TimelineList ariaLabel={`Timeline for ${weekday}, ${label}`}>
                   {visibleEvents.map((event, index) => (
                     <TimelineEntry
                       key={event.key}
@@ -256,7 +257,7 @@ function DaySheetContent({
                       onOpenTodo={onOpenTodo}
                     />
                   ))}
-                </ol>
+                </TimelineList>
                 {hiddenCount > 0 && (
                   <HiddenByFilterNotice count={hiddenCount} onShowAll={showAllKinds} />
                 )}
@@ -323,37 +324,17 @@ function TimelineEntry({
   onToggleTodo,
   onOpenTodo,
 }: TimelineEntryProps) {
-  const Icon = EVENT_ICON[event.kind];
   const accent = edge(list?.color);
 
   return (
-    <li className="relative pl-6">
-      {/*
-        The rail, stopping at the last node rather than running past it — a line
-        continuing into empty space reads as "more below", which is exactly what
-        there isn't.
-      */}
-      {!isLast && (
-        <span
-          aria-hidden
-          className="absolute left-[5px] top-3 bottom-[-0.75rem] w-px bg-border"
-        />
-      )}
-      <span
-        aria-hidden
-        className="absolute left-0 top-1.5 size-[11px] rounded-full border-2 border-background bg-muted-foreground"
-        style={accent ? { backgroundColor: accent } : undefined}
-      />
-
-      <p className="flex items-center gap-1 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
-        <Icon className="size-3" aria-hidden />
-        {EVENT_LABEL[event.kind]}
-        <span aria-hidden>·</span>
-        <time dateTime={event.at} className="num">
-          {formatEventWhen(event.at, day, timezone)}
-        </time>
-      </p>
-
+    <TimelineRow
+      icon={EVENT_ICON[event.kind]}
+      label={EVENT_LABEL[event.kind]}
+      at={event.at}
+      when={formatEventWhen(event.at, day, timezone)}
+      accent={accent}
+      isLast={isLast}
+    >
       {/*
         The list's wash goes BEHIND the card, never on it — an inline
         `backgroundColor` on the row itself would beat `hover:bg-accent/50`,
@@ -373,6 +354,6 @@ function TimelineEntry({
           onOpen={onOpenTodo}
         />
       </div>
-    </li>
+    </TimelineRow>
   );
 }

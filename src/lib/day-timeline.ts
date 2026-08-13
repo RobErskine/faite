@@ -1,5 +1,8 @@
 import type { CivilDate, DayEventKind, Todo } from "./schema";
+import { formatEventTime } from "./event-time";
 import { civilDateOf, formatShortDate } from "./scheduling";
+
+export { formatEventTime };
 
 /**
  * What happened to a to-do on one calendar day.
@@ -115,33 +118,6 @@ export function buildDayTimeline(
   // Tie-broken by key so the order is TOTAL: two todos created in the same
   // millisecond must not swap places between renders.
   return events.sort((a, b) => a.at.localeCompare(b.at) || a.key.localeCompare(b.key));
-}
-
-/** Memoized time-of-day formatters, one per timezone. Mirrors `civilDateOf`. */
-const TIME_FORMATTERS = new Map<string, Intl.DateTimeFormat>();
-
-/**
- * "9:41 AM" for an instant, in the user's timezone.
- *
- * Lives here rather than in `scheduling.ts` on purpose: every formatter there
- * is pinned to `timeZone: "UTC"` because it formats civil dates, and adding a
- * zone-aware instant formatter alongside them would undermine the invariant
- * that file's header sets out.
- */
-export function formatEventTime(instant: string, timezone: string): string {
-  let formatter = TIME_FORMATTERS.get(timezone);
-  if (!formatter) {
-    const options: Intl.DateTimeFormatOptions = { hour: "numeric", minute: "2-digit" };
-    try {
-      formatter = new Intl.DateTimeFormat("en-US", { ...options, timeZone: timezone });
-    } catch {
-      formatter = new Intl.DateTimeFormat("en-US", { ...options, timeZone: "UTC" });
-    }
-    TIME_FORMATTERS.set(timezone, formatter);
-  }
-
-  const dt = new Date(instant);
-  return Number.isNaN(dt.getTime()) ? "" : formatter.format(dt);
 }
 
 /**

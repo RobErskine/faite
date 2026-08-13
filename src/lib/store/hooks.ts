@@ -12,6 +12,7 @@ import type {
   Settings,
   Tab,
   Todo,
+  TodoEvent,
 } from "@/lib/schema";
 import { byPosition } from "@/lib/ordering";
 import { contextFromSettings, type PlacementContext } from "@/lib/scheduling";
@@ -183,6 +184,31 @@ export function useDayNotes(): ReadonlyMap<CivilDate, DayNote> {
       ),
     [rows],
   );
+}
+
+/**
+ * One todo's history log (EI-94), oldest first isn't guaranteed here —
+ * `buildTodoTimeline` (`lib/todo-timeline.ts`) does the ordering; this hook
+ * only fetches.
+ *
+ * `.where("todoId").equals(id)` rather than the `toArray()`-and-filter
+ * pattern every other hook here uses — `todoEvents` is the one table where
+ * that full scan gets expensive, since it grows without bound while every
+ * other table's live-row count stays roughly constant.
+ *
+ * `null` (no todo open) skips the query entirely rather than querying with a
+ * sentinel — Dexie has no "match nothing" value to equal against.
+ */
+export function useTodoEvents(todoId: string | null): TodoEvent[] {
+  const rows = useLiveQuery(
+    () =>
+      todoId
+        ? getDb().todoEvents.where("todoId").equals(todoId).toArray()
+        : Promise.resolve([] as TodoEvent[]),
+    [todoId],
+    [] as TodoEvent[],
+  );
+  return useMemo(() => alive(rows), [rows]);
 }
 
 export function useSettings(): Settings | undefined {

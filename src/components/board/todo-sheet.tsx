@@ -1,7 +1,22 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { ArrowLeft, Clock, Repeat, Trash2, X } from "lucide-react";
+import type { ComponentType } from "react";
+import {
+  ArrowLeft,
+  ArrowRightLeft,
+  Calendar,
+  CalendarOff,
+  Check,
+  ChevronDown,
+  Clock,
+  Pencil,
+  Plus,
+  Repeat,
+  RotateCcw,
+  Trash2,
+  X,
+} from "lucide-react";
 import {
   Sheet,
   SheetContent,
@@ -32,13 +47,18 @@ import { LabelPicker } from "@/components/board/label-picker";
 import { QuickAddPreview, type QuickAddChip } from "@/components/board/quick-add-preview";
 import { MentionMenu, useMention, type MentionSource } from "@/components/mention-menu";
 import type { MentionListOption, MentionPick } from "@/components/board/board-column";
+import { TimelineList, TimelineRow } from "@/components/board/timeline";
 import { cn } from "@/lib/utils";
+import { edge } from "@/lib/colors";
 import { TITLE_LINES } from "@/lib/title";
+import { formatEventStamp } from "@/lib/event-time";
 import { formatShortDate } from "@/lib/scheduling";
 import { parseQuickAdd } from "@/lib/quick-add";
 import { isTextEntry } from "@/lib/undo";
 import { detectPlatform, formatCombo, type Platform } from "@/lib/keyboard";
 import { createLabel } from "@/lib/store/repositories";
+import type { TodoEventKind } from "@/lib/store/todo-events";
+import { buildTodoTimeline, type TodoTimelineEvent } from "@/lib/todo-timeline";
 import type { RecurrenceRule } from "@/lib/recurrence";
 import type {
   CivilDate,
@@ -49,11 +69,16 @@ import type {
   Project,
   Tab,
   Todo,
+  TodoEvent,
 } from "@/lib/schema";
 
 export type { RecurrenceInfo };
 
 const NONE = "__none__";
+
+/** Stable empty default for `listsById` — a fresh `new Map()` per render
+ * would defeat memoization downstream for no reason. */
+const EMPTY_LISTS_BY_ID: ReadonlyMap<string, List> = new Map();
 
 interface TodoSheetProps {
   todo: Todo | null;
@@ -66,6 +91,14 @@ interface TodoSheetProps {
   projects: Project[];
   /** Saved locations (`lib/schema.ts`'s `Place`) — see the Location field. */
   places: Place[];
+  /** This todo's history log (EI-94) — the History section below Notes.
+   * Optional (defaults to none) so callers/tests with nothing to show don't
+   * have to thread empty collections through. */
+  events?: TodoEvent[];
+  timezone?: string;
+  /** Live AND archived lists, so a `moved` event still colours its dot after
+   * the target list is filed. Mirrors `DaySheet`'s `listsById`. */
+  listsById?: ReadonlyMap<string, List>;
   onClose: () => void;
   onSave: (id: string, patch: Partial<Todo>) => void;
   /**
@@ -136,6 +169,9 @@ function TodoSheetContent({
   labels,
   projects,
   places,
+  events = [],
+  timezone = "UTC",
+  listsById = EMPTY_LISTS_BY_ID,
   onClose,
   onSave,
   onSetStatus,
@@ -621,6 +657,10 @@ function TodoSheetContent({
               }
             />
           </div>
+
+          <Separator />
+
+          <HistorySection todo={todo} events={events} timezone={timezone} listsById={listsById} />
         </div>
 
         {/*
@@ -689,5 +729,158 @@ function TodoSheetContent({
         />
       )}
     </Sheet>
+  );
+}
+
+/**
+ * Human labels/icons for the todo history log's kinds (EI-94) — a different
+ * vocabulary from the day sheet's `EVENT_LABEL`/`EVENT_ICON`
+ * (`day-sheet.tsx`), which cover only 4 kinds and word `scheduled` as
+ * "Assigned here" (a referent — "here" — this sheet doesn't have).
+ *
+ * A `kind` outside this map (a newer build's event, read on an older cached
+ * bundle) falls back to a neutral "Updated" row rather than throwing — see
+ * `todoEventSchema`'s doc comment in `lib/schema.ts` for why `kind` is
+ * `z.string()`, not an enum.
+ */
+const HISTORY_EVENT_LABEL: Partial<Record<TodoEventKind, string>> = {
+  created: "Created",
+  scheduled: "Scheduled",
+  unscheduled: "Unscheduled",
+  moved: "Moved",
+  done: "Completed",
+  dropped: "Won't do",
+  reopened: "Reopened",
+  edited: "Edited",
+  deleted: "Deleted",
+};
+
+const HISTORY_EVENT_ICON: Partial<Record<TodoEventKind, ComponentType<{ className?: string; "aria-hidden"?: boolean }>>> = {
+  created: Plus,
+  scheduled: Calendar,
+  unscheduled: CalendarOff,
+  moved: ArrowRightLeft,
+  done: Check,
+  dropped: X,
+  reopened: RotateCcw,
+  edited: Pencil,
+  deleted: Trash2,
+};
+
+const FALLBACK_LABEL = "Updated";
+const FALLBACK_ICON = Pencil;
+
+/** Field names -> the label they read as in an `edited` row's detail line. */
+const FIELD_LABELS: Record<string, string> = {
+  title: "Title",
+  description: "Notes",
+  priority: "Priority",
+  deadline: "Deadline",
+  reminderTime: "Reminder",
+  scheduledDate: "Date",
+  listId: "List",
+  projectId: "Project",
+  location: "Location",
+  placeId: "Place",
+  recurrenceRule: "Repeat rule",
+};
+
+/** The optional one-line detail under `moved`/`scheduled`/`edited` rows —
+ * everything else is fully said by the meta line alone. */
+function historyDetail(event: TodoTimelineEvent): string | null {
+  if (event.kind === "moved") {
+    const payload = event.payload as { toListId?: string | null; toListName?: string | null } | null;
+    return `→ ${payload?.toListName ?? "Backlog"}`;
+  }
+  if (event.kind === "scheduled") {
+    const payload = event.payload as { to?: CivilDate | null } | null;
+    return payload?.to ? `→ ${formatShortDate(payload.to)}` : null;
+  }
+  if (event.kind === "edited") {
+    const fields = event.fields ?? [];
+    if (fields.length === 0) return null;
+    return fields.map((field) => FIELD_LABELS[field] ?? field).join(", ");
+  }
+  return null;
+}
+
+/** The accent dot uses the list FROM THE PAYLOAD, not the todo's current
+ * list — otherwise every dot on a single todo's timeline is the same
+ * colour and says nothing about what actually happened. Every other kind
+ * has no natural list association, so it gets no accent. */
+function historyAccent(
+  event: TodoTimelineEvent,
+  listsById: ReadonlyMap<string, List>,
+): string | undefined {
+  if (event.kind !== "moved") return undefined;
+  const payload = event.payload as { toListId?: string | null } | null;
+  const list = payload?.toListId ? listsById.get(payload.toListId) : undefined;
+  return edge(list?.color);
+}
+
+interface HistorySectionProps {
+  todo: Todo;
+  events: TodoEvent[];
+  timezone: string;
+  listsById: ReadonlyMap<string, List>;
+}
+
+/**
+ * Collapsed behind a disclosure with a count in the heading — the sheet's
+ * default height must not change just because a todo has history, and most
+ * of the time a user opening a todo wants the fields above, not its past.
+ */
+function HistorySection({ todo, events, timezone, listsById }: HistorySectionProps) {
+  const [open, setOpen] = useState(false);
+  const items = useMemo(() => buildTodoTimeline(events, todo), [events, todo]);
+  const count = items.filter((item) => item.type === "event").length;
+
+  return (
+    <section className="space-y-1.5">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground"
+      >
+        <ChevronDown
+          aria-hidden
+          className={cn("size-3.5 transition-transform", !open && "-rotate-90")}
+        />
+        History ({count})
+      </button>
+
+      {open && (
+        <TimelineList ariaLabel={`History for ${todo.title}`}>
+          {items.map((item, index) => {
+            if (item.type === "marker") {
+              return (
+                <li key={item.key} className="pl-6 text-2xs text-muted-foreground">
+                  — History recorded from here —
+                </li>
+              );
+            }
+            const { event } = item;
+            const Icon =
+              HISTORY_EVENT_ICON[event.kind as TodoEventKind] ?? FALLBACK_ICON;
+            const label = HISTORY_EVENT_LABEL[event.kind as TodoEventKind] ?? FALLBACK_LABEL;
+            const detail = historyDetail(event);
+            return (
+              <TimelineRow
+                key={event.key}
+                icon={Icon}
+                label={label}
+                at={event.at}
+                when={formatEventStamp(event.at, timezone)}
+                accent={historyAccent(event, listsById)}
+                isLast={index === items.length - 1}
+              >
+                {detail && <p className="mt-0.5 text-xs text-muted-foreground">{detail}</p>}
+              </TimelineRow>
+            );
+          })}
+        </TimelineList>
+      )}
+    </section>
   );
 }

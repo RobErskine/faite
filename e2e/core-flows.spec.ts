@@ -81,6 +81,44 @@ test("default tab and the ⌘K command palette are reachable", async ({ page }) 
   await expect(input).toHaveCount(0);
 });
 
+test("a todo's History section logs `created`, then `done` (EI-94)", async ({ page }) => {
+  await switchToLists(page);
+  const backlog = page.getByRole("region", { name: "Backlog" });
+  const title = "File expense report";
+
+  await backlog.getByPlaceholder("Add a to-do").fill(title);
+  await page.keyboard.press("Enter");
+
+  const card = page.getByRole("button", { name: title, exact: true });
+  await card.click();
+
+  const sheet = page.locator('[data-slot="sheet-content"]');
+  await expect(sheet).toBeVisible();
+
+  // Collapsed by default — expand it. `HISTORY_STARTS_AT` (todo-timeline.ts)
+  // must sort before this fixture's frozen clock (`FROZEN_TIME`,
+  // support/fixtures.ts), or this todo would render as pre-history and the
+  // count below would include a marker row it isn't expecting.
+  await sheet.getByRole("button", { name: /history/i }).click();
+  const historyList = sheet.getByRole("list", { name: /^History for/ });
+  await expect(historyList.getByRole("listitem")).toHaveCount(1);
+
+  // Marking done closes the sheet AND the default `visibleStatuses` filter
+  // (`["open"]`, schema.ts) drops the card off the board — reopen through
+  // ⌘K's search instead of the card, which `searchTodos` (lib/search.ts)
+  // never filters by status, unlike the board.
+  await sheet.getByRole("button", { name: "Mark done" }).click();
+  await page.keyboard.press("Control+K");
+  await page.getByPlaceholder("Search to-dos or run a command…").fill(title);
+  // Anchored at the start: an unanchored substring match also resolves the
+  // "Create to-do…" fallback option, which quotes the typed title too.
+  await page.getByRole("option", { name: new RegExp(`^${title}`) }).click();
+
+  await expect(sheet).toBeVisible();
+  await sheet.getByRole("button", { name: /history/i }).click();
+  await expect(sheet.getByRole("list", { name: /^History for/ }).getByRole("listitem")).toHaveCount(2);
+});
+
 test("mod+k opens the palette from the keyboard", async ({ page }) => {
   // The app's own `detectPlatform()` (src/lib/keyboard.ts) resolves "mod" by
   // sniffing `navigator.platform`/`userAgent`, NOT the host OS running the

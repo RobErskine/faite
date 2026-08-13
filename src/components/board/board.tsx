@@ -413,6 +413,9 @@ export function Board() {
         labels={data.labels}
         projects={data.projects}
         places={data.places}
+        events={data.todoEvents}
+        timezone={data.settings?.timezone ?? "UTC"}
+        listsById={data.listsById}
         onClose={ui.closeTodoSheet}
         onSave={actions.handleSheetSave}
         onSetStatus={actions.handleSheetStatus}
