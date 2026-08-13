@@ -91,3 +91,72 @@ describe("seedWrite", () => {
     expect(updateEntry?.hlc).not.toBe(SEED_HLC);
   });
 });
+
+describe("mutate() opts.events", () => {
+  it("writes each event row and its own outbox entry, atomically with the patch", async () => {
+    await create("todo", { id: "todo-1", title: "Buy milk", position: "a0" });
+    await getDb().outbox.clear();
+
+    await mutate(
+      "todo",
+      "todo-1",
+      { title: "Buy oat milk" },
+      {
+        events: [
+          {
+            id: "event-1",
+            ownerId: "local-user",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+            deletedAt: null,
+            todoId: "todo-1",
+            kind: "edited",
+            at: "2026-01-01T00:00:00.000Z",
+            payload: null,
+          },
+        ],
+      },
+    );
+
+    const event = await getDb().todoEvents.get("event-1");
+    expect(event).toBeDefined();
+    expect(event?.todoId).toBe("todo-1");
+
+    const outboxKinds = (await getDb().outbox.toArray()).map((e) => e.kind).sort();
+    expect(outboxKinds).toEqual(["todo", "todoEvent"]);
+  });
+
+  it(
+    "REGRESSION: a throw inside the transaction leaves neither the patch nor the event — " +
+      "an event must never describe a change that didn't happen",
+    async () => {
+      await create("todo", { id: "todo-1", title: "Buy milk", position: "a0" });
+
+      await expect(
+        mutate(
+          "todo",
+          "does-not-exist",
+          { title: "Buy oat milk" },
+          {
+            events: [
+              {
+                id: "event-1",
+                ownerId: "local-user",
+                createdAt: "2026-01-01T00:00:00.000Z",
+                updatedAt: "2026-01-01T00:00:00.000Z",
+                deletedAt: null,
+                todoId: "does-not-exist",
+                kind: "edited",
+                at: "2026-01-01T00:00:00.000Z",
+                payload: null,
+              },
+            ],
+          },
+        ),
+      ).rejects.toThrow();
+
+      expect(await getDb().todoEvents.get("event-1")).toBeUndefined();
+      expect(await getDb().outbox.count()).toBe(1); // just the initial create
+    },
+  );
+});

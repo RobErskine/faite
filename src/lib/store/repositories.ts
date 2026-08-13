@@ -8,6 +8,7 @@ import type {
   Project,
   Tab,
   Todo,
+  TodoEvent,
   TodoStatus,
 } from "@/lib/schema";
 import { positionAtEnd, positionsBetween } from "@/lib/ordering";
@@ -25,6 +26,7 @@ import {
 import { getDb } from "./db";
 import { create, materialize, mutate, newId, now, remove, seedWrite } from "./mutate";
 import { getCurrentOwnerId, LOCAL_OWNER_ID } from "./owner";
+import { buildEditedPayload, logTodoEvent } from "./todo-events";
 
 /**
  * CRUD for every entity, expressed on top of mutate().
@@ -93,7 +95,7 @@ export async function createTodo(input: CreateTodoInput): Promise<string> {
     completedAt: null,
     reminderTime: input.reminderTime ?? null,
   };
-  return create("todo", todo);
+  return create("todo", todo, { events: [logTodoEvent(todo.id, "created")] });
 }
 
 async function nextTodoPosition(): Promise<string> {
@@ -106,7 +108,10 @@ export async function updateTodo(
   id: string,
   patch: Partial<Omit<Todo, "id" | "ownerId" | "createdAt">>,
 ): Promise<void> {
-  await mutate("todo", id, patch);
+  const payload = buildEditedPayload(patch);
+  await mutate("todo", id, patch, {
+    events: payload ? [logTodoEvent(id, "edited", payload)] : [],
+  });
 }
 
 /**
@@ -196,7 +201,22 @@ export const dayGroupPatch = (
  * distinction is the whole point of the Overflow column's triage.
  */
 export async function setTodoStatus(id: string, status: TodoStatus): Promise<void> {
-  await mutate("todo", id, statusPatch(status));
+  // Read-before-write to know the PREVIOUS status: `reopened` only means
+  // something relative to what it was, and a status set to what it already
+  // was (unreachable from the UI today, but not from undo/redo replay of a
+  // stale entry) must log nothing rather than a false transition.
+  const existing = await getDb().todos.get(id);
+  const kind =
+    !existing || existing.status === status
+      ? null
+      : status === "done"
+        ? "done"
+        : status === "dropped"
+          ? "dropped"
+          : "reopened";
+  await mutate("todo", id, statusPatch(status), {
+    events: kind ? [logTodoEvent(id, kind)] : [],
+  });
 }
 
 /** Schedule onto a day. Does NOT clear listId or labels — membership is kept. */
@@ -206,7 +226,19 @@ export async function scheduleTodo(
   previousDate: CivilDate | null,
   position?: string,
 ): Promise<void> {
-  await mutate("todo", id, schedulePatch(scheduledDate, previousDate, position));
+  // Same date-changed condition `schedulePatch` uses for `scheduledAt`, so
+  // the guard and the stamp can't drift apart.
+  const events =
+    scheduledDate !== previousDate
+      ? [
+          logTodoEvent(id, scheduledDate ? "scheduled" : "unscheduled", {
+            v: 1,
+            from: previousDate,
+            to: scheduledDate,
+          }),
+        ]
+      : [];
+  await mutate("todo", id, schedulePatch(scheduledDate, previousDate, position), { events });
 }
 
 /** Move into a list column, clearing any schedule so it returns to planning. */
@@ -215,7 +247,30 @@ export async function moveTodoToList(
   listId: string | null,
   position?: string,
 ): Promise<void> {
-  await mutate("todo", id, listPatch(listId, position));
+  const db = getDb();
+  const existing = await db.todos.get(id);
+  const events: TodoEvent[] = [];
+  if (existing) {
+    const [fromList, toList] = await Promise.all([
+      existing.listId ? db.lists.get(existing.listId) : undefined,
+      listId ? db.lists.get(listId) : undefined,
+    ]);
+    events.push(
+      logTodoEvent(id, "moved", {
+        v: 1,
+        fromListId: existing.listId ?? null,
+        fromListName: fromList?.name ?? null,
+        toListId: listId,
+        toListName: toList?.name ?? null,
+      }),
+    );
+    // `listPatch` unconditionally clears `scheduledDate` — only log
+    // `unscheduled` when that actually changed something.
+    if (existing.scheduledDate !== null) {
+      events.push(logTodoEvent(id, "unscheduled", { v: 1, from: existing.scheduledDate, to: null }));
+    }
+  }
+  await mutate("todo", id, listPatch(listId, position), { events });
 }
 
 /** Assign a list while keeping (or committing) a day. See `dayGroupPatch`. */
@@ -226,7 +281,16 @@ export async function moveTodoToDayGroup(
   previousDate: CivilDate | null,
   position?: string,
 ): Promise<void> {
-  await mutate("todo", id, dayGroupPatch(listId, scheduledDate, previousDate, position));
+  // Same date-changed condition `dayGroupPatch` uses for `scheduledAt`. Does
+  // NOT also log `moved` even though `listId` always changes here — the
+  // day-column-group gesture is fundamentally a scheduling action ("this
+  // belongs to list X, still scheduled for D"), and `dayGroupPatch`'s own
+  // doc comment says so.
+  const events =
+    scheduledDate !== previousDate
+      ? [logTodoEvent(id, "scheduled", { v: 1, from: previousDate, to: scheduledDate })]
+      : [];
+  await mutate("todo", id, dayGroupPatch(listId, scheduledDate, previousDate, position), { events });
 }
 
 export async function reorderTodo(id: string, position: string): Promise<void> {
@@ -238,7 +302,8 @@ export async function reorderTodo(id: string, position: string): Promise<void> {
  * `{deletedAt: null}` through mutate() like any other patch, so a bespoke
  * restore helper would be a second way to do the same thing.
  */
-export const deleteTodo = (id: string) => remove("todo", id);
+export const deleteTodo = (id: string) =>
+  remove("todo", id, { events: [logTodoEvent(id, "deleted")] });
 
 // ---------------------------------------------------------------------------
 // Recurrence
@@ -281,7 +346,12 @@ export async function setSeriesUntil(
   const template = await getDb().todos.get(templateId);
   const rule = template ? parseRule(template.recurrenceRule) : null;
   if (!rule) return;
-  await mutate("todo", templateId, { recurrenceRule: serializeRule({ ...rule, until }) });
+  await mutate(
+    "todo",
+    templateId,
+    { recurrenceRule: serializeRule({ ...rule, until }) },
+    { events: [logTodoEvent(templateId, "edited", { v: 1, fields: ["recurrenceRule"] })] },
+  );
 }
 
 /**
@@ -337,7 +407,12 @@ export async function createSeriesFromTodo(
     recurrenceParentId: null,
   };
   const templateId = await create("todo", template);
-  await mutate("todo", sourceTodo.id, { recurrenceParentId: templateId });
+  await mutate(
+    "todo",
+    sourceTodo.id,
+    { recurrenceParentId: templateId },
+    { events: [logTodoEvent(sourceTodo.id, "edited", { v: 1, fields: ["recurrenceRule"] })] },
+  );
   return templateId;
 }
 

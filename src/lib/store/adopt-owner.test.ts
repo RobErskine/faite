@@ -36,6 +36,21 @@ describe("adoptLocalData", () => {
     expect(getBoundOwnerId()).toBe("real-user-1");
   });
 
+  it(
+    "REGRESSION: rewrites todoEvents rows too — the one table nothing but " +
+      "data catches an omission on (EI-94)",
+    async () => {
+      await seedIfEmpty();
+      const todoId = await createTodo({ title: "Buy milk" });
+
+      await adoptLocalData("real-user-1");
+
+      const events = await getDb().todoEvents.where("todoId").equals(todoId).toArray();
+      expect(events.length).toBeGreaterThan(0);
+      expect(events.every((e) => e.ownerId === "real-user-1")).toBe(true);
+    },
+  );
+
   it("leaves settings keyed to LOCAL_OWNER_ID", async () => {
     await seedIfEmpty();
     await adoptLocalData("real-user-1");
@@ -82,12 +97,14 @@ describe("resetLocalDataForNewOwner", () => {
   it("wipes local data and the binding so the new owner can adopt cleanly", async () => {
     await seedIfEmpty();
     await createList("Side project");
+    await createTodo({ title: "Buy milk" });
     await adoptLocalData("real-user-1");
 
     await resetLocalDataForNewOwner();
 
     expect(await getDb().lists.count()).toBe(0);
     expect(await getDb().todos.count()).toBe(0);
+    expect(await getDb().todoEvents.count()).toBe(0);
     expect(await getDb().settings.count()).toBe(0);
     expect(await getDb().outbox.count()).toBe(0);
     expect(getBoundOwnerId()).toBeNull();

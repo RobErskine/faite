@@ -8,6 +8,7 @@ import { defaultRule, occurrenceId, parseRule } from "@/lib/recurrence";
 import {
   archiveList,
   archiveTab,
+  createLabel,
   createList,
   createPlace,
   createSeriesFromTodo,
@@ -15,20 +16,28 @@ import {
   createTodo,
   dayGroupPatch,
   DEFAULT_TAB_ID,
+  deleteLabel,
   deleteList,
   deletePlace,
   deleteSeries,
   deleteTab,
+  deleteTodo,
   ensureDefaultTab,
   listPatch,
   materializeOccurrence,
+  moveTodoToDayGroup,
+  moveTodoToList,
+  reorderTodo,
   retargetSeries,
   schedulePatch,
+  scheduleTodo,
   seedIfEmpty,
   setSeriesUntil,
+  setTodoStatus,
   unarchiveList,
   unarchiveTab,
   updatePlace,
+  updateTodo,
 } from "./repositories";
 
 beforeEach(async () => {
@@ -484,10 +493,15 @@ describe("mutate writes to the outbox", () => {
     const id = await createTodo({ title: "Write tests" });
     const entries = await db.outbox.toArray();
 
-    expect(entries).toHaveLength(1);
-    expect(entries[0].kind).toBe("todo");
-    expect(entries[0].entityId).toBe(id);
-    expect(entries[0].hlc).toBeTruthy();
+    // Two entries: the todo itself, plus its `created` history event
+    // (EI-94) — logged atomically in the same transaction.
+    expect(entries).toHaveLength(2);
+    const todoEntry = entries.find((e) => e.kind === "todo")!;
+    expect(todoEntry.entityId).toBe(id);
+    expect(todoEntry.hlc).toBeTruthy();
+    const eventEntry = entries.find((e) => e.kind === "todoEvent")!;
+    expect(eventEntry).toBeDefined();
+    expect(eventEntry.hlc).toBeTruthy();
   });
 });
 
@@ -784,5 +798,190 @@ describe("places", () => {
     await deletePlace(placeA);
 
     expect((await getDb().todos.get(todoId))?.placeId).toBe(placeB);
+  });
+});
+
+describe("todoEvent history log (EI-94)", () => {
+  const eventsFor = async (todoId: string) =>
+    getDb().todoEvents.where("todoId").equals(todoId).toArray();
+
+  it("createTodo logs `created`", async () => {
+    const id = await createTodo({ title: "Buy milk" });
+    const events = await eventsFor(id);
+    expect(events.map((e) => e.kind)).toEqual(["created"]);
+  });
+
+  it("setTodoStatus logs `done`, `dropped`, and `reopened`", async () => {
+    const id = await createTodo({ title: "Buy milk" });
+
+    await setTodoStatus(id, "done");
+    await setTodoStatus(id, "open");
+    await setTodoStatus(id, "dropped");
+
+    const kinds = (await eventsFor(id)).map((e) => e.kind);
+    expect(kinds).toEqual(["created", "done", "reopened", "dropped"]);
+  });
+
+  it("setTodoStatus logs nothing when the status doesn't actually change", async () => {
+    const id = await createTodo({ title: "Buy milk" });
+    await setTodoStatus(id, "done");
+    await setTodoStatus(id, "done");
+
+    const kinds = (await eventsFor(id)).map((e) => e.kind);
+    expect(kinds).toEqual(["created", "done"]);
+  });
+
+  it("scheduleTodo logs `scheduled` and `unscheduled` only when the date changes", async () => {
+    const id = await createTodo({ title: "Buy milk" });
+
+    await scheduleTodo(id, "2026-08-20", null);
+    await scheduleTodo(id, "2026-08-20", "2026-08-20"); // unchanged — no event
+    await scheduleTodo(id, null, "2026-08-20");
+
+    const events = await eventsFor(id);
+    expect(events.map((e) => e.kind)).toEqual(["created", "scheduled", "unscheduled"]);
+    const scheduled = JSON.parse(events[1].payload!);
+    expect(scheduled).toEqual({ v: 1, from: null, to: "2026-08-20" });
+  });
+
+  it("moveTodoToList logs `moved`, with list names denormalized into the payload", async () => {
+    const fromListId = await createList("Groceries");
+    const toListId = await createList("Errands");
+    const id = await createTodo({ title: "Buy milk", listId: fromListId });
+
+    await moveTodoToList(id, toListId);
+
+    const events = await eventsFor(id);
+    expect(events.map((e) => e.kind)).toEqual(["created", "moved"]);
+    const payload = JSON.parse(events[1].payload!);
+    expect(payload).toEqual({
+      v: 1,
+      fromListId,
+      fromListName: "Groceries",
+      toListId,
+      toListName: "Errands",
+    });
+  });
+
+  it(
+    "moveTodoToList's `moved` payload still names a list correctly after that list is renamed",
+    async () => {
+      const fromListId = await createList("Groceries");
+      const toListId = await createList("Errands");
+      const id = await createTodo({ title: "Buy milk", listId: fromListId });
+      await moveTodoToList(id, toListId);
+
+      await getDb().lists.update(fromListId, { name: "Renamed Groceries" });
+
+      const events = await eventsFor(id);
+      const payload = JSON.parse(events.find((e) => e.kind === "moved")!.payload!);
+      // The payload snapshot at write time, not a live lookup — this is the
+      // whole reason the name is denormalized.
+      expect(payload.fromListName).toBe("Groceries");
+    },
+  );
+
+  it("moveTodoToList also logs `unscheduled` when it clears a real date, but not an already-null one", async () => {
+    const listId = await createList("Groceries");
+    const scheduled = await createTodo({ title: "Buy milk", scheduledDate: "2026-08-20" });
+    const unscheduled = await createTodo({ title: "Buy eggs" });
+
+    await moveTodoToList(scheduled, listId);
+    await moveTodoToList(unscheduled, listId);
+
+    expect((await eventsFor(scheduled)).map((e) => e.kind)).toEqual([
+      "created",
+      "moved",
+      "unscheduled",
+    ]);
+    expect((await eventsFor(unscheduled)).map((e) => e.kind)).toEqual(["created", "moved"]);
+  });
+
+  it("moveTodoToDayGroup logs `scheduled` only when the date changes, never `moved`", async () => {
+    const listA = await createList("Groceries");
+    const listB = await createList("Errands");
+    const id = await createTodo({ title: "Buy milk", listId: listA, scheduledDate: "2026-08-20" });
+
+    // Same date, different list group — no event.
+    await moveTodoToDayGroup(id, listB, "2026-08-20", "2026-08-20");
+    // New date.
+    await moveTodoToDayGroup(id, listB, "2026-08-21", "2026-08-20");
+
+    expect((await eventsFor(id)).map((e) => e.kind)).toEqual(["created", "scheduled"]);
+  });
+
+  it("updateTodo logs `edited` only when the patch touches a journalled field", async () => {
+    const id = await createTodo({ title: "Buy milk" });
+
+    await updateTodo(id, { position: "a1" }); // not journalled — no event
+    await updateTodo(id, { title: "Buy oat milk", priority: 2 });
+
+    const events = await eventsFor(id);
+    expect(events.map((e) => e.kind)).toEqual(["created", "edited"]);
+    const payload = JSON.parse(events[1].payload!);
+    expect(payload.fields.sort()).toEqual(["priority", "title"]);
+    // priority is value-captured; title is not.
+    expect(payload.to).toEqual({ priority: 2 });
+  });
+
+  it("createSeriesFromTodo logs `edited` on the source todo, not the new template", async () => {
+    const sourceId = await createTodo({ title: "Weekly sync", scheduledDate: "2026-08-20" });
+    const rule = defaultRule("2026-08-20");
+
+    const templateId = await createSeriesFromTodo((await getDb().todos.get(sourceId))!, rule);
+
+    expect((await eventsFor(sourceId)).map((e) => e.kind)).toEqual(["created", "edited"]);
+    // The template gets no explicit event — its timeline falls back to the
+    // synthetic `created` derived from its own createdAt (Phase 2).
+    expect(await eventsFor(templateId)).toEqual([]);
+  });
+
+  it("setSeriesUntil logs `edited` on the template", async () => {
+    const sourceId = await createTodo({ title: "Weekly sync", scheduledDate: "2026-08-20" });
+    const rule = defaultRule("2026-08-20");
+    const templateId = await createSeriesFromTodo((await getDb().todos.get(sourceId))!, rule);
+
+    await setSeriesUntil(templateId, "2026-09-01");
+
+    const kinds = (await eventsFor(templateId)).map((e) => e.kind);
+    expect(kinds).toEqual(["edited"]);
+  });
+
+  it("deleteTodo logs `deleted`", async () => {
+    const id = await createTodo({ title: "Buy milk" });
+    await deleteTodo(id);
+    expect((await eventsFor(id)).map((e) => e.kind)).toEqual(["created", "deleted"]);
+  });
+
+  it("reorderTodo logs nothing — highest-frequency mutation, pure presentation", async () => {
+    const id = await createTodo({ title: "Buy milk" });
+    await reorderTodo(id, "z9");
+    expect((await eventsFor(id)).map((e) => e.kind)).toEqual(["created"]);
+  });
+
+  it("materializeOccurrence logs nothing — a storage detail, not a decision", async () => {
+    const sourceId = await createTodo({ title: "Weekly sync", scheduledDate: "2026-08-20" });
+    const rule = defaultRule("2026-08-20");
+    const templateId = await createSeriesFromTodo((await getDb().todos.get(sourceId))!, rule);
+    const template = (await getDb().todos.get(templateId))!;
+    const virtual = { ...template, id: occurrenceId(templateId, "2026-08-27"), scheduledDate: "2026-08-27" as const };
+
+    await materializeOccurrence(virtual);
+
+    expect(await eventsFor(virtual.id)).toEqual([]);
+  });
+
+  it("deleteLabel's cascade logs nothing on the todos it untags", async () => {
+    const labelId = await createLabel("Urgent");
+    const id = await createTodo({ title: "Buy milk", labelIds: [labelId] });
+
+    await deleteLabel(labelId);
+
+    expect((await eventsFor(id)).map((e) => e.kind)).toEqual(["created"]);
+  });
+
+  it("seedIfEmpty logs nothing — a seed is a guess, not a decision", async () => {
+    await seedIfEmpty();
+    expect(await getDb().todoEvents.count()).toBe(0);
   });
 });

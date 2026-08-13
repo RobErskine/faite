@@ -118,4 +118,36 @@ describe("hydrateRemoteRow", () => {
     expect(result.row.theme).toBe("system");
     expect(result.row.avatarKind).toBe("initials");
   });
+
+  it("hydrates a fully-specified remote todoEvent create (EI-94)", () => {
+    const result = hydrateRemoteRow(
+      "todoEvent",
+      "event-1",
+      { todoId: "todo-1", kind: "created", at: "2026-08-05T00:00:00.000Z" },
+      CTX,
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error("expected ok");
+    expect(result.row.id).toBe("event-1");
+    expect(result.row.todoId).toBe("todo-1");
+    expect(result.row.kind).toBe("created");
+    expect(result.row.payload).toBeNull();
+  });
+
+  it(
+    "REGRESSION: an unknown todoEvent `kind` does NOT skip — `kind` is z.string(), not an " +
+      "enum, so a device on a stale bundle can still apply an event kind it doesn't recognize " +
+      "yet, rather than permanently dropping it (apply-remote.ts's cursor still advances on a skip)",
+    () => {
+      const result = hydrateRemoteRow(
+        "todoEvent",
+        "event-1",
+        { todoId: "todo-1", kind: "some-future-kind-this-build-has-never-heard-of", at: CTX.now },
+        CTX,
+      );
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error("expected ok");
+      expect(result.row.kind).toBe("some-future-kind-this-build-has-never-heard-of");
+    },
+  );
 });

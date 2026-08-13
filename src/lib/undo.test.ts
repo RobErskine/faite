@@ -253,9 +253,12 @@ describe("undo against the real store", () => {
     /**
      * The architectural claim, asserted: the undo went through mutate() and
      * left its own outbox entry. Sync sees three ordinary edits, not a create,
-     * an edit, and a revert.
+     * an edit, and a revert. `setTodoStatus`'s completion is two entries (the
+     * patch plus its `done` history event, EI-94); the undo itself calls
+     * `mutate()` directly and logs no event of its own (Phase 3 territory) —
+     * so this is +3, not +2.
      */
-    expect(await getDb().outbox.count()).toBe(outboxAfterCreate + 2);
+    expect(await getDb().outbox.count()).toBe(outboxAfterCreate + 3);
     expect(after.updatedAt >= before.updatedAt).toBe(true);
   });
 });

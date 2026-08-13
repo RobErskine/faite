@@ -114,6 +114,17 @@ export function enqueue(
   return enqueueAt(kind, entityId, patch, nextHlc());
 }
 
+export interface MutateOptions {
+  /**
+   * Additional `todoEvent` rows to insert atomically with this patch, each
+   * getting its own outbox entry. The only current caller is
+   * `logTodoEvent()` (`lib/todo-events.ts`) via the repository call sites in
+   * `repositories.ts` — sharing this transaction is what guarantees an event
+   * can never describe a change that didn't happen.
+   */
+  events?: Array<{ id: string } & Record<string, unknown>>;
+}
+
 /**
  * Apply a patch to one record and record it in the outbox, atomically.
  *
@@ -134,18 +145,25 @@ export async function mutate<K extends RecordTable>(
   kind: K,
   entityId: string,
   patch: Record<string, unknown>,
+  opts?: MutateOptions,
 ): Promise<void> {
   const db = getDb();
   const table = TABLE_BY_KIND[kind];
   const stamped = { ...patch, updatedAt: now() };
+  const events = opts?.events ?? [];
 
-  await db.transaction("rw", db[table], db.outbox, async () => {
+  await db.transaction("rw", db[table], db.outbox, db.todoEvents, async () => {
     const existing = await db[table].get(entityId);
     if (existing === undefined) {
       throw new Error(`mutate: no local ${kind} row for id ${entityId}`);
     }
     await db[table].update(entityId, stamped);
     await db.outbox.add(enqueue(kind, entityId, stamped));
+    for (const event of events) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await db.todoEvents.add(event as any);
+      await db.outbox.add(enqueue("todoEvent", event.id, event));
+    }
   });
 }
 
@@ -182,14 +200,21 @@ export async function materialize<K extends RecordTable>(
 export async function create<K extends RecordTable>(
   kind: K,
   record: { id: string } & Record<string, unknown>,
+  opts?: MutateOptions,
 ): Promise<string> {
   const db = getDb();
   const table = TABLE_BY_KIND[kind];
+  const events = opts?.events ?? [];
 
-  await db.transaction("rw", db[table], db.outbox, async () => {
+  await db.transaction("rw", db[table], db.outbox, db.todoEvents, async () => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await db[table].add(record as any);
     await db.outbox.add(enqueue(kind, record.id, record));
+    for (const event of events) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await db.todoEvents.add(event as any);
+      await db.outbox.add(enqueue("todoEvent", event.id, event));
+    }
   });
 
   return record.id;
@@ -241,8 +266,9 @@ export async function seedWrite(record: SeedRecord): Promise<void> {
 export async function remove<K extends RecordTable>(
   kind: K,
   entityId: string,
+  opts?: MutateOptions,
 ): Promise<void> {
-  await mutate(kind, entityId, { deletedAt: now() });
+  await mutate(kind, entityId, { deletedAt: now() }, opts);
 }
 
 /** Undo a soft delete. */

@@ -30,6 +30,29 @@ describe("applyPulledChanges", () => {
     expect(await getDb().outbox.count()).toBe(before);
   });
 
+  it(
+    "ANTI-ECHO (EI-94): a remote todoEvent create lands as a readable row and appends " +
+      "no outbox entry — a pulled event must never echo back into the next push",
+    async () => {
+      const before = await getDb().outbox.count();
+
+      const changes: WireChange[] = [
+        {
+          kind: "todoEvent",
+          entityId: "event-1",
+          patch: { todoId: "todo-1", kind: "created", at: "2026-08-05T00:00:00.000Z", payload: null },
+          hlc: hlc(1000),
+        },
+      ];
+      await applyPulledChanges(changes);
+
+      const row = await getDb().todoEvents.get("event-1");
+      expect(row?.todoId).toBe("todo-1");
+      expect(row?.kind).toBe("created");
+      expect(await getDb().outbox.count()).toBe(before);
+    },
+  );
+
   it("a remote create lands as a readable row (the Dexie update()-on-missing-key trap)", async () => {
     const changes: WireChange[] = [
       { kind: "todo", entityId: "todo-1", patch: { title: "Remote todo", position: "a0" }, hlc: hlc(1000) },
