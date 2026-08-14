@@ -1358,3 +1358,40 @@ Time remaining before the 07:00 hard stop: using it for a self-review pass
 over tonight's commits and retrying Linear periodically, per Rob's ask to
 use available budget. Will not invent new backlog scope without Linear
 access to actually browse the backlog.
+
+## Review — Overnight session, 2026-08-14 — post-completion code review
+
+After all 11 queued tickets landed, ran an independent code-reviewer agent
+over the entire branch diff before considering the night done. No critical
+(schema/migration) issues found — the reviewer specifically verified
+migration 11's column list, the bootstrap/ALTER separation, and all 11
+threading sites for the new sync kind, and confirmed all correct.
+
+Found and fixed two real bugs (commit c9547d2):
+- [x] quick-add's preset-name matching used a bare substring check, which
+      matched "on" inside "Afternoon", "mo" inside "Morning", "it" inside
+      "Lunchtime" against the REAL seeded defaults — "note on" silently
+      became title "note" plus an unwanted 3pm reminder. Fixed to
+      whole-word/prefix matching with a 3-char floor. 6 regression tests.
+- [x] `seedReminderPresetsIfNeeded` treated a missing settings row as "not
+      seeded" and would seed presets it could never mark as seeded
+      (`mutateSettings` no-ops against a nonexistent row) — unbounded
+      re-seeding on every boot in that edge case. Now a no-op until
+      settings exists. 1 regression test.
+
+Plus three minors: a `FIELD_DEFAULTS` defense-in-depth entry for
+`reminderPresets.time` (upsert.ts), a redundant branch cleanup in
+reminder-picker.tsx, and reminders-section.tsx's name field rebuilt as a
+`PresetRow` component with a local draft committing on blur/Enter (the
+original write-on-every-keystroke version, combined with an empty-string
+guard, would have permanently locked the field the first time it was
+cleared). See `.ai/lessons.md` for the substring-matching and
+set-state-in-effect lessons from this pass.
+
+Full suite green (1410 tests), verify/schema:check/e2e all green, two live
+Playwright runs confirming both fixes against the real running app.
+
+Branch `rob/overnight-2026-08-14` now has 21 commits. Still nothing pushed,
+nothing deployed. Linear remains unreachable for the whole session past
+EI-84 — every ticket from EI-105 onward needs its Linear update posted once
+it reconnects.
