@@ -1298,3 +1298,17 @@ whole queue on one MCP server would waste the remaining runway.
 
 (Linear still unreachable as of this entry — EI-107 and EI-108 both pending
 their Linear status/comment update.)
+
+- [x] **EI-109** (EI-106 P3) — Settings → Reminders + first-run seed.
+      `notifications-section.tsx` → `reminders-section.tsx` (permission
+      prompt on top, unchanged; preset manager beneath, modeled on
+      `places-section.tsx`, with up/down reorder via `positionBetween`).
+      New `seedReminderPresetsIfNeeded()` — NOT folded into `seedIfEmpty`
+      (that only fires for a genuinely empty DB; an account predating EI-106
+      would never reach it there). Runs every boot like `ensureDefaultTab`,
+      guarded by `settings.reminderPresetsSeeded`. 8 new tests (3 repo + 5
+      component), full suite green, `schema:check` green, `verify` green,
+      `e2e` green (known flake only). Verified live: fresh boot seeds all 5,
+      visible in Settings and reachable via the picker. Commit 27be258.
+
+(Linear still unreachable — EI-107/108/109 all pending their Linear updates.)
