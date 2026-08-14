@@ -1259,3 +1259,27 @@ from, not in-repo).
 — reminder presets, EI-106's five phases — still queued). Continuing via /loop across
 the ~01:10 token reset. See branch `rob/overnight-2026-08-14` for all commits so far;
 each is independently green (`npm run verify` before every commit).
+
+## Review — Overnight session, 2026-08-14 (continued 2)
+
+- [x] **EI-107** (EI-106 P1) — reminderPreset entity, sync plumbing, pure core.
+      No UI. Followed docs/SCHEMA-CHANGES.md's "add a new entity kind" recipe
+      through all 9 steps: schema.ts, Dexie v6, user-schema.ts + migration 11
+      (new table + settings ALTER together, same pattern as migration 9),
+      columns.ts, mutate.ts, apply-remote.ts, adopt-owner.ts (both transaction
+      scopes + reset clear()), hydrate.ts, schema-parity.test.ts's four
+      tracking structures. Repositories mirror the label block; delete is
+      simpler (no labelIds-style cleanup — a todo owns a literal "HH:MM", not
+      a reference, EI-106 decision 4). Pure core (reminder-presets.ts):
+      reminderLabelFor + parsePresetQuery, reusing matchTime/formatTimeLabel
+      exported from quick-add.ts rather than reimplemented.
+      `npm run schema:check` green (migration id 11), full suite 1368 tests,
+      `npm run verify` green. Commit a95e694.
+
+NOTE: Linear MCP disconnected partway through this session (before EI-107
+started) and has not reconnected. EI-107's Linear status/comment update is
+PENDING — do this the moment Linear is reachable again: set EI-107 to In
+Review and post a comment summarizing the commit (same content as this
+todo.md entry, matching the voice of the EI-105/81/74/84/75 comments already
+posted). Continuing to EI-108 without waiting on Linear, since blocking the
+whole queue on one MCP server would waste the remaining runway.
