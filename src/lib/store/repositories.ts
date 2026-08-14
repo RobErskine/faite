@@ -1196,7 +1196,14 @@ export async function seedReminderPresetsIfNeeded(): Promise<void> {
 
   await db.transaction("rw", db.reminderPresets, db.settings, db.outbox, async () => {
     const settings = await db.settings.get(LOCAL_OWNER_ID);
-    if (settings?.reminderPresetsSeeded) return;
+    // No settings row yet is NOT "not seeded" — it means seedIfEmpty()
+    // hasn't run (or hasn't finished) on this boot. mutateSettings() below
+    // is `db.settings.update()`, a silent no-op against a row that doesn't
+    // exist, so seeding now would write five presets, never manage to flip
+    // the flag, and re-seed every subsequent boot. Wait for a settings row
+    // instead — useBootstrap()'s chain always creates one before this runs.
+    if (!settings) return;
+    if (settings.reminderPresetsSeeded) return;
 
     const timestamp = now();
     const positions = positionsBetween(null, null, SEED_REMINDER_PRESETS.length);

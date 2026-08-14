@@ -221,22 +221,40 @@ export function formatTimeLabel(time: string): string {
 /**
  * Preset-name vocabulary (EI-106 P4) — "morning" resolves a preset named
  * "In the morning" the same way `parsePresetQuery`'s "match" branch does:
- * a case-insensitive substring, not an exact name match. Exact matching
- * would miss every multi-word preset name against quick-add's one-word-at-a-
- * time trailing scan; substring matching is also the one already-established
- * mental model, from the picker.
+ * a case-insensitive match, not necessarily an exact full-name one. Exact
+ * FULL-NAME matching would miss every multi-word preset name against
+ * quick-add's one-word-at-a-time trailing scan.
  *
- * Ambiguous (more than one preset's name contains the word) resolves to
- * nothing here — quick-add has no disambiguation UI mid-parse, unlike the
- * picker's dropdown, so an ambiguous word is safer left as plain title text.
+ * Matched against WHOLE WORDS in the preset's name, not a bare substring —
+ * `p.name.includes(word)` (the first version of this function) matched "on"
+ * inside "Afternoon", "mo" inside "Morning", and "it" inside "Lunchtime",
+ * silently eating an ordinary trailing word ("call mo" -> title "call",
+ * reminder set to 8am) with no ambiguity to catch it, since exactly one
+ * preset happened to contain the substring. A trailing word must equal, or
+ * be a prefix of, one of the preset name's own words — "morn" still matches
+ * "Morning", "lunch" still matches "Lunchtime", but "on"/"mo"/"it" match
+ * nothing. `MIN_LENGTH` additionally floors out the shortest common words
+ * ("at", "in", "on") before they can accidentally equal a short preset word.
+ *
+ * Ambiguous (more than one preset matches) resolves to nothing here —
+ * quick-add has no disambiguation UI mid-parse, unlike the picker's
+ * dropdown, so an ambiguous word is safer left as plain title text.
  */
+const PRESET_WORD_MIN_LENGTH = 3;
+
 function matchPresetTime(
   word: string,
   presets: readonly ReminderPreset[],
 ): ReminderPreset | null {
   if (presets.length === 0) return null;
   const lower = word.toLowerCase();
-  const matches = presets.filter((p) => p.name.toLowerCase().includes(lower));
+  if (lower.length < PRESET_WORD_MIN_LENGTH) return null;
+  const matches = presets.filter((p) =>
+    p.name
+      .toLowerCase()
+      .split(/\s+/)
+      .some((nameWord) => nameWord === lower || nameWord.startsWith(lower)),
+  );
   return matches.length === 1 ? matches[0] : null;
 }
 

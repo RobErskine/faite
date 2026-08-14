@@ -74,3 +74,53 @@ describe("RemindersSection — preset manager", () => {
     expect(addButton).toHaveProperty("disabled", false);
   });
 });
+
+describe("RemindersSection — renaming a preset (PresetRow, commit-on-blur)", () => {
+  it(
+    "REGRESSION: does not write on every keystroke, and rejects an empty name on blur " +
+      "rather than writing it or permanently locking the field (a fully-controlled field " +
+      "bound straight to the store, with a write guard on empty, would snap back to the " +
+      "old value on every keystroke that empties it — the field could never be cleared " +
+      "and retyped)",
+    async () => {
+      const { createReminderPreset } = await import("@/lib/store/repositories");
+      await createReminderPreset("Morning", "08:00");
+      render(<RemindersSection />);
+      const nameField = await screen.findByLabelText("Morning name");
+
+      // Clear it entirely — no store write yet, this is local draft only.
+      fireEvent.change(nameField, { target: { value: "" } });
+      let rows = await getDb().reminderPresets.toArray();
+      expect(rows[0].name).toBe("Morning"); // unchanged — still just a draft
+
+      // Blur while empty — rejected, draft reverts, store still unchanged.
+      fireEvent.blur(nameField);
+      rows = await getDb().reminderPresets.toArray();
+      expect(rows[0].name).toBe("Morning");
+      expect(nameField).toHaveProperty("value", "Morning");
+
+      // Now retype and blur with a real value — this DOES commit.
+      fireEvent.change(nameField, { target: { value: "Gym" } });
+      fireEvent.blur(nameField);
+      await waitFor(async () => {
+        const updated = await getDb().reminderPresets.toArray();
+        expect(updated[0].name).toBe("Gym");
+      });
+    },
+  );
+
+  it("commits on Enter, not just blur", async () => {
+    const { createReminderPreset } = await import("@/lib/store/repositories");
+    await createReminderPreset("Morning", "08:00");
+    render(<RemindersSection />);
+    const nameField = await screen.findByLabelText("Morning name");
+
+    fireEvent.change(nameField, { target: { value: "Wake up" } });
+    fireEvent.keyDown(nameField, { key: "Enter" });
+
+    await waitFor(async () => {
+      const rows = await getDb().reminderPresets.toArray();
+      expect(rows[0].name).toBe("Wake up");
+    });
+  });
+});

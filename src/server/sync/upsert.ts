@@ -21,6 +21,12 @@ const FIELD_DEFAULTS: Record<string, () => unknown> = {
   fontPairing: () => DEFAULT_FONT_PAIRING,
   theme: () => DEFAULT_THEME_MODE,
   avatarKind: () => DEFAULT_AVATAR_KIND,
+  // reminderPresets.time is NOT NULL with no SQL default (EI-107) — only
+  // `name`/`position` had fallbacks here, leaving `time` as the one column
+  // that would hit the `no such column`-on-partial-write hazard this file's
+  // header describes. `createReminderPreset`/`seedWrite` always supply a
+  // real value, so this is defense-in-depth, not a path known to be taken.
+  time: () => "09:00",
 };
 
 /**

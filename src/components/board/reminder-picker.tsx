@@ -107,10 +107,11 @@ export function ReminderPicker({ todo, presets, onSave }: ReminderPickerProps) {
           value={null}
           onValueChange={(entry: Entry | null) => {
             if (!entry) return;
+            // A ReminderPreset and a TimeEntry both carry `.time` — a bare
+            // time and a picked preset apply the same way, only a create
+            // entry needs the extra step of writing the preset first.
             if (isCreateEntry(entry)) {
               void createAndApply(entry.name, entry.time);
-            } else if (isTimeEntry(entry)) {
-              applyTime(entry.time);
             } else {
               applyTime(entry.time);
             }

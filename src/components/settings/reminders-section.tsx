@@ -44,6 +44,113 @@ function moveRow(ordered: ReminderPreset[], index: number, direction: -1 | 1) {
 }
 
 /**
+ * One preset's editable row. Owns a local draft of `name` only, committed
+ * on blur — `reminderPresetSchema` requires a non-empty name, and a
+ * write-on-every-keystroke field bound straight to the store would either
+ * write an intermediate empty string (violating the schema, only caught
+ * later when a remote pull re-validates it) or, if that write is silently
+ * skipped, snap the controlled input's value back to the old name on the
+ * very next render — the user couldn't clear the field to retype it at
+ * all. `emoji` and `time` stay write-on-change: `emoji` has no such
+ * constraint, and `time`'s native browser input already only ever emits a
+ * complete valid value or an empty one, guarded below.
+ */
+function PresetRow({
+  preset,
+  isFirst,
+  isLast,
+  onMoveUp,
+  onMoveDown,
+}: {
+  preset: ReminderPreset;
+  isFirst: boolean;
+  isLast: boolean;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+}) {
+  const [nameDraft, setNameDraft] = useState(preset.name);
+  // The store's name changed out from under this draft (another device,
+  // undo) — resync rather than let the field silently disagree with it.
+  // React's documented render-time pattern for "adjust state when a prop
+  // changes" (react.dev), not an effect: setState during render, gated on
+  // an actual change, bails out before the browser ever paints the stale
+  // value — an effect would paint the old draft for one frame first.
+  const [lastSeenName, setLastSeenName] = useState(preset.name);
+  if (preset.name !== lastSeenName) {
+    setLastSeenName(preset.name);
+    setNameDraft(preset.name);
+  }
+
+  const commitName = () => {
+    const trimmed = nameDraft.trim();
+    if (!trimmed) {
+      setNameDraft(preset.name); // Reject an empty name — revert the draft.
+      return;
+    }
+    if (trimmed !== preset.name) void updateReminderPreset(preset.id, { name: trimmed });
+  };
+
+  return (
+    <li className="flex items-center gap-2 rounded-md border px-3 py-2">
+      <div className="flex flex-col">
+        <button
+          type="button"
+          aria-label={`Move ${preset.name} up`}
+          disabled={isFirst}
+          className="text-muted-foreground hover:text-foreground disabled:opacity-30"
+          onClick={onMoveUp}
+        >
+          ▲
+        </button>
+        <button
+          type="button"
+          aria-label={`Move ${preset.name} down`}
+          disabled={isLast}
+          className="text-muted-foreground hover:text-foreground disabled:opacity-30"
+          onClick={onMoveDown}
+        >
+          ▼
+        </button>
+      </div>
+      <Input
+        aria-label={`${preset.name} emoji`}
+        value={preset.emoji ?? ""}
+        onChange={(e) => void updateReminderPreset(preset.id, { emoji: e.target.value || null })}
+        className="w-12 text-center"
+      />
+      <Input
+        aria-label={`${preset.name} name`}
+        value={nameDraft}
+        onChange={(e) => setNameDraft(e.target.value)}
+        onBlur={commitName}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commitName();
+        }}
+        className="min-w-0 flex-1"
+      />
+      <Input
+        aria-label={`${preset.name} time`}
+        type="time"
+        value={preset.time}
+        onChange={(e) => {
+          if (!e.target.value) return;
+          void updateReminderPreset(preset.id, { time: e.target.value });
+        }}
+        className="w-32"
+      />
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label={`Delete ${preset.name}`}
+        onClick={() => void deleteReminderPreset(preset.id)}
+      >
+        <Trash2 className="size-4" aria-hidden />
+      </Button>
+    </li>
+  );
+}
+
+/**
  * Foreground reminders (`todoSchema.reminderTime`) only fire while a tab is
  * open, via `use-reminders.ts`'s poll. This is the one door into
  * `Notification.requestPermission()` — Safari silently ignores that call
@@ -112,69 +219,20 @@ export function RemindersSection() {
         ) : (
           <ul className="space-y-2">
             {presets.map((preset, i) => (
-              <li
+              <PresetRow
                 key={preset.id}
-                className="flex items-center gap-2 rounded-md border px-3 py-2"
-              >
-                <div className="flex flex-col">
-                  <button
-                    type="button"
-                    aria-label={`Move ${preset.name} up`}
-                    disabled={i === 0}
-                    className="text-muted-foreground hover:text-foreground disabled:opacity-30"
-                    onClick={() => {
-                      const position = moveRow(presets, i, -1);
-                      if (position) void updateReminderPreset(preset.id, { position });
-                    }}
-                  >
-                    ▲
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={`Move ${preset.name} down`}
-                    disabled={i === presets.length - 1}
-                    className="text-muted-foreground hover:text-foreground disabled:opacity-30"
-                    onClick={() => {
-                      const position = moveRow(presets, i, 1);
-                      if (position) void updateReminderPreset(preset.id, { position });
-                    }}
-                  >
-                    ▼
-                  </button>
-                </div>
-                <Input
-                  aria-label={`${preset.name} emoji`}
-                  value={preset.emoji ?? ""}
-                  onChange={(e) =>
-                    void updateReminderPreset(preset.id, { emoji: e.target.value || null })
-                  }
-                  className="w-12 text-center"
-                />
-                <Input
-                  aria-label={`${preset.name} name`}
-                  value={preset.name}
-                  onChange={(e) => void updateReminderPreset(preset.id, { name: e.target.value })}
-                  className="min-w-0 flex-1"
-                />
-                <Input
-                  aria-label={`${preset.name} time`}
-                  type="time"
-                  value={preset.time}
-                  onChange={(e) => {
-                    if (!e.target.value) return;
-                    void updateReminderPreset(preset.id, { time: e.target.value });
-                  }}
-                  className="w-32"
-                />
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={`Delete ${preset.name}`}
-                  onClick={() => void deleteReminderPreset(preset.id)}
-                >
-                  <Trash2 className="size-4" aria-hidden />
-                </Button>
-              </li>
+                preset={preset}
+                isFirst={i === 0}
+                isLast={i === presets.length - 1}
+                onMoveUp={() => {
+                  const position = moveRow(presets, i, -1);
+                  if (position) void updateReminderPreset(preset.id, { position });
+                }}
+                onMoveDown={() => {
+                  const position = moveRow(presets, i, 1);
+                  if (position) void updateReminderPreset(preset.id, { position });
+                }}
+              />
             ))}
           </ul>
         )}

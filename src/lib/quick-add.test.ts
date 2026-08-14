@@ -211,3 +211,48 @@ describe("parseQuickAdd — preset-name vocabulary (EI-106 P4)", () => {
     expect(result.title).toBe("gym tomorrow morning");
   });
 });
+
+describe("parseQuickAdd — preset matching is word-bounded, not a bare substring", () => {
+  // The real seeded defaults (repositories.ts's SEED_REMINDER_PRESETS) —
+  // this reproduces the exact false-positive words a code review turned up
+  // against them: "on" inside "Afternoon", "mo" inside "Morning", "it"
+  // inside "Lunchtime".
+  const MORNING = preset("p1", "Morning", "08:00");
+  const LUNCHTIME = preset("p2", "Lunchtime", "12:30");
+  const AFTERNOON = preset("p3", "Afternoon", "15:00");
+  const END_OF_DAY = preset("p4", "End of day", "17:00");
+  const EVENING = preset("p5", "Evening", "20:00");
+  const SEEDED = [MORNING, LUNCHTIME, AFTERNOON, END_OF_DAY, EVENING];
+
+  it("does not match a short word that is merely contained in a preset name", () => {
+    expect(parseQuickAdd("note on", TODAY, SEEDED).reminderTime).toBeNull();
+    expect(parseQuickAdd("note on", TODAY, SEEDED).title).toBe("note on");
+
+    expect(parseQuickAdd("call mo", TODAY, SEEDED).reminderTime).toBeNull();
+    expect(parseQuickAdd("buy it", TODAY, SEEDED).reminderTime).toBeNull();
+  });
+
+  it("does not strip the last word of a title just because it's a substring of a preset name", () => {
+    const result = parseQuickAdd("prep for evening", TODAY, SEEDED);
+    // "evening" is a genuine whole-word match here — this SHOULD resolve.
+    expect(result.title).toBe("prep for");
+    expect(result.reminderTime).toBe("20:00");
+  });
+
+  it("still matches a prefix of a preset's own word", () => {
+    expect(parseQuickAdd("gym morn", TODAY, SEEDED).reminderTime).toBe("08:00");
+    expect(parseQuickAdd("gym lunch", TODAY, SEEDED).reminderTime).toBe("12:30");
+  });
+
+  it("matches a whole word inside a multi-word preset name", () => {
+    // "day" is a real, standalone word in "End of day" — a defensible match,
+    // unlike "on" hiding mid-word inside "Afternoon".
+    expect(parseQuickAdd("ship it end", TODAY, SEEDED).reminderTime).toBe("17:00");
+  });
+
+  it("floors out the shortest common words before they can equal a short preset word", () => {
+    // Below PRESET_WORD_MIN_LENGTH — never even reaches the name comparison.
+    expect(parseQuickAdd("call at", TODAY, SEEDED).reminderTime).toBeNull();
+    expect(parseQuickAdd("meet in", TODAY, SEEDED).reminderTime).toBeNull();
+  });
+});

@@ -163,21 +163,34 @@ EI-88) — a preset is a time of *day*; with no date there is nothing for
 `parseQuickAdd(input, today, presets = [])` takes an optional third
 argument (EI-106 P4). The trailing-word scanner (see the file's own header
 comment on the two-pass left/right scan) tries the numeric `matchTime` first,
-unchanged; failing that, it tries `matchPresetTime` — a **case-insensitive
-substring** match against preset names, the same model `parsePresetQuery`'s
-`"match"` branch uses.
+unchanged; failing that, it tries `matchPresetTime` — a **case-insensitive,
+word-bounded** match against preset names, the same "match against the
+name's own words" model `parsePresetQuery`'s `"match"` branch uses for the
+picker.
 
-**Substring, not exact match, and this is deliberate.** Quick-add's trailing
-scan looks at one word at a time. An exact-name match would only ever catch
-a single-word preset ("Morning"), never a multi-word one ("End of day") —
-"end" or "day" alone would never resolve it under exact matching. Substring
-matching is also the one already-established mental model, carried over
-from the picker rather than invented fresh.
+**Word-bounded, not a bare substring.** A first version of `matchPresetTime`
+used `name.includes(word)`, and a code review before this shipped caught
+what that actually does against the real seeded defaults: `"on"` matches
+inside `"Afternoon"`, `"mo"` inside `"Morning"`, `"it"` inside `"Lunchtime"`
+— so `"call mo"` silently became the title `"call"` with an 8am reminder
+attached, no ambiguity to catch it because exactly one preset happened to
+contain the substring. The fix requires a trailing word to equal, or be a
+prefix of, one of the preset name's own space-separated words — `"morn"`
+still resolves `"Morning"`, `"lunch"` still resolves `"Lunchtime"`, but
+`"on"`/`"mo"`/`"it"` resolve nothing. `PRESET_WORD_MIN_LENGTH` (3) floors out
+the shortest common words (`"at"`, `"in"`, `"on"`) before they ever reach the
+name comparison. A whole real word that's also part of a multi-word preset
+name — `"day"` matching `"End of day"` — still resolves; that's a defensible
+match on an actual word in the name, not the original bug.
 
 **An ambiguous word (matches more than one preset) resolves to nothing.**
 Quick-add has no disambiguation UI mid-parse the way the picker's dropdown
 does, so an ambiguous trailing word falls through to plain title text — the
-same behaviour as any other token the scanner doesn't recognize.
+same behaviour as any other token the scanner doesn't recognize. Note
+`parsePresetQuery` (§2) is deliberately **not** word-bounded the same way —
+it drives a dropdown the user chooses from, so a looser substring match
+there is a feature (typing `"noon"` still surfaces `"Afternoon"`), not a
+silent title-mangling risk the way it was in quick-add.
 
 Threaded through every place `parseQuickAdd` is called — all optional,
 defaulting to `[]`, so every pre-existing call site keeps working exactly as

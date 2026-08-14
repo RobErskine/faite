@@ -106,6 +106,18 @@ describe("seedIfEmpty", () => {
 });
 
 describe("seedReminderPresetsIfNeeded", () => {
+  it(
+    "REGRESSION: is a no-op with no settings row yet, rather than seeding presets it can " +
+      "never mark as seeded (mutateSettings' update() silently no-ops against a missing row, " +
+      "which would otherwise re-seed on every subsequent boot)",
+    async () => {
+      // Deliberately no seedIfEmpty() first — no settings row exists.
+      await seedReminderPresetsIfNeeded();
+      expect(await getDb().reminderPresets.count()).toBe(0);
+      expect(await getDb().outbox.count()).toBe(0);
+    },
+  );
+
   it("writes the five default presets and flips the settings flag", async () => {
     await seedIfEmpty();
     await seedReminderPresetsIfNeeded();
