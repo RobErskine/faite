@@ -1069,12 +1069,22 @@ Nothing here is started. (Column reordering used to be item 7 here; it is now
 §4.10. The drop animation and whole-row dragging were also delivered from this
 list — see §4.7 and §4.9.)
 
-1. **Keyboard drag is wired but never exercised end-to-end.** Sensors and the
-   `closestCorners` fallback exist; the actual flow (Tab to grip → Space → arrows
-   → Space) has not been verified. Screen-reader announcements
+1. ~~Keyboard drag is wired but never exercised end-to-end.~~ Now covered by
+   `e2e/keyboard-drag.spec.ts` (EI-74, `desktop` only). Lift (`Space`),
+   in-column reorder, and cross-column moves within a single half (day → day)
+   all work reliably via arrow keys — but only once the destination already
+   holds at least one `useSortable`-registered card; `sortableKeyboardCoordinates`
+   has no rect to aim at in a column with zero items, so it does not move at
+   all. **New gap found while writing that spec, still open:**
+   `sortableKeyboardCoordinates` cannot cross from the pinned Backlog rail into
+   the calendar half (or, presumably, back) via arrow keys — tried 1 through 6
+   `ArrowUp` presses against a populated Tuesday column and the card never left
+   Backlog. Within-half moves are unaffected; a mouse or touch drag across that
+   same boundary is unaffected. Tracked as a `test.fixme` in that spec rather
+   than a passing test with a workaround. Screen-reader announcements
    (`announcements` / `screenReaderInstructions` on `DndContext`) are entirely
    unconfigured — dnd-kit's defaults are generic and say nothing about days or
-   lists.
+   lists (EI-84).
 2. **Auto-scroll is configured; whether it feels right is still unverified
    (EI-81).** `computeAutoScroll(layout)` (`use-board-actions.ts`) is `true`
    everywhere except phone — dnd-kit's default incremental auto-scroll fights
