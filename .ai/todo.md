@@ -1237,3 +1237,25 @@ then EI-106's five phases (reminder presets) if time/budget allow. Stop time
 07:00; see the plan file for the full queue and rationale
 (`~/.claude/plans/i-am-looking-to-functional-zebra.md` on the machine this ran
 from, not in-repo).
+
+## Review — Overnight session, 2026-08-14 (continued)
+
+- [x] **EI-84** — dnd-kit screen-reader announcements. New `src/lib/dnd-announcements.ts`
+      (pure, 15 unit tests), wired via `useMemo` into `DndContext`'s `accessibility` prop
+      in `board.tsx`. Position for the `end` announcement is computed by hand from `over`
+      since dnd-kit calls the callback before the app's own handler runs and before
+      React re-renders. Verified live in a real browser, not just unit tests. VoiceOver
+      pass left for a human, per the ticket's own AC.
+- [x] **EI-75** — shortcut help sheet + catalog. Full inventory found ~60 shortcuts
+      against a 2-entry registry and a stale/incomplete `docs/KEYBOARD.md` §1. Built a
+      hybrid catalog (`src/lib/shortcuts.ts`): global entries derived from the `Hotkey[]`
+      registry (test-enforced, can't drift), local entries hand-authored with a `source`
+      field. `?` opens `help-sheet.tsx`; palette gets a "Keyboard shortcuts" item and its
+      row-action footer now renders via `formatCombo`. Rewrote `docs/KEYBOARD.md` §1/§5/
+      §8/§12 from the inventory. Added an `AGENTS.md` rule so future shortcuts get
+      registered. Deliberately deferred per-command palette chord hints — needs EI-77.
+
+7/11 overnight tickets done (EI-61, 105, 81, 74, 84, 75 landed; EI-107/108/109/110/113
+— reminder presets, EI-106's five phases — still queued). Continuing via /loop across
+the ~01:10 token reset. See branch `rob/overnight-2026-08-14` for all commits so far;
+each is independently green (`npm run verify` before every commit).
