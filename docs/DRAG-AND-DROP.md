@@ -1072,25 +1072,26 @@ list — see §4.7 and §4.9.)
 1. ~~Keyboard drag is wired but never exercised end-to-end.~~ Now covered by
    `e2e/keyboard-drag.spec.ts` (EI-74, `desktop` only). Lift (`Space`),
    in-column reorder, and cross-column moves within a single half (day → day)
-   all work reliably via arrow keys — but only once the destination already
-   holds at least one `useSortable`-registered card; `sortableKeyboardCoordinates`
-   has no rect to aim at in a column with zero items, so it does not move at
-   all. **Same constraint reported live in the List rail (2026-08-14):**
-   arrow-key navigation across a row of list columns silently steps over an
-   empty one (e.g. a populated "Grocery List" next to an empty "To Buy" next
-   to a populated "To Read" — the empty middle column never gets focus).
-   Identical root cause to the item below, just observed in a different
-   column type; not a separate bug. **New gap found while writing that spec,
-   still open:**
-   `sortableKeyboardCoordinates` cannot cross from the pinned Backlog rail into
-   the calendar half (or, presumably, back) via arrow keys — tried 1 through 6
-   `ArrowUp` presses against a populated Tuesday column and the card never left
-   Backlog. Within-half moves are unaffected; a mouse or touch drag across that
-   same boundary is unaffected. Tracked as a `test.fixme` in that spec rather
-   than a passing test with a workaround. Screen-reader announcements
-   (`announcements` / `screenReaderInstructions` on `DndContext`) are entirely
-   unconfigured — dnd-kit's defaults are generic and say nothing about days or
-   lists (EI-84).
+   all work reliably via arrow keys. **Two known gaps, tracked together as
+   EI-114:** arrow-key navigation cannot land on an empty column — reported
+   both as the pinned Backlog rail never crossing into the calendar half
+   (tried 1 through 6 `ArrowUp` presses against a populated Tuesday column,
+   card never left Backlog) and, separately, as an empty list column between
+   two populated ones silently getting stepped over in the List rail
+   (reported live, 2026-08-14). Within-half moves and mouse/touch drag across
+   either boundary are unaffected — keyboard-only. Tracked as a `test.fixme`
+   in that spec rather than a passing test with a workaround.
+   **Root cause, corrected:** the original note here blamed "no droppable
+   rect for an empty column," but every `BoardColumn` registers a
+   whole-column `useDroppable` regardless of card count (`board-column.tsx`),
+   so a rect does exist. EI-114 has the full corrected diagnosis — most
+   likely `sortableKeyboardCoordinates`' internal `closestCorners` disfavoring
+   a short/empty rect against a taller neighbor, or a disagreement between
+   that internal pass and this app's own `collisionDetection` — pending an
+   instrumented repro to confirm before designing the fix. Screen-reader
+   announcements (`announcements` / `screenReaderInstructions` on
+   `DndContext`) are entirely unconfigured — dnd-kit's defaults are generic
+   and say nothing about days or lists (EI-84).
 2. **Auto-scroll is configured; whether it feels right is still unverified
    (EI-81).** `computeAutoScroll(layout)` (`use-board-actions.ts`) is `true`
    everywhere except phone — dnd-kit's default incremental auto-scroll fights
