@@ -440,3 +440,53 @@ interaction is flaky, look for a missing settle-wait between steps before
 reaching for `test.describe.configure({ retries })`; retries can mask a race
 that a 200ms wait actually fixes, and 24/24 passes across 6 repeats with zero
 retries is a much stronger signal than "eventually green with 2 retries."
+
+## Bare substring matching against a name list eats ordinary words
+
+`matchPresetTime` (quick-add.ts, EI-106 P4) matched a trailing word against
+reminder preset names with `name.includes(word)`. Looked reasonable, passed
+its own tests (which only tried genuine prefixes like "morn"), and shipped —
+then a code-review pass against the REAL seeded default names ("Morning",
+"Afternoon", "Lunchtime", "Evening", "End of day") found that "on" matches
+inside "Afternoon", "mo" inside "Morning", "it" inside "Lunchtime". Typing
+"note on" silently became the title "note" plus an unrequested 3pm reminder
+— no ambiguity to catch it, since exactly one preset happened to contain
+each substring.
+
+**Rule:** when matching free-typed words against a small vocabulary (preset
+names, tags, commands) for anything that SILENTLY REWRITES what the user
+typed, never use a bare substring/`includes` check — require the word to
+equal or prefix one of the target's own whitespace-separated words, and set
+a minimum length (3 chars caught "on"/"mo"/"it"/"at"/"in" for free). Bare
+substring matching is fine when the result is a SUGGESTION the user picks
+from a list (a dropdown, an autocomplete) — there the user sees and can
+reject a bad match. It is not fine when the match is applied automatically
+with no further confirmation. Test against the real production data (the
+actual seeded/shipped values), not just hand-picked examples that happen to
+be clean prefixes.
+
+## React's set-state-in-effect lint catches a real anti-pattern, not just a style nit
+
+Wrote `useEffect(() => setNameDraft(preset.name), [preset.name])` to resync
+a local text-input draft when the underlying store value changed externally
+(another device, undo). Compiles, passes tests, `npm run lint` failed it:
+"Calling setState synchronously within an effect can trigger cascading
+renders." The failure mode this catches is real, not cosmetic — an effect
+runs AFTER paint, so the stale draft value renders for one frame before the
+effect fires and corrects it, and if the effect's own setState triggers
+something else's effect, they cascade.
+
+**Rule:** for "adjust local state when a prop changes," use React's
+documented render-time pattern instead of an effect: keep a
+`lastSeenValue` state alongside the derived one, and if the prop disagrees
+with `lastSeenValue`, call both setters unconditionally during render (not
+inside a callback or effect) —
+```ts
+const [draft, setDraft] = useState(prop);
+const [lastSeen, setLastSeen] = useState(prop);
+if (prop !== lastSeen) { setLastSeen(prop); setDraft(prop); }
+```
+React detects the render-time setState, discards the in-progress render,
+and re-renders immediately with the corrected value before ever painting —
+no stale frame, no cascade. Reach for this whenever the urge is "sync local
+draft state to an external value that can change out from under it."
