@@ -1075,7 +1075,13 @@ list — see §4.7 and §4.9.)
    all work reliably via arrow keys — but only once the destination already
    holds at least one `useSortable`-registered card; `sortableKeyboardCoordinates`
    has no rect to aim at in a column with zero items, so it does not move at
-   all. **New gap found while writing that spec, still open:**
+   all. **Same constraint reported live in the List rail (2026-08-14):**
+   arrow-key navigation across a row of list columns silently steps over an
+   empty one (e.g. a populated "Grocery List" next to an empty "To Buy" next
+   to a populated "To Read" — the empty middle column never gets focus).
+   Identical root cause to the item below, just observed in a different
+   column type; not a separate bug. **New gap found while writing that spec,
+   still open:**
    `sortableKeyboardCoordinates` cannot cross from the pinned Backlog rail into
    the calendar half (or, presumably, back) via arrow keys — tried 1 through 6
    `ArrowUp` presses against a populated Tuesday column and the card never left
