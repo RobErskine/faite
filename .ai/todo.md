@@ -1454,3 +1454,67 @@ earlier in the session (before the disconnect) — match that style.
 
 Session ends here. No new feature work or backlog pulls were started without
 Linear access, per instructions.
+
+## Review — Linear catch-up, 2026-08-14 morning
+
+Linear's MCP reconnected. Confirmed EI-61/EI-105/EI-81/EI-74/EI-84/EI-75 already
+had their status + comment posted before the overnight disconnect (verified via
+`list_comments` — no duplicates written). Posted the full catch-up for the
+five tickets that shipped after the disconnect and had never touched Linear:
+
+- EI-107, EI-108, EI-109, EI-110, EI-113 → set to **In Review**, each with a
+  comment sourced from its commit + this file's earlier entries, noting the
+  two code-review bugs (EI-109, EI-110) where relevant.
+- EI-106 (parent) → set to **Done**, with a summary comment linking all 5
+  phases and the review-fix commit `c9547d2`.
+
+All 11 overnight tickets are now fully up to date in Linear. EI-107's D1
+migration (id 11) / Dexie v6 still awaits Rob's review before any deploy —
+unchanged from the overnight summary.
+
+## Review — Post-review feedback round, 2026-08-14
+
+Rob manually tested all 11 tickets and gave feedback. Confirmed complete:
+EI-61, EI-105, EI-81, EI-84 (both now Done in Linear). Findings on the rest:
+
+- **EI-74**: reported arrow-key keyboard-drag skipping an empty "To Buy" list
+  column between two populated ones. Confirmed same root cause as the
+  already-documented Backlog↔calendar gap (`sortableKeyboardCoordinates` has
+  no rect to target in a zero-item column) — not a new bug. Documented in
+  `docs/DRAG-AND-DROP.md` §7 item 1 (commit `a2c5de4`). Left open pending
+  Rob's call on whether to file a real fix (would need a custom coordinate
+  getter — nontrivial).
+- **EI-75**: added a `(?)` icon next to the account avatar opening the help
+  sheet, per request — mouse-discoverable route alongside `?` and the palette
+  item. Commit `2b118c4`, new test, `verify` green.
+- **EI-107**: no code change — answered Rob's "how else can I test this"
+  question on the ticket (indirect via P2-P5, DevTools IndexedDB inspection,
+  or trust the automated schema-parity/migration tests). Flagged that the
+  one thing genuinely worth his eyes is a code read of migration id 11, not
+  a click-test.
+- **EI-108**: added a "Save as preset reminder time" row alongside the bare
+  "Remind at HH:MM" offer when typing a custom time — picking it swaps to an
+  inline name field, Save creates the preset and applies it in one step.
+  Commit `a5ffdd2`, 4 new tests, `verify` green.
+- **EI-110**: Rob asked for date/time words to be live-stripped from the
+  quick-add input text the same way `#label`/list mentions are. This is a
+  real design decision, not a quick patch — mentions strip on an explicit
+  popover pick (`lib/mention.ts`'s `resolveMentionTrigger`); date/time
+  tokens are inferred passively on every keystroke with no such moment,
+  and blind live-stripping risks words flickering away mid-typing (e.g.
+  "tom" resolving to tomorrow while someone's still typing "tomato").
+  Posted three options on the ticket (strip on word-boundary/space, strip
+  only on submit, live strip) with a recommendation for option 1 — **left
+  unimplemented, waiting on Rob's answer.**
+- **EI-113**: confirmed no code needed — `decorationSchema` (already spread
+  into `reminderPresetSchema` per EI-106 decision 7) carries `iconUrl` and
+  `color` alongside `emoji`. A custom-icon feature is UI-only whenever
+  wanted; no migration.
+
+`npm run verify` green after EI-75/EI-108 changes (1415 tests). Dev server
+left running at localhost:3000 for Rob to try the two new UI pieces live.
+
+**Still open, waiting on Rob:**
+1. EI-110 — pick a stripping strategy (or say "show me live first").
+2. EI-74 — file a real fix for the empty-column gap, or leave documented?
+3. EI-107's migration review (unchanged from the overnight summary).
