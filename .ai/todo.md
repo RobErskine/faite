@@ -1518,3 +1518,40 @@ left running at localhost:3000 for Rob to try the two new UI pieces live.
 1. EI-110 — pick a stripping strategy (or say "show me live first").
 2. EI-74 — file a real fix for the empty-column gap, or leave documented?
 3. EI-107's migration review (unchanged from the overnight summary).
+
+## Review — Follow-up round 2, 2026-08-14
+
+Rob answered both open items: use the recommended EI-110 option, and file +
+investigate a real fix for EI-74's empty-column gap.
+
+- **EI-74 investigation** turned up a real correction, not just a ticket.
+  Went back and actually read `sortableKeyboardCoordinates`' implementation
+  (`node_modules/@dnd-kit/sortable`) rather than trust the earlier assumption
+  — every `BoardColumn` registers a whole-column `useDroppable` regardless of
+  card count, so "no rect for an empty column" was **wrong**. Corrected
+  `docs/DRAG-AND-DROP.md` §7 item 1 and the EI-74 Linear comment to say so
+  explicitly, then filed **EI-114** with the corrected theory (closestCorners
+  geometry, or a disagreement between the coordinate getter's internal
+  collision pass and the app's own `collisionDetection`) and calling for an
+  instrumented repro as its own first step before any fix design. Commits
+  `58dd4de` (doc correction), Linear ticket EI-114 (Low priority, related to
+  EI-74).
+- **EI-110** — implemented the recommended "fold on a completed word
+  boundary" approach. New pure core in `lib/quick-add.ts`:
+  `foldQuickAddDraft`/`quickAddDraftToString`, mirroring what
+  `mention.ts`'s `resolveMentionTrigger` already does for `#label`/`@list`
+  but triggered by a finished word (trailing space) instead of a popover
+  pick. Wired into all three quick-add surfaces differently: the column row
+  and command palette hold folded matches as removable chips (mirroring the
+  existing label-chip pattern); the todo sheet's title field applies
+  immediately instead, since that sheet already has dedicated persistent
+  fields for priority/date/deadline/reminder — no need for a second, pending
+  copy of the value in a chip there. Command palette folding is scoped to
+  root/new-todo mode only, so naming a new list "Grocery tomorrow" doesn't
+  get mangled. Commit `c152441`. 24 new tests. `npm run verify` green (1444
+  tests); full desktop e2e pass green too (only the known
+  `overdrive.spec.ts` flake).
+
+Both Linear tickets (EI-74, EI-110) updated with the full writeup. EI-113's
+decorationSchema note and EI-107's migration-review flag are unchanged and
+still the only genuinely open items from this whole session.
