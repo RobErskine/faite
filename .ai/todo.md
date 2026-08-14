@@ -1283,3 +1283,18 @@ Review and post a comment summarizing the commit (same content as this
 todo.md entry, matching the voice of the EI-105/81/74/84/75 comments already
 posted). Continuing to EI-108 without waiting on Linear, since blocking the
 whole queue on one MCP server would waste the remaining runway.
+
+- [x] **EI-108** (EI-106 P2) — ReminderPicker in the todo sheet. Replaced the
+      raw `<input type="time">` with a Combobox-based typeahead — first
+      single-mode consumer of `ui/combobox.tsx` (LabelPicker is `multiple`).
+      No chips, so the current value shows via the input's placeholder
+      instead. Carried over LabelPicker's docs/PICKERS.md §2/§3 non-negotiables
+      (filter={null}, sentinel baked at render, ComboboxEmpty always mounted,
+      empty:hidden). `presets` threads down the same path `labels` does.
+      13 new component tests, full suite green, `npm run verify` green,
+      `npm run e2e` green (only the known pre-existing overdrive.spec.ts
+      flake), and a real Playwright run through create-a-preset-and-apply in
+      a live browser. Commit 8246bd8.
+
+(Linear still unreachable as of this entry — EI-107 and EI-108 both pending
+their Linear status/comment update.)
