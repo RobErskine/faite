@@ -440,6 +440,7 @@ export function Board() {
         labels={data.labels}
         projects={data.projects}
         places={data.places}
+        reminderPresets={data.reminderPresets}
         events={data.todoEvents}
         timezone={data.settings?.timezone ?? "UTC"}
         listsById={data.listsById}

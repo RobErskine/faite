@@ -10,7 +10,6 @@ import {
   CalendarOff,
   Check,
   ChevronDown,
-  Clock,
   CornerDownRight,
   Pencil,
   Plus,
@@ -46,6 +45,7 @@ import { RepeatSection, type RecurrenceInfo } from "@/components/board/repeat-se
 import { LocationField } from "@/components/board/location-field";
 import { ListField } from "@/components/board/list-field";
 import { LabelPicker } from "@/components/board/label-picker";
+import { ReminderPicker } from "@/components/board/reminder-picker";
 import { QuickAddPreview, type QuickAddChip } from "@/components/board/quick-add-preview";
 import { MentionMenu, useMention, type MentionSource } from "@/components/mention-menu";
 import type { MentionListOption, MentionPick } from "@/components/board/board-column";
@@ -73,6 +73,7 @@ import type {
   Place,
   Priority,
   Project,
+  ReminderPreset,
   Tab,
   Todo,
   TodoEvent,
@@ -97,6 +98,9 @@ interface TodoSheetProps {
   projects: Project[];
   /** Saved locations (`lib/schema.ts`'s `Place`) — see the Location field. */
   places: Place[];
+  /** Named reminder times (EI-106) — see the Reminder field (`ReminderPicker`).
+   * Optional, defaulting to none, same reasoning as `events` below. */
+  reminderPresets?: ReminderPreset[];
   /** This todo's history log (EI-94) — the History section below Notes.
    * Optional (defaults to none) so callers/tests with nothing to show don't
    * have to thread empty collections through. */
@@ -183,6 +187,7 @@ function TodoSheetContent({
   labels,
   projects,
   places,
+  reminderPresets = [],
   events = [],
   timezone = "UTC",
   ctx,
@@ -505,48 +510,11 @@ function TodoSheetContent({
             </div>
           </div>
 
+          {/* Gated behind scheduledDate — a preset is a time of day; with no
+              date there is nothing for zonedInstant to resolve against
+              (EI-106 decision 5, unchanged from EI-88). */}
           {todo.scheduledDate && (
-            <div className="space-y-1.5">
-              <Label htmlFor="todo-reminder">Reminder</Label>
-              <div className="flex items-center gap-1.5">
-                <div className="relative w-fit">
-                  <Clock
-                    className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground"
-                    aria-hidden
-                  />
-                  <Input
-                    id="todo-reminder"
-                    type="time"
-                    value={todo.reminderTime ?? ""}
-                    onChange={(e) => {
-                      const next = e.target.value;
-                      // The native input emits "" mid-edit — skip rather
-                      // than spending an undo entry nulling a reminder that
-                      // was never set (⌘Z ⌘Z to type one time otherwise).
-                      if (!next && !todo.reminderTime) return;
-                      onSave(todo.id, { reminderTime: next || null });
-                    }}
-                    // The shadcn Base UI time-picker look — NOT `step="1"`.
-                    // That example uses it for HH:MM:SS display, but
-                    // `reminderTime` is validated as HH:MM
-                    // (`todoSchema.reminderTime`) and `zonedInstant` throws
-                    // on anything else; `step`'s default (60) already gives
-                    // HH:MM.
-                    className="w-32 appearance-none bg-background pl-8 [&::-webkit-calendar-picker-indicator]:appearance-none [&::-webkit-calendar-picker-indicator]:hidden"
-                  />
-                </div>
-                {todo.reminderTime && (
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label="Clear reminder"
-                    onClick={() => onSave(todo.id, { reminderTime: null })}
-                  >
-                    <X className="size-3.5" aria-hidden />
-                  </Button>
-                )}
-              </div>
-            </div>
+            <ReminderPicker todo={todo} presets={reminderPresets} onSave={onSave} />
           )}
 
           <div className="grid grid-cols-2 gap-3">

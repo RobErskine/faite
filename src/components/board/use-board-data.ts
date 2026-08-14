@@ -41,6 +41,7 @@ import {
   usePlaces,
   useProjects,
   useRecurrenceChildren,
+  useReminderPresets,
   useSettings,
   useTabs,
   useTodoEvents,
@@ -121,6 +122,7 @@ export function useBoardData(params: UseBoardDataParams) {
   const labels = useLabels();
   const projects = useProjects();
   const places = usePlaces();
+  const reminderPresets = useReminderPresets();
   const settings = useSettings();
   const dayNotes = useDayNotes();
   const todoEvents = useTodoEvents(openTodoId);
@@ -715,6 +717,7 @@ export function useBoardData(params: UseBoardDataParams) {
     labels,
     projects,
     places,
+    reminderPresets,
     settings,
     dayNotes,
     todoEvents,
