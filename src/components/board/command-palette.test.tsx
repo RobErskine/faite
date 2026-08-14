@@ -1,9 +1,10 @@
 // @vitest-environment happy-dom
 import "fake-indexeddb/auto";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { CommandPalette } from "./command-palette";
 import { formatShortDate } from "@/lib/scheduling";
+import { resetDbForTests, getDb } from "@/lib/store/db";
 import type { Label as LabelRecord, List, Settings, Tab, Todo } from "@/lib/schema";
 
 /**
@@ -169,6 +170,9 @@ function search(text: string) {
 // Not using vitest globals, so RTL's automatic cleanup does not run. Without
 // this, each render leaks into the next test's DOM queries.
 afterEach(cleanup);
+beforeEach(async () => {
+  await resetDbForTests();
+});
 
 describe("CommandPalette", () => {
   it("mounts open without throwing", () => {
@@ -452,5 +456,63 @@ describe("CommandPalette — row actions", () => {
     pressOnInput("Enter", { metaKey: true });
 
     expect(openCalls).toEqual([]);
+  });
+});
+
+/**
+ * EI-110 follow-up: matched date/time/priority words fold out of the visible
+ * quick-add text once their own trailing space lands — same treatment as
+ * board-column.tsx's inline quick-add row. See `foldQuickAddDraft`
+ * (lib/quick-add.ts).
+ */
+describe("CommandPalette — folding a completed date/time word out of the input", () => {
+  function enterNewTodoMode() {
+    fireEvent.click(screen.getByText("New to-do"));
+    return screen.getByPlaceholderText("What needs doing?");
+  }
+
+  it("folds a trailing date word out of the visible input once its space lands", () => {
+    renderPalette();
+    const input = enterNewTodoMode();
+    fireEvent.change(input, { target: { value: "Buy milk tomorrow " } });
+    expect(input).toHaveProperty("value", "Buy milk ");
+  });
+
+  it("shows the folded word as a removable chip", () => {
+    renderPalette();
+    const input = enterNewTodoMode();
+    fireEvent.change(input, { target: { value: "Buy milk tomorrow " } });
+    expect(screen.getByRole("button", { name: /^Remove/ })).toBeTruthy();
+  });
+
+  it("removing the chip drops the confirmed match without touching the remaining text", () => {
+    renderPalette();
+    const input = enterNewTodoMode();
+    fireEvent.change(input, { target: { value: "Buy milk tomorrow " } });
+    fireEvent.mouseDown(screen.getByRole("button", { name: /^Remove/ }));
+    expect(screen.queryByRole("button", { name: /^Remove/ })).toBeNull();
+    expect(input).toHaveProperty("value", "Buy milk ");
+  });
+
+  it("creating still applies the folded field even though it's no longer in the visible text", async () => {
+    renderPalette();
+    const input = enterNewTodoMode();
+    fireEvent.change(input, { target: { value: "Buy milk tomorrow " } });
+    fireEvent.keyDown(input, { key: "Enter" });
+
+    await waitFor(async () => {
+      const rows = await getDb().todos.toArray();
+      const created = rows.find((r) => r.title === "Buy milk");
+      expect(created).toBeTruthy();
+      expect(created?.scheduledDate).not.toBeNull();
+    });
+  });
+
+  it("does not fold inside a non-quick-add entry mode (e.g. naming a new list)", () => {
+    renderPalette();
+    fireEvent.click(screen.getByText("New list"));
+    const input = screen.getByPlaceholderText("List name…");
+    fireEvent.change(input, { target: { value: "Grocery tomorrow " } });
+    expect(input).toHaveProperty("value", "Grocery tomorrow ");
   });
 });

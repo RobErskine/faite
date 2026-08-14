@@ -25,7 +25,7 @@ import { createUndoStep, pushUndo, undoById } from "@/lib/undo";
 import { deleteListWithUndo } from "./list-actions";
 import { createTabWithUndo, deleteTabWithUndo } from "./tab-actions";
 import { todayIn } from "@/lib/scheduling";
-import { parseQuickAdd } from "@/lib/quick-add";
+import { foldQuickAddDraft, parseQuickAdd, quickAddDraftToString, type QuickAddMatch } from "@/lib/quick-add";
 import { useMention, MentionMenu, type MentionSource } from "@/components/mention-menu";
 import { searchTodos } from "@/lib/search";
 import { cn } from "@/lib/utils";
@@ -139,6 +139,9 @@ export function CommandPalette({
   const [cursor, setCursor] = useState(0);
   const [mentionedList, setMentionedList] = useState<MentionListOption | null>(null);
   const [mentionedLabels, setMentionedLabels] = useState<MentionLabelOption[]>([]);
+  // Matches `foldQuickAddDraft` has already folded out of `value` — see
+  // board-column.tsx's own quick-add row for the identical pattern.
+  const [confirmedMatches, setConfirmedMatches] = useState<QuickAddMatch[]>([]);
   /** Same reason `board-column.tsx`'s quick-add row uses one: moves the DOM
    * caret only after the controlled input's value has actually updated. */
   const pendingCaretRef = useRef<number | null>(null);
@@ -163,12 +166,21 @@ export function CommandPalette({
    * Parsed once, up front, and reused by both creation paths — the "Create
    * to-do" fallback in root mode and the New to-do entry mode both create
    * from `value`, so they must not be free to disagree on what it parses to.
+   *
+   * Parses `quickAddDraftToString(value, confirmedMatches)`, not `value`
+   * alone — matches `foldQuickAddDraft` has already folded out of the visible
+   * text are reappended here so every consumer below (`quickAdd.title`,
+   * `.matches`, the creation calls) keeps working exactly as if folding never
+   * happened, without needing to know about it.
    */
   const quickAdd = useMemo(
-    () => parseQuickAdd(value, today, reminderPresets),
-    [value, today, reminderPresets],
+    () => parseQuickAdd(quickAddDraftToString(value, confirmedMatches), today, reminderPresets),
+    [value, confirmedMatches, today, reminderPresets],
   );
-  const showQuickAddPreview = mode.kind === "root" ? query.length > 0 : mode.kind === "new-todo";
+  // A folded match can leave `query` empty while a confirmed chip still
+  // needs somewhere to render — see `foldQuickAddDraft`.
+  const showQuickAddPreview =
+    mode.kind === "root" ? query.length > 0 || confirmedMatches.length > 0 : mode.kind === "new-todo";
 
   const listNameById = useMemo(
     () => new Map(lists.map((list) => [list.id, list.name])),
@@ -265,6 +277,7 @@ export function CommandPalette({
     if (!next) {
       setMode({ kind: "root" });
       setValue("");
+      setConfirmedMatches([]);
       setCursor(0);
       setMentionedList(null);
       setMentionedLabels([]);
@@ -318,7 +331,14 @@ export function CommandPalette({
 
   const submit = async () => {
     const name = value.trim();
-    if (!name && mode.kind !== "root") return;
+    // "new-todo" creates from `quickAdd.title`, not `name` — folded matches
+    // can leave `value` empty while the reconstructed title still has real
+    // content (see `quickAddDraftToString`), so it gets its own guard.
+    if (mode.kind === "new-todo") {
+      if (!quickAdd.title) return;
+    } else if (!name && mode.kind !== "root") {
+      return;
+    }
 
     switch (mode.kind) {
       case "new-list":
@@ -423,8 +443,24 @@ export function CommandPalette({
           placeholder={placeholder}
           value={value}
           onValueChange={(next) => {
-            setValue(next);
-            setCursor(inputRef.current?.selectionStart ?? next.length);
+            // Folding only makes sense where `next` is quick-add grammar —
+            // "root" (the "Create to-do" fallback) and "new-todo". Every
+            // other entry mode (new-list, new-label, …) treats `next` as a
+            // literal name, and folding there would mangle a name that
+            // happens to contain a date-like word ("Grocery tomorrow").
+            if (mode.kind !== "root" && mode.kind !== "new-todo") {
+              setValue(next);
+              setCursor(inputRef.current?.selectionStart ?? next.length);
+              return;
+            }
+            const folded = foldQuickAddDraft(next, confirmedMatches, today, reminderPresets);
+            setValue(folded.text);
+            setConfirmedMatches(folded.confirmed);
+            if (folded.text !== next) {
+              pendingCaretRef.current = folded.text.length;
+            } else {
+              setCursor(inputRef.current?.selectionStart ?? next.length);
+            }
           }}
           onSelect={(e) => syncCursor(e.currentTarget)}
           onKeyDown={(e) => {
@@ -491,6 +527,7 @@ export function CommandPalette({
               e.preventDefault();
               setMode({ kind: "root" });
               setValue("");
+              setConfirmedMatches([]);
             }
           }}
         />
@@ -508,7 +545,15 @@ export function CommandPalette({
       {showQuickAddPreview && (
         <QuickAddPreview
           chips={[
-            ...quickAdd.matches.map((m) => ({ key: `${m.kind}:${m.raw}`, label: m.label })),
+            ...quickAdd.matches.map((m) => ({
+              key: `${m.kind}:${m.raw}`,
+              label: m.label,
+              // Only a folded (confirmed) match is independently removable —
+              // one still live in `value` goes away by editing the text.
+              onRemove: confirmedMatches.some((c) => c.kind === m.kind && c.raw === m.raw)
+                ? () => setConfirmedMatches((ms) => ms.filter((x) => x.kind !== m.kind))
+                : undefined,
+            })),
             ...(mentionedList
               ? [
                   {
@@ -531,7 +576,10 @@ export function CommandPalette({
       <CommandList ref={listRef} className="max-h-[60vh]">
         {isEntryMode ? (
           <CommandGroup heading="Press Enter to create">
-            <CommandItem onSelect={() => void submit()} disabled={!value.trim()}>
+            <CommandItem
+              onSelect={() => void submit()}
+              disabled={mode.kind === "new-todo" ? !quickAdd.title : !value.trim()}
+            >
               {(mode.kind === "new-todo" ? quickAdd.title : value.trim()) || "Start typing…"}
             </CommandItem>
           </CommandGroup>
@@ -651,7 +699,7 @@ export function CommandPalette({
                 you typed, so turn it into the to-do instead of making you
                 retype it behind "New to-do".
               */}
-              {query ? (
+              {query || confirmedMatches.length > 0 ? (
                 <CommandItem
                   value={`Create to-do ${query}`}
                   onSelect={() => void createFromQuery()}
@@ -659,19 +707,19 @@ export function CommandPalette({
                   Create to-do “{quickAdd.title}”
                 </CommandItem>
               ) : null}
-              <CommandItem onSelect={() => { setMode({ kind: "new-todo" }); setValue(""); }}>
+              <CommandItem onSelect={() => { setMode({ kind: "new-todo" }); setValue(""); setConfirmedMatches([]); }}>
                 New to-do
               </CommandItem>
-              <CommandItem onSelect={() => { setMode({ kind: "new-list" }); setValue(""); }}>
+              <CommandItem onSelect={() => { setMode({ kind: "new-list" }); setValue(""); setConfirmedMatches([]); }}>
                 New list
               </CommandItem>
-              <CommandItem onSelect={() => { setMode({ kind: "new-label" }); setValue(""); }}>
+              <CommandItem onSelect={() => { setMode({ kind: "new-label" }); setValue(""); setConfirmedMatches([]); }}>
                 New label
               </CommandItem>
-              <CommandItem onSelect={() => { setMode({ kind: "new-project" }); setValue(""); }}>
+              <CommandItem onSelect={() => { setMode({ kind: "new-project" }); setValue(""); setConfirmedMatches([]); }}>
                 New project
               </CommandItem>
-              <CommandItem onSelect={() => { setMode({ kind: "new-tab" }); setValue(""); }}>
+              <CommandItem onSelect={() => { setMode({ kind: "new-tab" }); setValue(""); setConfirmedMatches([]); }}>
                 New tab
               </CommandItem>
             </CommandGroup>
@@ -710,10 +758,10 @@ export function CommandPalette({
             ) : null}
 
             <CommandGroup heading="Manage">
-              <CommandItem onSelect={() => { setMode({ kind: "delete-list" }); setValue(""); }}>
+              <CommandItem onSelect={() => { setMode({ kind: "delete-list" }); setValue(""); setConfirmedMatches([]); }}>
                 Delete a list…
               </CommandItem>
-              <CommandItem onSelect={() => { setMode({ kind: "delete-tab" }); setValue(""); }}>
+              <CommandItem onSelect={() => { setMode({ kind: "delete-tab" }); setValue(""); setConfirmedMatches([]); }}>
                 Delete a tab…
               </CommandItem>
               <CommandItem

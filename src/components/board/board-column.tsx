@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils";
 import { edge, tint, wash } from "@/lib/colors";
 import { listDragId, type TodoGroup } from "@/lib/board";
 import { addStop, groupStop, navKeyOf, type NavKey } from "@/lib/column-nav";
-import { parseQuickAdd } from "@/lib/quick-add";
+import { foldQuickAddDraft, parseQuickAdd, quickAddDraftToString, type QuickAddMatch } from "@/lib/quick-add";
 import { isTextEntry } from "@/lib/undo";
 import { MentionMenu, useMention, type MentionSource } from "@/components/mention-menu";
 import { createLabel } from "@/lib/store/repositories";
@@ -325,6 +325,11 @@ export function BoardColumn({
 }: BoardColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id });
   const [draft, setDraft] = useState("");
+  // Matches `foldQuickAddDraft` has already folded out of `draft` — see its
+  // own doc comment (lib/quick-add.ts) for why. Shown as chips exactly like
+  // `mentionedList`/`mentionedLabels` below, and reappended onto `draft` at
+  // commit time by `quickAddDraftToString`.
+  const [confirmedMatches, setConfirmedMatches] = useState<QuickAddMatch[]>([]);
   const filterInputRef = useRef<HTMLInputElement>(null);
   const filterActive = (filter ?? "") !== "";
   // Stays mounted while a filter is active — otherwise clearing one would
@@ -454,13 +459,17 @@ export function BoardColumn({
   };
 
   const commit = () => {
-    const title = draft.trim();
-    if (!title || !onQuickAdd) return;
-    onQuickAdd(title, mentionedList?.id, mentionedLabels.map((l) => l.id));
+    // Reappend whatever `foldQuickAddDraft` already folded out of `draft` —
+    // `handleQuickAdd` (use-board-actions.ts) re-parses this exact string
+    // itself, so it never needs to know folding happened.
+    const combined = quickAddDraftToString(draft, confirmedMatches);
+    if (!combined || !onQuickAdd) return;
+    onQuickAdd(combined, mentionedList?.id, mentionedLabels.map((l) => l.id));
     // The new to-do almost never matches whatever was typed — an add that
     // appears to do nothing reads as broken, not as filtered.
     if (filterActive) onFilterChange?.("");
     setDraft(""); // Keep focus so several todos can be typed in a row.
+    setConfirmedMatches([]);
     setQuickAddCursor(0);
     setMentionedList(null);
     setMentionedLabels([]);
@@ -471,12 +480,19 @@ export function BoardColumn({
   // path never depends on this. `reminderPresets` is threaded here anyway
   // (EI-106 P4) so a preset-name match shows the right chip before commit.
   const quickAddChips = useMemo((): QuickAddChip[] => {
-    const chips: QuickAddChip[] = draft.trim()
-      ? parseQuickAdd(draft, ctx.today, reminderPresets ?? []).matches.map((m) => ({
+    const chips: QuickAddChip[] = confirmedMatches.map((m) => ({
+      key: `confirmed:${m.kind}`,
+      label: m.label,
+      onRemove: () => setConfirmedMatches((ms) => ms.filter((x) => x.kind !== m.kind)),
+    }));
+    if (draft.trim()) {
+      chips.push(
+        ...parseQuickAdd(draft, ctx.today, reminderPresets ?? []).matches.map((m) => ({
           key: `${m.kind}:${m.raw}`,
           label: m.label,
-        }))
-      : [];
+        })),
+      );
+    }
     if (mentionedList) {
       chips.push({
         key: `list:${mentionedList.id}`,
@@ -493,7 +509,7 @@ export function BoardColumn({
       });
     }
     return chips;
-  }, [draft, ctx.today, mentionedList, mentionedLabels, reminderPresets]);
+  }, [draft, confirmedMatches, ctx.today, mentionedList, mentionedLabels, reminderPresets]);
 
   /**
    * The groups to render, or null for a flat column.
@@ -927,8 +943,18 @@ export function BoardColumn({
                   data-nav-stop={addStop(id)}
                   value={draft}
                   onChange={(e) => {
-                    setDraft(e.target.value);
-                    syncQuickAddCursor(e.target);
+                    const raw = e.target.value;
+                    const folded = foldQuickAddDraft(raw, confirmedMatches, ctx.today, reminderPresets ?? []);
+                    setDraft(folded.text);
+                    setConfirmedMatches(folded.confirmed);
+                    if (folded.text !== raw) {
+                      // The field just shrank out from under the caret —
+                      // land it at the new end, same mechanism `applyMention`
+                      // already uses below for the same reason.
+                      pendingCaretRef.current = folded.text.length;
+                    } else {
+                      syncQuickAddCursor(e.target);
+                    }
                   }}
                   onSelect={(e) => syncQuickAddCursor(e.currentTarget)}
                   onKeyDown={(e) => {
@@ -966,6 +992,7 @@ export function BoardColumn({
                     }
                     if (e.key === "Escape") {
                       setDraft("");
+                      setConfirmedMatches([]);
                       setMentionedList(null);
                       setMentionedLabels([]);
                     }
@@ -977,9 +1004,11 @@ export function BoardColumn({
                       more importantly, `onBlur` commits, so navigating away
                       mid-draft would silently create the to-do you were still
                       typing. Enter already clears the draft and keeps focus, so
-                      type → Enter → `→` is the intended loop.
+                      type → Enter → `→` is the intended loop. A folded match
+                      with an otherwise-empty `draft` still counts as "mid-draft"
+                      — there's a pending chip `onBlur` would commit.
                     */
-                    if (draft !== "") return;
+                    if (draft !== "" || confirmedMatches.length > 0) return;
                     if (onNavigate?.(addStop(id), key)) e.preventDefault();
                   }}
                   onBlur={commit}

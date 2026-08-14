@@ -419,3 +419,61 @@ export function parseQuickAdd(
     matches,
   };
 }
+
+/**
+ * Folds a just-completed match out of `text` into `confirmed` the moment a
+ * finished word puts a trailing space at the very end of the string —
+ * mirrors what `resolveMentionTrigger` (mention.ts) does for "#label"/"@list"
+ * on an explicit popover pick. Date/time/priority tokens have no pick step
+ * of their own, so a completed word substitutes for one: the same way
+ * `parseQuickAdd` only recognizes a token once it's fully typed, this only
+ * folds a token once it's fully typed AND terminated by a space, so a
+ * still-in-progress word ("tom" of "tomato") is never yanked out from under
+ * someone still typing it.
+ *
+ * Safe to call on every keystroke rather than needing a dedicated "was space
+ * just pressed" hook: idempotent (re-running on an already-folded, unchanged
+ * `text` finds nothing left to fold and returns it as-is) and a no-op
+ * whenever `text` doesn't end in a space or nothing trailing matches.
+ *
+ * A newly-folded match overwrites an existing `confirmed` one of the same
+ * kind — retyping a date after already confirming one replaces it, it
+ * doesn't get silently dropped the way `parseQuickAdd`'s own same-string
+ * "earliest wins" dedup would.
+ */
+export function foldQuickAddDraft(
+  text: string,
+  confirmed: readonly QuickAddMatch[],
+  today: CivilDate,
+  presets: readonly ReminderPreset[] = [],
+): { text: string; confirmed: QuickAddMatch[] } {
+  if (!text.endsWith(" ")) return { text, confirmed: [...confirmed] };
+  const trimmed = text.trimEnd();
+  if (trimmed === "") return { text, confirmed: [...confirmed] };
+
+  const parsed = parseQuickAdd(trimmed, today, presets);
+  if (parsed.matches.length === 0) return { text, confirmed: [...confirmed] };
+
+  const foldedKinds = new Set(parsed.matches.map((m) => m.kind));
+  return {
+    text: `${parsed.title} `,
+    confirmed: [...confirmed.filter((m) => !foldedKinds.has(m.kind)), ...parsed.matches],
+  };
+}
+
+/**
+ * Reconstructs a single string carrying both the still-live `text` and every
+ * match `foldQuickAddDraft` already folded out of it, for handing to
+ * `parseQuickAdd`/`handleQuickAdd` at submit time exactly as if nothing had
+ * ever been folded — the write path never needs to know folding happened.
+ * Order among folded matches doesn't affect what `parseQuickAdd` extracts
+ * from them (its trailing scan only requires them contiguous, not any
+ * particular order among same-position kinds), only that they land after
+ * `text`'s own title.
+ */
+export function quickAddDraftToString(text: string, confirmed: readonly QuickAddMatch[]): string {
+  const trimmed = text.trim();
+  if (confirmed.length === 0) return trimmed;
+  const suffix = confirmed.map((m) => m.raw).join(" ");
+  return trimmed ? `${trimmed} ${suffix}` : suffix;
+}

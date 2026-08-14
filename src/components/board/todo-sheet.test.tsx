@@ -233,6 +233,51 @@ describe("title quick-update", () => {
   });
 });
 
+/**
+ * EI-110 follow-up: a completed trailing token now folds out of the visible
+ * title (and, unlike quick-add's creation flow, writes immediately) the
+ * moment its own trailing space lands — this sheet already has dedicated,
+ * always-visible fields for priority/date/deadline/reminder, so there's
+ * nowhere for a "pending chip" to persist the way it does in a brand-new
+ * quick-add row. See `foldTitleMatch` in todo-sheet.tsx.
+ */
+describe("title quick-update — live fold on a trailing space", () => {
+  it("applies a trailing priority token immediately once its space lands, without waiting for blur", () => {
+    const onSave = vi.fn();
+    render(<Harness onSave={onSave} />);
+    const title = screen.getByLabelText("Title");
+    fireEvent.change(title, { target: { value: "Reply to the design feedback p2 " } });
+    expect(onSave).toHaveBeenCalledWith(TODO.id, { priority: 2 });
+  });
+
+  it("strips the folded token from the visible title and its chip", () => {
+    render(<Harness />);
+    const title = screen.getByLabelText("Title");
+    fireEvent.change(title, { target: { value: "Buy milk p2 " } });
+    expect(title).toHaveProperty("value", "Buy milk ");
+    expect(screen.queryByText("P2")).toBeNull();
+  });
+
+  it("does not fold a still-in-progress word with no trailing space yet", () => {
+    const onSave = vi.fn();
+    render(<Harness onSave={onSave} />);
+    const title = screen.getByLabelText("Title");
+    fireEvent.change(title, { target: { value: "Buy milk p2" } });
+    expect(onSave).not.toHaveBeenCalled();
+    expect(title).toHaveProperty("value", "Buy milk p2");
+  });
+
+  it("blur afterward only writes the remaining title text — the priority already committed", () => {
+    const onSave = vi.fn();
+    render(<Harness onSave={onSave} />);
+    const title = screen.getByLabelText("Title");
+    fireEvent.change(title, { target: { value: "Buy milk p2 " } });
+    onSave.mockClear();
+    fireEvent.blur(title);
+    expect(onSave).toHaveBeenCalledWith(TODO.id, { title: "Buy milk" });
+  });
+});
+
 const LIST: List = {
   id: "l2",
   ownerId: "local-user",

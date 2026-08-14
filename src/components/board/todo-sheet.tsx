@@ -311,6 +311,37 @@ function TodoSheetContent({
     if (Object.keys(patch).length > 0) onSave(todo.id, patch);
   };
 
+  /**
+   * Folds a just-completed trailing match out of the visible title the
+   * moment its own trailing space lands, writing it as an immediate field
+   * patch — same "no pick step, a completed word substitutes for one"
+   * reasoning as quick-add's own live-fold (`lib/quick-add.ts`'s
+   * `foldQuickAddDraft`), but applied right away rather than held pending,
+   * matching `applyMention` just above and this sheet's "every other
+   * control writes immediately" rule (`commitTitle`'s own doc comment).
+   * Unlike quick-add's creation flow, there's no need to hold a removable
+   * chip for the folded value — this sheet already has a dedicated, always-
+   * visible field for each of priority/date/deadline/reminder, so the value
+   * shows up there the instant it's written, not as a second copy in a chip.
+   * Returns `raw` unchanged when nothing trailing has just completed.
+   */
+  const foldTitleMatch = (raw: string): string => {
+    if (!raw.endsWith(" ")) return raw;
+    const trimmed = raw.trimEnd();
+    if (trimmed === "") return raw;
+
+    const parsed = parseQuickAdd(trimmed, today, reminderPresets);
+    if (parsed.matches.length === 0) return raw;
+
+    const patch: Partial<Todo> = {};
+    if (parsed.priority !== null) patch.priority = parsed.priority;
+    if (parsed.scheduledDate !== null) patch.scheduledDate = parsed.scheduledDate;
+    if (parsed.deadline !== null) patch.deadline = parsed.deadline;
+    if (parsed.reminderTime !== null) patch.reminderTime = parsed.reminderTime;
+    if (Object.keys(patch).length > 0) onSave(todo.id, patch);
+    return `${parsed.title} `;
+  };
+
   // Live feedback while typing, same as quick-add's row — teaches that a
   // trailing token is about to become a real field, not just get typed
   // literally into the title.
@@ -419,8 +450,14 @@ function TodoSheetContent({
               ref={titleRef}
               value={title}
               onChange={(e) => {
-                setTitle(e.target.value);
-                syncTitleCursor(e.target);
+                const raw = e.target.value;
+                const folded = foldTitleMatch(raw);
+                setTitle(folded);
+                if (folded !== raw) {
+                  pendingCaretRef.current = folded.length;
+                } else {
+                  syncTitleCursor(e.target);
+                }
               }}
               onSelect={(e) => syncTitleCursor(e.currentTarget)}
               onBlur={commitTitle}

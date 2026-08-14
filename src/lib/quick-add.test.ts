@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseQuickAdd } from "./quick-add";
+import { foldQuickAddDraft, parseQuickAdd, quickAddDraftToString } from "./quick-add";
 import type { ReminderPreset } from "./schema";
 
 // A Wednesday, chosen to make weekday wraparound cases unambiguous.
@@ -254,5 +254,117 @@ describe("parseQuickAdd — preset matching is word-bounded, not a bare substrin
     // Below PRESET_WORD_MIN_LENGTH — never even reaches the name comparison.
     expect(parseQuickAdd("call at", TODAY, SEEDED).reminderTime).toBeNull();
     expect(parseQuickAdd("meet in", TODAY, SEEDED).reminderTime).toBeNull();
+  });
+});
+
+describe("foldQuickAddDraft", () => {
+  const MORNING: ReminderPreset = {
+    id: "p1",
+    ownerId: "local-user",
+    createdAt: "",
+    updatedAt: "",
+    deletedAt: null,
+    name: "In the morning",
+    time: "08:00",
+    position: "a0",
+    color: null,
+    emoji: "🌅",
+    iconUrl: null,
+  };
+
+  it("does nothing while a word is still in progress (no trailing space yet)", () => {
+    const result = foldQuickAddDraft("buy milk tomorrow", [], TODAY);
+    expect(result).toEqual({ text: "buy milk tomorrow", confirmed: [] });
+  });
+
+  it("does nothing when the trailing space follows a word that doesn't match anything", () => {
+    const result = foldQuickAddDraft("buy milk ", [], TODAY);
+    expect(result).toEqual({ text: "buy milk ", confirmed: [] });
+  });
+
+  it("folds a completed trailing date word out of the visible text", () => {
+    const result = foldQuickAddDraft("buy milk tomorrow ", [], TODAY);
+    expect(result.text).toBe("buy milk ");
+    expect(result.confirmed).toHaveLength(1);
+    expect(result.confirmed[0]).toMatchObject({ kind: "date", raw: "tomorrow" });
+  });
+
+  it("folds a completed trailing time word, including a preset-name match", () => {
+    const result = foldQuickAddDraft("gym morning ", [], TODAY, [MORNING]);
+    expect(result.text).toBe("gym ");
+    expect(result.confirmed).toMatchObject([{ kind: "time", raw: "morning", label: "🌅 In the morning" }]);
+  });
+
+  it("folds a leading priority the same way, once its own trailing space lands", () => {
+    const result = foldQuickAddDraft("p1 ", [], TODAY);
+    // "p1 " alone has no title left over — same "don't swallow everything"
+    // guard parseQuickAdd already applies, so nothing folds here either.
+    expect(result).toEqual({ text: "p1 ", confirmed: [] });
+
+    // Whatever's currently resolvable (leading run included) folds on any
+    // trailing space, not just the space directly after the priority word —
+    // "milk" itself doesn't match anything trailing, but the already-typed
+    // leading "p1" still resolves and folds here.
+    const withTitle = foldQuickAddDraft("p1 buy milk ", [], TODAY);
+    expect(withTitle.text).toBe("buy milk ");
+    expect(withTitle.confirmed).toMatchObject([{ kind: "priority", raw: "p1" }]);
+  });
+
+  it("folds a leading priority together with a trailing match typed in one go", () => {
+    const result = foldQuickAddDraft("p1 buy milk tomorrow ", [], TODAY);
+    expect(result.text).toBe("buy milk ");
+    expect(result.confirmed.map((m) => m.kind)).toEqual(["priority", "date"]);
+  });
+
+  it("folding a second match of an already-confirmed kind replaces it, not stacks it", () => {
+    const first = foldQuickAddDraft("buy milk tomorrow ", [], TODAY);
+    const second = foldQuickAddDraft(`${first.text}fri `, first.confirmed, TODAY);
+    expect(second.confirmed).toHaveLength(1);
+    expect(second.confirmed[0]).toMatchObject({ kind: "date", raw: "fri" });
+  });
+
+  it("leaves an unrelated already-confirmed kind untouched", () => {
+    const first = foldQuickAddDraft("buy milk p2 ", [], TODAY);
+    const second = foldQuickAddDraft(`${first.text}tomorrow `, first.confirmed, TODAY);
+    expect(second.confirmed.map((m) => m.kind).sort()).toEqual(["date", "priority"]);
+  });
+
+  it("is idempotent — folding an already-folded, unchanged draft is a no-op", () => {
+    const once = foldQuickAddDraft("buy milk tomorrow ", [], TODAY);
+    const twice = foldQuickAddDraft(once.text, once.confirmed, TODAY);
+    expect(twice).toEqual({ text: once.text, confirmed: once.confirmed });
+  });
+});
+
+describe("quickAddDraftToString", () => {
+  it("returns the trimmed live text when nothing has folded", () => {
+    expect(quickAddDraftToString("buy milk", [])).toBe("buy milk");
+  });
+
+  it("reappends folded matches after the live text", () => {
+    const folded = foldQuickAddDraft("buy milk tomorrow ", [], TODAY);
+    expect(quickAddDraftToString(folded.text, folded.confirmed)).toBe("buy milk tomorrow");
+  });
+
+  it("round-trips through parseQuickAdd to the same fields as the unfolded original", () => {
+    const original = parseQuickAdd("buy milk p2 fri 2pm", TODAY);
+
+    let text = "";
+    let confirmed: ReturnType<typeof foldQuickAddDraft>["confirmed"] = [];
+    for (const word of "buy milk p2 fri 2pm ".split(" ")) {
+      ({ text, confirmed } = foldQuickAddDraft(`${text}${word} `, confirmed, TODAY));
+    }
+
+    const reconstructed = parseQuickAdd(quickAddDraftToString(text, confirmed), TODAY);
+    expect(reconstructed.title).toBe(original.title);
+    expect(reconstructed.priority).toBe(original.priority);
+    expect(reconstructed.scheduledDate).toBe(original.scheduledDate);
+    expect(reconstructed.reminderTime).toBe(original.reminderTime);
+  });
+
+  it("returns just the folded suffix when there is no live text left", () => {
+    expect(quickAddDraftToString("", [{ raw: "tomorrow", kind: "date", label: "Fri Aug 14" }])).toBe(
+      "tomorrow",
+    );
   });
 });

@@ -393,6 +393,69 @@ describe("in-column filter", () => {
 });
 
 /**
+ * EI-110 follow-up: matched date/time/priority words now fold out of the
+ * visible quick-add text the moment their own trailing space lands — the
+ * same "removed from the string" treatment `#label`/`@list` mentions already
+ * get, since typing them left them sitting unstripped in the field even
+ * though the final title already excluded them. See `foldQuickAddDraft`
+ * (lib/quick-add.ts) for the pure logic this wires up.
+ */
+describe("quick-add — folding a completed date/time word out of the input", () => {
+  const addInput = () => screen.getByRole("textbox", { name: "Add a to-do to Sunday" });
+
+  it("folds a trailing date word out of the visible input once its space lands", () => {
+    render(<Harness />);
+    fireEvent.change(addInput(), { target: { value: "Buy milk tomorrow " } });
+    expect(addInput()).toHaveProperty("value", "Buy milk ");
+  });
+
+  it("leaves a still-in-progress word alone", () => {
+    render(<Harness />);
+    fireEvent.change(addInput(), { target: { value: "Buy milk tom" } });
+    expect(addInput()).toHaveProperty("value", "Buy milk tom");
+  });
+
+  it("shows the folded word as a removable chip", () => {
+    render(<Harness />);
+    fireEvent.change(addInput(), { target: { value: "Buy milk tomorrow " } });
+    expect(screen.getByRole("button", { name: /^Remove/ })).toBeTruthy();
+  });
+
+  it("removing the chip drops the confirmed match without touching the remaining text", () => {
+    render(<Harness />);
+    fireEvent.change(addInput(), { target: { value: "Buy milk tomorrow " } });
+    fireEvent.mouseDown(screen.getByRole("button", { name: /^Remove/ }));
+    expect(screen.queryByRole("button", { name: /^Remove/ })).toBeNull();
+    expect(addInput()).toHaveProperty("value", "Buy milk ");
+  });
+
+  it("committing reappends the folded word so the created todo still gets the parsed field", () => {
+    const onQuickAdd = vi.fn();
+    render(<Harness onQuickAdd={onQuickAdd} />);
+    fireEvent.change(addInput(), { target: { value: "Buy milk tomorrow " } });
+    fireEvent.keyDown(addInput(), { key: "Enter" });
+    expect(onQuickAdd).toHaveBeenCalledWith("Buy milk tomorrow", undefined, []);
+    expect(addInput()).toHaveProperty("value", "");
+  });
+
+  it("Escape clears both the live text and any folded chip", () => {
+    render(<Harness />);
+    fireEvent.change(addInput(), { target: { value: "Buy milk tomorrow " } });
+    fireEvent.keyDown(addInput(), { key: "Escape" });
+    expect(screen.queryByRole("button", { name: /^Remove/ })).toBeNull();
+    expect(addInput()).toHaveProperty("value", "");
+  });
+
+  it("refolding a second date word replaces the chip rather than adding a second one", () => {
+    render(<Harness />);
+    fireEvent.change(addInput(), { target: { value: "Buy milk tomorrow " } });
+    fireEvent.change(addInput(), { target: { value: "Buy milk fri " } });
+    expect(screen.getAllByRole("button", { name: /^Remove/ })).toHaveLength(1);
+    expect(addInput()).toHaveProperty("value", "Buy milk ");
+  });
+});
+
+/**
  * `footer` — EI-97's Overdrive entry button slot. Board-column itself only
  * has to place the node and respect `collapsed`; whether the button decides
  * to render at all is `OverdriveButton`'s own concern (`overdrive-button.tsx`).
