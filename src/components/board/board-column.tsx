@@ -22,7 +22,7 @@ import { parseQuickAdd } from "@/lib/quick-add";
 import { isTextEntry } from "@/lib/undo";
 import { MentionMenu, useMention, type MentionSource } from "@/components/mention-menu";
 import { createLabel } from "@/lib/store/repositories";
-import type { Label as LabelRecord, Todo } from "@/lib/schema";
+import type { Label as LabelRecord, ReminderPreset, Todo } from "@/lib/schema";
 import type { PlacementContext } from "@/lib/scheduling";
 import {
   InputGroup,
@@ -144,6 +144,13 @@ interface BoardColumnProps {
    * quick-add exists.
    */
   lists?: MentionListOption[];
+  /**
+   * Named reminder times (EI-106 P4), for the quick-add row's live-preview
+   * chip only — the actual write already resolves preset names via
+   * `handleQuickAdd`'s own `parseQuickAdd` call in `use-board-actions.ts`.
+   * Omit (or pass `[]`) on a column with no `onQuickAdd`, same as `lists`.
+   */
+  reminderPresets?: ReminderPreset[];
   /**
    * Arrow-key navigation out of this column's cards and quick-add. Returns
    * true when focus moved. See docs/KEYBOARD.md §11.
@@ -291,6 +298,7 @@ export function BoardColumn({
   onOpen,
   onQuickAdd,
   lists,
+  reminderPresets,
   onNavigate,
   minRows = 8,
   filter,
@@ -458,11 +466,13 @@ export function BoardColumn({
     setMentionedLabels([]);
   };
 
-  // Parsed only for the live preview — `handleQuickAdd` (board.tsx) re-parses
-  // the committed title itself, so this never has to be threaded anywhere.
+  // Parsed only for the live preview — `handleQuickAdd` (use-board-actions.ts)
+  // re-parses the committed title itself with its own presets, so the write
+  // path never depends on this. `reminderPresets` is threaded here anyway
+  // (EI-106 P4) so a preset-name match shows the right chip before commit.
   const quickAddChips = useMemo((): QuickAddChip[] => {
     const chips: QuickAddChip[] = draft.trim()
-      ? parseQuickAdd(draft, ctx.today).matches.map((m) => ({
+      ? parseQuickAdd(draft, ctx.today, reminderPresets ?? []).matches.map((m) => ({
           key: `${m.kind}:${m.raw}`,
           label: m.label,
         }))
@@ -483,7 +493,7 @@ export function BoardColumn({
       });
     }
     return chips;
-  }, [draft, ctx.today, mentionedList, mentionedLabels]);
+  }, [draft, ctx.today, mentionedList, mentionedLabels, reminderPresets]);
 
   /**
    * The groups to render, or null for a flat column.

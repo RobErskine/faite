@@ -316,8 +316,19 @@ export function useBoardActions(
     expandWeekend,
   } = ui;
 
-  const { board, todosById, lists, tabs, rawTodoIds, activeTabId, listsById, ctx, openTodo, recurrenceExpansion } =
-    data;
+  const {
+    board,
+    todosById,
+    lists,
+    tabs,
+    rawTodoIds,
+    activeTabId,
+    listsById,
+    ctx,
+    openTodo,
+    recurrenceExpansion,
+    reminderPresets,
+  } = data;
 
   /**
    * Materialize a virtual (or already-real) todo before writing to it.
@@ -706,7 +717,7 @@ export function useBoardActions(
       // return below gates the whole board), so this never actually fires
       // null — the guard is here purely so the closure typechecks.
       if (!ctx) return;
-      const parsed = parseQuickAdd(input, ctx.today);
+      const parsed = parseQuickAdd(input, ctx.today, reminderPresets);
       const listId = mentionedListId ?? target.listId ?? null;
       // An explicit date token beats the column it was typed into — the user
       // said Friday. Only falls back to `target.day` (a day column drop) when
@@ -735,7 +746,7 @@ export function useBoardActions(
         : `Added “${short(parsed.title)}”`;
       pushUndo(label, [createUndoStep("todo", id)]);
     },
-    [ctx, listsById],
+    [ctx, listsById, reminderPresets],
   );
 
   /**

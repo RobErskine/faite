@@ -31,7 +31,15 @@ import { searchTodos } from "@/lib/search";
 import { cn } from "@/lib/utils";
 import { PriorityRail, TitleMarkers, TodoMetaBadges } from "./todo-row-parts";
 import { TITLE_CLAMP_CLASS } from "@/lib/title";
-import type { Label as LabelRecord, List, Settings, Tab, Todo, TodoStatus } from "@/lib/schema";
+import type {
+  Label as LabelRecord,
+  List,
+  ReminderPreset,
+  Settings,
+  Tab,
+  Todo,
+  TodoStatus,
+} from "@/lib/schema";
 import type { MentionLabelOption, MentionListOption, MentionPick } from "./board-column";
 import { QuickAddPreview } from "./quick-add-preview";
 import { detectPlatform, formatCombo, type Platform } from "@/lib/keyboard";
@@ -61,6 +69,9 @@ interface CommandPaletteProps {
   tabs: Tab[];
   todos: Todo[];
   labels: LabelRecord[];
+  /** Named reminder times (EI-106 P4) — quick-add vocabulary for "Create
+   * to-do…" and the preview chips, same as `matchTime`'s numeric forms. */
+  reminderPresets?: ReminderPreset[];
   settings: Settings | undefined;
   activeTabId: string;
   /** Series summaries keyed by `recurrenceParentId` — see `board.tsx`'s
@@ -108,6 +119,7 @@ export function CommandPalette({
   tabs,
   todos,
   labels,
+  reminderPresets = [],
   settings,
   activeTabId,
   recurrenceSummaries,
@@ -152,7 +164,10 @@ export function CommandPalette({
    * to-do" fallback in root mode and the New to-do entry mode both create
    * from `value`, so they must not be free to disagree on what it parses to.
    */
-  const quickAdd = useMemo(() => parseQuickAdd(value, today), [value, today]);
+  const quickAdd = useMemo(
+    () => parseQuickAdd(value, today, reminderPresets),
+    [value, today, reminderPresets],
+  );
   const showQuickAddPreview = mode.kind === "root" ? query.length > 0 : mode.kind === "new-todo";
 
   const listNameById = useMemo(

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseQuickAdd } from "./quick-add";
+import type { ReminderPreset } from "./schema";
 
 // A Wednesday, chosen to make weekday wraparound cases unambiguous.
 const TODAY = "2026-08-12";
@@ -143,5 +144,70 @@ describe("parseQuickAdd", () => {
     const result = parseQuickAdd("", TODAY);
     expect(result.title).toBe("");
     expect(result.matches).toEqual([]);
+  });
+});
+
+function preset(id: string, name: string, time: string, emoji: string | null = null): ReminderPreset {
+  return {
+    id,
+    ownerId: "u",
+    createdAt: "",
+    updatedAt: "",
+    deletedAt: null,
+    name,
+    time,
+    position: "a0",
+    color: null,
+    emoji,
+    iconUrl: null,
+  };
+}
+
+describe("parseQuickAdd — preset-name vocabulary (EI-106 P4)", () => {
+  const MORNING = preset("p1", "In the morning", "08:00", "🌅");
+  const LUNCH = preset("p2", "Lunchtime", "12:30", "🥪");
+  const PRESETS = [MORNING, LUNCH];
+
+  it("resolves a trailing word to a preset whose name contains it", () => {
+    const result = parseQuickAdd("gym tomorrow morning", TODAY, PRESETS);
+    expect(result.title).toBe("gym");
+    expect(result.scheduledDate).toBe("2026-08-13");
+    expect(result.reminderTime).toBe("08:00");
+  });
+
+  it("chip label is the preset's own emoji + name, not a formatted clock time", () => {
+    const result = parseQuickAdd("gym tomorrow morning", TODAY, PRESETS);
+    const timeChip = result.matches.find((m) => m.kind === "time");
+    expect(timeChip?.label).toBe("🌅 In the morning");
+  });
+
+  it("matches case-insensitively", () => {
+    expect(parseQuickAdd("gym LUNCH", TODAY, PRESETS).reminderTime).toBe("12:30");
+  });
+
+  it("still resolves an ordinary numeric time when no preset matches", () => {
+    const result = parseQuickAdd("call 2pm", TODAY, PRESETS);
+    expect(result.reminderTime).toBe("14:00");
+  });
+
+  it("leaves reminderTime unset when the trailing word matches no preset and isn't a time", () => {
+    const result = parseQuickAdd("call about the budget", TODAY, PRESETS);
+    expect(result.reminderTime).toBeNull();
+    expect(result.title).toBe("call about the budget");
+  });
+
+  it("does not resolve an ambiguous word matching more than one preset", () => {
+    const AM = preset("p3", "AM check-in", "09:00");
+    const PM = preset("p4", "PM check-in", "17:00");
+    const result = parseQuickAdd("call check-in", TODAY, [AM, PM]);
+    expect(result.reminderTime).toBeNull();
+    // Falls through to plain title text, exactly like any other failed token.
+    expect(result.title).toBe("call check-in");
+  });
+
+  it("defaults to no presets when the third argument is omitted — backward compatible", () => {
+    const result = parseQuickAdd("gym tomorrow morning", TODAY);
+    expect(result.reminderTime).toBeNull();
+    expect(result.title).toBe("gym tomorrow morning");
   });
 });

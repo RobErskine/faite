@@ -499,6 +499,7 @@ export function Board() {
         // record to find, and a template renders nowhere for search to open.
         todos={data.nonTemplateTodos}
         labels={data.labels}
+        reminderPresets={data.reminderPresets}
         recurrenceSummaries={data.recurrenceSummaries}
         tabs={data.tabs}
         settings={data.settings}

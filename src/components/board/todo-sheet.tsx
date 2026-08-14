@@ -295,7 +295,7 @@ function TodoSheetContent({
       return;
     }
 
-    const parsed = parseQuickAdd(next, today);
+    const parsed = parseQuickAdd(next, today, reminderPresets);
     const patch: Partial<Todo> = {};
     if (parsed.matches.length > 0) {
       if (parsed.title !== todo.title) patch.title = parsed.title;
@@ -315,9 +315,9 @@ function TodoSheetContent({
   // trailing token is about to become a real field, not just get typed
   // literally into the title.
   const titleChips = useMemo((): QuickAddChip[] => {
-    const parsed = parseQuickAdd(title, today);
+    const parsed = parseQuickAdd(title, today, reminderPresets);
     return parsed.matches.map((m) => ({ key: `${m.kind}:${m.raw}`, label: m.label }));
-  }, [title, today]);
+  }, [title, today, reminderPresets]);
 
   const markDone = () => {
     onSetStatus(todo.id, todo.status === "done" ? "open" : "done");

@@ -1,4 +1,4 @@
-import type { CivilDate, Priority } from "./schema";
+import type { CivilDate, Priority, ReminderPreset } from "./schema";
 import { addDays, dayOfWeek, formatShortDate, toCivilDate } from "./scheduling";
 
 /**
@@ -218,6 +218,28 @@ export function formatTimeLabel(time: string): string {
   return `${hour12}:${mStr} ${period}`;
 }
 
+/**
+ * Preset-name vocabulary (EI-106 P4) — "morning" resolves a preset named
+ * "In the morning" the same way `parsePresetQuery`'s "match" branch does:
+ * a case-insensitive substring, not an exact name match. Exact matching
+ * would miss every multi-word preset name against quick-add's one-word-at-a-
+ * time trailing scan; substring matching is also the one already-established
+ * mental model, from the picker.
+ *
+ * Ambiguous (more than one preset's name contains the word) resolves to
+ * nothing here — quick-add has no disambiguation UI mid-parse, unlike the
+ * picker's dropdown, so an ambiguous word is safer left as plain title text.
+ */
+function matchPresetTime(
+  word: string,
+  presets: readonly ReminderPreset[],
+): ReminderPreset | null {
+  if (presets.length === 0) return null;
+  const lower = word.toLowerCase();
+  const matches = presets.filter((p) => p.name.toLowerCase().includes(lower));
+  return matches.length === 1 ? matches[0] : null;
+}
+
 function labelForDate(date: CivilDate, prefix = ""): string {
   return `${prefix}${WEEKDAY_ABBR[dayOfWeek(date)]} ${formatShortDate(date)}`;
 }
@@ -228,6 +250,9 @@ interface RawMatch {
   end: number;
   raw: string;
   value: Priority | CivilDate | string;
+  /** Set only for a preset-name time match — overrides the default
+   * `formatTimeLabel(value)` label with the preset's own "emoji name". */
+  presetLabel?: string;
 }
 
 interface Word {
@@ -246,7 +271,11 @@ function tokenize(input: string): Word[] {
   return words;
 }
 
-export function parseQuickAdd(input: string, today: CivilDate): QuickAdd {
+export function parseQuickAdd(
+  input: string,
+  today: CivilDate,
+  presets: readonly ReminderPreset[] = [],
+): QuickAdd {
   const empty: QuickAdd = {
     title: input,
     priority: null,
@@ -306,6 +335,19 @@ export function parseQuickAdd(input: string, today: CivilDate): QuickAdd {
       hi -= 1;
       continue;
     }
+    const preset = matchPresetTime(w.text, presets);
+    if (preset) {
+      trailing.push({
+        kind: "time",
+        start: w.start,
+        end: w.end,
+        raw: w.text,
+        value: preset.time,
+        presetLabel: preset.emoji ? `${preset.emoji} ${preset.name}` : preset.name,
+      });
+      hi -= 1;
+      continue;
+    }
     break;
   }
 
@@ -347,7 +389,7 @@ export function parseQuickAdd(input: string, today: CivilDate): QuickAdd {
             ? labelForDate(m.value as CivilDate)
             : m.kind === "deadline"
               ? labelForDate(m.value as CivilDate, "Due ")
-              : formatTimeLabel(m.value as string),
+              : (m.presetLabel ?? formatTimeLabel(m.value as string)),
     }));
 
   return {

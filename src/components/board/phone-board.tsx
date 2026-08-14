@@ -242,6 +242,7 @@ export function PhoneBoard({
                     void handleQuickAdd(title, { day: column.day }, listId, labelIds)
                   }
                   lists={mentionLists}
+                  reminderPresets={data.reminderPresets}
                   onNavigate={navigate}
                   filter={columnFilters.get(column.id)}
                   onFilterChange={(query) => setColumnFilter(column.id, query)}
@@ -312,6 +313,7 @@ export function PhoneBoard({
                     )
                   }
                   lists={mentionLists}
+                  reminderPresets={data.reminderPresets}
                   onNavigate={navigate}
                   filter={columnFilters.get(filteredBacklogColumn.id)}
                   onFilterChange={(query) => setColumnFilter(filteredBacklogColumn.id, query)}
@@ -345,6 +347,7 @@ export function PhoneBoard({
                     void handleQuickAdd(title, { listId: column.list.id }, listId, labelIds)
                   }
                   lists={mentionLists}
+                  reminderPresets={data.reminderPresets}
                   onNavigate={navigate}
                   filter={columnFilters.get(column.id)}
                   onFilterChange={(query) => setColumnFilter(column.id, query)}
