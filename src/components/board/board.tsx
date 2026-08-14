@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { DndContext, DragOverlay, MeasuringStrategy } from "@dnd-kit/core";
 import { GripVertical, MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -42,6 +42,7 @@ import { useBoardActions } from "./use-board-actions";
 import { DesktopBoard, type ReadyBoardData } from "./desktop-board";
 import { PhoneBoard } from "./phone-board";
 import { setDayNote } from "@/lib/store/repositories";
+import { boardDragAnnouncements } from "@/lib/dnd-announcements";
 
 /**
  * Pass A/B/C of `board.tsx`'s extraction (docs/ARCHITECTURE.md, mobile plan
@@ -263,6 +264,25 @@ export function Board() {
 
   const activeRail = priorityRail(ui.activeTodo?.priority ?? null);
 
+  /**
+   * dnd-kit screen-reader announcements (EI-84) — string-building lives in
+   * `dnd-announcements.ts` so it's testable without React; this just supplies
+   * the same board data `DndContext` below already reads. A `useMemo` before
+   * the loading guard, like `hotkeys`/`activeRail` above — hooks can't follow
+   * a conditional return, so `data.board` may still be null here, hence the
+   * empty fallback (never actually reached by a drag before `ready`).
+   */
+  const dragAnnouncements = useMemo(
+    () =>
+      boardDragAnnouncements({
+        board: data.board ?? { days: [], overflow: { id: "", todos: [], groups: [] }, lists: [] },
+        todosById: data.todosById,
+        listsById: data.listsById,
+        tabsById: data.tabsById,
+      }),
+    [data.board, data.todosById, data.listsById, data.tabsById],
+  );
+
   if (!data.ready || !data.ctx || !data.board || !data.settings) {
     return (
       <div className="flex h-dvh items-center justify-center text-sm text-muted-foreground">
@@ -288,6 +308,7 @@ export function Board() {
        * the line that makes carrying a to-do across tabs work at all.
        */
       measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
+      accessibility={{ announcements: dragAnnouncements }}
       onDragStart={actions.handleDragStart}
       onDragOver={actions.handleDragOver}
       onDragEnd={actions.handleDragEnd}

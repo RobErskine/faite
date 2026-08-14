@@ -368,6 +368,26 @@ Component-level tests only for wiring pure functions cannot reach, using the
   `allowInTextEntry: false` so typing a question mark still works.)
 - Announce results rather than relying on visual change alone. The "Undone"
   toast does this today.
+- **dnd-kit drag announcements** (EI-84) — `DndContext`'s `accessibility.announcements`
+  (`board.tsx`) is wired to `boardDragAnnouncements()` (`src/lib/dnd-announcements.ts`,
+  pure and unit-tested per §9's rule — no DOM, no simulated key events). Replaces
+  dnd-kit's generic "draggable item"/"droppable region" defaults with the board's own
+  vocabulary on all four events:
+  - **Start** — `"<title>. Picked up from <column>, position <i> of <n>."`
+  - **Over** — `"<title> is over <column>."`, or `"<title> is no longer over a
+    droppable area."` when `over` is null
+  - **End** — `"<title> was dropped in <column>, position <i> of <n>."`, computed
+    from `over` (dnd-kit calls this before the app's own `onDragEnd` handler runs
+    and before React re-renders, so it can't read the post-drop board back)
+  - **Cancel** — `"<title>. Drag cancelled, still in <column>."`
+
+  `<column>` is a day's weekday name, `"Overflow"`, or a list's name — the same
+  labels the columns render. List/tab reorder drags (`listdrag:`/`tabdrag:` ids)
+  get a shorter parallel set: `"<name> list/tab. Picked up for reordering."` /
+  `"… was dropped."` / `"… reorder cancelled."`, no over-announcement (kept
+  simple; the vocabulary above is about cards, which is what EI-84 scoped).
+  dnd-kit renders its own visually-hidden live region — this is content going
+  into that region, not a second `aria-live` element beside it.
 
 ---
 
