@@ -1075,12 +1075,17 @@ list — see §4.7 and §4.9.)
    (`announcements` / `screenReaderInstructions` on `DndContext`) are entirely
    unconfigured — dnd-kit's defaults are generic and say nothing about days or
    lists.
-2. **Auto-scroll while dragging to an off-screen column — status unknown.**
-   This entry used to read "no auto-scroll", but it was written when the halves
-   could not overflow at all (§4.12), so the behaviour it describes was never
-   observed. Both halves now really do scroll, and dnd-kit enables `autoScroll`
-   by default, so dragging toward the edge may already work. **Nobody has
-   dragged it.** Verify before either fixing or closing this.
+2. **Auto-scroll is configured; whether it feels right is still unverified
+   (EI-81).** `computeAutoScroll(layout)` (`use-board-actions.ts`) is `true`
+   everywhere except phone — dnd-kit's default incremental auto-scroll fights
+   phone's `scroll-snap-type: mandatory` pager and judders, so it's off there;
+   see the doc comment on `computeAutoScroll` for the mechanism. Unit-tested
+   (`use-board-actions.test.ts`). What's still unverified is feel, not
+   config: does dragging a card toward the edge on tablet/desktop scroll
+   smoothly, and does it visibly judder on phone the way the comment
+   predicts? That's a human-at-a-browser check, not something worth an E2E
+   assertion — a per-frame scroll-velocity assertion near a container edge
+   would be the flakiest thing in this suite.
 3. ~~No cross-half scroll affordance.~~ Done, though not the way this entry
    meant: each half has its own persistently-drawn horizontal scrollbar
    (§4.12), so "there is more board this way" is visible without a drag.

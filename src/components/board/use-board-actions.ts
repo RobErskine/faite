@@ -161,6 +161,26 @@ const STATUS_VERB: Record<Todo["status"], string> = {
 };
 
 /**
+ * Off on phone, on everywhere else. Incremental auto-scroll (dnd-kit's
+ * default) nudges the track a few pixels per frame as a drag nears the
+ * edge — fine against ordinary `overflow-x: auto`, but fighting a
+ * `scroll-snap-type: mandatory` pager it judders, since the snap engine
+ * keeps trying to pull the fractional scroll position back to a page
+ * boundary every frame the auto-scroll moves it away from one. Dragging
+ * a card to a day/list off the current page happens through the row `⋯`
+ * action sheet on phone instead (P4) — a more reliable interaction than
+ * blind-dragging toward a page you can't see, not just a workaround for
+ * this.
+ *
+ * Exported as a pure function (docs/DRAG-AND-DROP.md §7 item 2, EI-81) so
+ * this one-line rule is unit-testable without rendering the rest of
+ * `useBoardActions`'s dnd-kit/store wiring.
+ */
+export function computeAutoScroll(layout: "phone" | "tablet" | "desktop"): boolean {
+  return layout !== "phone";
+}
+
+/**
  * Titles are free text and can be a paragraph. Truncate before quoting one
  * into a toast or an undo label, so a long todo cannot push the Undo button
  * off the card.
@@ -1035,19 +1055,7 @@ export function useBoardActions(
     };
   }, [openTodo, todosById, recurrenceExpansion, materializeIfNeeded, closeTodoSheet]);
 
-  /**
-   * Off on phone, on everywhere else. Incremental auto-scroll (dnd-kit's
-   * default) nudges the track a few pixels per frame as a drag nears the
-   * edge — fine against ordinary `overflow-x: auto`, but fighting a
-   * `scroll-snap-type: mandatory` pager it judders, since the snap engine
-   * keeps trying to pull the fractional scroll position back to a page
-   * boundary every frame the auto-scroll moves it away from one. Dragging
-   * a card to a day/list off the current page happens through the row `⋯`
-   * action sheet on phone instead (P4) — a more reliable interaction than
-   * blind-dragging toward a page you can't see, not just a workaround for
-   * this.
-   */
-  const autoScroll = layout !== "phone";
+  const autoScroll = computeAutoScroll(layout);
 
   return {
     sensors,
