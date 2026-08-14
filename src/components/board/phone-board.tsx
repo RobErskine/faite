@@ -169,6 +169,7 @@ export function PhoneBoard({
               subtitle="Put off too long"
               todos={filteredOverflow.todos}
               labels={labels}
+              reminderPresets={data.reminderPresets}
               ctx={ctx}
               groups={filteredOverflow.groups}
               collapsedGroups={collapsedGroups}

@@ -530,6 +530,7 @@ export function BoardColumn({
         key={todo.id}
         todo={todo}
         labels={labels}
+        reminderPresets={reminderPresets}
         ctx={ctx}
         isAway={awayTodoIds?.has(todo.id)}
         // A grouped column has no per-card insertion line: its cards are not

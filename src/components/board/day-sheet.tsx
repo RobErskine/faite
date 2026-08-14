@@ -35,6 +35,7 @@ import type {
   DayNote,
   Label as LabelRecord,
   List,
+  ReminderPreset,
   Settings,
   Todo,
 } from "@/lib/schema";
@@ -68,6 +69,8 @@ interface DaySheetProps {
   todos: Todo[];
   timezone: string;
   labels: LabelRecord[];
+  /** Named reminder times (EI-106 P5) — see `TodoMetaBadges`. */
+  reminderPresets?: ReminderPreset[];
   /** Live AND archived lists, so a filed list still colours its cards. */
   listsById: ReadonlyMap<string, List>;
   /** Fallback for a todo with no list, mirroring `groupTodosByList`. */
@@ -129,6 +132,7 @@ function DaySheetContent({
   todos,
   timezone,
   labels,
+  reminderPresets,
   listsById,
   backlog,
   ctx,
@@ -257,6 +261,7 @@ function DaySheetContent({
                         backlog
                       }
                       labels={labels}
+                      reminderPresets={reminderPresets}
                       ctx={ctx}
                       timezone={timezone}
                       onToggleTodo={onToggleTodo}
@@ -313,6 +318,7 @@ interface TimelineEntryProps {
   isLast: boolean;
   list: List | undefined;
   labels: LabelRecord[];
+  reminderPresets?: ReminderPreset[];
   ctx: PlacementContext;
   timezone: string;
   onToggleTodo: (todo: Todo) => void;
@@ -325,6 +331,7 @@ function TimelineEntry({
   isLast,
   list,
   labels,
+  reminderPresets,
   ctx,
   timezone,
   onToggleTodo,
@@ -354,6 +361,7 @@ function TimelineEntry({
         <TodoCard
           todo={event.todo}
           labels={labels}
+          reminderPresets={reminderPresets}
           ctx={ctx}
           draggable={false}
           onToggle={onToggleTodo}

@@ -13,7 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
-import type { Label as LabelRecord, List, Todo } from "@/lib/schema";
+import type { Label as LabelRecord, List, ReminderPreset, Todo } from "@/lib/schema";
 import { toCivilDate, type PlacementContext } from "@/lib/scheduling";
 import { isTextEntry, undoById } from "@/lib/undo";
 import {
@@ -152,6 +152,8 @@ export interface OverdriveOverlayProps {
   listsById: ReadonlyMap<string, List>;
   backlogListId: string;
   labels: LabelRecord[];
+  /** Named reminder times (EI-106 P5) — see `TodoMetaBadges`. */
+  reminderPresets?: ReminderPreset[];
   ctx: PlacementContext;
   onClose: () => void;
   /** `use-board-actions.ts`'s `handleOverdriveVerdict` — the one write path
@@ -179,6 +181,7 @@ function OverdriveOverlayContent({
   listsById,
   backlogListId,
   labels,
+  reminderPresets,
   ctx,
   onClose,
   onVerdict,
@@ -649,6 +652,7 @@ function OverdriveOverlayContent({
                   todo={transitioning ? transitioning.todo : currentTodo}
                   list={transitioning ? transitioning.list : list}
                   labels={labels}
+                  reminderPresets={reminderPresets}
                   ctx={ctx}
                   index={transitioning ? transitioning.index : session.index}
                   total={transitioning ? transitioning.total : session.queue.length}

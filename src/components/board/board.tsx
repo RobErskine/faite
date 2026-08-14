@@ -542,6 +542,7 @@ export function Board() {
       todos={data.nonTemplateTodos}
       timezone={data.settings?.timezone ?? "UTC"}
       labels={data.labels}
+      reminderPresets={data.reminderPresets}
       listsById={data.listsById}
       backlog={data.backlogList}
       ctx={data.ctx}
@@ -570,6 +571,7 @@ export function Board() {
       listsById={data.listsById}
       backlogListId={data.backlogList?.id ?? ""}
       labels={data.labels}
+      reminderPresets={data.reminderPresets}
       ctx={data.ctx}
       onClose={() => ui.setOverdriveOpen(false)}
       onVerdict={actions.handleOverdriveVerdict}

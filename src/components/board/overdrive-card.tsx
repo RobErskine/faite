@@ -1,6 +1,6 @@
 "use client";
 
-import type { Label as LabelRecord, List, Todo } from "@/lib/schema";
+import type { Label as LabelRecord, List, ReminderPreset, Todo } from "@/lib/schema";
 import { formatShortDate, type PlacementContext } from "@/lib/scheduling";
 import { rollEventsFor } from "@/lib/rollover-events";
 import { TodoMetaBadges } from "./todo-row-parts";
@@ -17,6 +17,7 @@ export function OverdriveCard({
   todo,
   list,
   labels,
+  reminderPresets,
   ctx,
   index,
   total,
@@ -25,6 +26,8 @@ export function OverdriveCard({
   /** Null when the todo has no list (lives in Backlog by omission). */
   list: List | null;
   labels: LabelRecord[];
+  /** Named reminder times (EI-106 P5) — see `TodoMetaBadges`. */
+  reminderPresets?: ReminderPreset[];
   ctx: PlacementContext;
   /** 0-based position in the queue, for the "N of M" readout. */
   index: number;
@@ -56,7 +59,13 @@ export function OverdriveCard({
         {todo.scheduledDate && <> · Scheduled {formatShortDate(todo.scheduledDate)}</>}
       </p>
 
-      <TodoMetaBadges todo={todo} labels={labels} today={ctx.today} overflow={overflowInfo} />
+      <TodoMetaBadges
+        todo={todo}
+        labels={labels}
+        reminderPresets={reminderPresets}
+        today={ctx.today}
+        overflow={overflowInfo}
+      />
     </div>
   );
 }

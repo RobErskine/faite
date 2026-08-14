@@ -1,12 +1,13 @@
 "use client";
 
-import { CalendarCheck, CalendarClock, CornerDownRight, MapPin, Repeat } from "lucide-react";
+import { Bell, CalendarCheck, CalendarClock, CornerDownRight, MapPin, Repeat } from "lucide-react";
 import { Badge, badgeVariants } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { priorityRail } from "@/lib/priority";
-import type { CivilDate, Label as LabelRecord, Todo } from "@/lib/schema";
+import type { CivilDate, Label as LabelRecord, ReminderPreset, Todo } from "@/lib/schema";
 import { formatDeadlineDue, formatShortDate, isDeadlineMissed } from "@/lib/scheduling";
+import { reminderLabelFor } from "@/lib/reminder-presets";
 
 /**
  * Shared with `command-palette.tsx` — see the note there on why `TodoCard`
@@ -179,6 +180,7 @@ export function TodoMetaBadges({
   showScheduledDate,
   missedCount,
   overflow,
+  reminderPresets,
 }: {
   todo: Todo;
   labels: LabelRecord[];
@@ -189,6 +191,11 @@ export function TodoMetaBadges({
    * in `lib/rollover-events.ts` — `rolls` counts eligible days since
    * `from`, the same clock that put it here. */
   overflow?: { from: CivilDate; since: CivilDate; rolls: number };
+  /** Named reminder times (EI-106 P5) — resolves `todo.reminderTime` through
+   * `reminderLabelFor` so a preset match reads "🌅 In the morning" instead
+   * of a bare clock time. Omit (or pass `[]`) where presets aren't in scope;
+   * the badge still renders, just always as a formatted clock time. */
+  reminderPresets?: ReminderPreset[];
 }) {
   const deadlineMissed = isDeadlineMissed(todo, { today });
   const todoLabels = labels.filter((l) => todo.labelIds.includes(l.id));
@@ -198,7 +205,8 @@ export function TodoMetaBadges({
     (deadlineMissed && todo.deadline) ||
     (showScheduledDate && todo.scheduledDate) ||
     (missedCount ?? 0) > 1 ||
-    Boolean(overflow);
+    Boolean(overflow) ||
+    Boolean(todo.reminderTime);
 
   if (!hasContent) return null;
 
@@ -208,6 +216,12 @@ export function TodoMetaBadges({
         <Badge variant="outline" className="num gap-1 text-2xs font-normal">
           <CalendarClock className="size-2.5" aria-hidden />
           {formatShortDate(todo.scheduledDate)}
+        </Badge>
+      )}
+      {todo.reminderTime && (
+        <Badge variant="outline" className="num gap-1 text-2xs font-normal">
+          <Bell className="size-2.5" aria-hidden />
+          {reminderLabelFor(todo.reminderTime, reminderPresets ?? [])}
         </Badge>
       )}
       {overflow && (

@@ -6,7 +6,7 @@ import { SortableContext } from "@dnd-kit/sortable";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { TodoCard } from "./todo-card";
 import { cardStop, type NavKey } from "@/lib/column-nav";
-import type { Todo } from "@/lib/schema";
+import type { ReminderPreset, Todo } from "@/lib/schema";
 import type { PlacementContext } from "@/lib/scheduling";
 
 /**
@@ -77,6 +77,7 @@ interface HarnessProps {
   showInsertionLine?: boolean;
   missedCount?: number | null;
   recurrenceSummary?: string;
+  reminderPresets?: ReminderPreset[];
 }
 
 function Harness({
@@ -88,6 +89,7 @@ function Harness({
   showInsertionLine,
   missedCount,
   recurrenceSummary,
+  reminderPresets,
 }: HarnessProps) {
   return (
     <TooltipProvider>
@@ -96,6 +98,7 @@ function Harness({
           <TodoCard
             todo={t}
             labels={[]}
+            reminderPresets={reminderPresets}
             ctx={ctx}
             onToggle={onToggle}
             onOpen={onOpen}
@@ -345,6 +348,44 @@ describe("recurrence", () => {
   it("shows the ×N badge once more than one occurrence has accrued", () => {
     render(<Harness missedCount={3} />);
     expect(badgeRow()?.textContent).toContain("×3");
+  });
+});
+
+describe("TodoCard — reminder badge (EI-106 P5)", () => {
+  const MORNING: ReminderPreset = {
+    id: "p1",
+    ownerId: "u",
+    createdAt: "",
+    updatedAt: "",
+    deletedAt: null,
+    name: "In the morning",
+    time: "08:00",
+    position: "a0",
+    color: null,
+    emoji: "🌅",
+    iconUrl: null,
+  };
+
+  it("shows no reminder badge with no reminderTime", () => {
+    render(<Harness todo={todo({ reminderTime: null })} />);
+    expect(badgeRow()).toBeNull();
+  });
+
+  it("shows a formatted clock time with no matching preset", () => {
+    render(<Harness todo={todo({ reminderTime: "15:45" })} />);
+    expect(badgeRow()?.textContent).toContain("3:45 PM");
+  });
+
+  it("shows the preset's emoji + name when reminderTime matches one", () => {
+    render(
+      <Harness todo={todo({ reminderTime: "08:00" })} reminderPresets={[MORNING]} />,
+    );
+    expect(badgeRow()?.textContent).toContain("🌅 In the morning");
+  });
+
+  it("falls back to a formatted clock time when presets are omitted entirely", () => {
+    render(<Harness todo={todo({ reminderTime: "08:00" })} />);
+    expect(badgeRow()?.textContent).toContain("8:00 AM");
   });
 });
 

@@ -238,6 +238,7 @@ export function DesktopBoard({
             subtitle="Put off too long"
             todos={filteredOverflow.todos}
             labels={labels}
+            reminderPresets={data.reminderPresets}
             ctx={ctx}
             // Grouped like a day column — the origin of a stale to-do is as
             // useful as anything here. `rejectsDrop` below means its groups

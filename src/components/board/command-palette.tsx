@@ -629,6 +629,7 @@ export function CommandPalette({
                         <TodoMetaBadges
                           todo={todo}
                           labels={labels}
+                          reminderPresets={reminderPresets}
                           today={today}
                           showScheduledDate
                         />

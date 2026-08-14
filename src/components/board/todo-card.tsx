@@ -17,12 +17,14 @@ import { cardStop, navKeyOf, type NavKey } from "@/lib/column-nav";
 import { priorityRail } from "@/lib/priority";
 import { TITLE_CLAMP_CLASS } from "@/lib/title";
 import { rollEventsFor } from "@/lib/rollover-events";
-import type { Label as LabelRecord, Todo } from "@/lib/schema";
+import type { Label as LabelRecord, ReminderPreset, Todo } from "@/lib/schema";
 import type { PlacementContext } from "@/lib/scheduling";
 
 interface TodoCardProps {
   todo: Todo;
   labels: LabelRecord[];
+  /** Named reminder times (EI-106 P5) — see `TodoMetaBadges`. */
+  reminderPresets?: ReminderPreset[];
   ctx: PlacementContext;
   /** Scheduled outside the visible window — shown dimmed in its list column. */
   isAway?: boolean;
@@ -72,6 +74,7 @@ interface TodoCardProps {
 export function TodoCard({
   todo,
   labels,
+  reminderPresets,
   ctx,
   isAway,
   showInsertionLine,
@@ -429,6 +432,7 @@ export function TodoCard({
           showScheduledDate={isAway}
           missedCount={missedCount}
           overflow={overflowInfo}
+          reminderPresets={reminderPresets}
         />
       </button>
     </div>
