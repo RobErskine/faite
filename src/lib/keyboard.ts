@@ -192,6 +192,15 @@ const OTHER_KEY_LABEL: Record<string, string> = {
 /** Render a combo for display, e.g. "mod+shift+z" → "⇧⌘Z" on macOS. */
 export function formatCombo(combo: string, platform: Platform): string {
   const { modifiers, key } = parseCombo(combo);
+
+  // "shift+slash" is the produced character "?", not a modifier plus a
+  // glyph — the one shifted-symbol exception §3/§8 carve out (the help
+  // sheet's own shortcut). Rendering it as "⇧/" would be visibly wrong on
+  // the one surface whose job is documenting chords correctly.
+  if (key === "slash" && modifiers.has("shift") && modifiers.size === 1) {
+    return "?";
+  }
+
   const isMac = platform === "mac";
   const order = isMac ? MAC_ORDER : OTHER_ORDER;
   const modifierTable = isMac ? MAC_GLYPH : OTHER_LABEL;

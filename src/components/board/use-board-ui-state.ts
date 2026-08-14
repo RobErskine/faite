@@ -38,6 +38,9 @@ export interface BoardOverlayState {
   /** Overdrive (EI-97). Its own keydown handler needs undo and every other
    * board hotkey held off exactly like every sheet above it. */
   overdriveOpen: boolean;
+  /** The keyboard-shortcut help sheet (EI-75). Same as every other sheet: a
+   * board hotkey firing behind it would edit the board out of sight. */
+  helpSheetOpen: boolean;
 }
 
 /**
@@ -59,7 +62,8 @@ export function computeModalOpen(state: BoardOverlayState): boolean {
     // The day sheet holds a rich-text editor, so board hotkeys — undo
     // especially — must not fire while someone is typing a journal entry.
     !!state.openDay ||
-    state.overdriveOpen
+    state.overdriveOpen ||
+    state.helpSheetOpen
   );
 }
 
@@ -85,6 +89,8 @@ export function useBoardUiState() {
   const [openDay, setOpenDay] = useState<CivilDate | null>(null);
   /** Overdrive (EI-97). */
   const [overdriveOpen, setOverdriveOpen] = useState(false);
+  /** The keyboard-shortcut help sheet (EI-75), opened by `?`. */
+  const [helpSheetOpen, setHelpSheetOpen] = useState(false);
 
   /**
    * Which page the phone shell's bottom bar shows (`phone-board.tsx`, P3).
@@ -166,6 +172,16 @@ export function useBoardUiState() {
         // modal an undo would rewrite the board out of sight. The sheet also
         // holds title/description as local drafts a store write cannot reach.
         run: () => void handleUndo(),
+      },
+      {
+        id: "help-sheet",
+        combo: "shift+slash",
+        label: "Show keyboard shortcuts",
+        group: "Navigation",
+        // Same "no opt-ins" reasoning as undo: dead in text fields (where
+        // "?" must still type a literal question mark), mid-drag, and
+        // behind another modal (the help sheet doesn't stack on top of one).
+        run: () => setHelpSheetOpen((o) => !o),
       },
     ],
     [handleUndo],
@@ -295,6 +311,8 @@ export function useBoardUiState() {
     setOpenDay,
     overdriveOpen,
     setOverdriveOpen,
+    helpSheetOpen,
+    setHelpSheetOpen,
     phoneView,
     setPhoneView,
     landingTodoId,

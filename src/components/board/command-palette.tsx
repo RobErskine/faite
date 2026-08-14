@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 import {
   Command,
@@ -11,6 +11,7 @@ import {
   CommandItem,
   CommandList,
   CommandSeparator,
+  CommandShortcut,
 } from "@/components/ui/command";
 import {
   createLabel,
@@ -33,6 +34,15 @@ import { TITLE_CLAMP_CLASS } from "@/lib/title";
 import type { Label as LabelRecord, List, Settings, Tab, Todo, TodoStatus } from "@/lib/schema";
 import type { MentionLabelOption, MentionListOption, MentionPick } from "./board-column";
 import { QuickAddPreview } from "./quick-add-preview";
+import { detectPlatform, formatCombo, type Platform } from "@/lib/keyboard";
+
+/** Never changes within a page's life — same rationale as `usePlatform` in todo-sheet.tsx. */
+const subscribeToNothing = () => () => {};
+
+/** Display-only platform sniff, client-safe — see todo-sheet.tsx's `usePlatform`. */
+function usePlatform(): Platform {
+  return useSyncExternalStore(subscribeToNothing, detectPlatform, () => "other");
+}
 
 /**
  * The status filter, in the same order and wording as the DateNav control —
@@ -70,6 +80,8 @@ interface CommandPaletteProps {
    * the same unfiltered count the column's own Overdrive button (EI-97) uses. */
   overflowCount: number;
   onOpenOverdrive: () => void;
+  /** `?` opens the same sheet — see help-sheet.tsx. */
+  onOpenHelp: () => void;
 }
 
 type Mode =
@@ -105,7 +117,9 @@ export function CommandPalette({
   onDeleteTodo,
   overflowCount,
   onOpenOverdrive,
+  onOpenHelp,
 }: CommandPaletteProps) {
+  const platform = usePlatform();
   const [mode, setMode] = useState<Mode>({ kind: "root" });
   const [value, setValue] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -686,6 +700,15 @@ export function CommandPalette({
               <CommandItem onSelect={() => { setMode({ kind: "delete-tab" }); setValue(""); }}>
                 Delete a tab…
               </CommandItem>
+              <CommandItem
+                onSelect={() => {
+                  onOpenHelp();
+                  close();
+                }}
+              >
+                Keyboard shortcuts
+                <CommandShortcut>{formatCombo("shift+slash", platform)}</CommandShortcut>
+              </CommandItem>
             </CommandGroup>
 
             <CommandSeparator />
@@ -778,9 +801,9 @@ export function CommandPalette({
       </CommandList>
       {mode.kind === "root" && results.length > 0 ? (
         <div className="flex items-center gap-3 border-t border-border/60 px-3 py-1.5 text-xs text-muted-foreground">
-          <span>⌘⏎ complete</span>
-          <span>⌘⌫ won&apos;t do</span>
-          <span>⌘⇧⌫ delete</span>
+          <span>{formatCombo("mod+enter", platform)} complete</span>
+          <span>{formatCombo("mod+backspace", platform)} won&apos;t do</span>
+          <span>{formatCombo("shift+mod+backspace", platform)} delete</span>
         </div>
       ) : null}
       </Command>

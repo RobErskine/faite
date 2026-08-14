@@ -152,6 +152,7 @@ function renderPalette(
     onDeleteTodo: () => {},
     overflowCount: 0,
     onOpenOverdrive: () => {},
+    onOpenHelp: () => {},
     ...overrides,
   };
   return render(<CommandPalette {...props} />);

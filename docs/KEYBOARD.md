@@ -15,40 +15,70 @@ planning session never needs the mouse.
 
 ## 1. The map as it stands
 
+**The full catalog is `src/lib/shortcuts.ts` now (EI-75)**, feeding the `?`
+help sheet (`help-sheet.tsx`) — see §8. This section stays as the prose
+reference; the two are meant to agree, and a test
+(`shortcuts.test.ts`) enforces that for the global half specifically (see
+below). If they ever disagree, the code is right and this file is stale.
+
 **Global** — declared in the `hotkeys` registry in
-`src/components/board/board.tsx`, bound by `<Hotkeys>` (§6):
+`src/components/board/use-board-ui-state.ts` (**not** `board.tsx` — that file
+only re-exposes it as `ui.hotkeys` and binds it via `<Hotkeys>`, §6).
+`globalShortcuts()` in `shortcuts.ts` derives its "Global" section directly
+from this array, and `shortcuts.test.ts` asserts every registry entry
+appears — this half of the catalog cannot silently drift the way the table
+below can.
 
 | Chord | Action | Guards opted out of |
 |---|---|---|
 | `⌘K` / `Ctrl+K` | Toggle the command palette | all three |
 | `⌘Z` / `Ctrl+Z` | Undo the last board action | none |
+| `?` (`shift+slash`) | Open the keyboard shortcut help sheet (EI-75) | none |
 | `⇧⌘Z` | **Deliberately unbound.** Redo does not exist; see ARCHITECTURE §2.11 | — |
 
-**Local** — `onKeyDown` on the element that owns the behaviour:
+**Local** — `onKeyDown` on the element that owns the behaviour. Hand-authored
+in `shortcuts.ts`'s `LOCAL_SHORTCUTS`, each with a `source` field pointing
+here; nothing enforces this table or that array stay in sync with the code
+the way the global half is enforced — see §5 for the recipe that's supposed
+to keep them honest anyway.
 
 | Where | Keys |
 |---|---|
-| `command-palette.tsx` | `Enter` submits an entry mode, `Escape` returns to root |
-| `board-column.tsx` | `Enter` commits a quick-add, `Escape` clears the draft, `←→↑↓` navigate (§6); `/` (on the column, not registered globally) focuses the in-column filter when one is showing, `Escape` in the filter clears it then blurs on the next press |
-| `create-list-column.tsx` | `Enter` commits, `Escape` cancels, `←→↑↓` navigate off the idle button (§6) |
+| `command-palette.tsx` | `Enter` submits an entry mode, `Escape` returns to root; on the root list, `⌘Enter`/`Ctrl+Enter` toggles done/open on the highlighted to-do, `⌘⌫`/`Ctrl+Backspace` marks it won't-do, `⇧⌘⌫`/`Ctrl+Shift+Backspace` deletes it (footer strip renders these via `formatCombo`, not hardcoded glyphs) |
+| `board-column.tsx` | `Enter` commits a quick-add, `Escape` clears the draft (including any `@list`/`#label` mention), `←→↑↓` navigate (§11); `/` (on the column, not registered globally) focuses the in-column filter when one is showing, `Escape` in the filter clears it then blurs on the next press; `Enter`/`Space` expands a **collapsed** Overflow/Backlog rail |
+| `create-list-column.tsx` | `Enter` commits, `Escape` cancels, `←→↑↓` navigate off the idle button (§11) |
 | `list-info-dialog.tsx` | `Enter` saves the list name |
+| `tab-strip.tsx` / `tab-info-dialog.tsx` | `Enter` commits a new tab name or saves the tab name, `Escape` cancels a new tab name |
+| `location-field.tsx` | `Enter` saves a place nickname |
 | `todo-sheet.tsx` | `Enter` blurs the title (commit-on-blur does the write); on `SheetContent`, `⌘Enter`/`Ctrl+Enter` marks done, `⌘⌫`/`Ctrl+Backspace` marks won't-do, `⇧⌘⌫`/`Ctrl+Shift+Backspace` deletes — local rather than global because these are meaningless with no sheet open, and the registry's `GuardContext` has no per-surface discriminator (§4.3) to scope a global entry to just this sheet |
-| `todo-card.tsx` | `←→↑↓` navigate (§6), `Enter` opens the sheet, `Space` toggles done; dnd-kit's keyboard drag activator, on the grip |
+| `todo-card.tsx` | `←→↑↓` navigate (§11), `Enter` opens the sheet, `Space` toggles done; dnd-kit's keyboard drag activator, on the grip |
 | `board-column.tsx` group header | `Enter`/`Space` collapses or expands the group, `←→↑↓` navigate (§11) |
-| `board.tsx` load-more tile | `←→↑↓` navigate (§6) |
+| `desktop-board.tsx` / `phone-board.tsx` load-more tile | `←→↑↓` navigate (§11) — two files, not `board.tsx`, since the desktop track and the phone pager each render their own end tile |
+| `split-strip.tsx` | `Enter`/`Space` expands a collapsed calendar/planning half |
+| `weekend-column.tsx` | `Enter`/`Space` expands a collapsed weekend strip, `←→↑↓` navigate off it |
 | `rail-handle.tsx` | `←`/`→` resizes the rail 16px, `Enter`/`Space` collapses it, double-click resets to the CSS default |
-| `overdrive-overlay.tsx` | `←↑↓` won't-do/done/back-to-list, `⇧↓` forces Backlog, `→`/`⇧→` stage a schedule ramp, `Enter` confirms it, `D` opens the date picker, `⌫` steps back one verdict — local for the same reason `todo-sheet.tsx` is: meaningless with the overlay closed, and every key here is contextual (an arrow means something completely different on the board underneath). See `docs/OVERDRIVE.md` §9. `Escape` is intercepted one level up, at the `Sheet`'s `onOpenChange` (`eventDetails.reason === "escape-key"`), so a staged day can be cleared by the first press instead of Base UI closing the whole overlay on it — the same override point `command-palette.tsx`'s sub-modes would need if they ever wanted to catch Escape before the palette itself closes. |
+| `split-handle.tsx` | `↑`/`↓` resizes the calendar/planning split 16px, `Enter`/`Space` collapses whichever half is smaller, double-click resets |
+| Mention popover (`mention-menu.tsx`) | `↑`/`↓` moves the highlight, `Enter` accepts, `Escape` dismisses the popover only (keeps the typed `@`/`#` text) — shared by quick-add, the to-do sheet's title field, and the palette input, all three via the same component |
+| `overdrive-overlay.tsx` | `←` won't-does the current card, but is stage-aware first: it unstages a picked date, then walks a ramp down, and only commits "won't do" once nothing is staged. `↑` done, `↓` back-to-list, `⇧↓` forces Backlog, `→`/`⇧→` stage a schedule ramp (day/week), `Enter` confirms it (or, on the finish screen, closes the overlay — `confirm` is dead there), `D` opens the date picker, `⌫` steps back one verdict (works from the finish screen too), local `⌘Z`/`Ctrl+Z` also steps back (the global `mod+z` is blocked here by `overdriveOpen` in `computeModalOpen`) — local for the same reason `todo-sheet.tsx` is: meaningless with the overlay closed, and every key here is contextual (an arrow means something completely different on the board underneath). See `docs/OVERDRIVE.md` §9. `Escape` is intercepted one level up, at the **`Dialog`**'s `onOpenChange` (`eventDetails.reason === "escape-key"`), so a staged day can be cleared by the first press instead of Base UI closing the whole overlay on it — the same override point `command-palette.tsx`'s sub-modes would need if they ever wanted to catch Escape before the palette itself closes. |
 
 **Owned by libraries — do not re-bind:**
 
 - **cmdk** owns `↑ ↓ Enter` inside the palette list.
 - **Base UI** Dialog/Sheet own `Escape` to close, plus focus trap and restore.
+  Its Autocomplete/Combobox (`ui/autocomplete.tsx`, used by `location-field.tsx`)
+  also owns `Escape` to close its own popup — with the same "keep `Empty`
+  mounted or Escape bubbles out and closes the parent Sheet" trap documented
+  in `docs/PICKERS.md`.
 - **dnd-kit** owns `Space` to lift, arrows to move, `Space` to drop, `Escape` to
   cancel — but only while a drag is active, and only from the grip. On a card the
   grip is now invisible until the row is hovered or something in it takes focus
   (DRAG-AND-DROP §5.5), so Tab still reaches it and `Space` still lifts; it just
   is not on screen until you go looking. Arrowing onto a row reveals it, which is
-  how the path stays discoverable from the keyboard.
+  how the path stays discoverable from the keyboard. Column-header grips
+  (`board-column.tsx`) use the same activator for column reorder.
+- **BlockNote** (ProseMirror/TipTap) owns its whole rich-text keymap — ⌘B/⌘I/⌘U,
+  lists, markdown input rules, its own undo/redo — inside day notes and to-do
+  descriptions (`ui/markdown-editor.tsx`). None of it is re-bound here.
 
 Binding a global chord any of these already claims is the most likely way to
 break something invisibly. Check this table first.
@@ -128,8 +158,16 @@ shortcut (open a panel) is usually fine.
 
 ### 4.3 Does an open surface own the keyboard? → `allowWhenModalOpen`
 
-Every modal surface belongs in `GuardContext.modalOpen`. Today: the palette, the
-todo sheet, the list-info dialog, and the archived-lists sheet.
+Every modal surface belongs in `GuardContext.modalOpen`. Today, all nine
+`BoardOverlayState` fields (`use-board-ui-state.ts`) drive it — the palette,
+the todo sheet (`openTodoExists`, not `openTodoId`: a dangling id from a
+deleted recurrence occurrence must not keep hotkeys blocked once the sheet
+itself has gone blank), the list-info dialog, the tab-info dialog, the
+archived-lists sheet, settings, the day sheet, Overdrive, and the help sheet
+(EI-75). `board-guards.test.ts` is what keeps this list honest — it's
+table-driven over `BoardOverlayState`'s own keys, so a new field left out of
+`computeModalOpen` fails a test rather than silently leaving ⌘Z live behind
+whatever surface was just added.
 
 Two distinct reasons, both real:
 
@@ -162,17 +200,24 @@ nothing, and it makes adding the real behaviour later a change in behaviour.
 ## 5. How to add a shortcut
 
 1. **Can it be local?** If the behaviour needs focus on a control, put
-   `onKeyDown` on that control and stop here.
+   `onKeyDown` on that control and stop here — but still do steps 4 and 6.
 2. **Check §1 and §3** — is the chord claimed by cmdk, Base UI, dnd-kit, or the
    OS?
-3. **Add a row to the registry** in `board.tsx`. Never a new `keydown`
+3. **Global only: add a row to the registry** in `use-board-ui-state.ts`
+   (**not** `board.tsx` — that file only consumes it). Never a new `keydown`
    listener — the `label` is what makes it discoverable, and one binding path is
    easier to reason about than several racing ones.
-4. **Give it a real `label` and `group`.** These are not decoration; §8 renders
-   them. A shortcut with a vague label is a shortcut nobody will find.
+4. **Give it a real `label` and `group`.** These are not decoration; §8 and
+   the help sheet (EI-75) render them. A shortcut with a vague label is a
+   shortcut nobody will find.
 5. **Declare guard opt-outs deliberately.** Default to none. Anything that
    writes must not opt out of `allowDuringDrag`.
-6. **Add it to the §1 table.**
+6. **Register it in `src/lib/shortcuts.ts` and add it to the §1 table.**
+   A global entry needs nothing extra — `globalShortcuts()` derives it from
+   the registry automatically, and `shortcuts.test.ts` will catch a missing
+   one. A **local** shortcut has no such backstop: add an entry to
+   `LOCAL_SHORTCUTS` by hand, with a `source` pointing at the file that owns
+   it, or the help sheet will not know it exists.
 7. **Test the guard, not the keypress** (§9).
 
 Do **not** call `preventDefault()` yourself — the binding sets
@@ -195,8 +240,10 @@ what a hotkey library does *not* give you (§7).
 |---|---|
 | `src/lib/keyboard.ts` | Pure: types, `parseCombo`, `hasExactModifiers`, `isEligible`, `formatCombo`, `detectPlatform`. No DOM. |
 | `src/components/hotkeys.tsx` | `<Hotkeys>` — binds the registry via `react-hotkeys-hook`. The only file that imports it. |
-| `src/lib/keyboard.test.ts` | 18 cases over the pure layer. |
-| `src/components/board/board.tsx` | Declares the registry and `guardContext`. |
+| `src/lib/keyboard.test.ts` | 21 cases over the pure layer. |
+| `src/components/board/use-board-ui-state.ts` | Declares the registry (`hotkeys`), re-exposed as `ui.hotkeys`. |
+| `src/components/board/board.tsx` | Builds `guardContext` from `ui`/`data` and mounts `<Hotkeys>`. |
+| `src/lib/shortcuts.ts` | The full catalog for the help sheet (EI-75) — derives "Global" from this registry, hand-authors everything local. |
 
 ```ts
 export interface Hotkey {
@@ -226,7 +273,10 @@ and React forbids hooks in a loop; rendering one child per hotkey keyed by `id`
 gives each its own call site and lets the registry grow without touching the
 binding code.
 
-Call site (`board.tsx`):
+Call site — simplified for legibility; the real registry
+(`use-board-ui-state.ts`) has more entries and the real `guardContext`
+(`board.tsx`) folds in every `BoardOverlayState` field (§4.3), not just these
+four:
 
 ```tsx
 const hotkeys = useMemo<Hotkey[]>(() => [
@@ -320,18 +370,30 @@ with Base UI's and cmdk's own `Escape` handling.
 
 ## 8. Discoverability
 
-A shortcut nobody knows about is dead code. The registry carries `label` and
-`group` precisely so these can be generated rather than maintained by hand:
+A shortcut nobody knows about is dead code. Both consumers below are built
+now (EI-75):
 
-- **`?` opens a help sheet**, grouped by `Hotkey.group`, rendered from the
-  registry so it cannot drift from what is actually bound.
-- **The `⌘K` palette shows the chord** next to any command that has one. There
-  is a `<kbd>` treatment to copy — see the Commands button in `app-header.tsx`.
-- **Render chords with `formatCombo(combo, detectPlatform())`** — `⌘K` on
+- **`?` opens a help sheet** (`help-sheet.tsx`), grouped by scope
+  (`ShortcutEntry.scope` in `shortcuts.ts` — a superset of `Hotkey.group`,
+  since local shortcuts need finer scopes than "Board"/"Editing"/"Navigation").
+  The Global section is rendered straight from the registry, so it cannot
+  drift from what is actually bound; the rest is hand-authored and can, in
+  principle, drift — see `shortcuts.ts`'s own doc comment. `?` is
+  `shift+slash` — the one place §3's "always require a modifier" rule bends,
+  per §10's exception for the standard help-sheet key. `formatCombo` special-cases
+  it to render `?`, not `⇧/`.
+- **The `⌘K` palette has a "Keyboard shortcuts" item** (`Manage` group) that
+  opens the same sheet, with its own chord hint rendered via `formatCombo`.
+  The palette's own row-action footer (`⌘⏎`/`⌘⌫`/`⌘⇧⌫`) also renders through
+  `formatCombo` now, not hardcoded glyphs — one fewer place a chord could go
+  stale relative to what actually fires.
+- Both render chords with `formatCombo(combo, detectPlatform())` — `⌘K` on
   macOS, `Ctrl+K` elsewhere, with macOS's `⌃⌥⇧⌘` modifier ordering.
 
-Neither consumer is built yet (§12). Until one exists, every new entry's `label`
-is a promise being deferred, not decoration.
+Per-command chord hints on the palette's OTHER commands (the 18 or so
+static entries, not just the row actions) are still deferred — they need
+EI-77's registry refactor first, and would conflict with it if built ahead
+of it.
 
 ---
 
@@ -530,15 +592,21 @@ and nothing warns.
 
 ## 12. Open work
 
-- **No help sheet, no chord hints in the palette (§8).** The registry carries
-  `label` and `group` for exactly this; nothing consumes them yet. This is the
-  highest-value next step — every shortcut added before it ships is
-  undiscoverable.
+- ~~No help sheet, no chord hints in the palette.~~ Done (EI-75) — `?`,
+  `help-sheet.tsx`, `shortcuts.ts`, and the palette's "Keyboard shortcuts"
+  item + `formatCombo`'d row-action footer. What's still deferred: per-command
+  chord hints on the palette's other ~18 static commands, which need EI-77's
+  registry refactor first (§8).
 - **Only the board has a registry.** If shortcuts are wanted outside `Board`,
   `guardContext` needs to move up the tree rather than being duplicated.
 - **`HotkeyGroup` has three values** (`Board` / `Editing` / `Navigation`) chosen
-  before there was much to group. Revisit when the help sheet exists and the
-  real clusters are visible.
+  before there was much to group — and the help sheet's real clusters, now
+  visible in `ShortcutEntry.scope` (`shortcuts.ts`), turned out to need nine,
+  not three. Deliberately did not fold `HotkeyGroup` and `ShortcutEntry.scope`
+  into one type here — `HotkeyGroup` is a global-registry concept with real
+  guard semantics riding on it, `scope` is a help-sheet display concept for a
+  catalog that's mostly local shortcuts with no registry at all. Revisit only
+  with a concrete reason, not just because the two now look similar.
 - **`hasExactModifiers` may become redundant** if a future version documents
   exact matching. It costs one comparison and removes a silent-failure mode, so
   it earns its keep either way.

@@ -131,6 +131,15 @@ describe("formatCombo", () => {
     expect(formatCombo("mod+k", "mac")).toBe("⌘K");
   });
 
+  it("renders shift+slash as '?', not '⇧/', on every platform", () => {
+    expect(formatCombo("shift+slash", "mac")).toBe("?");
+    expect(formatCombo("shift+slash", "other")).toBe("?");
+  });
+
+  it("does not apply the '?' special case to a shift+slash combo carrying another modifier", () => {
+    expect(formatCombo("mod+shift+slash", "mac")).toBe("⇧⌘/");
+  });
+
   it("spells modifiers out elsewhere", () => {
     expect(formatCombo("mod+k", "other")).toBe("Ctrl+K");
   });

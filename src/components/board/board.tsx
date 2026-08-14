@@ -24,6 +24,7 @@ import { TodoSheet } from "./todo-sheet";
 import { ListInfoDialog } from "./list-info-dialog";
 import { TabInfoDialog } from "./tab-info-dialog";
 import { ArchivedListsSheet } from "./archived-lists-sheet";
+import { HelpSheet } from "./help-sheet";
 import { SettingsSheet } from "@/components/settings/settings-sheet";
 import { CommandPalette } from "./command-palette";
 import { DaySheet } from "./day-sheet";
@@ -248,6 +249,7 @@ export function Board() {
       settingsOpen: ui.settingsOpen,
       openDay: ui.openDay,
       overdriveOpen: ui.overdriveOpen,
+      helpSheetOpen: ui.helpSheetOpen,
     }),
   };
 
@@ -484,6 +486,8 @@ export function Board() {
         settings={data.settings}
       />
 
+      <HelpSheet open={ui.helpSheetOpen} onOpenChange={ui.setHelpSheetOpen} hotkeys={hotkeys} />
+
       <CommandPalette
         open={ui.paletteOpen}
         onOpenChange={ui.setPaletteOpen}
@@ -504,6 +508,7 @@ export function Board() {
         onDeleteTodo={actions.handleDelete}
         overflowCount={data.board.overflow.todos.length}
         onOpenOverdrive={() => ui.setOverdriveOpen(true)}
+        onOpenHelp={() => ui.setHelpSheetOpen(true)}
       />
 
       <SessionProvider />
