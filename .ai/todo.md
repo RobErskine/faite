@@ -1312,3 +1312,20 @@ their Linear status/comment update.)
       visible in Settings and reachable via the picker. Commit 27be258.
 
 (Linear still unreachable — EI-107/108/109 all pending their Linear updates.)
+
+- [x] **EI-110** (EI-106 P4) — quick-add / palette learn preset names.
+      `parseQuickAdd(input, today, presets = [])` — trailing-word scan tries
+      numeric `matchTime` first (unchanged), falls back to a substring match
+      against preset names (`matchPresetTime`, same model as
+      `parsePresetQuery`'s "match" branch — exact matching would miss
+      multi-word names like "End of day"). Ambiguous words resolve to
+      nothing. Threaded through every call site: `handleQuickAdd` (the
+      write), `board-column.tsx`'s live preview (both desktop/phone),
+      `command-palette.tsx` (write + preview), `todo-sheet.tsx`'s inline
+      title quick-add. All optional/defaulted — additive only. 7 new tests,
+      full suite green (1398), `verify`/`e2e` green, live Playwright
+      confirms "gym tomorrow morning" end to end. Commit 8d96ff6.
+
+Only EI-113 (P5 — card badge, e2e, docs/REMINDERS.md) left to close EI-106.
+
+(Linear still unreachable — EI-107/108/109/110 all pending their Linear updates.)
