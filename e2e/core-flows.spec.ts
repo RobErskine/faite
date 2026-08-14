@@ -95,11 +95,11 @@ test("a todo's History section logs `created`, then `done` (EI-94)", async ({ pa
   const sheet = page.locator('[data-slot="sheet-content"]');
   await expect(sheet).toBeVisible();
 
-  // Collapsed by default — expand it. `HISTORY_STARTS_AT` (todo-timeline.ts)
-  // must sort before this fixture's frozen clock (`FROZEN_TIME`,
-  // support/fixtures.ts), or this todo would render as pre-history and the
-  // count below would include a marker row it isn't expecting.
-  await sheet.getByRole("button", { name: /history/i }).click();
+  // Open by default (todo-sheet.tsx HistorySection) — no click needed.
+  // `HISTORY_STARTS_AT` (todo-timeline.ts) must sort before this fixture's
+  // frozen clock (`FROZEN_TIME`, support/fixtures.ts), or this todo would
+  // render as pre-history and the count below would include a marker row
+  // it isn't expecting.
   const historyList = sheet.getByRole("list", { name: /^History for/ });
   await expect(historyList.getByRole("listitem")).toHaveCount(1);
 
@@ -114,8 +114,9 @@ test("a todo's History section logs `created`, then `done` (EI-94)", async ({ pa
   // "Create to-do…" fallback option, which quotes the typed title too.
   await page.getByRole("option", { name: new RegExp(`^${title}`) }).click();
 
+  // Reopening the sheet remounts HistorySection, which is open by default —
+  // no click needed here either.
   await expect(sheet).toBeVisible();
-  await sheet.getByRole("button", { name: /history/i }).click();
   await expect(sheet.getByRole("list", { name: /^History for/ }).getByRole("listitem")).toHaveCount(2);
 });
 
