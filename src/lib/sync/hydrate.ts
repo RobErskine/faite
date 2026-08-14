@@ -5,6 +5,7 @@ import {
   listSchema,
   placeSchema,
   projectSchema,
+  reminderPresetSchema,
   settingsSchema,
   tabSchema,
   todoEventSchema,
@@ -36,6 +37,7 @@ const SCHEMA_BY_KIND: Record<SyncKind, ZodType> = {
   dayNote: dayNoteSchema,
   place: placeSchema,
   todoEvent: todoEventSchema,
+  reminderPreset: reminderPresetSchema,
   settings: settingsSchema,
 };
 

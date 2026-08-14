@@ -12,6 +12,7 @@ describe("TABLE_NAME_BY_KIND / COLUMNS_BY_KIND", () => {
       dayNote: "day_notes",
       place: "places",
       todoEvent: "todo_events",
+      reminderPreset: "reminder_presets",
       settings: "settings",
     });
   });

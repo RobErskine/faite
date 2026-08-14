@@ -6,6 +6,7 @@ import type {
   Place,
   Priority,
   Project,
+  ReminderPreset,
   Tab,
   Todo,
   TodoEvent,
@@ -791,6 +792,52 @@ export async function toggleTodoLabel(todoId: string, labelId: string): Promise<
     ? todo.labelIds.filter((l) => l !== labelId)
     : [...todo.labelIds, labelId];
   await mutate("todo", todoId, { labelIds });
+}
+
+// ---------------------------------------------------------------------------
+// Reminder presets (EI-106 P1)
+// ---------------------------------------------------------------------------
+
+export async function createReminderPreset(
+  name: string,
+  time: string,
+  decoration: Partial<Pick<ReminderPreset, "color" | "emoji" | "iconUrl">> = {},
+): Promise<string> {
+  const db = getDb();
+  const last = await db.reminderPresets.orderBy("position").last();
+  const timestamp = now();
+  const preset: ReminderPreset = {
+    id: newId(),
+    ownerId: getCurrentOwnerId(),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    deletedAt: null,
+    name,
+    time,
+    position: positionAtEnd(last?.position ?? null),
+    color: decoration.color ?? null,
+    emoji: decoration.emoji ?? null,
+    iconUrl: decoration.iconUrl ?? null,
+  };
+  return create("reminderPreset", preset);
+}
+
+export async function updateReminderPreset(
+  id: string,
+  patch: Partial<Omit<ReminderPreset, "id" | "ownerId" | "createdAt">>,
+): Promise<void> {
+  await mutate("reminderPreset", id, patch);
+}
+
+/**
+ * Deletes a preset and touches nothing else. Deliberately unlike
+ * `deleteLabel`, which strips the id from every `labelIds` array — a todo's
+ * `reminderTime` is a literal `"HH:MM"` value the preset resolved to, not a
+ * reference, so there is nothing to clean up. The reminder survives the
+ * preset and simply renders as a plain time again (EI-106 decision 4).
+ */
+export async function deleteReminderPreset(id: string): Promise<void> {
+  await remove("reminderPreset", id);
 }
 
 // ---------------------------------------------------------------------------

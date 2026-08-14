@@ -139,6 +139,15 @@ export const todoEvents = sqliteTable("todo_events", {
   payload: text("payload"),
 });
 
+/** Named reminder times — see `reminderPresetSchema` in `lib/schema.ts`. */
+export const reminderPresets = sqliteTable("reminder_presets", {
+  ...syncableColumns,
+  ...decorationColumns,
+  name: text("name").notNull(),
+  time: text("time").notNull(),
+  position: text("position").notNull(),
+});
+
 /** Singleton row, keyed by `ownerId` — one settings row per DO (one owner per DO). */
 export const settings = sqliteTable("settings", {
   ownerId: text("owner_id").primaryKey(),
@@ -171,6 +180,10 @@ export const settings = sqliteTable("settings", {
   /** Nullable: null means "never resized", the CSS default applies. */
   splitRatio: integer("split_ratio"),
   splitCollapsed: text("split_collapsed").notNull().default("none"),
+  /** Guards the first-run reminder-preset seed — see `settingsSchema` doc comment. */
+  reminderPresetsSeeded: integer("reminder_presets_seeded", { mode: "boolean" })
+    .notNull()
+    .default(false),
   updatedAt: text("updated_at").notNull(),
   version: integer("version").notNull(),
 });

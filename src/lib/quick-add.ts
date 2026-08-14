@@ -186,7 +186,9 @@ function matchPriority(word: string): Priority | null {
   return match ? (Number(match[1]) as Priority) : null;
 }
 
-function matchTime(word: string): string | null {
+/** Exported for `reminder-presets.ts` (EI-106 P1) — the same "HH:MM" grammar
+ * a preset's own combobox parses, so there is one time tokenizer, not two. */
+export function matchTime(word: string): string | null {
   const meridiem = /^(\d{1,2})(?::([0-5]\d))?(am|pm|a|p)$/i.exec(word);
   if (meridiem) {
     const hour12 = Number(meridiem[1]);
@@ -206,7 +208,9 @@ function matchTime(word: string): string | null {
   return null;
 }
 
-function formatTimeLabel(time: string): string {
+/** Exported as `formatReminderTime` from `reminder-presets.ts` (EI-106 P1) —
+ * "14:00" -> "2:00 PM", reused rather than re-implemented there. */
+export function formatTimeLabel(time: string): string {
   const [hStr, mStr] = time.split(":");
   const hour = Number(hStr);
   const period = hour < 12 ? "AM" : "PM";

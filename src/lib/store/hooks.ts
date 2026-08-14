@@ -9,6 +9,7 @@ import type {
   List,
   Place,
   Project,
+  ReminderPreset,
   Settings,
   Tab,
   Todo,
@@ -145,6 +146,17 @@ export function useArchivedTabs(): Tab[] {
 
 export function useLabels(): Label[] {
   const rows = useLiveQuery(() => getDb().labels.toArray(), [], [] as Label[]);
+  return useMemo(() => alive(rows).sort(byPosition), [rows]);
+}
+
+/** Named reminder times (EI-106). Sorted by `position` — the picker itself
+ * re-sorts by `time` for its own chronological display (`reminder-presets.ts`). */
+export function useReminderPresets(): ReminderPreset[] {
+  const rows = useLiveQuery(
+    () => getDb().reminderPresets.toArray(),
+    [],
+    [] as ReminderPreset[],
+  );
   return useMemo(() => alive(rows).sort(byPosition), [rows]);
 }
 

@@ -6,6 +6,7 @@ import type {
   OutboxEntry,
   Place,
   Project,
+  ReminderPreset,
   Settings,
   Tab,
   Todo,
@@ -29,6 +30,7 @@ export class FaiteDatabase extends Dexie {
   dayNotes!: EntityTable<DayNote, "id">;
   places!: EntityTable<Place, "id">;
   todoEvents!: EntityTable<TodoEvent, "id">;
+  reminderPresets!: EntityTable<ReminderPreset, "id">;
   settings!: EntityTable<Settings, "ownerId">;
   outbox!: EntityTable<OutboxEntry, "id">;
 
@@ -69,6 +71,13 @@ export class FaiteDatabase extends Dexie {
     // `useTodoEvents()`'s `.where("todoId").equals(id)` sorted by `at`.
     this.version(5).stores({
       todoEvents: "id, todoId, [todoId+at], deletedAt",
+    });
+    // Named reminder times (`lib/schema.ts`'s `reminderPresetSchema`, EI-106
+    // P1). `position` indexed for the Settings reorder; the picker itself
+    // sorts by `time` in memory, which doesn't need an index for a handful
+    // of rows.
+    this.version(6).stores({
+      reminderPresets: "id, position, deletedAt",
     });
   }
 }

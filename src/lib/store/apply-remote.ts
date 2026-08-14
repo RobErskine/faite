@@ -24,6 +24,7 @@ type RecordTable =
   | "dayNotes"
   | "places"
   | "todoEvents"
+  | "reminderPresets"
   | "settings";
 
 const TABLE_BY_KIND: Record<EntityKind, RecordTable> = {
@@ -35,6 +36,7 @@ const TABLE_BY_KIND: Record<EntityKind, RecordTable> = {
   dayNote: "dayNotes",
   place: "places",
   todoEvent: "todoEvents",
+  reminderPreset: "reminderPresets",
   settings: "settings",
 };
 
@@ -63,6 +65,7 @@ export async function applyPulledChanges(changes: WireChange[]): Promise<ApplyPl
       db.dayNotes,
       db.places,
       db.todoEvents,
+      db.reminderPresets,
       db.settings,
       db.outbox,
     ],

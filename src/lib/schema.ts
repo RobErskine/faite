@@ -482,6 +482,13 @@ export const settingsSchema = z.object({
    * "both collapsed at once" is unrepresentable rather than merely avoided.
    */
   splitCollapsed: z.enum(["none", "calendar", "planning"]).default("none"),
+  /**
+   * Guards the first-run reminder-preset seed (EI-106 P3) so deleting all
+   * five defaults doesn't resurrect them on next boot — an empty-table check
+   * would do exactly that. Flips true the one time the seed runs; never
+   * false again.
+   */
+  reminderPresetsSeeded: z.boolean().default(false),
   updatedAt: z.string(),
 });
 export type Settings = z.infer<typeof settingsSchema>;
@@ -521,6 +528,31 @@ export const tabSchema = z.object({
 });
 export type Tab = z.infer<typeof tabSchema>;
 
+/**
+ * A named, reusable reminder time — "In the morning" → `08:00` — picked
+ * instead of typed (EI-106). A first-class synced entity like `Label`, not a
+ * JSON column on `settings`: `settings` is flat by design so each edit is its
+ * own outbox entry (`store/mutate.ts`), and a JSON array of presets would
+ * clobber across devices on concurrent edits.
+ *
+ * Todos bind to a preset BY VALUE, not by reference — `Todo.reminderTime`
+ * stores the literal `"HH:MM"` a preset resolved to, never a
+ * `reminderPresetId`. Retiming a preset therefore relabels existing
+ * reminders sitting on the old time rather than moving them; deleting a
+ * preset touches no todo at all. See `docs/REMINDERS.md`.
+ */
+export const reminderPresetSchema = z.object({
+  ...syncableFields,
+  ...decorationSchema.shape,
+  name: z.string().min(1),
+  /** Wall-clock time of day, "HH:MM" — same convention as `Todo.reminderTime`. */
+  time: z.string().regex(/^\d{2}:\d{2}$/),
+  /** Fractional index. See lib/ordering.ts. Chronological (`time`) order is
+   * what the picker shows; this is only for the Settings reorder. */
+  position: z.string(),
+});
+export type ReminderPreset = z.infer<typeof reminderPresetSchema>;
+
 /** Entity kinds that sync. Used to route outbox entries. */
 export const entityKindSchema = z.enum([
   "todo",
@@ -531,6 +563,7 @@ export const entityKindSchema = z.enum([
   "dayNote",
   "place",
   "todoEvent",
+  "reminderPreset",
   "settings",
 ]);
 export type EntityKind = z.infer<typeof entityKindSchema>;

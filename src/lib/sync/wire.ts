@@ -33,6 +33,7 @@ export const SYNC_KINDS = [
   "dayNote",
   "place",
   "todoEvent",
+  "reminderPreset",
   "settings",
 ] as const satisfies readonly SyncKind[];
 
@@ -84,6 +85,10 @@ export const SETTINGS_SYNCED_FIELDS: ReadonlySet<string> = new Set([
   "avatarImage",
   "splitRatio",
   "splitCollapsed",
+  // Account state, not device state — guards the first-run reminder-preset
+  // seed (EI-106 P3), so it must sync or a second device would re-seed the
+  // five defaults the first device already customized or deleted.
+  "reminderPresetsSeeded",
 ]);
 
 export const SYNC_PROTOCOL_VERSION = 1 as const;

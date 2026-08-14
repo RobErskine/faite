@@ -196,6 +196,36 @@ export const USER_DB_MIGRATIONS: readonly UserDbMigration[] = [
   )`,
     ],
   },
+  {
+    id: 11,
+    name: "add-reminder-presets",
+    statements: [
+      // A whole new table, not added to `bootstrap.ts` — same reasoning as
+      // `add-day-notes`/`add-places`/`add-todo-events` above: a fresh DO runs
+      // the WHOLE ledger, so new accounts get this table from here exactly
+      // like existing ones do.
+      `CREATE TABLE IF NOT EXISTS reminder_presets (
+    id text PRIMARY KEY NOT NULL,
+    owner_id text NOT NULL,
+    created_at text NOT NULL,
+    updated_at text NOT NULL,
+    deleted_at text,
+    version integer NOT NULL,
+    color text,
+    emoji text,
+    icon_url text,
+    name text NOT NULL,
+    time text NOT NULL,
+    position text NOT NULL
+  )`,
+      // Rides along on this migration rather than its own — EI-106 P3's
+      // first-run seed and P1's entity are one change in practice, and one
+      // migration is cheaper than two. Same NOT NULL + DEFAULT reasoning as
+      // migration 3/7: every existing row comes out unseeded, matching the
+      // Zod default and the actual behaviour before this field existed.
+      "ALTER TABLE settings ADD COLUMN reminder_presets_seeded integer DEFAULT false NOT NULL",
+    ],
+  },
   // Add new migrations here. Never edit one above this line.
   //
   // Example — adding a nullable column (the safe, ordinary case):

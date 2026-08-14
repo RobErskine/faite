@@ -7,6 +7,7 @@ import {
   listSchema,
   placeSchema,
   projectSchema,
+  reminderPresetSchema,
   settingsSchema,
   tabSchema,
   todoEventSchema,
@@ -47,6 +48,7 @@ const ZOD_BY_KIND: Record<SyncKindName, { shape: Record<string, unknown> }> = {
   dayNote: dayNoteSchema,
   place: placeSchema,
   todoEvent: todoEventSchema,
+  reminderPreset: reminderPresetSchema,
   settings: settingsSchema,
 };
 
@@ -59,6 +61,7 @@ const TABLES_BY_KIND: Record<SyncKindName, SQLiteTable> = {
   dayNote: userSchema.dayNotes,
   place: userSchema.places,
   todoEvent: userSchema.todoEvents,
+  reminderPreset: userSchema.reminderPresets,
   settings: userSchema.settings,
 };
 
@@ -72,6 +75,7 @@ const ALL_TABLES: SQLiteTable[] = [
   userSchema.dayNotes,
   userSchema.places,
   userSchema.todoEvents,
+  userSchema.reminderPresets,
   userSchema.settings,
   userSchema.fieldClocks,
   userSchema.syncMeta,
@@ -96,6 +100,7 @@ const KNOWN_DIVERGENCES: Record<string, { drizzleOnly?: string[]; zodOnly?: stri
   dayNote: { drizzleOnly: ["version"] },
   place: { drizzleOnly: ["version"] },
   todoEvent: { drizzleOnly: ["version"] },
+  reminderPreset: { drizzleOnly: ["version"] },
   settings: { drizzleOnly: ["version"] },
 };
 

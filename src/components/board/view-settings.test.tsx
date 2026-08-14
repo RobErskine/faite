@@ -42,6 +42,7 @@ const settings = (over: Partial<Settings> = {}): Settings => ({
   overflowCollapsed: false,
   splitRatio: null,
   splitCollapsed: "none",
+  reminderPresetsSeeded: false,
   updatedAt: "2026-08-03T00:00:00.000Z",
   ...over,
 });
