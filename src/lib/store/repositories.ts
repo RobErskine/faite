@@ -25,7 +25,7 @@ import {
   type RecurrenceRule,
 } from "@/lib/recurrence";
 import { getDb } from "./db";
-import { create, materialize, mutate, newId, now, remove, seedWrite } from "./mutate";
+import { create, materialize, mutate, mutateSettings, newId, now, remove, seedWrite } from "./mutate";
 import { getCurrentOwnerId, LOCAL_OWNER_ID } from "./owner";
 import { buildEditedPayload, logTodoEvent } from "./todo-events";
 
@@ -1109,6 +1109,10 @@ export async function seedIfEmpty(): Promise<void> {
         overflowCollapsed: false,
         splitRatio: null,
         splitCollapsed: "none",
+        // False, not true: a fresh account still needs the P3 first-run seed
+        // to actually write the five default presets. Seeding it true here
+        // would skip that seed entirely on every new sign-up.
+        reminderPresetsSeeded: false,
         updatedAt: timestamp,
       },
     });
@@ -1158,6 +1162,69 @@ export async function ensureDefaultTab(): Promise<number> {
   }
 
   return orphaned.length;
+}
+
+/** name, time, emoji — in seeded order. */
+const SEED_REMINDER_PRESETS: readonly [string, string, string][] = [
+  ["Morning", "08:00", "🌅"],
+  ["Lunchtime", "12:30", "🥪"],
+  ["Afternoon", "15:00", "☕"],
+  ["End of day", "17:00", "🌇"],
+  ["Evening", "20:00", "🌙"],
+];
+
+const seedReminderPresetId = (slug: string) => `seed:reminderpreset:${slug}`;
+
+/**
+ * Writes the five default reminder presets once per account, ever.
+ *
+ * Runs on every boot, like `ensureDefaultTab` — NOT folded into
+ * `seedIfEmpty`, because that only fires for a genuinely empty database
+ * (`lists.count() === 0`). An account that existed before EI-106 shipped has
+ * lists already, so it would never reach this seed if it lived there; a
+ * device that boots after the upgrade still needs it once.
+ *
+ * Guarded by `settings.reminderPresetsSeeded`, not an empty-`reminderPresets`
+ * check — deleting all five deliberately must not resurrect them on the next
+ * boot (EI-106 decision 6). Deterministic ids (`seed:reminderpreset:<slug>`)
+ * so two devices independently reaching "not yet seeded" before their first
+ * sync converge on the same five rows rather than creating ten.
+ */
+export async function seedReminderPresetsIfNeeded(): Promise<void> {
+  const db = getDb();
+  const ownerId = getCurrentOwnerId();
+
+  await db.transaction("rw", db.reminderPresets, db.settings, db.outbox, async () => {
+    const settings = await db.settings.get(LOCAL_OWNER_ID);
+    if (settings?.reminderPresetsSeeded) return;
+
+    const timestamp = now();
+    const positions = positionsBetween(null, null, SEED_REMINDER_PRESETS.length);
+    for (const [i, [name, time, emoji]] of SEED_REMINDER_PRESETS.entries()) {
+      await seedWrite({
+        kind: "reminderPreset",
+        key: seedReminderPresetId(name.toLowerCase().replace(/\s+/g, "-")),
+        row: {
+          id: seedReminderPresetId(name.toLowerCase().replace(/\s+/g, "-")),
+          ownerId,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          deletedAt: null,
+          name,
+          time,
+          position: positions[i],
+          color: null,
+          emoji,
+          iconUrl: null,
+        },
+      });
+    }
+
+    // A real, decisive fact ("this device just seeded"), not a starting
+    // guess — ordinary mutateSettings(), not seedWrite()'s SEED_HLC. It must
+    // not lose to a later write the way a seed value deliberately does.
+    await mutateSettings(LOCAL_OWNER_ID, { reminderPresetsSeeded: true });
+  });
 }
 
 // `repairDuplicateLists` was removed here (see the commit that deleted it).

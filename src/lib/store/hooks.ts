@@ -18,7 +18,12 @@ import type {
 import { byPosition } from "@/lib/ordering";
 import { contextFromSettings, type PlacementContext } from "@/lib/scheduling";
 import { canUseDb, getDb } from "./db";
-import { ensureDefaultTab, LOCAL_OWNER_ID, seedIfEmpty } from "./repositories";
+import {
+  ensureDefaultTab,
+  LOCAL_OWNER_ID,
+  seedIfEmpty,
+  seedReminderPresetsIfNeeded,
+} from "./repositories";
 
 /**
  * Reactive reads.
@@ -47,10 +52,11 @@ export function useBootstrap(): boolean {
     if (!canUseDb()) return;
     seedIfEmpty()
       .then(ensureDefaultTab)
-      .then((assigned) => {
+      .then(async (assigned) => {
         if (assigned > 0) {
           console.info(`[faite] moved ${assigned} list(s) onto the default tab`);
         }
+        await seedReminderPresetsIfNeeded();
         setReady(true);
       })
       .catch((error) => {

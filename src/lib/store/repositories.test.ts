@@ -32,6 +32,7 @@ import {
   schedulePatch,
   scheduleTodo,
   seedIfEmpty,
+  seedReminderPresetsIfNeeded,
   setSeriesUntil,
   setTodoStatus,
   unarchiveList,
@@ -101,6 +102,61 @@ describe("seedIfEmpty", () => {
     await seedIfEmpty();
     await seedIfEmpty();
     expect(await getDb().outbox.count()).toBe(7);
+  });
+});
+
+describe("seedReminderPresetsIfNeeded", () => {
+  it("writes the five default presets and flips the settings flag", async () => {
+    await seedIfEmpty();
+    await seedReminderPresetsIfNeeded();
+
+    const presets = await getDb().reminderPresets.toArray();
+    expect(presets).toHaveLength(5);
+    expect(presets.map((p) => p.name).sort()).toEqual(
+      ["Afternoon", "End of day", "Evening", "Lunchtime", "Morning"].sort(),
+    );
+
+    const settings = await getDb().settings.get("local-user");
+    expect(settings?.reminderPresetsSeeded).toBe(true);
+  });
+
+  it("is idempotent when called twice", async () => {
+    await seedIfEmpty();
+    await seedReminderPresetsIfNeeded();
+    await seedReminderPresetsIfNeeded();
+    expect(await getDb().reminderPresets.count()).toBe(5);
+  });
+
+  it("does not resurrect presets the user deliberately deleted (decision 6: flag-guarded, not empty-table-guarded)", async () => {
+    await seedIfEmpty();
+    await seedReminderPresetsIfNeeded();
+    const all = await getDb().reminderPresets.toArray();
+    for (const preset of all) {
+      await getDb().reminderPresets.delete(preset.id);
+    }
+    expect(await getDb().reminderPresets.count()).toBe(0);
+
+    await seedReminderPresetsIfNeeded();
+
+    expect(await getDb().reminderPresets.count()).toBe(0);
+  });
+
+  it("writes a real outbox entry at SEED_HLC for each preset, and an ordinary entry for the settings flag", async () => {
+    await seedIfEmpty();
+    await seedReminderPresetsIfNeeded();
+
+    const entries = await getDb().outbox.toArray();
+    const presetEntries = entries.filter((e) => e.kind === "reminderPreset");
+    expect(presetEntries).toHaveLength(5);
+    expect(presetEntries.every((e) => e.hlc === SEED_HLC)).toBe(true);
+
+    // seedIfEmpty()'s own settings row already carries reminderPresetsSeeded:
+    // false (SEED_HLC); this looks specifically for the later flip to true.
+    const flipEntries = entries.filter(
+      (e) => e.kind === "settings" && e.patch.reminderPresetsSeeded === true,
+    );
+    expect(flipEntries).toHaveLength(1);
+    expect(flipEntries[0].hlc).not.toBe(SEED_HLC);
   });
 });
 

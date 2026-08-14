@@ -3,7 +3,7 @@ import type { SettingsSection } from "./types";
 import { ProfileSection } from "./profile-section";
 import { DesignSection } from "./design-section";
 import { LoopSection } from "./loop-section";
-import { NotificationsSection } from "./notifications-section";
+import { RemindersSection } from "./reminders-section";
 import { PlacesSection } from "./places-section";
 import { DeveloperSection } from "./developer-section";
 
@@ -34,11 +34,11 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     Component: DesignSection,
   },
   {
-    id: "notifications",
-    label: "Notifications",
-    description: "Reminder delivery for to-dos with a time set.",
+    id: "reminders",
+    label: "Reminders",
+    description: "Delivery, and named times you can pick instead of typing.",
     icon: Bell,
-    Component: NotificationsSection,
+    Component: RemindersSection,
   },
   {
     id: "places",
