@@ -13,6 +13,7 @@ import {
   ComboboxPositioner,
 } from "@/components/ui/combobox";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createReminderPreset } from "@/lib/store/repositories";
 import { formatReminderTime, parsePresetQuery, reminderLabelFor } from "@/lib/reminder-presets";
@@ -33,12 +34,24 @@ function createSentinel(name: string, time: string) {
 }
 type CreateEntry = ReturnType<typeof createSentinel>;
 
-type Entry = ReminderPreset | TimeEntry | CreateEntry;
+/** Offered alongside a bare parsed time — typing "12:00am" gets both "Remind
+ * at 12:00 AM" (apply only) and this (name it, save it, apply it). Unlike
+ * `CreateEntry`, there's no name in the query to bake in yet — picking this
+ * transitions the picker into an inline naming step (below) rather than
+ * committing immediately. */
+function saveAsPresetSentinel(time: string) {
+  return { kind: "save" as const, time };
+}
+type SaveEntry = ReturnType<typeof saveAsPresetSentinel>;
+
+type Entry = ReminderPreset | TimeEntry | CreateEntry | SaveEntry;
 
 const isTimeEntry = (entry: Entry): entry is TimeEntry =>
   "kind" in entry && entry.kind === "time";
 const isCreateEntry = (entry: Entry): entry is CreateEntry =>
   "kind" in entry && entry.kind === "create";
+const isSaveEntry = (entry: Entry): entry is SaveEntry =>
+  "kind" in entry && entry.kind === "save";
 
 interface ReminderPickerProps {
   todo: Todo;
@@ -69,6 +82,11 @@ interface ReminderPickerProps {
  */
 export function ReminderPicker({ todo, presets, onSave }: ReminderPickerProps) {
   const [query, setQuery] = useState("");
+  // Set once "Save as preset reminder time" is picked on a bare time — swaps
+  // the combobox for an inline name field rather than committing right away,
+  // since (unlike `CreateEntry`) there's no name in the query to bake in.
+  const [namingTime, setNamingTime] = useState<string | null>(null);
+  const [presetName, setPresetName] = useState("");
 
   const result = useMemo(() => parsePresetQuery(query, presets), [query, presets]);
 
@@ -77,7 +95,7 @@ export function ReminderPicker({ todo, presets, onSave }: ReminderPickerProps) {
       case "match":
         return result.presets;
       case "time":
-        return [timeSentinel(result.time)];
+        return [timeSentinel(result.time), saveAsPresetSentinel(result.time)];
       case "create":
         return [createSentinel(result.name, result.time)];
       case "none":
@@ -94,9 +112,61 @@ export function ReminderPicker({ todo, presets, onSave }: ReminderPickerProps) {
     applyTime(time);
   };
 
+  const cancelNaming = () => {
+    setNamingTime(null);
+    setPresetName("");
+  };
+
+  const saveNamedPreset = async () => {
+    const trimmed = presetName.trim();
+    if (!trimmed || namingTime === null) return;
+    await createAndApply(trimmed, namingTime);
+    cancelNaming();
+  };
+
   const currentLabel = todo.reminderTime
     ? reminderLabelFor(todo.reminderTime, presets)
     : "Add a reminder…";
+
+  if (namingTime !== null) {
+    return (
+      <div className="space-y-1.5">
+        <Label htmlFor="todo-reminder-preset-name">
+          Name this reminder time ({formatReminderTime(namingTime)})
+        </Label>
+        <div className="flex items-center gap-1.5">
+          <Input
+            id="todo-reminder-preset-name"
+            autoFocus
+            placeholder="Midnight, Bedtime…"
+            value={presetName}
+            onChange={(e) => setPresetName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") void saveNamedPreset();
+              if (e.key === "Escape") cancelNaming();
+            }}
+            className="h-8 w-44"
+          />
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!presetName.trim()}
+            onClick={() => void saveNamedPreset()}
+          >
+            Save
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Cancel saving preset"
+            onClick={cancelNaming}
+          >
+            <X className="size-3.5" aria-hidden />
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-1.5">
@@ -107,6 +177,11 @@ export function ReminderPicker({ todo, presets, onSave }: ReminderPickerProps) {
           value={null}
           onValueChange={(entry: Entry | null) => {
             if (!entry) return;
+            if (isSaveEntry(entry)) {
+              setNamingTime(entry.time);
+              setQuery("");
+              return;
+            }
             // A ReminderPreset and a TimeEntry both carry `.time` — a bare
             // time and a picked preset apply the same way, only a create
             // entry needs the extra step of writing the preset first.
@@ -120,7 +195,9 @@ export function ReminderPicker({ todo, presets, onSave }: ReminderPickerProps) {
           inputValue={query}
           onInputValueChange={setQuery}
           itemToStringLabel={(entry: Entry) =>
-            isCreateEntry(entry) ? entry.name : isTimeEntry(entry) ? formatReminderTime(entry.time) : entry.name
+            isTimeEntry(entry) || isCreateEntry(entry) || isSaveEntry(entry)
+              ? formatReminderTime(entry.time)
+              : entry.name
           }
           filter={null}
           openOnInputClick
@@ -143,6 +220,11 @@ export function ReminderPicker({ todo, presets, onSave }: ReminderPickerProps) {
                       <ComboboxItem key="create" value={entry} className="text-muted-foreground">
                         <Plus className="size-3.5" aria-hidden />
                         Create preset &ldquo;{entry.name}&rdquo; at {formatReminderTime(entry.time)}
+                      </ComboboxItem>
+                    ) : isSaveEntry(entry) ? (
+                      <ComboboxItem key="save" value={entry} className="text-muted-foreground">
+                        <Plus className="size-3.5" aria-hidden />
+                        Save as preset reminder time
                       </ComboboxItem>
                     ) : isTimeEntry(entry) ? (
                       <ComboboxItem key="time" value={entry}>

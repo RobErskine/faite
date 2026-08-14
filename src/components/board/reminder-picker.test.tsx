@@ -177,6 +177,66 @@ describe("ReminderPicker — a bare time", () => {
   });
 });
 
+describe("ReminderPicker — save a bare time as a preset", () => {
+  it("offers 'Save as preset reminder time' alongside 'Remind at' for a bare time", async () => {
+    render(<ReminderPicker todo={todo()} presets={[]} onSave={vi.fn()} />);
+    type(input(), "12:00am");
+
+    expect(await screen.findByRole("option", { name: /Remind at 12:00 AM/ })).toBeTruthy();
+    expect(
+      await screen.findByRole("option", { name: "Save as preset reminder time" }),
+    ).toBeTruthy();
+  });
+
+  it("picking it swaps the combobox for an inline name field, not an immediate write", async () => {
+    const onSave = vi.fn();
+    render(<ReminderPicker todo={todo()} presets={[]} onSave={onSave} />);
+    type(input(), "12:00am");
+
+    const saveRow = await screen.findByRole("option", { name: "Save as preset reminder time" });
+    selectOption(saveRow);
+
+    expect(onSave).not.toHaveBeenCalled();
+    expect(screen.getByLabelText(/Name this reminder time \(12:00 AM\)/)).toBeTruthy();
+    expect(document.getElementById("todo-reminder-input")).toBeNull();
+  });
+
+  it("confirming the name creates the preset and applies the time", async () => {
+    const onSave = vi.fn();
+    render(<ReminderPicker todo={todo()} presets={[]} onSave={onSave} />);
+    type(input(), "12:00am");
+
+    selectOption(await screen.findByRole("option", { name: "Save as preset reminder time" }));
+
+    const nameField = screen.getByLabelText(/Name this reminder time/);
+    fireEvent.change(nameField, { target: { value: "Midnight" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await vi.waitFor(async () => {
+      expect(onSave).toHaveBeenCalledWith("t1", { reminderTime: "00:00" });
+    });
+    const { getDb } = await import("@/lib/store/db");
+    const rows = await getDb().reminderPresets.toArray();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ name: "Midnight", time: "00:00" });
+
+    // Back to the combobox, ready for another edit.
+    expect(document.getElementById("todo-reminder-input")).toBeTruthy();
+  });
+
+  it("Escape while naming cancels back to the combobox without writing anything", async () => {
+    const onSave = vi.fn();
+    render(<ReminderPicker todo={todo()} presets={[]} onSave={onSave} />);
+    type(input(), "12:00am");
+    selectOption(await screen.findByRole("option", { name: "Save as preset reminder time" }));
+
+    fireEvent.keyDown(screen.getByLabelText(/Name this reminder time/), { key: "Escape" });
+
+    expect(onSave).not.toHaveBeenCalled();
+    expect(document.getElementById("todo-reminder-input")).toBeTruthy();
+  });
+});
+
 describe("ReminderPicker — create a preset", () => {
   it("offers to create a preset for 'name time'", async () => {
     render(<ReminderPicker todo={todo()} presets={[]} onSave={vi.fn()} />);
