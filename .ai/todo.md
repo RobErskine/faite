@@ -1329,3 +1329,32 @@ their Linear status/comment update.)
 Only EI-113 (P5 — card badge, e2e, docs/REMINDERS.md) left to close EI-106.
 
 (Linear still unreachable — EI-107/108/109/110 all pending their Linear updates.)
+
+## Review — Overnight session, 2026-08-14 — QUEUE COMPLETE
+
+- [x] **EI-113** (EI-106 P5, final phase) — card badge + e2e + docs/REMINDERS.md.
+      `TodoMetaBadges` gets a Bell badge via `reminderLabelFor`, threaded through
+      every render path (TodoCard, OverdriveCard, day-sheet timeline, all 8
+      BoardColumn mounts including both Overflow columns). New
+      `e2e/reminders.spec.ts` — 20 passing specs across all 5 device projects
+      (card-badge assertions reopen via search rather than hunting for the card
+      in a day column, since PhoneBoard shows one day at a time). New
+      `docs/REMINDERS.md` — canonical reference for all 5 phases. Commit 8c34534.
+      **EI-106 (reminder presets) is now fully closed, all 5 phases shipped.**
+
+**All 11 originally-queued tickets are done**: EI-61, EI-105, EI-81, EI-74,
+EI-84, EI-75, EI-107, EI-108, EI-109, EI-110, EI-113. Branch
+`rob/overnight-2026-08-14` has 19 commits, each independently green
+(`npm run verify` before every one; `schema:check`/`e2e` green where
+relevant). Nothing pushed, nothing deployed — EI-107's D1 migration (id 11)
+and Dexie version bump (v6) are ready for Rob's review awake, as planned.
+
+Linear MCP has been unreachable for the entire session past EI-84 — every
+ticket from EI-105 onward needs its Linear status/comment posted once it
+reconnects (comments already drafted in spirit via these todo.md entries;
+match the voice of the EI-84/75 comments that DID post successfully).
+
+Time remaining before the 07:00 hard stop: using it for a self-review pass
+over tonight's commits and retrying Linear periodically, per Rob's ask to
+use available budget. Will not invent new backlog scope without Linear
+access to actually browse the backlog.
