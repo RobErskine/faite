@@ -490,3 +490,43 @@ React detects the render-time setState, discards the in-progress render,
 and re-renders immediately with the corrected value before ever painting —
 no stale frame, no cascade. Reach for this whenever the urge is "sync local
 draft state to an external value that can change out from under it."
+
+## A relative `/api/*` path is a silent 404 under `next dev`
+
+EI-83's Places transport used bare relative paths (`fetch("/api/places/autocomplete")`),
+copying `src/lib/sync/transport.ts`. Correct in production and under
+`npm run preview`, where the Worker serves the page and the API from one
+origin. Under `next dev` (:3000) there is **no Worker at all** — every
+`/api/*` falls through to Next's 404 handler.
+
+**The symptom pointed away from the cause, twice.** The transport maps 404 to
+`PlacesUnavailableError`, and `usePlaceSearch` latches on it (deliberately: a
+missing route is permanent, and retrying spends money on a billable proxy). So
+the address field in Settings fired *nothing at all* in the network tab — one
+doomed request on first keystroke, then silence forever. That reads as a dead
+hook or a broken debounce. Only a freshly-mounted component (opening a todo
+sheet) showed the single 404 that explained both.
+
+**The fix already existed and I didn't look for it.** `/api/auth/*` has worked
+from `next dev` since P2, via `NEXT_PUBLIC_AUTH_URL` in the `dev` script and
+`resolveAuthBaseURL()`. I had read that function — it is three lines above the
+`.env.local` postmortem in this same file — and still wrote a transport that
+couldn't reach the backend, then *documented the limitation* ("smoke-test under
+`preview` only") instead of treating it as one. Documenting a papercut is how
+it becomes permanent.
+
+**Rule:** any new client→Worker transport routes through `apiUrl()`
+(`src/lib/api-origin.ts`), never a bare relative path. Same-origin deployments
+get the bare path back, so the common case is unchanged.
+
+**And when two seams need the same decision, move it — don't copy it.** The
+localhost guard inside that resolver is itself a postmortem (see the
+`.env.local` lesson above). A second copy would have been a second thing to
+forget to fix. `auth-client.ts` now re-exports it from `api-origin.ts` so its
+existing test keeps pinning one implementation.
+
+**Corollary worth stating out loud:** "it 404s in dev, that's expected" is a
+claim to verify, not assume. `curl -i` against the worker separates *route
+missing* (404) from *route present, caller unauthenticated* (401) from *route
+present, unconfigured* (501) in one command — and that distinction is exactly
+what the latch hides in the UI.

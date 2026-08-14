@@ -129,13 +129,53 @@ these components':
   browser. Untraced further since typing a real query (via `fireEvent.input`
   above) is a fine substitute for what a test needs to prove — filter instead
   of relying on the click-to-browse-everything path.
+- **An open popup hides the rest of the document from the accessibility
+  tree.** So `getByRole("button", {name: "Add"})` cannot find a submit button
+  sitting right next to the field while a query is showing, and fails with
+  "unable to find an accessible element" — which says nothing about popups.
+  Picking a suggestion closes the popup on its own; a test that leaves a query
+  in the field has to close it first (`fireEvent.keyDown(input, {key:
+  "Escape"})`), exactly as a user would. See `closePopup()` in
+  `places-section.test.tsx`.
+- **`waitFor` hangs under `vi.useFakeTimers()`** — it polls on real timers
+  that never advance, so every assertion reaching for it burns the full test
+  timeout. Any picker test that also drives a debounce (i.e. anything using
+  `usePlaceSearch`) must assert directly after advancing timers inside `act`
+  instead. See `settle()` in `use-place-search.test.ts`.
 
 ## 5. Where each is wired
 
 | Field | File | Items | Free text allowed | Multi |
 |---|---|---|---|---|
-| Location | `location-field.tsx` | `places: Place[]` | yes — any address, not just saved ones | no |
+| Location | `location-field.tsx` | saved `Place[]` + Google suggestions + create row | yes — any address, not just saved ones | no |
+| Address | `places/address-autocomplete.tsx` | Google suggestions only | yes | no |
 | Labels | `label-picker.tsx` | `labels: LabelRecord[]` minus `todo.labelIds` | no — every entry is a real (or about-to-be-created) label | yes, via `Combobox.Chip` |
+
+### 5a. `LocationField`'s three-way `ListEntry` (EI-83)
+
+Its list is `Place | {kind:"remote", suggestion} | {kind:"create", query}`,
+rendered in **cost order**: saved places first (a local Dexie read — free,
+instant, offline), then Google suggestions, then the create row as the
+none-of-the-above fallback. Three consequences worth knowing before touching
+it:
+
+- The module-level frozen `CREATE_SENTINEL` is gone, replaced by the
+  per-render `createSentinel(query)` factory from §3. That was optional
+  tidiness before; it is mandatory now, because a remote pick also reads its
+  data at pick time.
+- `itemToStringValue` needs all three branches, and its remote branch is
+  load-bearing rather than cosmetic: `fillInputOnItemPress` is hardcoded true,
+  so that string is the optimistic address the user sees until Place Details
+  answers. It must match what `usePlaceSearch.resolve` suppresses, or every
+  pick opens a second, doomed billing session — hence the shared
+  `formatSuggestion` in `lib/places/wire.ts` rather than two format calls.
+- A Google suggestion whose `placeId` already matches a saved place's
+  `googlePlaceId` is filtered out — the saved row above it is the same place
+  wearing the user's own nickname.
+
+`AddressAutocomplete` deliberately does **not** back `LocationField`: the
+shared unit is the `usePlaceSearch` hook, not the renderer, because only one
+of the two fields merges local rows into the list.
 
 `LabelPicker` is used only in `todo-sheet.tsx`. It does not attempt to also
 support inline `#label` creation-while-typing-a-title — that is a separate,

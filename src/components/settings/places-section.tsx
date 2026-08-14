@@ -2,33 +2,51 @@
 
 import { useState } from "react";
 import { Trash2 } from "lucide-react";
+import { AddressAutocomplete } from "@/components/places/address-autocomplete";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { usePlaces } from "@/lib/store/hooks";
 import { createPlace, deletePlace } from "@/lib/store/repositories";
+import type { ResolvedPlace } from "@/lib/places/wire";
 
 /**
- * Saved locations manager — SCAFFOLD. Every place here is entered by
- * hand: name (the nickname — "Home", "Gym") and address (whatever text the
- * user types). There is no Google Places typeahead wired up yet; see
- * `docs/GOOGLE-PLACES-SETUP.md` for what that would take.
+ * Saved locations manager — a nickname ("Home", "Gym") plus an address.
  *
- * Assigning a saved place to a todo isn't built either — this section only
- * manages the list. `Todo.placeId` and the sync plumbing for the `place`
- * kind exist so this can be wired up without a schema change later.
+ * The address field looks up real addresses through Google Places (EI-83), but
+ * a hand-typed one is a first-class case, not a fallback: not every place is
+ * worth a lookup, and a signed-out or offline user must still be able to save
+ * one. Picking a suggestion additionally stores `googlePlaceId`/`lat`/`lng`.
  */
 export function PlacesSection() {
   const places = usePlaces();
   const [name, setName] = useState("");
   const [address, setAddress] = useState("");
+  /** Set only when `address` came from a Places pick — see `handleAddressChange`. */
+  const [resolved, setResolved] = useState<ResolvedPlace | null>(null);
+
+  const handleAddressChange = (value: string) => {
+    setAddress(value);
+    // Typing after a pick means the text no longer describes the place that
+    // was looked up. Same rule `LocationField` applies to `placeId`: never let
+    // a stale link outlive the text it was derived from.
+    if (resolved && value !== resolved.address) setResolved(null);
+  };
 
   const handleAdd = async () => {
     const trimmedName = name.trim();
     if (!trimmedName) return;
-    await createPlace(trimmedName, address.trim());
+    const trimmedAddress = address.trim();
+    await createPlace(
+      trimmedName,
+      trimmedAddress,
+      resolved && resolved.address === trimmedAddress
+        ? { googlePlaceId: resolved.placeId, lat: resolved.lat, lng: resolved.lng }
+        : {},
+    );
     setName("");
     setAddress("");
+    setResolved(null);
   };
 
   return (
@@ -73,12 +91,27 @@ export function PlacesSection() {
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
-          <Input
-            placeholder="Address (optional)"
-            value={address}
-            onChange={(e) => setAddress(e.target.value)}
-          />
-          <Button variant="outline" size="sm" onClick={() => void handleAdd()} disabled={!name.trim()}>
+          <div className="w-full min-w-0">
+            <AddressAutocomplete
+              id="place-address"
+              value={address}
+              onValueChange={handleAddressChange}
+              onResolve={(place, suggestion) => {
+                setResolved(place);
+                // "Blue Bottle Coffee" is a better first guess at a nickname
+                // than a blank box — but only as a guess: never overwrite one
+                // the user has already typed.
+                setName((current) => (current.trim() ? current : suggestion.primary));
+              }}
+              placeholder="Address (optional)"
+            />
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void handleAdd()}
+            disabled={!name.trim()}
+          >
             Add
           </Button>
         </div>

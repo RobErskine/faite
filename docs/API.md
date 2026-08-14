@@ -54,7 +54,8 @@ Two consequences worth deciding early:
 | Request validation | `src/server/sync/validate.ts` | Already shared by HTTP + WebSocket; same idea extends here |
 | Column whitelist + JS↔SQL coercion | `src/server/sync/columns.ts` | `sanitizePatch`, `toColumnValue`, `fromColumnValue` |
 | LWW decision | `src/server/sync/apply-patch.ts` | Pure |
-| Auth + routing seam | `src/server/worker.ts`, `sync/routes.ts` | `output: export` forbids Next Route Handlers that read `Request` — API routes must live here too (ARCHITECTURE §2.12) |
+| Auth + routing seam | `src/server/worker.ts`, `sync/routes.ts`, `places/routes.ts` | `output: export` forbids Next Route Handlers that read `Request` — API routes must live here too (ARCHITECTURE §2.12) |
+| A route that already gates on a session and proxies a paid upstream | `src/server/places/routes.ts` | The closest existing shape to a public API route: 501/401/400/429/502 mapping, and validation split into a testable pure module beside it |
 | CORS allow-list | `src/server/auth.ts`'s `TRUSTED_ORIGINS` | One list |
 
 ## Open questions for P5

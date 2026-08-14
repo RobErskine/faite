@@ -141,8 +141,14 @@ piece of remaining work.
       on touch, no exceptions table. See `lib/recurrence.ts`.
 - [x] Saved places (EI-63) — shipped additively as the `place` kind;
       `Todo.location` free text is UNCHANGED, `placeId` sits alongside it, so
-      the `location`→`locationId` LWW fork never has to happen. Google
-      typeahead split out to EI-83.
+      the `location`→`locationId` LWW fork never has to happen.
+- [x] Google Places typeahead (EI-83) — proxied through the Worker
+      (`/api/places/*`), key never enters a client bundle. No schema change:
+      `googlePlaceId`/`lat`/`lng` were already there and already synced. The
+      cost surface is the interesting part — debounce, one session token per
+      lookup spent on exactly one Details call, Essentials field mask, and a
+      nickname-prefix short-circuit that keeps recall free. See
+      `docs/LOCATION.md` and `use-place-search.test.ts`.
 - [x] Day notes + derived activity timeline (EI-87) — `dayNote`, the 7th sync
       kind, deterministic id `daynote:YYYY-MM-DD`.
 - [x] Foreground reminders (EI-88) · resizable board split (EI-89) · board view

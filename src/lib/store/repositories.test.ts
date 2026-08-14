@@ -837,6 +837,29 @@ describe("places", () => {
     expect(place?.googlePlaceId).toBeNull();
   });
 
+  it("stores the Google fields when the address came from a Places lookup (EI-83)", async () => {
+    // One write, not create-then-update: two would mean two outbox entries and
+    // two sync pushes for a single user action, with every reader briefly
+    // seeing an address that has no coordinates.
+    const id = await createPlace("Blue Bottle", "300 Webster St, Oakland, CA", {
+      googlePlaceId: "ChIJ_1",
+      lat: 37.8,
+      lng: -122.2,
+    });
+    const place = await getDb().places.get(id);
+    expect(place?.googlePlaceId).toBe("ChIJ_1");
+    expect(place?.lat).toBe(37.8);
+    expect(place?.lng).toBe(-122.2);
+  });
+
+  it("defaults any Google field the caller omits to null", async () => {
+    const id = await createPlace("Home", "1 Main St", { googlePlaceId: "ChIJ_2" });
+    const place = await getDb().places.get(id);
+    expect(place?.googlePlaceId).toBe("ChIJ_2");
+    expect(place?.lat).toBeNull();
+    expect(place?.lng).toBeNull();
+  });
+
   it("updates a place", async () => {
     const id = await createPlace("Home", "1 Main St");
     await updatePlace(id, { name: "Home Sweet Home" });

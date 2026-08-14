@@ -938,11 +938,23 @@ export async function setDayNote(date: CivilDate, body: string): Promise<void> {
 // ---------------------------------------------------------------------------
 
 /**
- * A saved location — see `placeSchema` (`lib/schema.ts`). SCAFFOLD:
- * `address` is whatever the user types by hand today; there is no Google
- * Places lookup wired up yet (see `docs/GOOGLE-PLACES-SETUP.md`).
+ * A saved location — see `placeSchema` (`lib/schema.ts`).
+ *
+ * `address` is still whatever text the caller has: a hand-typed address is a
+ * first-class case, not a degraded one, and must keep working with no network
+ * (EI-83). `google` carries the extra fields when the address did come from a
+ * Places lookup.
+ *
+ * Deliberately one write, not `createPlace(...)` followed by
+ * `updatePlace(id, {googlePlaceId, lat, lng})`: two writes would produce two
+ * outbox entries and two sync pushes for a single user action, and every
+ * reader would briefly see a place with an address and no coordinates.
  */
-export async function createPlace(name: string, address: string): Promise<string> {
+export async function createPlace(
+  name: string,
+  address: string,
+  google: Partial<Pick<Place, "googlePlaceId" | "lat" | "lng">> = {},
+): Promise<string> {
   const timestamp = now();
   const place: Place = {
     id: newId(),
@@ -952,9 +964,9 @@ export async function createPlace(name: string, address: string): Promise<string
     deletedAt: null,
     name,
     address,
-    googlePlaceId: null,
-    lat: null,
-    lng: null,
+    googlePlaceId: google.googlePlaceId ?? null,
+    lat: google.lat ?? null,
+    lng: google.lng ?? null,
   };
   return create("place", place);
 }

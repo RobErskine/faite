@@ -1,27 +1,22 @@
-# Google Places setup — for wiring up saved-place typeahead
+# Google Places setup — the one-time runbook
 
-## Status
+**Shipped (EI-83).** This is the vendor half: standing the Google Cloud project
+up, creating and restricting the key, setting the secret, running it locally,
+and verifying it. **How the feature works** — the data model, the proxy, the
+cost discipline, what to test — is **[LOCATION.md](LOCATION.md)**.
 
-**Not started.** The data model and sync plumbing for saved places
-(`Place` in `lib/schema.ts`, the `place` sync kind, the `places` table,
-`Todo.placeId`) already exist — see the "Places" section in Settings, which
-lets you add a place by hand today. This doc is what's left: replacing the
-hand-typed address field with real Google typeahead.
-
-Read this before writing any code — the API surface changed materially in
-2025 and most search results/training data describe the deprecated version.
-
-## 0. What you're integrating, and what you're not
-
-- **In scope:** typing a few letters of an address and getting real
-  suggestions; picking one fills in a formatted address (and, once you
-  choose to store it, lat/lng and a Google place id).
-- **Out of scope, deliberately:** geofenced/location-triggered reminders.
-  There is no reliable background geolocation in a browser. That needs
-  Capacitor + a native geofence plugin (see `.ai/todo.md`'s P7 section) and
-  is a separate, later piece of work.
+Read this before touching the key. The Places API surface changed materially in
+2025, and most search results and model training data still describe the
+deprecated version.
 
 ## 1. Google Cloud project + API
+
+**Use the REST endpoints, not the JS widget.** `google.maps.places.Autocomplete`
+and `AutocompleteService` are the legacy API, and `Autocomplete` has been
+unavailable to new customers since 2025-03-01. The current options are
+`PlaceAutocompleteElement` (a web component) or the REST endpoints — we use the
+REST endpoints through a Worker proxy, for the reasons in
+[LOCATION.md](LOCATION.md) §4.
 
 1. Create (or reuse) a project at https://console.cloud.google.com.
 2. Enable **Places API (New)** — not "Places API", which is the legacy
@@ -33,105 +28,76 @@ Read this before writing any code — the API surface changed materially in
    them in prose, only the console does.
 4. Create an API key: APIs & Services → Credentials → Create Credentials →
    API key.
-5. Restrict the key immediately (Credentials → the key → Application
-   restrictions): **API restrictions** to "Places API (New)" only, and
-   **HTTP referrer** restrictions to `https://myfaite.app/*` and your local
-   dev origin. Note referrer restrictions can't cover `capacitor://localhost`
-   (already in `TRUSTED_ORIGINS`, `src/server/auth.ts`) — that's one more
-   reason the key stays server-side (§3), never shipped to the client.
+5. Restrict the key immediately, but **only by API**: Credentials → the key →
+   **API restrictions** → "Places API (New)". Leave **Application
+   restrictions** set to **None**.
 
-## 2. Which API calls you need
+   > **Do not add HTTP-referrer restrictions.** This key is used from a
+   > Cloudflare Worker, and a Worker's outbound `fetch` sends **no
+   > `Referer` header at all** — so a referrer-restricted key returns
+   > `403 REQUEST_DENIED` for every call the proxy makes, from production
+   > included. IP restrictions are no substitute either: Workers egress from
+   > Cloudflare's shared, non-static address space. (An earlier version of
+   > this doc told you to add referrer restrictions. It was wrong, and it
+   > would have taken the feature down in production while working fine in
+   > every test that mocks the transport.)
 
-Two, per place lookup:
+6. Cap the spend where restrictions can't: Google Maps Platform → Quotas, and
+   set a daily request cap per API. That, not the key restriction, is the real
+   guard on a proxy that any signed-in user can reach.
 
-- **Autocomplete (New)** — `POST https://places.googleapis.com/v1/places:autocomplete`
-  as the user types. Returns suggestions.
-- **Place Details (New)** — `GET https://places.googleapis.com/v1/places/{placeId}`
-  once the user picks a suggestion. Returns the formatted address, lat/lng,
-  and the place id to store in `Place.googlePlaceId`/`lat`/`lng`.
+## 2. Running it locally
 
-**Do not use `google.maps.places.Autocomplete`** (the `<script>`-loaded
-JS widget) or `AutocompleteService` — both are the legacy API, and
-`Autocomplete` has been unavailable to new customers since 2025-03-01. The
-current replacements are `PlaceAutocompleteElement` (a web component) or the
-REST endpoints above. This project should use the **REST endpoints via a
-server proxy**, not the web component — see §3 for why.
+`/api/places/*` lives in the Worker, and **`next dev` (:3000) runs no Worker**.
+Two terminals, exactly as with auth:
 
-## 3. Proxy through the Worker, don't call Google from the browser
+```
+npm run preview   # builds + serves the worker on :8787 — the API
+npm run dev       # the UI on :3000, with HMR
+```
 
-Add two routes to `src/server/worker.ts`, alongside `/api/auth/*` and
-`/api/sync/*` (same reason those aren't Next.js Route Handlers: `output:
-"export"` forbids a Route Handler that reads `Request`):
+The client reaches the first from the second via `apiUrl()`
+(`src/lib/api-origin.ts`), which reads `NEXT_PUBLIC_AUTH_URL` — already set to
+`http://localhost:8787` by the `dev` script. `http://localhost:3000` is in
+`TRUSTED_ORIGINS`, so the preflight and the credentialled POST both pass, and
+the session cookie is shared because cookies ignore port.
 
-- `POST /api/places/autocomplete` — forwards `{ input, sessionToken }` to
-  Google's Autocomplete (New) endpoint with the server-side API key attached,
-  returns the suggestions.
-- `POST /api/places/details` — forwards `{ placeId, sessionToken }` to Place
-  Details (New), returns the formatted address + lat/lng.
+**You must be signed in.** The proxy requires a session, so a signed-out field
+is *supposed* to look like a plain text input.
 
-Why a proxy rather than calling Google directly from the client:
+Diagnose the route without a browser — the three failure modes are
+indistinguishable in the UI, because the client latches on all of them and
+falls silent:
 
-- The API key stays a Worker secret (`wrangler secret put GOOGLE_PLACES_API_KEY`),
-  never bundled into client JS.
-- HTTP-referrer key restrictions don't reach `capacitor://localhost` (§1) —
-  a server-side key sidesteps that entirely, and this same proxy works
-  unchanged once Capacitor exists.
-- One place to enforce session tokens (§4) instead of trusting every caller.
+```
+curl -i -X POST http://localhost:8787/api/places/autocomplete \
+  -H 'Content-Type: application/json' \
+  -d '{"input":"1600 Amphi","sessionToken":"11111111-2222-3333-4444-555555555555"}'
+```
 
-## 4. Session tokens — this is the part that controls cost
+| Response | Meaning |
+|---|---|
+| `401 unauthenticated` | Route is up, key is set, you're just not signed in — **this is the healthy answer to an unauthenticated curl** |
+| `501 places-not-configured` | No `GOOGLE_PLACES_API_KEY` in `.dev.vars` (or not `wrangler secret put` in prod) |
+| `404` | You hit `:3000`, not `:8787` |
+| `502 upstream-error` | Reached Google and it refused — check the Worker's log line; a referrer-restricted key lands here (§1.5) |
 
-Autocomplete (New) is billed under the `Autocomplete Session Usage` SKU,
-which is **free**, but only when requests are grouped into a session that
-terminates in exactly one Place Details (or Address Validation) call. Get
-this wrong and every keystroke bills individually:
-
-- If a session is abandoned (no terminating Details call), the Autocomplete
-  requests in it are billed as if no session token had been used at all.
-- If a session token is reused across more than one completed session,
-  Google invalidates it and bills everything per-request.
-
-Concrete implementation: generate a fresh UUID client-side the moment the
-user starts typing in the place combobox (not per keystroke). Send that same
-token on every Autocomplete request while they keep typing, and on the one
-Details request when they select a suggestion. Discard the token after that
-— a new one gets minted the next time the field is focused.
-
-## 5. Data flow into the existing model
-
-1. User types in the combobox → client debounces → `POST
-   /api/places/autocomplete` with the session token → suggestions render.
-2. User picks one → `POST /api/places/details` with the same token →
-   `{ formattedAddress, lat, lng, placeId }`.
-3. Prompt "Save as…" (a nickname) → `createPlace(nickname, formattedAddress)`
-   (`lib/store/repositories.ts`), then `updatePlace(id, { googlePlaceId:
-   placeId, lat, lng })` — or extend `createPlace` to take all fields at
-   once, whichever reads better once you're writing the combobox component.
-4. Assign the place to a todo exactly as today: `placeId` + `location` (see
-   the Location field in `components/board/todo-sheet.tsx`).
-
-No schema or sync changes needed for any of this — `Place.googlePlaceId`,
-`lat`, `lng` already exist and already sync (verify with `npm run
-schema:check`, which should already be green with no changes required).
-
-## 6. Recall-by-nickname stays free and offline
-
-Once a place is saved, typing its nickname to reuse it is a local Dexie
-query (`usePlaces()`, `lib/store/hooks.ts`) — zero API calls, works offline.
-Only a **new** address lookup needs Google. Build the combobox so typing a
-name that matches a saved place's nickname short-circuits before ever
-calling `/api/places/autocomplete`.
-
-## 7. Verification checklist
+## 3. Verification checklist
 
 - [ ] `wrangler secret put GOOGLE_PLACES_API_KEY` set for the target
       environment (and in `.dev.vars` locally — never commit that file).
 - [ ] `npx wrangler deploy --dry-run` still bundles cleanly with the new
       routes (the usual worker-bundling gate — see `.ai/lessons.md`).
+- [ ] The curl above returns 401, not 404 or 501.
 - [ ] One typed session in the real UI produces exactly one Details request
       in the Cloud Console's API metrics, not one per keystroke.
 - [ ] A saved place recalls by nickname with the network tab showing no
       request at all.
-- [ ] `npm run build:static` still passes — the Capacitor guard.
+- [ ] The Details SKU in Cloud Console metrics reads **Essentials**, not Pro —
+      if it reads Pro, someone added `displayName` to `DETAILS_MASK`.
+- [ ] `npm run build:static` still passes — the Capacitor guard, and the check
+      that the key never entered a client bundle
+      (`grep -rl "$KEY" out/ .next/ .open-next/` must be empty).
 
 ## Sources
 

@@ -17,6 +17,7 @@
 import openNextHandler from "open-next/worker";
 import { createAuth } from "./auth";
 import { handleOptions, withCors } from "./cors";
+import { handlePlacesRequest } from "./places/routes";
 import { handleSyncRequest } from "./sync/routes";
 
 export { UserDurableObject } from "./user-do";
@@ -44,6 +45,13 @@ export default {
       // Same reasoning as /api/auth above: EI-46's push/pull routes read
       // `Request`, so they can't be a Next.js Route Handler either.
       return handleSyncRequest(request, env);
+    }
+    if (pathname.startsWith("/api/places")) {
+      // Same reasoning again (EI-83), plus one of its own: this is the only
+      // place `GOOGLE_PLACES_API_KEY` can live. It is a Worker secret, and
+      // the whole point of proxying Google rather than calling it from the
+      // browser is that the key never reaches client JS. See ./places/routes.ts.
+      return handlePlacesRequest(request, env);
     }
     // OpenNext always exports a fetch handler; the optional type is generic
     // ExportedHandler boilerplate, not a real possibility here.

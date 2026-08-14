@@ -295,21 +295,21 @@ export type DayNote = z.infer<typeof dayNoteSchema>;
  * nickname ("Home", "Gym", "Mother-in-law's"), so it can be recalled by
  * that name instead of retyped.
  *
- * SCAFFOLD ONLY — this is the data model and sync plumbing, with no
- * Google Places lookup wired up yet. `googlePlaceId`/`lat`/`lng` are
- * populated once that lands (see `docs/GOOGLE-PLACES-SETUP.md`); until then
- * every place is entered by hand via `name`/`address` alone, exactly like
- * `Todo.location` free text is today. `Todo.location` is UNCHANGED and
- * stays the fallback for a todo with no saved place — see `Todo.placeId`.
+ * `googlePlaceId`/`lat`/`lng` are filled in when the address came from a
+ * Google Places lookup (EI-83, `docs/LOCATION.md`) and stay null
+ * when it was typed by hand — which is a first-class case, not a degraded
+ * one: a signed-out or offline user must still be able to save a place.
+ * `Todo.location` is UNCHANGED and stays the fallback for a todo with no
+ * saved place — see `Todo.placeId`.
  */
 export const placeSchema = z.object({
   ...syncableFields,
   /** The nickname: "Home", "Gym", "Mother-in-law's". */
   name: z.string().min(1),
-  /** The formatted address, however it was entered — by hand today, from
-   * Google Place Details once the lookup exists. */
+  /** The formatted address, however it was entered — by hand, or from Google
+   * Place Details when it came from the typeahead. */
   address: z.string(),
-  /** Set once the Google Places lookup is wired up. Null for a hand-entered place. */
+  /** Google's opaque place id. Null for a hand-entered place. */
   googlePlaceId: z.string().nullable().default(null),
   lat: z.number().nullable().default(null),
   lng: z.number().nullable().default(null),

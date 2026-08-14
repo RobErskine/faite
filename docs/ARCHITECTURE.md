@@ -364,6 +364,22 @@ server surface, so the static build never sees it. `createAuth(env)` is a
 factory called fresh per request, for the same reason recorded in §7: the D1
 and Email bindings only exist inside `fetch()`.
 
+The same constraint has since claimed every other server route, so the worker
+entry now owns three seams. All three read `Request`; none could be a Route
+Handler:
+
+| Prefix | Handler | Purpose |
+|---|---|---|
+| `/api/auth/*` | `createAuth(env, request).handler` | Better Auth (P2) |
+| `/api/sync/*` | `sync/routes.ts` | push/pull/ws/schema/reset (EI-46/48) |
+| `/api/places/*` | `places/routes.ts` | Google Places proxy (EI-83) |
+
+`/api/places/*` has a second, independent reason to live server-side: it holds
+`GOOGLE_PLACES_API_KEY`, a Worker secret that must never reach client JS — and
+a browser-held key could not be restricted anyway, since Google's HTTP-referrer
+restrictions cannot cover `capacitor://localhost`. See
+`docs/LOCATION.md` §4.
+
 Cost: `next dev` never runs the worker entry, so `/api/auth/*` 404s there.
 `src/lib/auth-client.ts` reads `NEXT_PUBLIC_AUTH_URL` to point at a separate
 `npm run preview` instance when developing against real auth; unset (the
