@@ -254,6 +254,22 @@ interface BoardColumnProps {
    * whole page — without this component needing to know a pager exists.
    */
   className?: string;
+  /**
+   * Floats above the card list, stuck to the column's bottom edge — mirrors
+   * `actions` in the header. Overflow's Overdrive entry button (EI-97) is
+   * the only consumer today. Hidden along with the rest of the body while
+   * `collapsed`.
+   *
+   * `sticky bottom-0` inside the render below, not `fixed` or a separate
+   * layout slot: a `pinned` column's own `<section>` (`overflow-y-auto`) IS
+   * the scrolling container here, so `sticky` pins it against THAT box as
+   * its cards scroll underneath, without needing to know the column's pixel
+   * height or coordinate with anything outside this component. Feedback
+   * from live use: at the bottom of a long list it originally scrolled with
+   * everything else, so it was easy to build up a pile deep enough that the
+   * one way out of it was itself scrolled out of view.
+   */
+  footer?: React.ReactNode;
 }
 
 export function BoardColumn({
@@ -297,6 +313,7 @@ export function BoardColumn({
   missedCounts,
   recurrenceSummaries,
   className,
+  footer,
 }: BoardColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id });
   const [draft, setDraft] = useState("");
@@ -990,6 +1007,12 @@ export function BoardColumn({
           {Array.from({ length: fillerRows }, (_, i) => (
             <div key={i} className="h-8 border-b border-border/40" aria-hidden />
           ))}
+        </div>
+      )}
+
+      {!collapsed && footer && (
+        <div className="sticky bottom-0 z-10 bg-card shadow-[0_-2px_6px_-2px_rgb(0_0_0/0.08)]">
+          {footer}
         </div>
       )}
     </section>

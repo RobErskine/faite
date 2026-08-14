@@ -33,6 +33,23 @@
 */
 @custom-variant touch (@media (hover: none));
 
+/*
+  Viewport HEIGHT, deliberately — not width, and not `touch:`.
+
+  Overdrive's centred dialog (docs/OVERDRIVE.md §9) needs vertical room: for
+  itself, and for the decision toast that sits under it. What it can't cope
+  with is a SHORT viewport, and short doesn't correlate with either of the
+  conditions we already have variants for. A landscape iPhone is 734px wide
+  — comfortably past Tailwind's `sm` (640px), so a width breakpoint reads it
+  as a desktop — while being only 343px TALL, which is the dimension that
+  actually leaves no room. `touch:` gets it wrong the other way: an iPad has
+  no hover but plenty of height, and would be needlessly cramped.
+
+  So: `tall:` is "there is vertical room for a centred dialog." Below it,
+  Overdrive falls back to the full-bleed presentation it had before.
+*/
+@custom-variant tall (@media (min-height: 40rem));
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

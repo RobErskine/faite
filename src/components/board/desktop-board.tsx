@@ -13,6 +13,7 @@ import { SignedOutBanner } from "@/components/auth/signed-out-banner";
 import { BoardColumn } from "./board-column";
 import { CreateListColumn } from "./create-list-column";
 import { DateNav } from "./date-nav";
+import { OverdriveButton } from "./overdrive-button";
 import { RailCollapseButton } from "./rail-collapse-button";
 import { RailHandle } from "./rail-handle";
 import { SplitHandle } from "./split-handle";
@@ -266,6 +267,12 @@ export function DesktopBoard({
               <RailCollapseButton
                 label="Overflow"
                 onCollapse={() => void mutateSettings(LOCAL_OWNER_ID, { overflowCollapsed: true })}
+              />
+            }
+            footer={
+              <OverdriveButton
+                count={board.overflow.todos.length}
+                onOpen={() => ui.setOverdriveOpen(true)}
               />
             }
           />

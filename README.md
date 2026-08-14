@@ -10,7 +10,10 @@ The top half is a day-by-day calendar plus an **Overflow** column; the bottom
 half is your lists. Capture into a list, then drag up onto a day to commit to
 doing it. Missed items roll forward through **the Faite Loop**, and after a
 configurable number of rolls fall into Overflow — if something has been put
-off that long, it probably was not important.
+off that long, it probably was not important. **Overdrive** is the way back
+out: a full-screen, one-card-at-a-time mode for burning down an Overflow pile
+— won't do, done, back to a list, or scheduled forward, one keystroke or tap
+at a time.
 
 Local-first: everything reads and writes to IndexedDB, so it works offline and
 no request is ever on the interaction path.
@@ -23,6 +26,7 @@ Everything is written down. The problem is knowing which file, so start here:
 |---|---|
 | understand **why** anything is the way it is | **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** — the one source of rationale. Stack, layout, scheduling rules, build gotchas, roadmap |
 | work on rollover/Overflow, the Faite Loop's config, or its card/timeline affordances | **[FAITE-LOOP.md](docs/FAITE-LOOP.md)** |
+| work on Overdrive — the Overflow triage overlay | **[OVERDRIVE.md](docs/OVERDRIVE.md)** |
 | get it running on my machine | [Running locally](#running-locally) below, then **[SETUP.md](docs/SETUP.md)** |
 | stand the infrastructure up again, or change a Cloudflare/OAuth/email setting | **[SETUP.md](docs/SETUP.md)** — the one-time runbook, plus what does and doesn't work locally |
 | **add or rename a field**, or add an entity kind | **[SCHEMA-CHANGES.md](docs/SCHEMA-CHANGES.md)** first — a field is declared in four places and derived in three more. Then **[SCHEMA-OPS.md](docs/SCHEMA-OPS.md)** for the actual procedure |

@@ -66,6 +66,10 @@ interface CommandPaletteProps {
   onSetTodoStatus: (id: string, status: TodoStatus) => void;
   /** `⌘⇧⌫` on the highlighted result. */
   onDeleteTodo: (id: string) => void;
+  /** How many to-dos are currently in Overflow — `board.overflow.todos.length`,
+   * the same unfiltered count the column's own Overdrive button (EI-97) uses. */
+  overflowCount: number;
+  onOpenOverdrive: () => void;
 }
 
 type Mode =
@@ -99,6 +103,8 @@ export function CommandPalette({
   onSelectTab,
   onSetTodoStatus,
   onDeleteTodo,
+  overflowCount,
+  onOpenOverdrive,
 }: CommandPaletteProps) {
   const [mode, setMode] = useState<Mode>({ kind: "root" });
   const [value, setValue] = useState("");
@@ -756,6 +762,15 @@ export function CommandPalette({
                 {settings?.workdaysOnly
                   ? "Roll over on every day"
                   : "Roll over on workdays only"}
+              </CommandItem>
+              <CommandItem
+                disabled={overflowCount === 0}
+                onSelect={() => {
+                  onOpenOverdrive();
+                  close();
+                }}
+              >
+                {overflowCount > 0 ? `Open Overdrive (${overflowCount})` : "Overdrive — Overflow is empty"}
               </CommandItem>
             </CommandGroup>
           </>

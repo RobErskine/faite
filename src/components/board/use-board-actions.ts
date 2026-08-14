@@ -66,6 +66,7 @@ import {
   updateTodo,
 } from "@/lib/store/repositories";
 import { now } from "@/lib/store/mutate";
+import type { Verdict } from "@/lib/overdrive";
 import {
   attachEventIds,
   createUndoStep,
@@ -807,6 +808,55 @@ export function useBoardActions(
     [todosById, materializeIfNeeded],
   );
 
+  /**
+   * Overdrive's (EI-97) one write path — every verdict a card can receive
+   * shares this call site, so undo reverses exactly what was written no
+   * matter which of the four it was. Returns the `pushUndo` entry id
+   * synchronously (the write itself is fire-and-forget, same convention as
+   * `handleToggle`), which the overlay keeps so `⌫`/`⌘Z`/its own toast can
+   * replay it via `undoById`. `label` rides along too (round 2, EI-97) — the
+   * overlay's toast shows it verbatim rather than re-deriving the same
+   * per-verdict wording a second time.
+   */
+  const handleOverdriveVerdict = useCallback(
+    (todo: Todo, verdict: Verdict): { undoId: string; label: string } => {
+      const forward: Partial<Todo> =
+        verdict.kind === "listed"
+          ? listPatch(verdict.listId)
+          : verdict.kind === "scheduled"
+            ? schedulePatch(verdict.date, todo.scheduledDate)
+            : statusPatch(verdict.kind);
+
+      const label =
+        verdict.kind === "dropped"
+          ? `Won’t do “${short(todo.title)}”`
+          : verdict.kind === "done"
+            ? `Completed “${short(todo.title)}”`
+            : verdict.kind === "listed"
+              ? `Moved “${short(todo.title)}” to ${listsById.get(verdict.listId ?? "")?.name ?? "Backlog"}`
+              : `Scheduled “${short(todo.title)}” for ${formatShortDate(verdict.date)}`;
+
+      const entryId = pushUndo(label, [
+        { kind: "todo", entityId: todo.id, patch: inversePatch(todo, forward) },
+      ]);
+
+      void (async () => {
+        await materializeIfNeeded(todo);
+        if (verdict.kind === "dropped" || verdict.kind === "done") {
+          const eventId = await setTodoStatus(todo.id, verdict.kind);
+          if (eventId) attachEventIds(entryId, [eventId]);
+        } else if (verdict.kind === "listed") {
+          await moveTodoToList(todo.id, verdict.listId);
+        } else {
+          await scheduleTodo(todo.id, verdict.date, todo.scheduledDate);
+        }
+      })();
+
+      return { undoId: entryId, label };
+    },
+    [listsById, materializeIfNeeded],
+  );
+
   const handleToggleLabel = useCallback(
     (todoId: string, labelId: string) => {
       const before = todosById.get(todoId);
@@ -1012,6 +1062,7 @@ export function useBoardActions(
     handleToggle,
     handleSheetSave,
     handleSheetStatus,
+    handleOverdriveVerdict,
     handleToggleLabel,
     handleDelete,
     handleSaveList,

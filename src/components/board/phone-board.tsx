@@ -11,6 +11,7 @@ import { SignedOutBanner } from "@/components/auth/signed-out-banner";
 import { BoardColumn } from "./board-column";
 import { CreateListColumn } from "./create-list-column";
 import { DateNav } from "./date-nav";
+import { OverdriveButton } from "./overdrive-button";
 import { TabStrip } from "./tab-strip";
 import { PhoneBottomBar } from "./phone-bottom-bar";
 import type { BoardUiState } from "./use-board-ui-state";
@@ -108,6 +109,7 @@ export function PhoneBoard({
     setOpenDay,
     setPaletteOpen,
     setSettingsOpen,
+    setOverdriveOpen,
     phoneView,
     setPhoneView,
     dragging,
@@ -184,6 +186,12 @@ export function PhoneBoard({
               overTodoId={overTodoId}
               landingTodoId={landingTodoId}
               rejectsDrop
+              footer={
+                <OverdriveButton
+                  count={board.overflow.todos.length}
+                  onOpen={() => setOverdriveOpen(true)}
+                />
+              }
             />
             {trackSlots.map((slot) => {
               // Unreachable on phone: `useBoardData` forces

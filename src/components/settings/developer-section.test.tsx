@@ -4,10 +4,15 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const resetAccountData = vi.fn(async () => {});
+const seedOverflow = vi.fn(async (count: number) => count);
 const toastSuccess = vi.fn();
 const toastError = vi.fn();
 
 vi.mock("@/lib/store/reset", () => ({ resetAccountData }));
+vi.mock("@/lib/dev-seed", () => ({ seedOverflow }));
+vi.mock("@/lib/store/hooks", () => ({
+  useSettings: () => ({ overflowAfterDays: 3, timezone: "America/New_York" }),
+}));
 vi.mock("sonner", () => ({ toast: { success: toastSuccess, error: toastError } }));
 vi.mock("@/lib/auth-client", () => ({
   useSession: () => ({ data: { user: { id: "real-user-1" } }, isPending: false, error: null }),
@@ -19,10 +24,46 @@ const { DeveloperSection } = await import("./developer-section");
 beforeEach(() => {
   resetAccountData.mockClear();
   resetAccountData.mockResolvedValue(undefined);
+  seedOverflow.mockClear();
+  seedOverflow.mockImplementation(async (count: number) => count);
   toastSuccess.mockClear();
   toastError.mockClear();
 });
 afterEach(cleanup);
+
+describe("DeveloperSection — Seed Overflow", () => {
+  it("seeds using the current Faite Loop threshold and timezone", async () => {
+    render(<DeveloperSection />);
+    fireEvent.click(screen.getByRole("button", { name: /seed overflow \(10\)/i }));
+
+    await waitFor(() =>
+      expect(seedOverflow).toHaveBeenCalledWith(10, {
+        overflowAfterDays: 3,
+        timezone: "America/New_York",
+      }),
+    );
+    await waitFor(() => expect(toastSuccess).toHaveBeenCalled());
+  });
+
+  it("seeds the count typed into the stepper", async () => {
+    render(<DeveloperSection />);
+    fireEvent.change(screen.getByLabelText(/number of to-dos to seed/i), {
+      target: { value: "25" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /seed overflow \(25\)/i }));
+
+    await waitFor(() => expect(seedOverflow).toHaveBeenCalledWith(25, expect.anything()));
+  });
+
+  it("reports a seeding failure as a failure, not a silent no-op", async () => {
+    seedOverflow.mockRejectedValue(new Error("boom"));
+    render(<DeveloperSection />);
+    fireEvent.click(screen.getByRole("button", { name: /seed overflow \(10\)/i }));
+
+    await waitFor(() => expect(toastError).toHaveBeenCalled());
+    expect(toastSuccess).not.toHaveBeenCalled();
+  });
+});
 
 describe("DeveloperSection", () => {
   /**

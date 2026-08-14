@@ -27,6 +27,7 @@ import { ArchivedListsSheet } from "./archived-lists-sheet";
 import { SettingsSheet } from "@/components/settings/settings-sheet";
 import { CommandPalette } from "./command-palette";
 import { DaySheet } from "./day-sheet";
+import { OverdriveOverlay } from "./overdrive-overlay";
 import { SessionProvider } from "@/components/auth/session-provider";
 import { SyncProvider } from "@/components/sync/sync-provider";
 import { WelcomeDialog } from "@/components/auth/welcome-dialog";
@@ -245,6 +246,7 @@ export function Board() {
       archivedOpen: ui.archivedOpen,
       settingsOpen: ui.settingsOpen,
       openDay: ui.openDay,
+      overdriveOpen: ui.overdriveOpen,
     }),
   };
 
@@ -479,6 +481,8 @@ export function Board() {
         onSelectTab={ui.selectTab}
         onSetTodoStatus={actions.handleSheetStatus}
         onDeleteTodo={actions.handleDelete}
+        overflowCount={data.board.overflow.todos.length}
+        onOpenOverdrive={() => ui.setOverdriveOpen(true)}
       />
 
       <SessionProvider />
@@ -523,6 +527,24 @@ export function Board() {
         ui.openTodoSheet(todo.id, ui.openDay);
         ui.setOpenDay(null);
       }}
+    />
+
+    {/*
+      Also outside DndContext, for the same reason DaySheet is: `OverdriveCard`
+      renders todo content but (unlike TodoCard) registers no dnd-kit hook at
+      all, so there's nothing here for the context to protect either way —
+      this just keeps it consistent with every other full-board overlay.
+    */}
+    <OverdriveOverlay
+      open={ui.overdriveOpen}
+      todos={data.board.overflow.todos}
+      todosById={data.todosById}
+      listsById={data.listsById}
+      backlogListId={data.backlogList?.id ?? ""}
+      labels={data.labels}
+      ctx={data.ctx}
+      onClose={() => ui.setOverdriveOpen(false)}
+      onVerdict={actions.handleOverdriveVerdict}
     />
     </>
   );

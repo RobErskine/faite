@@ -87,6 +87,7 @@ interface HarnessProps {
   onFilterChange?: (query: string) => void;
   totalCount?: number;
   onQuickAdd?: (title: string, listId?: string, labelIds?: string[]) => void;
+  footer?: React.ReactNode;
 }
 
 function Harness({ groups, todos, ...rest }: HarnessProps) {
@@ -388,5 +389,36 @@ describe("in-column filter", () => {
     fireEvent.keyDown(addInput, { key: "Enter" });
     expect(onQuickAdd).toHaveBeenCalledWith("New task", undefined, []);
     expect(onFilterChange).toHaveBeenCalledWith("");
+  });
+});
+
+/**
+ * `footer` — EI-97's Overdrive entry button slot. Board-column itself only
+ * has to place the node and respect `collapsed`; whether the button decides
+ * to render at all is `OverdriveButton`'s own concern (`overdrive-button.tsx`).
+ */
+describe("footer", () => {
+  it("renders the given node below the card list", () => {
+    render(<Harness footer={<div data-testid="overdrive-entry">Overdrive · 12</div>} />);
+    expect(screen.getByTestId("overdrive-entry")).toBeTruthy();
+  });
+
+  it("is absent when no footer is given", () => {
+    render(<Harness />);
+    expect(screen.queryByTestId("overdrive-entry")).toBeNull();
+  });
+
+  it("never renders when the column is collapsed", () => {
+    render(
+      <Harness collapsed footer={<div data-testid="overdrive-entry">Overdrive · 12</div>} />,
+    );
+    expect(screen.queryByTestId("overdrive-entry")).toBeNull();
+  });
+
+  it("wraps the footer in a sticky bottom-anchored box (round 4)", () => {
+    render(<Harness footer={<div data-testid="overdrive-entry">Overdrive · 12</div>} />);
+    const wrapper = screen.getByTestId("overdrive-entry").parentElement;
+    expect(wrapper?.className).toContain("sticky");
+    expect(wrapper?.className).toContain("bottom-0");
   });
 });

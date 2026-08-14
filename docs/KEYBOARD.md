@@ -37,6 +37,7 @@ planning session never needs the mouse.
 | `board-column.tsx` group header | `Enter`/`Space` collapses or expands the group, `←→↑↓` navigate (§11) |
 | `board.tsx` load-more tile | `←→↑↓` navigate (§6) |
 | `rail-handle.tsx` | `←`/`→` resizes the rail 16px, `Enter`/`Space` collapses it, double-click resets to the CSS default |
+| `overdrive-overlay.tsx` | `←↑↓` won't-do/done/back-to-list, `⇧↓` forces Backlog, `→`/`⇧→` stage a schedule ramp, `Enter` confirms it, `D` opens the date picker, `⌫` steps back one verdict — local for the same reason `todo-sheet.tsx` is: meaningless with the overlay closed, and every key here is contextual (an arrow means something completely different on the board underneath). See `docs/OVERDRIVE.md` §9. `Escape` is intercepted one level up, at the `Sheet`'s `onOpenChange` (`eventDetails.reason === "escape-key"`), so a staged day can be cleared by the first press instead of Base UI closing the whole overlay on it — the same override point `command-palette.tsx`'s sub-modes would need if they ever wanted to catch Escape before the palette itself closes. |
 
 **Owned by libraries — do not re-bind:**
 

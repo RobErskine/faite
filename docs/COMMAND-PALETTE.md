@@ -111,6 +111,7 @@ At root, in render order:
 | **Manage** | Delete a list… / Delete a tab… | each enters a picker mode |
 | **View** | Show 1 / 3 / 5 / 7 days | writes `settings.visibleDays` |
 | | Roll over on workdays only ⇄ every day | writes `settings.workdaysOnly` — same setting also lives in Settings → Faite Loop (`loop-section.tsx`, EI-96), which additionally exposes `overflowAfterDays`; see [FAITE-LOOP.md](FAITE-LOOP.md) |
+| | Open Overdrive (N) | disabled when Overflow is empty; opens the same full-screen triage overlay as the button at the foot of the Overflow column (EI-97) — see [OVERDRIVE.md](OVERDRIVE.md) |
 
 Every mutating item routes through the shared undo helpers (`recordCreate`,
 `deleteListWithUndo`, `deleteTabWithUndo`) so palette actions and their

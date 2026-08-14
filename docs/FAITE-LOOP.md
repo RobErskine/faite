@@ -212,9 +212,29 @@ here, in contrast with `todoEvent` (EI-94), which persists specifically
 | `lib/day-timeline.ts`, `components/board/day-sheet.tsx` | day timeline rollover rows |
 | `lib/todo-timeline.ts`, `components/board/todo-sheet.tsx` | per-todo History rollover rows |
 | `lib/recurrence-expand.ts` | the recurring bypass (§3) |
+| `lib/overdrive.ts`, `components/board/overdrive-overlay.tsx` | Overdrive (§8) — the way *out* of Overflow |
 
 Tests: `scheduling.test.ts`, `rollover-events.test.ts`, `settings-sheet.test.tsx`
 (Faite Loop section), `todo-card.test.tsx` ("the Faite Loop" block),
 `day-timeline.test.ts` ("the Faite Loop" block), `todo-timeline.test.ts`
 ("the Faite Loop (EI-96)" block), `todo-sheet.test.tsx` ("History — the
 Faite Loop" block).
+
+## 8. Overdrive: the documented way out
+
+The loop's whole thesis — "put off that long, it probably wasn't important" —
+only lands if Overflow is a queue with an exit, not a pile that just grows.
+**Overdrive** (EI-97, `docs/OVERDRIVE.md`) is that exit: a full-screen,
+one-card-at-a-time overlay, launched from a button at the foot of the
+Overflow column once it holds enough to be worth a dedicated mode, that lets
+each to-do get won't-do'd, done, returned to its list, or scheduled forward —
+one keystroke or tap at a time.
+
+Nothing here changes §1–§6 above. Overdrive is a consumer of the loop, not a
+second implementation of it: scheduling a to-do forward from inside Overdrive
+calls the same `scheduleTodo()` a drag does, and if it rolls again later,
+`rollEventsFor()` computes that exactly as it would for any other todo. See
+`docs/OVERDRIVE.md` for the full design — the verdict table, why only
+scheduling requires an explicit confirm, and why the arrow ramp honours
+`workdaysOnly` while the date picker deliberately does not (§2 above, applied
+one level up).

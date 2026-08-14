@@ -150,6 +150,8 @@ function renderPalette(
     onSelectTab: () => {},
     onSetTodoStatus: () => {},
     onDeleteTodo: () => {},
+    overflowCount: 0,
+    onOpenOverdrive: () => {},
     ...overrides,
   };
   return render(<CommandPalette {...props} />);

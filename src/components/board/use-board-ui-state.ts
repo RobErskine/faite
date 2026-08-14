@@ -35,6 +35,9 @@ export interface BoardOverlayState {
   archivedOpen: boolean;
   settingsOpen: boolean;
   openDay: CivilDate | null;
+  /** Overdrive (EI-97). Its own keydown handler needs undo and every other
+   * board hotkey held off exactly like every sheet above it. */
+  overdriveOpen: boolean;
 }
 
 /**
@@ -55,7 +58,8 @@ export function computeModalOpen(state: BoardOverlayState): boolean {
     state.settingsOpen ||
     // The day sheet holds a rich-text editor, so board hotkeys — undo
     // especially — must not fire while someone is typing a journal entry.
-    !!state.openDay
+    !!state.openDay ||
+    state.overdriveOpen
   );
 }
 
@@ -79,6 +83,8 @@ export function useBoardUiState() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   /** The day whose details sheet is open, if any. */
   const [openDay, setOpenDay] = useState<CivilDate | null>(null);
+  /** Overdrive (EI-97). */
+  const [overdriveOpen, setOverdriveOpen] = useState(false);
 
   /**
    * Which page the phone shell's bottom bar shows (`phone-board.tsx`, P3).
@@ -287,6 +293,8 @@ export function useBoardUiState() {
     setSettingsOpen,
     openDay,
     setOpenDay,
+    overdriveOpen,
+    setOverdriveOpen,
     phoneView,
     setPhoneView,
     landingTodoId,
