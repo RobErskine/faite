@@ -417,3 +417,26 @@ script is command scope; build-time inlining means only command scope is safe.
 localhost target when the page is served from a real domain, turning the next leak
 into a console warning instead of a login outage. Conventions are one edit away from
 being broken; the guard is what makes the convention safe to get wrong.
+
+## Playwright key presses need pacing when the app processes them via rAF/React state
+
+Writing `e2e/keyboard-drag.spec.ts` (EI-74), `page.keyboard.press("Space")` then
+immediately `press("ArrowUp")` then immediately `press("Space")` looked
+reasonable and passed sometimes — 25-75% first-try failure depending on the
+run, "fixed" by adding `retries: 2` at first. That was about to ship a test
+that only worked because of a retry crutch disguising real flakiness.
+
+The actual bug: dnd-kit's `KeyboardSensor` processes a lift/move/drop through
+React state updates and `requestAnimationFrame`, not synchronously. Consecutive
+`.press()` calls fire back-to-back with no native browser event to await
+between them, so the second key press can land before the first one's state
+update has flushed — the drag silently no-ops and order stays unchanged.
+
+**Rule:** when driving a library that commits interaction state via
+React/rAF rather than a synchronous DOM write, put an explicit
+`waitForTimeout` (150-300ms was enough here) between each logical step of the
+interaction — not just after the initial `.focus()`. If a Playwright
+interaction is flaky, look for a missing settle-wait between steps before
+reaching for `test.describe.configure({ retries })`; retries can mask a race
+that a 200ms wait actually fixes, and 24/24 passes across 6 repeats with zero
+retries is a much stronger signal than "eventually green with 2 retries."

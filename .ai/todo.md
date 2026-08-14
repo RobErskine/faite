@@ -1199,3 +1199,41 @@ that today it was assigned there — not just events that literally occurred tha
       timeline unchanged (still just its own Created/Completed/Won't-do). Tuesday shows
       exactly one entry: "Assigned here · Aug 10 · 1:35 PM".
 - [x] `npm run verify` green: 790 tests / 57 files.
+
+## Review — Overnight session, 2026-08-14
+
+Autonomous overnight run on `rob/overnight-2026-08-14`, queued from the Faite
+backlog: well-documented, low-stakes, no-design-input tickets, ordered easiest
+to hardest. `npm run verify` green before every commit; `.ai/todo.md` and
+Linear updated as each ticket lands so the session can be picked up cold.
+
+- [x] **EI-61** — closed without code. Day/Overflow columns already group by
+      list with a tinted header (`board-column.tsx` `TodoGroupSection`);
+      `ARCHITECTURE.md` §2.14/§2.8d already resolved the "no `originListId`
+      column" question.
+- [x] **EI-105** — fixed a 100%-failing e2e test (`core-flows.spec.ts`
+      History section). Root cause: `HistorySection` flipped to open-by-default
+      in `ad67ca0` but the test still clicked the toggle, collapsing an
+      already-open section. Removed the now-wrong clicks. This was blocking
+      every other e2e-touching ticket tonight, so it went first.
+- [x] **EI-81** — auto-scroll. Doc said "status unknown"; it was actually
+      configured (`autoScroll = layout !== "phone"`), just untested. Extracted
+      `computeAutoScroll(layout)` as a pure function and unit-tested it. Left
+      the "does it actually feel right" half open — human-at-a-browser check,
+      not worth an E2E scroll-velocity assertion.
+- [x] **EI-74** — new `e2e/keyboard-drag.spec.ts`. Covers lift/cancel, in-column
+      reorder, and cross-column move within a half. **Found and documented a
+      real gap**, not silently worked around: keyboard drag cannot cross from
+      the pinned Backlog rail into the calendar half (tried 1-6 arrow presses
+      against a populated target). Landed as `test.fixme()` with full
+      diagnosis. Also found: `sortableKeyboardCoordinates` needs an existing
+      sortable item in the destination to find a landing rect at all — every
+      cross-column test seeds the target first for that reason, not
+      convenience. See `.ai/lessons.md` for the Playwright key-press-pacing
+      trap this ticket ran into and fixed.
+
+Continuing to EI-84 (SR announcements), EI-75 (shortcut catalog + help sheet),
+then EI-106's five phases (reminder presets) if time/budget allow. Stop time
+07:00; see the plan file for the full queue and rationale
+(`~/.claude/plans/i-am-looking-to-functional-zebra.md` on the machine this ran
+from, not in-repo).
