@@ -1395,3 +1395,62 @@ Branch `rob/overnight-2026-08-14` now has 21 commits. Still nothing pushed,
 nothing deployed. Linear remains unreachable for the whole session past
 EI-84 — every ticket from EI-105 onward needs its Linear update posted once
 it reconnects.
+
+## Review — Overnight session, 2026-08-14 — FINAL WRAP-UP (06:44am)
+
+Session ending at the 07:00 hard stop. Final state:
+
+- **All 11 originally-queued tickets: DONE.** EI-61, EI-105, EI-81, EI-74,
+  EI-84, EI-75, and EI-106's five phases (EI-107/108/109/110/113 — reminder
+  presets, a complete feature: new sync entity, D1 migration, picker,
+  Settings UI, quick-add vocabulary, card badge).
+- **Independent code review completed** after all tickets landed — a
+  code-reviewer agent found 2 real bugs (quick-add's preset matching eating
+  ordinary words via bare substring match; a seed-guard edge case that could
+  re-run forever), both fixed with regression tests and verified live in a
+  browser (commit `c9547d2`).
+- **21 commits** on `rob/overnight-2026-08-14`. Nothing pushed, nothing
+  deployed. `npm run verify` reconfirmed green at 06:44am, the last thing
+  done this session.
+- **One-page summary for the morning read:** `.ai/OVERNIGHT-2026-08-14-SUMMARY.md`.
+
+### Linear — final status: never reconnected
+
+Linear's MCP server disconnected right after EI-84 (~04:50am the previous
+session, i.e. early in this one) and **did not reconnect across 11 checks**
+spanning 02:13am through 06:44am (roughly every 25 minutes). Every ticket
+from **EI-105 onward has NO Linear status update and NO Linear comment
+posted** — this is a full manual catch-up, not a partial one. Needed once
+Linear is reachable again:
+
+| Ticket | Status to set | Comment source |
+|---|---|---|
+| EI-105 | In Review | commit `6eaa45a` + its .ai/todo.md entry |
+| EI-81 | In Review | commit `fe222db` |
+| EI-74 | In Review | commit `520e249` |
+| EI-84 | In Review | commit `e429dcf` |
+| EI-75 | In Review | commit `11806e9` |
+| EI-107 | In Review | commit `a95e694` |
+| EI-108 | In Review | commit `8246bd8` |
+| EI-109 | In Review | commit `27be258` |
+| EI-110 | In Review | commit `8d96ff6` |
+| EI-113 | In Review | commit `8c34534` — also mention the review-fix commit `c9547d2` |
+| EI-106 (parent) | Done | summary linking all 5 phases + the review-fix pass |
+
+For the exact tone/voice, the EI-84 and EI-75 comments DID post successfully
+earlier in the session (before the disconnect) — match that style.
+
+### What's next for Rob
+
+1. Review EI-107's D1 migration (id 11) and Dexie version bump (v6) before
+   any deploy — deliberately left un-pushed for this.
+2. Post the Linear catch-up above once Linear's MCP is reachable.
+3. Two things intentionally left for a human: EI-84's VoiceOver pass, EI-81's
+   "does auto-scroll feel right" check.
+4. One real, documented (not silently patched) gap: keyboard drag can't
+   cross from Backlog into the calendar half — `e2e/keyboard-drag.spec.ts`'s
+   `test.fixme()` has the full diagnosis. Worth its own ticket if it's worth
+   fixing.
+
+Session ends here. No new feature work or backlog pulls were started without
+Linear access, per instructions.
