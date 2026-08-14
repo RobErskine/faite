@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { LogIn, LogOut, Search, Settings } from "lucide-react";
+import { CircleHelp, LogIn, LogOut, Search, Settings } from "lucide-react";
 import { toast } from "sonner";
 import {
   DropdownMenu,
@@ -25,6 +25,9 @@ interface AppHeaderProps {
   onOpenPalette: () => void;
   /** Opens the settings sheet. */
   onOpenSettings: () => void;
+  /** Opens the keyboard shortcut help sheet (EI-75) — same target as `?` and
+   * the palette's "Keyboard shortcuts" item, just a mouse-discoverable one. */
+  onOpenHelp: () => void;
   /** Raw Dexie row; undefined until the store has read it. */
   settings: SettingsRow | undefined;
   /**
@@ -46,7 +49,13 @@ interface AppHeaderProps {
  * the real field, and a second live input would duplicate value state and
  * fight it for focus.
  */
-export function AppHeader({ onOpenPalette, onOpenSettings, settings, compact }: AppHeaderProps) {
+export function AppHeader({
+  onOpenPalette,
+  onOpenSettings,
+  onOpenHelp,
+  settings,
+  compact,
+}: AppHeaderProps) {
   const { data: session } = useSession();
   const identity = useIdentity();
   const avatar = resolveAvatar(settings, identity);
@@ -99,6 +108,18 @@ export function AppHeader({ onOpenPalette, onOpenSettings, settings, compact }: 
           Sign up
         </Button>
       ) : null}
+
+      {/* Mouse-discoverable route to the same sheet `?` opens (EI-75) — a
+          keyboard shortcut that's only reachable by keyboard shortcut is a
+          discoverability dead end for anyone who hasn't found it yet. */}
+      <button
+        type="button"
+        onClick={onOpenHelp}
+        aria-label="Keyboard shortcuts"
+        className="flex size-8 items-center justify-center rounded-full text-muted-foreground transition-colors outline-none hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+      >
+        <CircleHelp className="size-4" aria-hidden />
+      </button>
 
       <DropdownMenu>
         <DropdownMenuTrigger

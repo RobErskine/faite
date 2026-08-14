@@ -75,6 +75,7 @@ describe("AppHeader", () => {
       <AppHeader
         onOpenPalette={() => opened++}
         onOpenSettings={noop}
+        onOpenHelp={noop}
         settings={undefined}
       />,
     );
@@ -86,7 +87,12 @@ describe("AppHeader", () => {
 
   it("advertises the ⌘K shortcut on the search field", () => {
     render(
-      <AppHeader onOpenPalette={noop} onOpenSettings={noop} settings={undefined} />,
+      <AppHeader
+        onOpenPalette={noop}
+        onOpenSettings={noop}
+        onOpenHelp={noop}
+        settings={undefined}
+      />,
     );
 
     const trigger = screen.getByText("Search or run a command…").closest("button");
@@ -97,7 +103,12 @@ describe("AppHeader", () => {
 
   it("renders the account avatar with placeholder initials when there is no settings row", () => {
     render(
-      <AppHeader onOpenPalette={noop} onOpenSettings={noop} settings={undefined} />,
+      <AppHeader
+        onOpenPalette={noop}
+        onOpenSettings={noop}
+        onOpenHelp={noop}
+        settings={undefined}
+      />,
     );
 
     expect(screen.getByLabelText("Account")).toBeTruthy();
@@ -109,6 +120,7 @@ describe("AppHeader", () => {
       <AppHeader
         onOpenPalette={noop}
         onOpenSettings={noop}
+        onOpenHelp={noop}
         settings={settingsWith({ displayName: "Rob Erskine" })}
       />,
     );
@@ -127,7 +139,12 @@ describe("AppHeader", () => {
    */
   it("opens the account menu without throwing, offering sign-in when signed out", () => {
     render(
-      <AppHeader onOpenPalette={noop} onOpenSettings={noop} settings={undefined} />,
+      <AppHeader
+        onOpenPalette={noop}
+        onOpenSettings={noop}
+        onOpenHelp={noop}
+        settings={undefined}
+      />,
     );
 
     fireEvent.click(screen.getByLabelText("Account"));
@@ -140,7 +157,12 @@ describe("AppHeader", () => {
   it("shows the account email and a working sign-out when signed in", async () => {
     mockSession = { user: { email: "rob@myfaite.app", name: "Rob Erskine" } };
     render(
-      <AppHeader onOpenPalette={noop} onOpenSettings={noop} settings={undefined} />,
+      <AppHeader
+        onOpenPalette={noop}
+        onOpenSettings={noop}
+        onOpenHelp={noop}
+        settings={undefined}
+      />,
     );
 
     fireEvent.click(screen.getByLabelText("Account"));
@@ -154,7 +176,12 @@ describe("AppHeader", () => {
   it("shows the account name and its initials instead of the placeholder", () => {
     mockSession = { user: { email: "rob@myfaite.app", name: "Rob Erskine" } };
     render(
-      <AppHeader onOpenPalette={noop} onOpenSettings={noop} settings={undefined} />,
+      <AppHeader
+        onOpenPalette={noop}
+        onOpenSettings={noop}
+        onOpenHelp={noop}
+        settings={undefined}
+      />,
     );
 
     // Initials render on the closed trigger; the name needs the menu open.
@@ -167,7 +194,12 @@ describe("AppHeader", () => {
   it("falls back to the email when the account has no name, without repeating it", () => {
     mockSession = { user: { email: "rob@myfaite.app", name: null } };
     render(
-      <AppHeader onOpenPalette={noop} onOpenSettings={noop} settings={undefined} />,
+      <AppHeader
+        onOpenPalette={noop}
+        onOpenSettings={noop}
+        onOpenHelp={noop}
+        settings={undefined}
+      />,
     );
 
     fireEvent.click(screen.getByLabelText("Account"));
@@ -183,6 +215,7 @@ describe("AppHeader", () => {
       <AppHeader
         onOpenPalette={noop}
         onOpenSettings={() => opened++}
+        onOpenHelp={noop}
         settings={undefined}
       />,
     );
@@ -193,9 +226,30 @@ describe("AppHeader", () => {
     expect(opened).toBe(1);
   });
 
+  it("opens the help sheet from the header's help icon", () => {
+    let opened = 0;
+    render(
+      <AppHeader
+        onOpenPalette={noop}
+        onOpenSettings={noop}
+        onOpenHelp={() => opened++}
+        settings={undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText("Keyboard shortcuts"));
+
+    expect(opened).toBe(1);
+  });
+
   it("links the wordmark to the board", () => {
     render(
-      <AppHeader onOpenPalette={noop} onOpenSettings={noop} settings={undefined} />,
+      <AppHeader
+        onOpenPalette={noop}
+        onOpenSettings={noop}
+        onOpenHelp={noop}
+        settings={undefined}
+      />,
     );
 
     expect(screen.getByText("Faite").closest("a")?.getAttribute("href")).toBe(
@@ -205,7 +259,12 @@ describe("AppHeader", () => {
 
   it("shows a Sign up CTA next to the avatar when signed out", () => {
     render(
-      <AppHeader onOpenPalette={noop} onOpenSettings={noop} settings={undefined} />,
+      <AppHeader
+        onOpenPalette={noop}
+        onOpenSettings={noop}
+        onOpenHelp={noop}
+        settings={undefined}
+      />,
     );
 
     expect(screen.getByText("Sign up").closest("a")?.getAttribute("href")).toBe(
@@ -216,7 +275,12 @@ describe("AppHeader", () => {
   it("hides the Sign up CTA once signed in", () => {
     mockSession = { user: { email: "rob@myfaite.app" } };
     render(
-      <AppHeader onOpenPalette={noop} onOpenSettings={noop} settings={undefined} />,
+      <AppHeader
+        onOpenPalette={noop}
+        onOpenSettings={noop}
+        onOpenHelp={noop}
+        settings={undefined}
+      />,
     );
 
     expect(screen.queryByText("Sign up")).toBeNull();
@@ -225,7 +289,12 @@ describe("AppHeader", () => {
   it("hides the Sign up CTA while the session check is still pending", () => {
     mockIsPending = true;
     render(
-      <AppHeader onOpenPalette={noop} onOpenSettings={noop} settings={undefined} />,
+      <AppHeader
+        onOpenPalette={noop}
+        onOpenSettings={noop}
+        onOpenHelp={noop}
+        settings={undefined}
+      />,
     );
 
     expect(screen.queryByText("Sign up")).toBeNull();

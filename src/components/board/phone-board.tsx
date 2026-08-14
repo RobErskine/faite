@@ -109,6 +109,7 @@ export function PhoneBoard({
     setOpenDay,
     setPaletteOpen,
     setSettingsOpen,
+    setHelpSheetOpen,
     setOverdriveOpen,
     phoneView,
     setPhoneView,
@@ -130,6 +131,7 @@ export function PhoneBoard({
         compact
         onOpenPalette={() => setPaletteOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
+        onOpenHelp={() => setHelpSheetOpen(true)}
         settings={settings}
       />
 

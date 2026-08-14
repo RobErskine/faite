@@ -179,6 +179,7 @@ export function DesktopBoard({
       <AppHeader
         onOpenPalette={() => ui.setPaletteOpen(true)}
         onOpenSettings={() => ui.setSettingsOpen(true)}
+        onOpenHelp={() => ui.setHelpSheetOpen(true)}
         settings={settings}
       />
 
