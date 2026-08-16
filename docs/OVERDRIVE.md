@@ -603,17 +603,17 @@ verdict on a stale to-do is a more annoying mistake than a mis-tap.
   `.animate-in` mainly for symmetry with the mid-flick assertions, which
   locate the outgoing card via `.animate-out` directly.
 
-  The dedicated flick test **stretches `.animate-out` to a 700ms animation**
+  The dedicated flick test **stretches `.animate-out` to a 900ms animation**
   via `addStyleTag` before opening the overlay. Two reasons, both worth
-  keeping: at its real ~320ms the mid-flick window is narrower than the
-  sequential auto-retrying assertions it takes to check it, so the last one
-  could legitimately land after the flick ended — a flaky test about correct
+  keeping: at its real ~320ms the mid-flick window is narrower than a single
+  traced Playwright round trip on a loaded CI runner, so anything asserted
+  inside it lands after the flick ended — a flaky test about correct
   behaviour. And it's the sharpest available regression test for round 4b:
-  the flick ends on `animationend`, so a 700ms animation means a 700ms
+  the flick ends on `animationend`, so a 900ms animation means a 900ms
   block, whereas the clock-driven implementation this replaced would advance
   ~340ms in no matter how long the animation ran.
 
-  **Two constraints keep that test honest, and both were learned the hard
+  **Three rules keep that test honest, and all three were learned the hard
   way (EI-185 — it had been red on every project since the day it landed):**
 
   1. **The stretch must stay under `FLICK_FALLBACK_MS` (1000ms).** The
@@ -621,8 +621,9 @@ verdict on a stale to-do is a more annoying mistake than a mis-tap.
      animation is still running, so a 3s stretch — the original value — did
      not buy a 3s block, it bought a 1s one, ended by the timer rather than
      by `animationend`. The test was then no longer covering the path it
-     claimed to. 700ms leaves ~300ms of headroom over the animation's
-     measured 8–13ms start delay.
+     claimed to. 900ms leaves headroom over the animation's measured 8–13ms
+     start delay, and on a run where the net wins anyway the block is
+     *longer*, never shorter.
   2. **Mid-flick button assertions need `includeHidden: true`.** The verdict
      row is `invisible` as well as `disabled` while a flick runs (§8a), and
      `visibility: hidden` is one of ARIA's tree-exclusion rules — so a plain
@@ -638,6 +639,20 @@ verdict on a stale to-do is a more annoying mistake than a mis-tap.
      asserts the same contract and never saw it, because jsdom loads no
      stylesheet: there, `.invisible` is a class name with no computed
      `visibility` behind it.
+  3. **Everything inside the window runs in one `Promise.all`, and there is
+     as little of it as possible.** ~1s is the hard ceiling (rule 1) and no
+     amount of lengthening the animation raises it, while each traced action
+     costs a round trip plus a DOM snapshot — four sequential ones do not
+     reliably fit, which is what the first EI-185 attempt proved by moving
+     the failure from `toBeDisabled` to the assertion after it. So the batch
+     holds only what cannot be observed later (the outgoing card is still on
+     screen; the buttons are inert) plus the two presses that must be
+     swallowed; whether they *were* swallowed is checked after the flick
+     settles, race-free, by the progress readout being exactly `2 of 10` —
+     a leaked `ArrowUp` makes it 3, a leaked `Backspace` makes it 1.
+     `toBeHidden()` is deliberately not in the batch: the visibility
+     transition in rule 2 guarantees it misses its first poll and burns a
+     retry interval the window cannot spare.
 
 **`lib/dev-seed.ts`'s `seedOverflow(count)`** creates `count` open to-dos
 backdated past the current `overflowAfterDays` threshold, spread across
