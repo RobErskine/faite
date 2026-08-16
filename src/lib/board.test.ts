@@ -304,6 +304,100 @@ describe("buildBoard with hidden lists (tabs)", () => {
   });
 });
 
+describe("buildBoard groups: color inheritance via tabsById", () => {
+  const PINK = "#d6409f";
+  const GREEN = "#46a758";
+  const BLUE = "#3e63dd";
+
+  const pinkTab = { ...tab("home", "Home"), color: PINK };
+  const greenTab = { ...tab("home", "Home"), color: GREEN }; // same id, recolored
+
+  const groceries: List = { ...list("groceries", "Grocery List"), tabId: "home" };
+  const errands: List = { ...list("errands", "Errands"), tabId: "home", color: BLUE };
+  const backlog = list("backlog", "Backlog", true); // tabId: null
+
+  const colorOf = (day: ReturnType<typeof buildBoard>["days"][number], key: string) =>
+    day.groups.find((g) => g.key === key)?.color;
+
+  it("an uncolored list inherits its tab's color", () => {
+    const board = buildBoard(
+      [todo({ id: "a", listId: "groceries", scheduledDate: "2026-08-05" })],
+      [groceries, backlog],
+      ctx,
+      [],
+      { tabsById: new Map([[pinkTab.id, pinkTab]]) },
+    );
+    const day = board.days.find((d) => d.day === "2026-08-05")!;
+    expect(colorOf(day, "groceries")).toBe(PINK);
+  });
+
+  // Rob's scenario: a list explicitly colored Blue stays Blue when the tab it
+  // lives under is recolored, while a sibling that never had its own color
+  // follows the tab, live.
+  it("a list's own color wins and survives its tab being recolored; an inheriting sibling follows", () => {
+    const board = buildBoard(
+      [
+        todo({ id: "a", listId: "errands", scheduledDate: "2026-08-05" }),
+        todo({ id: "b", listId: "groceries", scheduledDate: "2026-08-05" }),
+      ],
+      [errands, groceries, backlog],
+      ctx,
+      [],
+      { tabsById: new Map([[greenTab.id, greenTab]]) },
+    );
+    const day = board.days.find((d) => d.day === "2026-08-05")!;
+    expect(colorOf(day, "errands")).toBe(BLUE);
+    expect(colorOf(day, "groceries")).toBe(GREEN);
+  });
+
+  it("a hidden list resolves against its OWN tab, not the active one", () => {
+    const activeTab = { ...tab("active", "Home"), color: GREEN };
+    const otherTab = { ...tab("other", "Work"), color: PINK };
+    const activeLists = [
+      backlog,
+      { ...list("chores", "Chores"), tabId: "active" },
+    ];
+    const work: List = { ...list("work", "Work List"), tabId: "other" };
+
+    const board = buildBoard(
+      [todo({ id: "a", listId: "work", scheduledDate: "2026-08-05" })],
+      activeLists,
+      ctx,
+      [work],
+      {
+        tabsById: new Map([
+          [activeTab.id, activeTab],
+          [otherTab.id, otherTab],
+        ]),
+      },
+    );
+    const day = board.days.find((d) => d.day === "2026-08-05")!;
+    expect(colorOf(day, "work")).toBe(PINK);
+  });
+
+  it("Backlog never inherits a tab color — it has no tabId", () => {
+    const board = buildBoard(
+      [todo({ id: "a", listId: "backlog", scheduledDate: "2026-08-05" })],
+      [backlog, groceries],
+      ctx,
+      [],
+      { tabsById: new Map([[pinkTab.id, pinkTab]]) },
+    );
+    const day = board.days.find((d) => d.day === "2026-08-05")!;
+    expect(colorOf(day, "backlog")).toBeNull();
+  });
+
+  it("without tabsById, color is exactly the list's own — the pre-fix default", () => {
+    const board = buildBoard(
+      [todo({ id: "a", listId: "groceries", scheduledDate: "2026-08-05" })],
+      [groceries, backlog],
+      ctx,
+    );
+    const day = board.days.find((d) => d.day === "2026-08-05")!;
+    expect(colorOf(day, "groceries")).toBeNull();
+  });
+});
+
 describe("listSortKey", () => {
   it("strips a leading “To ”, so the alphabet does some work", () => {
     expect(listSortKey("To Buy")).toBe("Buy");

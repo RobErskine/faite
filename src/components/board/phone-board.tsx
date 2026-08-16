@@ -4,6 +4,7 @@ import { useRef } from "react";
 import { StickyNote } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import { effectiveListColor } from "@/lib/colors";
 import { NAV_LOAD_MORE, navKeyOf } from "@/lib/column-nav";
 import { formatDay } from "@/lib/scheduling";
 import { AppHeader } from "./app-header";
@@ -84,7 +85,7 @@ export function PhoneBoard({
     columnDropTargetId,
     tabDrop,
     activeTabId,
-    activeTabRecord,
+    tabsById,
     recurrenceSummaries,
     recurrenceExpansion,
     renderedDays,
@@ -364,7 +365,7 @@ export function PhoneBoard({
                   onOpenInfo={() => setInfoListId(column.list.id)}
                   isColumnDropTarget={columnDropTargetId === column.list.id}
                   isColumnDragActive={!!activeList}
-                  accentColor={column.list.color ?? activeTabRecord?.color}
+                  accentColor={effectiveListColor(column.list, tabsById)}
                 />
               ))}
               <CreateListColumn

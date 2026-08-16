@@ -457,6 +457,7 @@ export function Board() {
 
       <ListInfoDialog
         list={data.infoList}
+        tabsById={data.tabsById}
         onClose={() => ui.setInfoListId(null)}
         onSave={actions.handleSaveList}
         onArchive={actions.handleArchiveList}
@@ -544,6 +545,7 @@ export function Board() {
       labels={data.labels}
       reminderPresets={data.reminderPresets}
       listsById={data.listsById}
+      tabsById={data.tabsById}
       backlog={data.backlogList}
       ctx={data.ctx}
       onClose={() => ui.setOpenDay(null)}
