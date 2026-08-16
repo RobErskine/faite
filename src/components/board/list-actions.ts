@@ -27,11 +27,12 @@ import { deleteListUndoSteps, inversePatch, pushUndo, undoById } from "@/lib/und
  * A patch rather than a name, mirroring `updateTabWithUndo` — a list has carried
  * `color` since `decorationSchema` was written, and the caller decides both what
  * changed and what the undo entry should read, since "Renamed" is wrong for a
- * recolor and the write is otherwise identical.
+ * recolor and the write is otherwise identical. `defaultReminderPresetId`
+ * (EI-112) rides along on the same patch shape.
  */
 export function updateListWithUndo(
   list: List,
-  patch: Partial<Pick<List, "name" | "color">>,
+  patch: Partial<Pick<List, "name" | "color" | "defaultReminderPresetId">>,
   label: string,
 ): void {
   pushUndo(label, [

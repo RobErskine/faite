@@ -11,6 +11,7 @@ import {
   createLabel,
   createList,
   createPlace,
+  createReminderPreset,
   createSeriesFromTodo,
   createTab,
   createTodo,
@@ -19,6 +20,7 @@ import {
   deleteLabel,
   deleteList,
   deletePlace,
+  deleteReminderPreset,
   deleteSeries,
   deleteTab,
   deleteTodo,
@@ -37,6 +39,7 @@ import {
   setTodoStatus,
   unarchiveList,
   unarchiveTab,
+  updateList,
   updatePlace,
   updateTodo,
 } from "./repositories";
@@ -169,6 +172,76 @@ describe("seedReminderPresetsIfNeeded", () => {
     );
     expect(flipEntries).toHaveLength(1);
     expect(flipEntries[0].hlc).not.toBe(SEED_HLC);
+  });
+});
+
+describe("createTodo — default reminder preset (EI-112)", () => {
+  it("applies the list's default reminder preset when the caller leaves reminderTime unset", async () => {
+    await seedIfEmpty();
+    const presetId = await createReminderPreset("Lunchtime", "12:30");
+    const listId = await createList("Weekend");
+    await updateList(listId, { defaultReminderPresetId: presetId });
+
+    const todoId = await createTodo({ title: "Mow the lawn", listId });
+
+    expect((await getDb().todos.get(todoId))?.reminderTime).toBe("12:30");
+  });
+
+  it("never overrides a reminderTime the caller actually resolved", async () => {
+    await seedIfEmpty();
+    const presetId = await createReminderPreset("Lunchtime", "12:30");
+    const listId = await createList("Weekend");
+    await updateList(listId, { defaultReminderPresetId: presetId });
+
+    const todoId = await createTodo({
+      title: "Mow the lawn",
+      listId,
+      reminderTime: "09:00",
+    });
+
+    expect((await getDb().todos.get(todoId))?.reminderTime).toBe("09:00");
+  });
+
+  it("leaves reminderTime null for a list with no default", async () => {
+    await seedIfEmpty();
+    const listId = await createList("Weekend");
+
+    const todoId = await createTodo({ title: "Mow the lawn", listId });
+
+    expect((await getDb().todos.get(todoId))?.reminderTime).toBeNull();
+  });
+
+  it("leaves reminderTime null when the todo has no list at all", async () => {
+    await seedIfEmpty();
+
+    const todoId = await createTodo({ title: "Mow the lawn" });
+
+    expect((await getDb().todos.get(todoId))?.reminderTime).toBeNull();
+  });
+});
+
+describe("deleteReminderPreset — clearing a default (EI-112)", () => {
+  it("clears defaultReminderPresetId on every list pointing at the deleted preset", async () => {
+    await seedIfEmpty();
+    const presetId = await createReminderPreset("Lunchtime", "12:30");
+    const listId = await createList("Weekend");
+    await updateList(listId, { defaultReminderPresetId: presetId });
+
+    await deleteReminderPreset(presetId);
+
+    expect((await getDb().lists.get(listId))?.defaultReminderPresetId).toBeNull();
+  });
+
+  it("does not touch a todo's already-resolved reminderTime", async () => {
+    await seedIfEmpty();
+    const presetId = await createReminderPreset("Lunchtime", "12:30");
+    const listId = await createList("Weekend");
+    await updateList(listId, { defaultReminderPresetId: presetId });
+    const todoId = await createTodo({ title: "Mow the lawn", listId });
+
+    await deleteReminderPreset(presetId);
+
+    expect((await getDb().todos.get(todoId))?.reminderTime).toBe("12:30");
   });
 });
 

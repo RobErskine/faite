@@ -97,6 +97,7 @@ const list = (id: string, color: string | null): List => ({
   archivedWithTabId: null,
   position: "a0",
   tabId: null,
+  defaultReminderPresetId: null,
   color,
   emoji: null,
   iconUrl: null,

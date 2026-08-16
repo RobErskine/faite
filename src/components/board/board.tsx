@@ -458,6 +458,7 @@ export function Board() {
       <ListInfoDialog
         list={data.infoList}
         tabsById={data.tabsById}
+        reminderPresets={data.reminderPresets}
         onClose={() => ui.setInfoListId(null)}
         onSave={actions.handleSaveList}
         onArchive={actions.handleArchiveList}
