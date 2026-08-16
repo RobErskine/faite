@@ -4,11 +4,10 @@
   "description": "enables the default permissions",
   "windows": [
     "main",
-    "board_a",
-    "board_b",
-    "hidden_probe"
+    "core"
   ],
   "permissions": [
-    "core:default"
+    "core:default",
+    "window-state:default"
   ]
 }
