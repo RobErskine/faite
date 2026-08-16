@@ -121,6 +121,7 @@ export function DesktopBoard({
     tabsById,
     recurrenceSummaries,
     recurrenceExpansion,
+    subtaskCounts,
     overflowCollapsed,
     backlogCollapsed,
     renderedDays,
@@ -253,6 +254,7 @@ export function DesktopBoard({
             onOpen={(todo) => openTodoSheet(todo.id)}
             missedCounts={recurrenceExpansion?.missedCounts}
             recurrenceSummaries={recurrenceSummaries}
+            subtaskCounts={subtaskCounts}
             // No `onQuickAdd`, so no quick-add row: nothing can be scheduled
             // INTO Overflow, only out of it.
             onNavigate={navigate}
@@ -350,6 +352,7 @@ export function DesktopBoard({
                   ctx={ctx}
                   dueCount={deadlineCounts.get(column.day)}
                   recurrenceSummaries={recurrenceSummaries}
+                  subtaskCounts={subtaskCounts}
                   groups={column.groups}
                   collapsedGroups={collapsedGroups}
                   onToggleGroup={toggleGroup}
@@ -471,6 +474,7 @@ export function DesktopBoard({
               overTodoId={overTodoId}
               landingTodoId={landingTodoId}
               recurrenceSummaries={recurrenceSummaries}
+              subtaskCounts={subtaskCounts}
               // Backlog cannot be renamed, archived, or deleted, so its one
               // real action is collapsing the rail — see RailCollapseButton.
               isColumnDragActive={!!activeList}
@@ -559,6 +563,7 @@ export function DesktopBoard({
                   overTodoId={overTodoId}
                   landingTodoId={landingTodoId}
                   recurrenceSummaries={recurrenceSummaries}
+                  subtaskCounts={subtaskCounts}
                   reorderListId={column.list.id}
                   reservesGripSlot
                   onOpenInfo={() => setInfoListId(column.list.id)}
