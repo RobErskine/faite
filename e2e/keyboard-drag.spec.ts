@@ -14,13 +14,17 @@ import { test, expect } from "./support/fixtures";
  * `startKeyboardDrag` handler is dnd-kit's own
  * `useSortable().listeners.onKeyDown`.
  *
- * `sortableKeyboardCoordinates` (the default coordinate getter, wired in
- * `use-board-actions.ts`) only finds a landing rect near an EXISTING sortable
- * item — an empty column, or a column with no `useSortable` item registered
- * in it yet, is invisible to it. Every cross-column case below seeds the
- * destination with a todo first for that reason; this is not a test
- * convenience, it is a real constraint on the keyboard path today (see the
- * "known gap" test at the bottom).
+ * `keyboardCoordinates`/`collisionDetection` (`use-board-actions.ts`) replace
+ * dnd-kit's bare `sortableKeyboardCoordinates` as of EI-114. The stock getter
+ * scores candidates by averaged 4-corner distance, which structurally favors
+ * a small card rect over a large EMPTY column's rect even when the column is
+ * the nearer of the two — an empty column, or the pinned Backlog rail
+ * crossing into the calendar half, could be silently stepped over or never
+ * reached. See docs/DRAG-AND-DROP.md §7 item 1 for the full diagnosis. The
+ * cross-column cases below no longer need to seed the destination with a
+ * todo first purely to make it reachable — the "known gap" tests at the
+ * bottom specifically exercise the empty-destination cases that used to be
+ * invisible to the keyboard path.
  */
 test.describe("keyboard drag and drop", () => {
   test.beforeEach(async ({}, testInfo) => {
@@ -142,51 +146,110 @@ test.describe("keyboard drag and drop", () => {
   });
 
   /**
-   * Known gap, found while writing this spec — reported to EI-74, not
-   * silently worked around. `sortableKeyboardCoordinates` cannot move a card
-   * from the pinned Backlog rail into the calendar half (or presumably the
-   * reverse) via arrow keys: tried 1 through 6 `ArrowUp` presses (each given
-   * a full 250ms to process, same pacing as the passing tests above) against
-   * a Tuesday column that already held a todo — ruling out both the "needs
-   * an existing sortable item" constraint documented above and plain
-   * key-press pacing, which is what turned out to be the cause of the
-   * flakiness this spec had before this comment was written. The card never
-   * left Backlog in any of the 6 trials. The within-half cases above
-   * (Backlog reorder, day-to-day) both work reliably with a single arrow
-   * press, so this looks specific to crossing the planning/calendar
-   * boundary — plausibly because the two halves' rects don't satisfy
-   * whatever directional-adjacency check the coordinate getter uses across
-   * that boundary. A mouse or touch drag is unaffected; this is a
-   * keyboard-only gap.
-   *
-   * Left as `fixme` rather than deleted so it shows up in the Playwright
-   * report instead of silently not existing. See the EI-74 Linear comment
-   * for the full writeup.
+   * EI-114 (split out of EI-74, where this started as `test.fixme`).
+   * `sortableKeyboardCoordinates` scores the pinned Backlog rail's own column
+   * and a day column by averaged 4-corner distance — Backlog's rect and the
+   * tab strip immediately below it are both much closer than any day column,
+   * so the first couple of `ArrowUp` presses land there instead of making
+   * visible progress toward the calendar half. Two presses is enough to
+   * clear that near-field cluster and reach Tuesday; see
+   * docs/DRAG-AND-DROP.md §7 item 1 for the full diagnosis and the fix
+   * (`collisionDetection`'s self-collision exclusion in `use-board-actions.ts`).
    */
-  test.fixme(
-    "moves a card from the pinned Backlog rail into a day column",
-    async ({ page }) => {
-      const backlog = page.getByRole("region", { name: "Backlog" });
-      const tuesday = page.getByRole("region", { name: "Tuesday" }).first();
-      await backlog.getByPlaceholder("Add a to-do").fill("Backlog item");
-      await page.keyboard.press("Enter");
-      await tuesday.getByPlaceholder("Add a to-do").fill("Tuesday item");
-      await page.keyboard.press("Enter");
+  test("moves a card from the pinned Backlog rail into a day column", async ({ page }) => {
+    const backlog = page.getByRole("region", { name: "Backlog" });
+    const tuesday = page.getByRole("region", { name: "Tuesday" }).first();
+    await backlog.getByPlaceholder("Add a to-do").fill("Backlog item");
+    await page.keyboard.press("Enter");
+    await tuesday.getByPlaceholder("Add a to-do").fill("Tuesday item");
+    await page.keyboard.press("Enter");
 
-      const grip = page.getByRole("button", {
-        name: "Drag to reschedule or reorder Backlog item",
-      });
-      await grip.focus();
-      await page.waitForTimeout(200); // let React attach dnd-kit's keyboard activator before Space
-      await page.keyboard.press("Space");
-      await page.waitForTimeout(250); // let dnd-kit process the lift before moving
-      await page.keyboard.press("ArrowUp");
-      await page.waitForTimeout(250); // let dnd-kit process the move before dropping
-      await page.keyboard.press("Space");
+    const grip = page.getByRole("button", {
+      name: "Drag to reschedule or reorder Backlog item",
+    });
+    await grip.focus();
+    await page.waitForTimeout(200); // let React attach dnd-kit's keyboard activator before Space
+    await page.keyboard.press("Space");
+    await page.waitForTimeout(250); // let dnd-kit process the lift before moving
+    await page.keyboard.press("ArrowUp");
+    await page.waitForTimeout(250);
+    await page.keyboard.press("ArrowUp");
+    await page.waitForTimeout(250); // let dnd-kit process the move before dropping
+    await page.keyboard.press("Space");
 
-      await expect(async () => {
-        expect(await tuesday.locator("text=Backlog item").count()).toBe(1);
-      }).toPass({ timeout: 5_000 });
-    },
-  );
+    await expect(async () => {
+      expect(await tuesday.locator("text=Backlog item").count()).toBe(1);
+      expect(await backlog.locator("text=Backlog item").count()).toBe(0);
+    }).toPass({ timeout: 5_000 });
+  });
+
+  /**
+   * EI-114's second reported instance: an empty list column sitting between
+   * two populated ones was silently stepped over by arrow-key navigation
+   * (reported live as Grocery List → empty To Buy → To Read, where To Buy
+   * never got focus). Unlike the Backlog case above, this lands on the
+   * empty destination in a single press once fixed — see
+   * `keyboardCoordinates` in `use-board-actions.ts` for why: it scores
+   * whole-column candidates by leading-edge distance rather than the
+   * corner-averaged metric that let a populated neighbor's small card rect
+   * out-score the empty column's larger one.
+   */
+  test("moves a card into an empty list column between two populated ones", async ({ page }) => {
+    // Seed data already ships Grocery List / To Buy / To Read in that order
+    // (`repositories.ts`) — To Buy stays empty, which is the point.
+    const grocery = page.getByRole("region", { name: "Grocery List" });
+    const toBuy = page.getByRole("region", { name: "To Buy" });
+    const toRead = page.getByRole("region", { name: "To Read" });
+    await grocery.getByPlaceholder("Add a to-do").fill("Milk");
+    await page.keyboard.press("Enter");
+    await toRead.getByPlaceholder("Add a to-do").fill("Book");
+    await page.keyboard.press("Enter");
+
+    const grip = page.getByRole("button", { name: "Drag to reschedule or reorder Milk" });
+    await grip.focus();
+    await page.waitForTimeout(200); // let React attach dnd-kit's keyboard activator before Space
+    await page.keyboard.press("Space");
+    await page.waitForTimeout(250); // let dnd-kit process the lift before moving
+    await page.keyboard.press("ArrowRight");
+    await page.waitForTimeout(250); // let dnd-kit process the move before dropping
+    await page.keyboard.press("Space");
+
+    await expect(async () => {
+      expect(await toBuy.locator("text=Milk").count()).toBe(1);
+      expect(await grocery.locator("text=Milk").count()).toBe(0);
+      expect(await toRead.locator("text=Milk").count()).toBe(0);
+    }).toPass({ timeout: 5_000 });
+  });
+
+  /**
+   * The calendar-half counterpart of the empty-list-column case above: an
+   * empty day column (Wednesday) between two populated ones (Tuesday,
+   * Thursday). Same mechanism, different track — day columns lay out in one
+   * horizontal row exactly like list columns do (§4.12), so
+   * `keyboardCoordinates`'s same-row leading-edge scoring applies here too.
+   */
+  test("moves a card into an empty day column between two populated ones", async ({ page }) => {
+    const tuesday = page.getByRole("region", { name: "Tuesday" }).first();
+    const wednesday = page.getByRole("region", { name: "Wednesday" }).first();
+    const thursday = page.getByRole("region", { name: "Thursday" }).first();
+    await tuesday.getByPlaceholder("Add a to-do").fill("Tue item");
+    await page.keyboard.press("Enter");
+    await thursday.getByPlaceholder("Add a to-do").fill("Thu item");
+    await page.keyboard.press("Enter");
+
+    const grip = page.getByRole("button", { name: "Drag to reschedule or reorder Tue item" });
+    await grip.focus();
+    await page.waitForTimeout(200); // let React attach dnd-kit's keyboard activator before Space
+    await page.keyboard.press("Space");
+    await page.waitForTimeout(250); // let dnd-kit process the lift before moving
+    await page.keyboard.press("ArrowRight");
+    await page.waitForTimeout(250); // let dnd-kit process the move before dropping
+    await page.keyboard.press("Space");
+
+    await expect(async () => {
+      expect(await wednesday.locator("text=Tue item").count()).toBe(1);
+      expect(await tuesday.locator("text=Tue item").count()).toBe(0);
+      expect(await thursday.locator("text=Tue item").count()).toBe(0);
+    }).toPass({ timeout: 5_000 });
+  });
 });

@@ -151,13 +151,31 @@ never entered the calculation at all.**
 cursor?* Columns fill their half's full height, so any point inside one resolves
 to it. This is the "always droppable when over a column" guarantee.
 
-**`closestCorners` must stay as the fallback.** Two cases have no pointer to
-consult:
+**`closestCorners` must stay as the *last-resort* fallback.** Two cases have no
+real pointer to consult:
 1. the few pixels of container padding belonging to no column, and
 2. **keyboard drags, which have no pointer coordinates at all.**
 
-Removing the fallback silently breaks keyboard dragging — an accessibility
-regression that no current test catches.
+Removing it entirely silently breaks keyboard dragging — an accessibility
+regression no current test would catch.
+
+**As of EI-114, a SYNTHETIC pointer — at the center of `collisionRect`, dnd-kit's
+own name for the dragged element's current rect — is tried before falling all
+the way to `closestCorners`,** for both cases above. `closestCorners` scores
+every candidate by AVERAGING distance across all 4 corners, which structurally
+favors a small card's rect over a large, empty column's rect even when the
+column is the nearer of the two — its far corners drag the average up, and a
+nearby card's corners cluster tight around a point regardless of which column
+is genuinely closest. That is exactly how a keyboard drag could silently step
+over an empty column sitting between two populated ones, or never cross from
+the pinned Backlog rail into the calendar half: the corner-averaged winner was
+not the geometric neighbor. Re-running `pointerWithin` with a made-up pointer
+position costs nothing extra to reuse — it already nests card > group > column
+correctly when more than one rect contains a point, exactly as it does for a
+real cursor — and only degrades to `closestCorners` when nothing contains that
+center at all (true padding, or the literal end of a track). See
+`collisionDetection` and `keyboardCoordinates` in `use-board-actions.ts`, and
+§7 item 1 below.
 
 ### 4.3 `preferPreciseTarget` (in `lib/board.ts`)
 
@@ -300,8 +318,12 @@ and WAAPI, so it is not testable here — see the caution at the end of this doc
 ```ts
 useSensor(MouseSensor, { activationConstraint: { distance: 4 } })
 useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } })
-useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+useSensor(KeyboardSensor, { coordinateGetter: keyboardCoordinates })
 ```
+
+`keyboardCoordinates` (`use-board-actions.ts`, EI-114) wraps dnd-kit's own
+`sortableKeyboardCoordinates` rather than using it bare — see §4.2 and §7 item 1
+for why, and §7 item 7 for the one keyboard path it does not touch.
 
 The 4px activation distance keeps mouse clicks distinguishable from drags —
 without it, clicking a card's title to open the detail sheet starts a drag
@@ -1072,26 +1094,40 @@ list — see §4.7 and §4.9.)
 1. ~~Keyboard drag is wired but never exercised end-to-end.~~ Now covered by
    `e2e/keyboard-drag.spec.ts` (EI-74, `desktop` only). Lift (`Space`),
    in-column reorder, and cross-column moves within a single half (day → day)
-   all work reliably via arrow keys. **Two known gaps, tracked together as
-   EI-114:** arrow-key navigation cannot land on an empty column — reported
-   both as the pinned Backlog rail never crossing into the calendar half
-   (tried 1 through 6 `ArrowUp` presses against a populated Tuesday column,
-   card never left Backlog) and, separately, as an empty list column between
-   two populated ones silently getting stepped over in the List rail
-   (reported live, 2026-08-14). Within-half moves and mouse/touch drag across
-   either boundary are unaffected — keyboard-only. Tracked as a `test.fixme`
-   in that spec rather than a passing test with a workaround.
-   **Root cause, corrected:** the original note here blamed "no droppable
-   rect for an empty column," but every `BoardColumn` registers a
-   whole-column `useDroppable` regardless of card count (`board-column.tsx`),
-   so a rect does exist. EI-114 has the full corrected diagnosis — most
-   likely `sortableKeyboardCoordinates`' internal `closestCorners` disfavoring
-   a short/empty rect against a taller neighbor, or a disagreement between
-   that internal pass and this app's own `collisionDetection` — pending an
-   instrumented repro to confirm before designing the fix. Screen-reader
-   announcements (`announcements` / `screenReaderInstructions` on
-   `DndContext`) are entirely unconfigured — dnd-kit's defaults are generic
-   and say nothing about days or lists (EI-84).
+   all work reliably via arrow keys.
+   ~~Two known gaps: arrow-key navigation cannot land on an empty column.~~
+   **Fixed, EI-114.** Confirmed with an instrumented `coordinateGetter` against
+   real keyboard presses (not guessed at) that TWO separate corner-distance
+   biases were stacked on top of each other:
+   1. `sortableKeyboardCoordinates`'s own candidate selection (deciding WHERE
+      the virtual drag position moves) scores every enabled droppable by
+      averaged 4-corner distance — including the dragged card's OWN droppable,
+      which never moves during a keyboard drag (only the overlay does), so the
+      "closest" candidate on the first press was frequently the card's own
+      column or the tab strip immediately below Backlog, not real progress.
+   2. `collisionDetection` (deciding WHAT `over` actually resolves to, one
+      layer downstream) has the identical bias: `preferPreciseTarget`'s
+      "a card always beats a column" precedence assumes a real pointer is
+      *inside both at once* (§4.2/§4.3) — true for a mouse, never true for a
+      keyboard's `closestCorners` fallback, where it just meant a populated
+      neighbor's small card rect pre-empted an empty column's larger one no
+      matter how close the column actually was.
+
+   Both are fixed in `use-board-actions.ts`: `collisionDetection` now excludes
+   the dragged card's own droppable, and tries a SYNTHETIC pointer at the
+   virtual position's center before falling to raw `closestCorners` (§4.2) —
+   and `keyboardCoordinates` replaces the bare `sortableKeyboardCoordinates`
+   for `Left`/`Right`, scoring same-row column candidates by leading-edge
+   distance and landing at a target's center rather than its corner. Verified
+   against both reported repros (an empty list column between two populated
+   ones, and the pinned Backlog rail crossing into the calendar half) and an
+   analogous empty-*day*-column case — `e2e/keyboard-drag.spec.ts` covers all
+   three, and the former `test.fixme` converted to a real passing test rather
+   than being rewritten from scratch.
+
+   Screen-reader announcements (`announcements` / `screenReaderInstructions`
+   on `DndContext`) are still entirely unconfigured — dnd-kit's defaults are
+   generic and say nothing about days or lists (EI-84).
 2. **Auto-scroll is configured; whether it feels right is still unverified
    (EI-81).** `computeAutoScroll(layout)` (`use-board-actions.ts`) is `true`
    everywhere except phone — dnd-kit's default incremental auto-scroll fights

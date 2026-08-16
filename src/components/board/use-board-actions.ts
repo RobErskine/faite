@@ -14,6 +14,7 @@ import {
   type DropAnimationFunctionArguments,
   type DragOverEvent,
   type DragStartEvent,
+  type KeyboardCoordinateGetter,
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { toast } from "sonner";
@@ -128,7 +129,41 @@ const WEEKEND_EXPAND_DWELL_MS = TAB_FOCUS_DWELL_MS;
  */
 export const collisionDetection: CollisionDetection = (args) => {
   const underPointer = pointerWithin(args);
-  const collisions = underPointer.length > 0 ? underPointer : closestCorners(args);
+  const hasRealPointer = underPointer.length > 0;
+
+  /**
+   * No real pointer: a keyboard drag, or the initial frame before any
+   * pointer/keyboard event. Simulate one at the CENTER of the virtual drag
+   * position rather than falling straight to `closestCorners`'s averaged
+   * corner-distance.
+   *
+   * `closestCorners` structurally favors a small card's rect over a large,
+   * empty column's rect even when the column is the nearer of the two — its
+   * far corners drag the average up, and a nearby card's corners cluster
+   * tight around a point regardless of which column is genuinely closest.
+   * That is EI-114: arrow-key navigation cannot land on an empty column
+   * sitting between two populated ones, and cannot cross from the pinned
+   * Backlog rail into the calendar half, because the corner-averaged winner
+   * is not the geometric neighbor. `pointerWithin`'s own "what actually
+   * contains this point" test has no such bias, and — for free — already
+   * nests card > group > column correctly when more than one rect contains
+   * the point, exactly as it does for a real pointer. `keyboardCoordinates`
+   * below places the virtual position at a column's CENTER specifically so
+   * this containment test lands unambiguously inside it rather than near an
+   * edge shared with a neighbor.
+   */
+  const centerX = (args.collisionRect.left + args.collisionRect.right) / 2;
+  const centerY = (args.collisionRect.top + args.collisionRect.bottom) / 2;
+  const virtual = hasRealPointer
+    ? []
+    : pointerWithin({ ...args, pointerCoordinates: { x: centerX, y: centerY } });
+  const hasVirtualPointer = virtual.length > 0;
+
+  const collisions = hasRealPointer
+    ? underPointer
+    : hasVirtualPointer
+      ? virtual
+      : closestCorners(args); // the few px of container padding no droppable covers
 
   /**
    * A column drag wants the opposite answer to a card drag. The pointer is
@@ -150,8 +185,146 @@ export const collisionDetection: CollisionDetection = (args) => {
     return pill ? [pill] : [];
   }
 
-  const target = preferPreciseTarget(collisions);
-  return target ? [target] : collisions;
+  /**
+   * A card can never usefully collide with itself. Its own droppable stays
+   * registered at its ORIGINAL position for the whole drag — a keyboard drag
+   * never moves the source node, only the overlay — so once the virtual
+   * position lands back near it, `closestCorners`'s fallback would otherwise
+   * find it: `preferPreciseTarget` treats any card as more precise than a
+   * column, and the dragged card is a card. `over` would then silently
+   * resolve back to the item being dragged, which reads as nothing having
+   * happened — the root cause of EI-114 (arrow-key drag stalling at a
+   * column boundary instead of crossing it).
+   */
+  const withoutSelf = collisions.filter((c) => String(c.id) !== String(args.active.id));
+
+  /**
+   * `preferPreciseTarget`'s "a card always beats a column" precedence (§4.3)
+   * is safe whenever the collisions came from an actual containment test —
+   * real pointer or the synthetic one above — because containment is what
+   * makes "prefer the more precise one" a meaningful question in the first
+   * place. It is NOT safe over a raw `closestCorners` ranking (the padding
+   * fallback just below): that list is sorted by distance to a point
+   * nothing actually contains, so "the first card anywhere in it" is not
+   * "the nearest thing", and applying the precedence there would resurrect
+   * the same bias this function exists to avoid.
+   */
+  if (!hasRealPointer && !hasVirtualPointer) {
+    return withoutSelf.length > 0 ? [withoutSelf[0]] : withoutSelf;
+  }
+
+  const target = preferPreciseTarget(withoutSelf);
+  return target ? [target] : withoutSelf;
+};
+
+/**
+ * `sortableKeyboardCoordinates`, corrected for a column it skips over.
+ *
+ * That function (and dnd-kit's `closestCorners` fallback it delegates to)
+ * scores every candidate by AVERAGING the distance across all 4 corners. An
+ * empty column is a real, full-height droppable — `BoardColumn` registers
+ * `useDroppable` unconditionally (§ board-column.tsx) — but it has no card
+ * inside to pull that average down, so a *populated* column one track farther
+ * away routinely wins: its first card is a small, tightly-cornered rect, and
+ * a small rect near a point can out-score a large rect whose far corners drag
+ * its average up, even when the large rect's near edge is the closer of the
+ * two. That is EI-114: arrow-key navigation silently steps over an empty
+ * list column, or never crosses from the pinned Backlog rail into a day
+ * column, because the corner-averaged winner is not the geometric neighbor.
+ *
+ * `Left`/`Right` is column-to-column movement in this board — every track
+ * (day or list) lays its columns out in one horizontal row — so this wrapper
+ * takes over there entirely rather than conditionally patching the stock
+ * result: scoring candidates by the LEADING EDGE in the pressed direction
+ * instead of the 4-corner average (exactly "how far is this column's near
+ * edge", immune to a big rect's far corners), restricted to whole-column
+ * droppables in the SAME row as the current position, excluding whichever
+ * one already contains it. That always identifies the true geometric
+ * neighbor, independent of whatever the stock algorithm's own internal
+ * state (its `over`-repeat escape hatch, see the source) would have done on
+ * this press — deferring to it even conditionally let its corner-distance
+ * bias leak back in a few columns later, once the position was no longer
+ * sitting exactly where the last override left it (see EI-114 for the
+ * repro that caught this: overriding only when the stock pick fell outside
+ * the target column reliably fixed press 1 and then wandered into an
+ * unrelated day column by press 3). It also lands at the target's CENTER,
+ * not its top-left corner: `collisionRect` keeps the dragged CARD's own
+ * (small) size after the move — dnd-kit translates the active element, it
+ * does not resize it to match the target — and a card-sized rect sitting at
+ * a column's corner can have an edge only a few px from a neighboring
+ * column's first card, which is exactly the corner-distance trap this
+ * function exists to avoid, except now inside `collisionDetection`'s own
+ * synthetic-pointer test one layer downstream. Landing precision on a
+ * specific sibling card (rather than "append to this column") is given up
+ * for `Left`/`Right`'s cross-column case — no currently-relied-on keyboard
+ * path needs it, per the manual checklist in docs/DRAG-AND-DROP.md.
+ *
+ * `Up`/`Down` (in-column reorder, and crossing from the pinned Backlog rail
+ * into the calendar half) is untouched — that gap is closed by
+ * `collisionDetection` excluding self-collision above, not by this — and
+ * still needs sibling-card precision for in-column reordering, which this
+ * function does not provide.
+ *
+ * Column *reorder* (`listdrag:`) and tab *reorder* (`tabdrag:`) keyboard
+ * drags fall straight through to the stock getter: neither is exercised by
+ * this fix (see docs/DRAG-AND-DROP.md §7 item 7), and this wrapper's
+ * "column-level droppable" reasoning does not apply to them.
+ */
+export const keyboardCoordinates: KeyboardCoordinateGetter = (event, args) => {
+  if (event.code !== "ArrowLeft" && event.code !== "ArrowRight") {
+    return sortableKeyboardCoordinates(event, args);
+  }
+
+  const { active, collisionRect, droppableRects, droppableContainers } = args.context;
+  if (!active || !collisionRect) return sortableKeyboardCoordinates(event, args);
+  if (parseListDragId(String(active.id)) || parseTabDragId(String(active.id))) {
+    return sortableKeyboardCoordinates(event, args);
+  }
+
+  const centerX = (collisionRect.left + collisionRect.right) / 2;
+  const centerY = (collisionRect.top + collisionRect.bottom) / 2;
+
+  let best: { left: number; top: number; right: number; bottom: number; gap: number } | null = null;
+  for (const entry of droppableContainers.getEnabled()) {
+    if (!entry || entry.disabled) continue;
+    if (!parseColumnId(String(entry.id))) continue; // whole-column droppables only
+    const rect = droppableRects.get(entry.id);
+    if (!rect) continue;
+
+    // Same track only: a day column and a list column never share a row.
+    if (rect.top >= collisionRect.bottom || rect.bottom <= collisionRect.top) continue;
+
+    // The column already containing the virtual position is not a move.
+    if (rect.left <= centerX && rect.right >= centerX && rect.top <= centerY && rect.bottom >= centerY) continue;
+
+    /**
+     * CENTER, not edge, decides which side a candidate is on. The drag
+     * overlay is tilted and scaled (§4.7/EI-114's own `LIFTED` styling), so
+     * its edges land a few px past the real card's — an edge-to-edge gap can
+     * go negative for the very next column over, wrongly reading as "behind"
+     * the drag position rather than "immediately adjacent". Center comparison
+     * is unaffected by that few-px overhang.
+     */
+    const rectCenterX = (rect.left + rect.right) / 2;
+    if (event.code === "ArrowRight" ? rectCenterX <= centerX : rectCenterX >= centerX) continue;
+
+    // Still scored by leading-edge gap (may be slightly negative from the
+    // overlay overhang above) — closest edge wins among same-side candidates.
+    const gap = event.code === "ArrowRight" ? rect.left - collisionRect.right : collisionRect.left - rect.right;
+    if (!best || gap < best.gap) {
+      best = { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom, gap };
+    }
+  }
+
+  // No column at all in the pressed direction on this track — end of row.
+  if (!best) return sortableKeyboardCoordinates(event, args);
+
+  const width = collisionRect.right - collisionRect.left;
+  const height = collisionRect.bottom - collisionRect.top;
+  return {
+    x: (best.left + best.right) / 2 - width / 2,
+    y: (best.top + best.bottom) / 2 - height / 2,
+  };
 };
 
 const STATUS_VERB: Record<Todo["status"], string> = {
@@ -296,7 +469,7 @@ export function useBoardActions(
     useSensor(TouchSensor, {
       activationConstraint: coarse ? { delay: 400, tolerance: 5 } : { delay: 250, tolerance: 8 },
     }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+    useSensor(KeyboardSensor, { coordinateGetter: keyboardCoordinates }),
   );
 
   const {
