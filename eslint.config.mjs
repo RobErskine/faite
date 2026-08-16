@@ -36,6 +36,11 @@ const eslintConfig = defineConfig([
     // the record to diff a schema change against — never loaded at runtime,
     // since the DO migrates itself from `src/server/db/migrations.ts`.
     "drizzle/**",
+    // Tauri desktop shell (D0+): Rust crate, not part of the Next.js lint
+    // surface. `target/` also embeds copies of the static export's JS as
+    // Cargo build artifacts, which ESLint would otherwise try to parse as
+    // machine-generated, gitignored source.
+    "src-tauri/**",
   ]),
 ]);
 
