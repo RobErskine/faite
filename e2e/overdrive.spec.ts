@@ -1,5 +1,6 @@
 import { test, expect } from "./support/fixtures";
 import type { Page } from "@playwright/test";
+import { swipe } from "./support/touch";
 
 /**
  * Overdrive (EI-97) — the full-screen Overflow triage overlay. Runs on every
@@ -232,4 +233,114 @@ test("Esc part-way leaves the undecided remainder in Overflow", async ({ page })
   await expect(overlay(page)).toHaveCount(0);
 
   await expect(overdriveButton(page)).toHaveText(/overdrive.*8/i);
+});
+
+/**
+ * Swipe gestures (EI-104) — real touch input via CDP (`support/touch.ts`),
+ * phone LAYOUT only (`useViewport()`'s `layout`, `lib/use-viewport.ts`) —
+ * not merely a project whose name starts with "phone". `SWIPE_COMMIT_PX`
+ * (`lib/overdrive-swipe.ts`) is 96; every gesture below travels 140px so the
+ * mid-drag steps that fall short of it can never accidentally clear the
+ * threshold under real device rounding.
+ *
+ * This proves the GESTURE LOGIC fires the correct action — it is the
+ * automated stand-in for a feel-check, not a replacement for one. Whether
+ * the drag actually feels right on a physical phone (resistance, timing,
+ * whether 96px is the right threshold at all) still needs a human holding
+ * real hardware; see the PR this shipped in.
+ */
+test.describe("swipe gestures (EI-104)", () => {
+  test.beforeEach(async ({}, testInfo) => {
+    // Every `phone-*` project is Chromium (required for CDP touch dispatch
+    // regardless of layout — see `support/touch.ts`), but `phone-iphone-
+    // landscape` is 734px WIDE (734x343) — past `resolveLayout`'s 640px
+    // phone ceiling, so `useViewport()` classifies it `"tablet"`, same as
+    // `docs/OVERDRIVE.md` §9 already notes for the identical reason (its
+    // OWN dialog-vs-full-bleed split uses viewport HEIGHT specifically to
+    // avoid this exact misread). `swipeEnabled` in `overdrive-overlay.tsx`
+    // gates on that same `layout`, so swipes are correctly INERT there —
+    // the button row is the real, correct path on that device, not a gap
+    // this suite is failing to cover.
+    test.skip(
+      !testInfo.project.name.startsWith("phone") ||
+        testInfo.project.name === "phone-iphone-landscape",
+      "CDP touch dispatch is Chromium-only, and phone-iphone-landscape's 734px width " +
+        "resolves to tablet layout — swipes are correctly disabled there, not broken",
+    );
+  });
+
+  async function cardCenter(page: Page) {
+    const box = await activeCard(page).boundingBox();
+    expect(box).not.toBeNull();
+    return { x: box!.x + box!.width / 2, y: box!.y + box!.height / 2 };
+  }
+
+  test("a left swipe commits won't-do, same as ←", async ({ page }) => {
+    await seedOverflow(page, 10);
+    await overdriveButton(page).click();
+    await expect(overlay(page)).toBeVisible();
+
+    const center = await cardCenter(page);
+    await swipe(page, center, { x: center.x - 140, y: center.y });
+
+    await expect(progress(page)).toHaveText("2 of 10");
+  });
+
+  test("an up swipe commits done, same as ↑", async ({ page }) => {
+    await seedOverflow(page, 10);
+    await overdriveButton(page).click();
+    await expect(overlay(page)).toBeVisible();
+
+    const center = await cardCenter(page);
+    await swipe(page, center, { x: center.x, y: center.y - 140 });
+
+    await expect(progress(page)).toHaveText("2 of 10");
+  });
+
+  test("a down swipe commits back-to-list, same as ↓", async ({ page }) => {
+    await seedOverflow(page, 10);
+    await overdriveButton(page).click();
+    await expect(overlay(page)).toBeVisible();
+
+    const center = await cardCenter(page);
+    await swipe(page, center, { x: center.x, y: center.y + 140 });
+
+    await expect(progress(page)).toHaveText("2 of 10");
+  });
+
+  test("a right swipe stages a day rather than committing — the asymmetric one", async ({
+    page,
+  }) => {
+    await seedOverflow(page, 10);
+    await overdriveButton(page).click();
+    await expect(overlay(page)).toBeVisible();
+
+    const title = await cardTitle(page).textContent();
+    const center = await cardCenter(page);
+    await swipe(page, center, { x: center.x + 140, y: center.y });
+
+    // Staged, not committed: same card, same position, with the staged-day
+    // box now showing "Today" and a Confirm button (docs/OVERDRIVE.md §4).
+    await expect(overlay(page).getByText("Today")).toBeVisible();
+    await expect(progress(page)).toHaveText("1 of 10");
+    await expect(cardTitle(page)).toHaveText(title!);
+
+    await overlay(page).getByRole("button", { name: /confirm/i }).click();
+    await expect(progress(page)).toHaveText("2 of 10");
+  });
+
+  test("a short swipe that doesn't clear the threshold decides nothing", async ({ page }) => {
+    await seedOverflow(page, 10);
+    await overdriveButton(page).click();
+    await expect(overlay(page)).toBeVisible();
+
+    const title = await cardTitle(page).textContent();
+    const center = await cardCenter(page);
+    // Well past the axis-lock deadzone (12px), well short of the 96px
+    // commit threshold.
+    await swipe(page, center, { x: center.x - 40, y: center.y });
+
+    await expect(progress(page)).toHaveText("1 of 10");
+    await expect(cardTitle(page)).toHaveText(title!);
+  });
 });

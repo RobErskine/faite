@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import type { List, Todo } from "@/lib/schema";
 import type { PlacementContext } from "@/lib/scheduling";
 import type { Verdict } from "@/lib/overdrive";
+import { SWIPE_COMMIT_PX } from "@/lib/overdrive-swipe";
 
 interface ToastCallOptions {
   id?: string;
@@ -17,6 +18,19 @@ const toastSuccess = vi.fn<(message: string, options?: ToastCallOptions) => stri
 );
 const toastDismiss = vi.fn();
 vi.mock("sonner", () => ({ toast: { success: toastSuccess, dismiss: toastDismiss } }));
+
+/**
+ * `useViewport` (EI-104's swipe gating) is mocked outright rather than
+ * driven through real `matchMedia`/`resize` plumbing (see `use-viewport.
+ * test.ts` for that harness) — this file only needs to flip `layout`
+ * between `"phone"` and something else, not exercise `useViewport` itself.
+ * A mutable module-level variable, read fresh by the mocked hook on every
+ * call, lets each test (or `beforeEach`) set it before rendering.
+ */
+let mockLayout: "phone" | "tablet" | "desktop" = "desktop";
+vi.mock("@/lib/use-viewport", () => ({
+  useViewport: () => ({ layout: mockLayout, coarse: mockLayout !== "desktop", hover: false }),
+}));
 
 // Dynamic, after the mock and its backing spies above are already in place —
 // a static top-level import here would get hoisted alongside `vi.mock`
@@ -126,7 +140,11 @@ function renderOverlay({ onClose = vi.fn(), onVerdict }: HarnessOptions = {}) {
   return { onClose, verdictSpy };
 }
 
-const dialog = () => screen.getByRole("dialog");
+// Named, not a bare role query: Base UI's `Popover` (the date-picker trigger
+// below it) is ALSO `role="dialog"`, so once it's open a nameless query here
+// matches two elements. `DialogTitle`'s sr-only "Overdrive" heading is what
+// keeps this scoped to the overlay itself either way.
+const dialog = () => screen.getByRole("dialog", { name: "Overdrive" });
 const press = (key: string, opts: Partial<KeyboardEvent> = {}) =>
   fireEvent.keyDown(dialog(), { key, ...opts });
 /**
@@ -164,6 +182,29 @@ const endFlickByAnimation = () => {
 // `getByRole` stays the right tool regardless, since it's also what
 // excludes the sr-only "Overdrive" `SheetTitle` heading.
 const titleHeading = (name: string) => screen.getByRole("heading", { name });
+/** The card wrapper while it's the current, non-flicking card — the same
+ * element `swipeHandlers` (overdrive-overlay.tsx) are attached to. */
+const activeCard = () => dialog().querySelector<HTMLElement>(".animate-in");
+/** The drag's own visual-feedback badge (EI-104) — present only mid-gesture,
+ * once a direction has locked. */
+const swipeBadge = () => dialog().querySelector<HTMLElement>('div[aria-hidden] > span');
+
+/**
+ * Drives a swipe as a sequence of real pointer events — `pointerdown` at the
+ * origin, then a `pointermove` per waypoint (each one relative to the
+ * origin, matching how `handleSwipeMove` computes `dx`/`dy`). Does not
+ * release the pointer; callers finish with `release()`/`cancelSwipe()` so a
+ * test can assert on the live, mid-drag state before deciding how the
+ * gesture ends.
+ */
+function startSwipe(el: HTMLElement, waypoints: { x: number; y: number }[], pointerId = 1) {
+  fireEvent.pointerDown(el, { pointerId, clientX: 0, clientY: 0 });
+  for (const { x, y } of waypoints) {
+    fireEvent.pointerMove(el, { pointerId, clientX: x, clientY: y });
+  }
+}
+const release = (el: HTMLElement, pointerId = 1) => fireEvent.pointerUp(el, { pointerId });
+const cancelSwipe = (el: HTMLElement, pointerId = 1) => fireEvent.pointerCancel(el, { pointerId });
 
 describe("OverdriveOverlay", () => {
   it("renders nothing when closed", () => {
@@ -549,7 +590,18 @@ describe("the flick transition (round 3)", () => {
   });
 
   it("under prefers-reduced-motion, the queue advances immediately — no flick, no block", () => {
-    const matchMedia = vi.fn().mockReturnValue({ matches: true });
+    // `matches: true` unconditionally covers `prefersReducedMotion()`'s own
+    // `(prefers-reduced-motion: reduce)` query below; `addEventListener`/
+    // `removeEventListener` no-ops are needed too, now that `useViewport`
+    // (EI-104's swipe gating) also calls `matchMedia` on every render and
+    // subscribes to it via `useSyncExternalStore` — happy-dom's own default
+    // `matchMedia` supports both already, but replacing it here with an
+    // incomplete stub broke that subscription without them.
+    const matchMedia = vi.fn().mockReturnValue({
+      matches: true,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    });
     vi.stubGlobal("matchMedia", matchMedia);
     try {
       const { verdictSpy } = renderOverlay();
@@ -629,5 +681,189 @@ describe("the flick transition (round 3)", () => {
       expect(titleHeading("t2")).toBeTruthy();
       expect(verdictSpy).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+describe("swipe gestures (EI-104)", () => {
+  afterEach(() => {
+    mockLayout = "desktop";
+  });
+
+  // Comfortably past SWIPE_COMMIT_PX so rounding/timing can't flake the
+  // "did it commit" assertions; comfortably short of it (but still past the
+  // axis-lock deadzone) for the "released early" ones.
+  const PAST_THRESHOLD = SWIPE_COMMIT_PX + 20;
+  const SHORT_OF_THRESHOLD = SWIPE_COMMIT_PX - 40;
+
+  it("does nothing off the phone layout — no handlers, no indicator, no touch-none", () => {
+    mockLayout = "desktop";
+    const { verdictSpy } = renderOverlay();
+    const card = activeCard()!;
+
+    startSwipe(card, [{ x: -PAST_THRESHOLD, y: 0 }]);
+    expect(swipeBadge()).toBeNull();
+    release(card);
+
+    expect(verdictSpy).not.toHaveBeenCalled();
+    expect(titleHeading("t1")).toBeTruthy();
+    expect(card.className).not.toMatch(/touch-none/);
+  });
+
+  it("swiping left past the threshold commits wontDo, same as ←", () => {
+    mockLayout = "phone";
+    const { verdictSpy } = renderOverlay();
+    const card = activeCard()!;
+
+    startSwipe(card, [{ x: -PAST_THRESHOLD, y: 0 }]);
+    release(card);
+
+    expect(verdictSpy).toHaveBeenCalledWith(TODOS[0], { kind: "dropped" });
+    flushFlick();
+    expect(titleHeading("t2")).toBeTruthy();
+  });
+
+  it("swiping up past the threshold commits done, same as ↑", () => {
+    mockLayout = "phone";
+    const { verdictSpy } = renderOverlay();
+    const card = activeCard()!;
+
+    startSwipe(card, [{ x: 0, y: -PAST_THRESHOLD }]);
+    release(card);
+
+    expect(verdictSpy).toHaveBeenCalledWith(TODOS[0], { kind: "done" });
+  });
+
+  it("swiping down past the threshold commits back-to-list, same as ↓", () => {
+    mockLayout = "phone";
+    const { verdictSpy } = renderOverlay();
+    const card = activeCard()!;
+
+    startSwipe(card, [{ x: 0, y: PAST_THRESHOLD }]);
+    release(card);
+
+    expect(verdictSpy).toHaveBeenCalledWith(TODOS[0], { kind: "listed", listId: "list-1" });
+  });
+
+  it("swiping right past the threshold STAGES a day rather than committing — the asymmetric one", () => {
+    mockLayout = "phone";
+    const { verdictSpy } = renderOverlay();
+    const card = activeCard()!;
+
+    startSwipe(card, [{ x: PAST_THRESHOLD, y: 0 }]);
+    release(card);
+
+    // Same as a bare `→`: nothing is written, but the staged-day box shows
+    // up with "Today" and a Confirm button (docs/OVERDRIVE.md §4).
+    expect(verdictSpy).not.toHaveBeenCalled();
+    expect(screen.getByText(/schedule for/i)).toBeTruthy();
+    expect(screen.getByText("Today")).toBeTruthy();
+
+    // The card itself is still here (no flick — nothing committed), and a
+    // second swipe right ramps it forward exactly like a second `→` would.
+    expect(titleHeading("t1")).toBeTruthy();
+    startSwipe(card, [{ x: PAST_THRESHOLD, y: 0 }]);
+    release(card);
+    expect(screen.getByText("Tomorrow")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /confirm/i }));
+    expect(verdictSpy).toHaveBeenCalledWith(TODOS[0], { kind: "scheduled", date: "2026-08-11" });
+  });
+
+  it("releasing before the commit threshold decides nothing and leaves the card in place", () => {
+    mockLayout = "phone";
+    const { verdictSpy } = renderOverlay();
+    const card = activeCard()!;
+
+    startSwipe(card, [{ x: -SHORT_OF_THRESHOLD, y: 0 }]);
+    release(card);
+
+    expect(verdictSpy).not.toHaveBeenCalled();
+    expect(titleHeading("t1")).toBeTruthy();
+    expect(screen.getByText("1 of 2")).toBeTruthy();
+  });
+
+  it("a pointercancel never commits, even past the threshold", () => {
+    mockLayout = "phone";
+    const { verdictSpy } = renderOverlay();
+    const card = activeCard()!;
+
+    startSwipe(card, [{ x: -PAST_THRESHOLD, y: 0 }]);
+    cancelSwipe(card);
+
+    expect(verdictSpy).not.toHaveBeenCalled();
+    expect(titleHeading("t1")).toBeTruthy();
+  });
+
+  it("a tiny wobble inside the axis-lock deadzone never locks a direction or shows the indicator", () => {
+    mockLayout = "phone";
+    renderOverlay();
+    const card = activeCard()!;
+
+    startSwipe(card, [{ x: 3, y: -2 }]);
+    expect(swipeBadge()).toBeNull();
+    release(card);
+  });
+
+  it("the drag shows a live progress indicator matching the locked direction's verdict", () => {
+    mockLayout = "phone";
+    renderOverlay();
+    const card = activeCard()!;
+
+    // Half-way to the left (wontDo) threshold.
+    startSwipe(card, [{ x: -SWIPE_COMMIT_PX / 2, y: 0 }]);
+    const badge = swipeBadge();
+    expect(badge).toBeTruthy();
+    expect(badge!.textContent).toMatch(/won.t do/i);
+    expect(Number(badge!.style.opacity)).toBeCloseTo(0.5, 1);
+
+    release(card);
+  });
+
+  it("a second touch landing mid-drag is ignored — the gesture stays with the original finger", () => {
+    mockLayout = "phone";
+    const { verdictSpy } = renderOverlay();
+    const card = activeCard()!;
+
+    startSwipe(card, [{ x: -PAST_THRESHOLD, y: 0 }], 1);
+    // A stray second finger, different pointerId, released immediately —
+    // must not be read as ending (or starting) the real gesture.
+    fireEvent.pointerDown(card, { pointerId: 2, clientX: 0, clientY: 0 });
+    fireEvent.pointerUp(card, { pointerId: 2 });
+    expect(verdictSpy).not.toHaveBeenCalled();
+
+    release(card, 1);
+    expect(verdictSpy).toHaveBeenCalledWith(TODOS[0], { kind: "dropped" });
+  });
+
+  it("swiping is ignored while the date picker is open", () => {
+    mockLayout = "phone";
+    const { verdictSpy } = renderOverlay();
+    fireEvent.click(screen.getByLabelText("Pick a date"));
+    const card = activeCard()!;
+
+    startSwipe(card, [{ x: -PAST_THRESHOLD, y: 0 }]);
+    release(card);
+
+    expect(verdictSpy).not.toHaveBeenCalled();
+  });
+
+  it("swiping is ignored entirely while a flick is in flight, same as every other input", () => {
+    mockLayout = "phone";
+    const { verdictSpy } = renderOverlay();
+    press("ArrowLeft"); // starts a real flick (keyboard path)
+    expect(activeCard()).toBeNull(); // the flicking card is `.animate-out`, not `.animate-in`
+
+    // `swipeHandlers` are still attached to the outgoing (flicking) card —
+    // `handleSwipeStart`'s own `transitioning` guard is what has to stop
+    // this, not the absence of a listener.
+    const flicking = dialog().querySelector<HTMLElement>(".animate-out")!;
+    startSwipe(flicking, [{ x: -PAST_THRESHOLD, y: 0 }]);
+    release(flicking);
+
+    flushFlick();
+    // Exactly one commit — the keyboard's, not a second one from the swipe
+    // that tried to land mid-flick.
+    expect(verdictSpy).toHaveBeenCalledTimes(1);
+    expect(titleHeading("t2")).toBeTruthy();
   });
 });
