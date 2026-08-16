@@ -1741,3 +1741,12 @@ attention." Fixed by switching the fade to a `mask-image` on the scroll
 container (fades content alpha, no background color to guess) and moving
 the Archived count inline as `(N)` next to the icon, matching the tab
 pills' own count styling. Commit `3fb9be7`.
+
+**Follow-up 2** — the gray-oval report recurred after `3fb9be7`, at a tab
+count nowhere near overflow, which the mask fix couldn't explain. Actual
+root cause: `column-track` (globals.css) leaves `overflow-y` at `auto` by
+design for tall list columns; on the tab strip's single-row layout, a
+stray 1px of vertical overflow (measured: `scrollHeight` 25 vs
+`clientHeight` 24) was enough to park a permanent vertical scrollbar whose
+rounded thumb read as a floating button. Fixed with an inline
+`overflowY: "hidden"` on the strip's scroll container. Commit `f643d18`.
