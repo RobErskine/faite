@@ -4,6 +4,7 @@ import { useRef, type CSSProperties } from "react";
 import { StickyNote } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import { effectiveListColor } from "@/lib/colors";
 import { NAV_LOAD_MORE, navKeyOf } from "@/lib/column-nav";
 import { formatDay } from "@/lib/scheduling";
 import { LOCAL_OWNER_ID } from "@/lib/store/repositories";
@@ -116,7 +117,7 @@ export function DesktopBoard({
     columnDropTargetId,
     tabDrop,
     activeTabId,
-    activeTabRecord,
+    tabsById,
     recurrenceSummaries,
     recurrenceExpansion,
     overflowCollapsed,
@@ -565,7 +566,7 @@ export function DesktopBoard({
                   // list you have deliberately colored should look colored in
                   // both halves — and the tab accent still covers every list
                   // you have not, so "these columns belong together" survives.
-                  accentColor={column.list.color ?? activeTabRecord?.color}
+                  accentColor={effectiveListColor(column.list, tabsById)}
                 />
               ))}
               <CreateListColumn tabId={activeTabId} onNavigate={navigate} />

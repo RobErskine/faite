@@ -237,6 +237,21 @@ The **default tab** ("My Lists", `isDefault`) cannot be archived or deleted,
 for the same reason Backlog cannot: it is the guaranteed destination that
 `deleteTab` rehomes lists to. Renaming and recoloring it are fine.
 
+**A list's color inherits from its tab, derived rather than stored.**
+`createList` always writes `color: null`, so a fresh list is colorless by
+construction; `effectiveListColor(list, tabsById)` (`lib/colors.ts`) is the one
+place `list.color ?? tab.color` gets computed, and every render surface —
+`buildBoard`'s `TodoGroup.color`, the list column's accent, the day sheet
+timeline, the `@list` mention chips — calls it rather than reading `list.color`
+raw. Deliberately DERIVED, not snapshotted onto the list at creation:
+recoloring a tab has to move every list still inheriting from it, live, and a
+snapshot would freeze them and silently strand every list made before the tab
+had a color. A list that has been given its own color — even one that happens
+to match its tab's — stops following the tab from that point on; there is no
+way back to inheriting except clearing it. `tabsById` must include archived
+tabs, mirroring `listsById`'s existing archived merge, since archiving a list
+never clears its `tabId`.
+
 ### 2.8c Changing a field is a seven-file operation — see `docs/SCHEMA-CHANGES.md`
 
 An entity's fields are declared in four places (`lib/schema.ts`,

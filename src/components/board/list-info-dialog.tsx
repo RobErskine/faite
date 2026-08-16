@@ -14,13 +14,15 @@ import { Button } from "@/components/ui/button";
 import { ColorPicker } from "@/components/ui/color-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type { List } from "@/lib/schema";
+import type { List, Tab } from "@/lib/schema";
 
 export type ListPatch = Partial<Pick<List, "name" | "color">>;
 
 interface ListInfoDialogProps {
   /** The list whose settings are open, or null when the dialog is closed. */
   list: List | null;
+  /** Live AND archived tabs — resolves the color shown when unset. */
+  tabsById: ReadonlyMap<string, Pick<Tab, "color">>;
   onClose: () => void;
   onSave: (list: List, patch: ListPatch) => void;
   onArchive: (list: List) => void;
@@ -48,6 +50,7 @@ export function ListInfoDialog({ list, ...rest }: ListInfoDialogProps) {
 
 function ListInfoDialogContent({
   list,
+  tabsById,
   onClose,
   onSave,
   onArchive,
@@ -55,6 +58,7 @@ function ListInfoDialogContent({
 }: ListInfoDialogProps & { list: List }) {
   const [name, setName] = useState(list.name);
   const [color, setColor] = useState<string | null>(list.color);
+  const inheritedColor = list.tabId ? (tabsById.get(list.tabId)?.color ?? null) : null;
 
   const trimmed = name.trim();
 
@@ -103,6 +107,7 @@ function ListInfoDialogContent({
               id="list-color"
               value={color}
               onChange={setColor}
+              inheritedColor={inheritedColor}
               label="List color"
             />
           </div>

@@ -35,6 +35,39 @@ export const ACCENT_COLORS: readonly AccentColor[] = [
 ] as const;
 
 /**
+ * The color a list actually renders in: its own, or its tab's when unset.
+ *
+ * A list is BORN colorless — `createList` writes `color: null` and nothing ever
+ * assigns one — so inheritance is not an edge case, it is the common path. The
+ * rule was inlined at five call sites before this existed, and `lib/board.ts`
+ * was not one of them, which is exactly how a whole tab's worth of day-column
+ * groups rendered grey while its pill and column headers rendered green.
+ *
+ * DERIVED, never stored. Recoloring a tab has to move every list still
+ * inheriting from it, live — snapshotting the tab's color onto the record at
+ * creation would freeze them and silently strand every list made before the
+ * tab was colored.
+ *
+ * Structurally typed rather than taking `List`/`Tab`, so this module stays free
+ * of schema imports and `lib/board.ts` — which builds groups from lists but has
+ * no business importing the store — can call it too.
+ *
+ * `tabsById` should carry ARCHIVED tabs as well. Archiving a list leaves its
+ * `tabId` intact (`repositories.ts` writes only `archivedAt`/`archivedWithTabId`),
+ * so a list filed away with its tab still points at one that `useTabs()` filters
+ * out — and a map of live tabs alone would drop its color.
+ */
+export function effectiveListColor(
+  list: { color: string | null; tabId?: string | null } | null | undefined,
+  tabsById: ReadonlyMap<string, { color: string | null }>,
+): string | null {
+  if (!list) return null;
+  // Backlog is shared by every tab and so has no `tabId` — it inherits nothing,
+  // which is right: there is no one tab whose color it could take.
+  return list.color ?? (list.tabId ? (tabsById.get(list.tabId)?.color ?? null) : null);
+}
+
+/**
  * Alpha suffixes for the three tint strengths the UI uses.
  *
  * The three are a LADDER, and the gaps between them are the point: a rule at

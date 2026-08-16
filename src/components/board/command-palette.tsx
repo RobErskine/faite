@@ -25,6 +25,7 @@ import { createUndoStep, pushUndo, undoById } from "@/lib/undo";
 import { deleteListWithUndo } from "./list-actions";
 import { createTabWithUndo, deleteTabWithUndo } from "./tab-actions";
 import { todayIn } from "@/lib/scheduling";
+import { effectiveListColor } from "@/lib/colors";
 import { foldQuickAddDraft, parseQuickAdd, quickAddDraftToString, type QuickAddMatch } from "@/lib/quick-add";
 import { useMention, MentionMenu, type MentionSource } from "@/components/mention-menu";
 import { searchTodos } from "@/lib/search";
@@ -201,7 +202,7 @@ export function CommandPalette({
       lists.map((list) => ({
         id: list.id,
         name: list.name,
-        color: list.color ?? (list.tabId ? (tabsById.get(list.tabId)?.color ?? null) : null),
+        color: effectiveListColor(list, tabsById),
       })),
     [lists, tabsById],
   );

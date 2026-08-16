@@ -13,6 +13,7 @@ import {
   planTabDrop,
   type TodoGroup,
 } from "@/lib/board";
+import { effectiveListColor } from "@/lib/colors";
 import {
   NAV_LOAD_MORE,
   buildNavGrid,
@@ -331,6 +332,17 @@ export function useBoardData(params: UseBoardDataParams) {
     [templates, realTodosForExpansion, ctx],
   );
 
+  /**
+   * Every tab, keyed by id — including ARCHIVED ones, mirroring `listsById`
+   * below: a list archived alongside its tab keeps that tab's id in `tabId`
+   * (`repositories.ts` never clears it), so a live-tabs-only map would silently
+   * lose that list's inherited color the moment its tab was filed away.
+   */
+  const tabsById = useMemo(
+    () => new Map([...tabs, ...archivedTabs].map((t) => [t.id, t])),
+    [tabs, archivedTabs],
+  );
+
   const visibleStatuses = settings?.visibleStatuses;
   const board = useMemo(
     () =>
@@ -340,10 +352,10 @@ export function useBoardData(params: UseBoardDataParams) {
             tabLists,
             ctx,
             hiddenLists,
-            { visibleStatuses, forceOverflow: recurrenceExpansion?.forceOverflow },
+            { visibleStatuses, forceOverflow: recurrenceExpansion?.forceOverflow, tabsById },
           )
         : null,
-    [recurrenceExpansion, nonTemplateTodos, tabLists, ctx, hiddenLists, visibleStatuses],
+    [recurrenceExpansion, nonTemplateTodos, tabLists, ctx, hiddenLists, visibleStatuses, tabsById],
   );
 
   /**
@@ -509,13 +521,12 @@ export function useBoardData(params: UseBoardDataParams) {
    * just the active one, so the fallback needs the full `tabsById` map, not
    * just `activeTabRecord`.
    */
-  const tabsById = useMemo(() => new Map(tabs.map((t) => [t.id, t])), [tabs]);
   const mentionLists = useMemo(
     () =>
       lists.map((list) => ({
         id: list.id,
         name: list.name,
-        color: list.color ?? (list.tabId ? (tabsById.get(list.tabId)?.color ?? null) : null),
+        color: effectiveListColor(list, tabsById),
       })),
     [lists, tabsById],
   );

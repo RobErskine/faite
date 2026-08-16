@@ -168,6 +168,7 @@ function Harness({ day = DAY, todos = [], ...rest }: HarnessProps) {
         timezone="UTC"
         labels={[]}
         listsById={new Map([[RED.id, RED]])}
+        tabsById={new Map()}
         backlog={undefined}
         ctx={ctx}
         onClose={vi.fn()}

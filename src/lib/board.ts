@@ -1,4 +1,5 @@
 import type { CivilDate, List, Tab, Todo, TodoStatus } from "@/lib/schema";
+import { effectiveListColor } from "@/lib/colors";
 import { byPosition, positionForIndex, type Position } from "@/lib/ordering";
 import { byPriorityThenPosition, openFirst } from "@/lib/priority";
 import { matchesQuery, normalizeQuery } from "@/lib/search";
@@ -408,7 +409,11 @@ export interface TodoGroup {
   key: string;
   /** Header text: the list's name, verbatim, "To " and all. */
   name: string;
-  /** Accent for the header rule and the card wash. Null for an uncolored list. */
+  /**
+   * Accent for the header rule and the card wash — the RESOLVED color, already
+   * fallen back to the owning tab's when the list has none of its own. See
+   * `effectiveListColor` (lib/colors.ts). Null only when neither has a color.
+   */
   color: string | null;
   /** What the alphabet actually sorts on. See `listSortKey`. */
   sortKey: string;
@@ -503,6 +508,7 @@ function groupTodosByList(
   day: CivilDate,
   index: ReadonlyMap<string, List>,
   backlog: List | undefined,
+  tabsById: ReadonlyMap<string, Pick<Tab, "color">>,
 ): TodoGroup[] {
   const buckets = new Map<string, { list: List; todos: Todo[] }>();
 
@@ -527,7 +533,7 @@ function groupTodosByList(
       id: dayGroupId(day, list.id),
       key: list.id,
       name: list.name,
-      color: list.color,
+      color: effectiveListColor(list, tabsById),
       sortKey: listSortKey(list.name),
       todos: bucket.sort(openFirst(byPriorityThenPosition)),
     }))
@@ -577,6 +583,13 @@ export interface BuildBoardOptions {
    * renders twice.
    */
   forceOverflow?: readonly Todo[];
+  /**
+   * Every tab, keyed by id — including archived ones, so a list filed away
+   * with its tab still resolves. Backs `TodoGroup.color`'s tab fallback; see
+   * `effectiveListColor` (lib/colors.ts). Omitted defaults to an empty map,
+   * i.e. groups fall back to nothing and `color` is exactly `list.color`.
+   */
+  tabsById?: ReadonlyMap<string, Pick<Tab, "color">>;
 }
 
 /**
@@ -599,13 +612,21 @@ export interface BuildBoardOptions {
  * other tab's scheduled work would group under Backlog, indistinguishable from a
  * genuinely homeless todo, and a drop on that header would then REWRITE its
  * `listId` to Backlog's.
+ *
+ * A hidden list's color resolves against ITS OWN tab, not the active one:
+ * `tabsById` is a flat map of every tab, so `effectiveListColor` looks up
+ * whichever tab the list actually belongs to.
  */
 export function buildBoard(
   todos: Todo[],
   lists: List[],
   ctx: PlacementContext,
   hiddenLists: readonly List[] = [],
-  { visibleStatuses = DEFAULT_VISIBLE_STATUSES, forceOverflow = [] }: BuildBoardOptions = {},
+  {
+    visibleStatuses = DEFAULT_VISIBLE_STATUSES,
+    forceOverflow = [],
+    tabsById = new Map(),
+  }: BuildBoardOptions = {},
 ): BoardModel {
   const shown = new Set(visibleStatuses);
   const visible = todos.filter((t) => shown.has(t.status));
@@ -698,7 +719,7 @@ export function buildBoard(
   const backlogList = lists.find((l) => l.isBacklog) ?? lists[0];
 
   const applyGroups = (column: DayColumn | OverflowColumn, day: CivilDate) => {
-    column.groups = groupTodosByList(column.todos, day, groupIndex, backlogList);
+    column.groups = groupTodosByList(column.todos, day, groupIndex, backlogList, tabsById);
     column.todos =
       column.groups.length > 0
         ? column.groups.flatMap((g) => g.todos)

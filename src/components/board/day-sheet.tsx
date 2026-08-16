@@ -20,7 +20,7 @@ import {
 import { MarkdownField } from "@/components/ui/markdown-field";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { edge, wash } from "@/lib/colors";
+import { edge, effectiveListColor, wash } from "@/lib/colors";
 import {
   buildDayTimeline,
   formatEventWhen,
@@ -37,6 +37,7 @@ import type {
   List,
   ReminderPreset,
   Settings,
+  Tab,
   Todo,
 } from "@/lib/schema";
 import { cn } from "@/lib/utils";
@@ -73,6 +74,8 @@ interface DaySheetProps {
   reminderPresets?: ReminderPreset[];
   /** Live AND archived lists, so a filed list still colours its cards. */
   listsById: ReadonlyMap<string, List>;
+  /** Live AND archived tabs — see `effectiveListColor`. */
+  tabsById: ReadonlyMap<string, Pick<Tab, "color">>;
   /** Fallback for a todo with no list, mirroring `groupTodosByList`. */
   backlog: List | undefined;
   ctx: PlacementContext;
@@ -134,6 +137,7 @@ function DaySheetContent({
   labels,
   reminderPresets,
   listsById,
+  tabsById,
   backlog,
   ctx,
   onClose,
@@ -256,10 +260,11 @@ function DaySheetContent({
                       event={event}
                       day={day}
                       isLast={index === visibleEvents.length - 1}
-                      list={
+                      color={effectiveListColor(
                         (event.todo.listId ? listsById.get(event.todo.listId) : undefined) ??
-                        backlog
-                      }
+                          backlog,
+                        tabsById,
+                      )}
                       labels={labels}
                       reminderPresets={reminderPresets}
                       ctx={ctx}
@@ -316,7 +321,8 @@ interface TimelineEntryProps {
    * falls on. See `formatEventWhen`. */
   day: CivilDate;
   isLast: boolean;
-  list: List | undefined;
+  /** Already resolved — the list's own color, or its tab's. */
+  color: string | null;
   labels: LabelRecord[];
   reminderPresets?: ReminderPreset[];
   ctx: PlacementContext;
@@ -329,7 +335,7 @@ function TimelineEntry({
   event,
   day,
   isLast,
-  list,
+  color,
   labels,
   reminderPresets,
   ctx,
@@ -337,7 +343,7 @@ function TimelineEntry({
   onToggleTodo,
   onOpenTodo,
 }: TimelineEntryProps) {
-  const accent = edge(list?.color);
+  const accent = edge(color);
 
   return (
     <TimelineRow
@@ -356,7 +362,7 @@ function TimelineEntry({
       */}
       <div
         className="mt-1 overflow-hidden rounded-md border border-border/60"
-        style={{ backgroundColor: wash(list?.color) }}
+        style={{ backgroundColor: wash(color) }}
       >
         <TodoCard
           todo={event.todo}

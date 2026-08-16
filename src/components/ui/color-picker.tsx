@@ -12,6 +12,15 @@ import { cn } from "@/lib/utils";
 interface ColorPickerProps {
   value: string | null;
   onChange: (color: string | null) => void;
+  /**
+   * The color `value: null` actually renders as — a list's tab, say. Shown in
+   * place of "None" so the trigger stops contradicting the swatch the rest of
+   * the app already paints. Purely a display fallback: `onChange` and the
+   * stored value never see it, and clearing a real value lands back here
+   * rather than at a true "no color" (there is no such state once an
+   * inherited color exists).
+   */
+  inheritedColor?: string | null;
   /** Labels the trigger for assistive tech; the swatch alone says nothing. */
   label?: string;
   className?: string;
@@ -33,13 +42,19 @@ interface ColorPickerProps {
 export function ColorPicker({
   value,
   onChange,
+  inheritedColor,
   label = "color",
   className,
   id,
 }: ColorPickerProps) {
   const selected = isTintableColor(value) ? value.toLowerCase() : null;
-  const isPreset = ACCENT_COLORS.some((c) => c.value.toLowerCase() === selected);
-  const name = ACCENT_COLORS.find((c) => c.value.toLowerCase() === selected)?.name;
+  // Only consulted once `value` itself has nothing to say — a list's own
+  // color, even one that happens to match its tab's, always wins the display.
+  const inherited =
+    selected === null && isTintableColor(inheritedColor) ? inheritedColor.toLowerCase() : null;
+  const displayed = selected ?? inherited;
+  const isPreset = ACCENT_COLORS.some((c) => c.value.toLowerCase() === displayed);
+  const name = ACCENT_COLORS.find((c) => c.value.toLowerCase() === displayed)?.name;
 
   return (
     <Popover>
@@ -52,15 +67,24 @@ export function ColorPicker({
           className,
         )}
       >
-        <Swatch color={selected} />
+        <Swatch color={displayed} inherited={!selected && !!inherited} />
         <span className="text-muted-foreground">
-          {name ?? (selected ? "Custom" : "None")}
+          {selected
+            ? (name ?? "Custom")
+            : inherited
+              ? `${name ?? "Custom"} (from tab)`
+              : "None"}
         </span>
       </PopoverTrigger>
 
       <PopoverContent align="start" className="w-auto gap-3">
         <div className="grid grid-cols-5 gap-1.5">
           {ACCENT_COLORS.map((color) => {
+            // Never the inherited swatch — a color inherited from the tab is
+            // not a choice this list has made, and marking one pressed here
+            // would make "pinned to Grass" and "currently reading Grass from
+            // the tab" look identical, which is the exact confusion this
+            // whole prop exists to clear up.
             const active = selected === color.value.toLowerCase();
             return (
               <button
@@ -98,7 +122,7 @@ export function ColorPicker({
             {selected && !isPreset ? "Custom color" : "Custom…"}
             <input
               type="color"
-              value={selected ?? "#3e63dd"}
+              value={displayed ?? "#3e63dd"}
               onChange={(e) => onChange(e.target.value)}
               className="ml-auto size-5 cursor-pointer rounded border-0 bg-transparent p-0"
             />
@@ -122,11 +146,24 @@ export function ColorPicker({
   );
 }
 
-function Swatch({ color }: { color: string | null }) {
+function Swatch({ color, inherited }: { color: string | null; inherited?: boolean }) {
   if (!color) {
     // A ring rather than a filled circle: "no color" should not look like a
     // color that happens to match the background.
     return <span className="size-4 rounded-full border border-dashed" aria-hidden />;
+  }
+  if (inherited) {
+    // The same dashed ring as "no color", now with the inherited hue inside
+    // it — a bullseye. Reads as "here's the color, but this list didn't pick
+    // it", which a plain filled circle (this list's own choice) would not.
+    return (
+      <span
+        className="flex size-4 items-center justify-center rounded-full border border-dashed"
+        aria-hidden
+      >
+        <span className="size-2 rounded-full" style={{ backgroundColor: color }} />
+      </span>
+    );
   }
   return (
     <span

@@ -51,7 +51,7 @@ import { MentionMenu, useMention, type MentionSource } from "@/components/mentio
 import type { MentionListOption, MentionPick } from "@/components/board/board-column";
 import { TimelineList, TimelineRow } from "@/components/board/timeline";
 import { cn } from "@/lib/utils";
-import { edge } from "@/lib/colors";
+import { edge, effectiveListColor } from "@/lib/colors";
 import { TITLE_LINES } from "@/lib/title";
 import { formatEventStamp } from "@/lib/event-time";
 import { formatShortDate, type PlacementContext } from "@/lib/scheduling";
@@ -223,7 +223,7 @@ function TodoSheetContent({
       lists.map((list) => ({
         id: list.id,
         name: list.name,
-        color: list.color ?? (list.tabId ? (tabsById.get(list.tabId)?.color ?? null) : null),
+        color: effectiveListColor(list, tabsById),
       })),
     [lists, tabsById],
   );
