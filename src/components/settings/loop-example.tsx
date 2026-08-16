@@ -31,6 +31,7 @@ const EXAMPLE_TODO: Todo = {
   recurrenceParentId: null,
   completedAt: null,
   reminderTime: null,
+  source: null,
 };
 
 /**

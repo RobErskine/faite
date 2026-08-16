@@ -226,6 +226,16 @@ export const USER_DB_MIGRATIONS: readonly UserDbMigration[] = [
       "ALTER TABLE settings ADD COLUMN reminder_presets_seeded integer DEFAULT false NOT NULL",
     ],
   },
+  {
+    id: 12,
+    name: "todos-add-source",
+    statements: [
+      // Nullable, pre-serialized JSON blob — same convention as
+      // recurrence_rule (migration 1's bootstrap). Groundwork for D5
+      // (context capture); nothing writes this column yet.
+      "ALTER TABLE todos ADD COLUMN source text",
+    ],
+  },
   // Add new migrations here. Never edit one above this line.
   //
   // Example — adding a nullable column (the safe, ordinary case):
