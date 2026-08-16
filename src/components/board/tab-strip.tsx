@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { Archive, Info, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,12 @@ interface TabStripProps {
   tabs: Tab[];
   activeTabId: string;
   archivedCount: number;
+  /**
+   * Lists and open to-dos per tab (EI-118), keyed by tab id. Backlog is
+   * excluded from both — see the doc comment on `tabCounts` in
+   * `use-board-data.ts`. A tab absent from the map has no lists of its own.
+   */
+  counts: ReadonlyMap<string, { lists: number; items: number }>;
   /** The tab whose settings dialog is open, if any. */
   infoTabId: string | null;
   /** Edge to draw the insertion bar on while a tab drag hovers. */
@@ -49,6 +55,7 @@ export function TabStrip({
   tabs,
   activeTabId,
   archivedCount,
+  counts,
   infoTabId,
   drop,
   isCardDragActive,
@@ -67,58 +74,126 @@ export function TabStrip({
     if (name) onCreate(name);
   };
 
+  const scrollRef = useRef<HTMLDivElement>(null);
+  // Whether there's more strip to reach in each direction — drives the edge
+  // fades below. Starts `false` so a strip that never overflows never shows
+  // one; the effect below corrects it the moment there's something to know.
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const updateFades = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 1);
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
+  }, []);
+
+  // Re-checks on anything that can change the strip's content width —
+  // creating/removing a tab or renaming one long enough to overflow — not
+  // just on scroll.
+  useEffect(() => {
+    updateFades();
+    const el = scrollRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(updateFades);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [updateFades, tabs.length]);
+
+  // Keeps the active tab reachable without a manual scroll — selecting one
+  // via `⌘K` or the keyboard would otherwise land off-screen exactly when a
+  // scrolled strip makes that most likely.
+  useEffect(() => {
+    const el = scrollRef.current?.querySelector<HTMLElement>(
+      `[data-tab-pill="${CSS.escape(activeTabId)}"]`,
+    );
+    el?.scrollIntoView({
+      inline: "nearest",
+      block: "nearest",
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "auto"
+        : "smooth",
+    });
+  }, [activeTabId]);
+
   return (
     <div className="flex shrink-0 items-center gap-1 px-4 py-1.5">
       {/*
         Scrolls on its own rather than pushing Archived off the bar. `min-w-0`
-        is what lets it actually shrink inside the flex row.
+        on this wrapper is what lets it actually shrink inside the flex row;
+        the scroll container and fades below size themselves off it.
       */}
-      <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
-        {tabs.map((tab) => (
-          <TabPill
-            key={tab.id}
-            tab={tab}
-            isActive={tab.id === activeTabId}
-            isInfoOpen={infoTabId === tab.id}
-            isCardDragActive={isCardDragActive}
-            isListDragActive={isListDragActive}
-            dropSide={drop?.tabId === tab.id ? drop.side : null}
-            onSelect={() => onSelect(tab.id)}
-            onOpenInfo={() => onOpenInfo(tab.id)}
-          />
-        ))}
+      <div className="relative min-w-0 flex-1">
+        <div
+          ref={scrollRef}
+          onScroll={updateFades}
+          className="column-track flex items-center gap-1"
+        >
+          {tabs.map((tab) => (
+            <TabPill
+              key={tab.id}
+              tab={tab}
+              isActive={tab.id === activeTabId}
+              isInfoOpen={infoTabId === tab.id}
+              isCardDragActive={isCardDragActive}
+              isListDragActive={isListDragActive}
+              dropSide={drop?.tabId === tab.id ? drop.side : null}
+              count={counts.get(tab.id) ?? { lists: 0, items: 0 }}
+              onSelect={() => onSelect(tab.id)}
+              onOpenInfo={() => onOpenInfo(tab.id)}
+            />
+          ))}
 
-        {draft === null ? (
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            onClick={() => setDraft("")}
-            aria-label="New tab"
-            className="shrink-0 text-muted-foreground"
-          >
-            <Plus aria-hidden />
-          </Button>
-        ) : (
-          <input
-            autoFocus
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                commit();
-              }
-              // Escape abandons outright; blur is the forgiving path. Same
-              // bargain as the quick-add and create-list fields.
-              if (e.key === "Escape") setDraft(null);
-            }}
-            onBlur={commit}
-            placeholder="Tab name"
-            aria-label="New tab name"
-            className={cn(
-              "w-28 shrink-0 rounded-md border border-dashed border-foreground/30 bg-background/60",
-              "px-2 py-1 text-xs outline-none placeholder:text-muted-foreground/60",
-            )}
+          {draft === null ? (
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              onClick={() => setDraft("")}
+              aria-label="New tab"
+              className="shrink-0 text-muted-foreground"
+            >
+              <Plus aria-hidden />
+            </Button>
+          ) : (
+            <input
+              autoFocus
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  commit();
+                }
+                // Escape abandons outright; blur is the forgiving path. Same
+                // bargain as the quick-add and create-list fields.
+                if (e.key === "Escape") setDraft(null);
+              }}
+              onBlur={commit}
+              placeholder="Tab name"
+              aria-label="New tab name"
+              className={cn(
+                "w-28 shrink-0 rounded-md border border-dashed border-foreground/30 bg-background/60",
+                "px-2 py-1 text-xs outline-none placeholder:text-muted-foreground/60",
+              )}
+            />
+          )}
+        </div>
+
+        {/*
+          Overlaid rather than laid out, so they never take up track width of
+          their own — a fade that reserved space would itself shove the last
+          pill behind the other fade the moment it appeared.
+        */}
+        {canScrollLeft && (
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-y-0 left-0 w-6 bg-gradient-to-r from-background to-transparent"
+          />
+        )}
+        {canScrollRight && (
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-background to-transparent"
           />
         )}
       </div>
@@ -126,17 +201,41 @@ export function TabStrip({
       {/*
         Pushed to the far edge: the archive is the counterpart to the tabs named
         on the left, not another item in that group.
+
+        Icon-only — the word "Archived" cost more strip width than it earned
+        once a board can carry a dozen tabs. `aria-label` fully owns the
+        accessible name so the corner badge (aria-hidden) can't garble it into
+        "Archived 3"; the tooltip is what says the count out loud.
       */}
-      <Button
-        variant="ghost"
-        size="sm"
-        className="shrink-0 text-muted-foreground"
-        onClick={onOpenArchive}
-      >
-        <Archive aria-hidden />
-        Archived
-        {archivedCount > 0 && <span className="num">{archivedCount}</span>}
-      </Button>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="relative shrink-0 text-muted-foreground"
+              onClick={onOpenArchive}
+              aria-label="Archived"
+            >
+              <Archive aria-hidden />
+              {archivedCount > 0 && (
+                <span
+                  aria-hidden
+                  className={cn(
+                    "num absolute -top-1 -right-1 flex h-3.5 min-w-3.5 items-center justify-center",
+                    "rounded-full bg-muted-foreground px-0.5 text-[10px] leading-none text-background",
+                  )}
+                >
+                  {archivedCount}
+                </span>
+              )}
+            </Button>
+          }
+        />
+        <TooltipContent>
+          {archivedCount > 0 ? `Archived (${archivedCount})` : "Archived"}
+        </TooltipContent>
+      </Tooltip>
     </div>
   );
 }
@@ -148,6 +247,8 @@ interface TabPillProps {
   isCardDragActive: boolean;
   isListDragActive: boolean;
   dropSide: "before" | "after" | null;
+  /** Lists and open to-dos on this tab, Backlog excluded — see `TabStripProps.counts`. */
+  count: { lists: number; items: number };
   onSelect: () => void;
   onOpenInfo: () => void;
 }
@@ -159,6 +260,7 @@ function TabPill({
   isCardDragActive,
   isListDragActive,
   dropSide,
+  count,
   onSelect,
   onOpenInfo,
 }: TabPillProps) {
@@ -178,6 +280,7 @@ function TabPill({
   const pill = (
     <div
       ref={setNodeRef}
+      data-tab-pill={tab.id}
       className={cn(
         "group/tab relative flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1",
         "transition-colors",
@@ -217,12 +320,24 @@ function TabPill({
         onClick={onSelect}
         aria-current={isActive ? "true" : undefined}
         className={cn(
-          "max-w-40 truncate rounded text-xs outline-none",
+          "flex max-w-40 min-w-0 items-baseline gap-1 rounded text-xs outline-none",
           "focus-visible:ring-2 focus-visible:ring-ring",
           isActive ? "font-semibold" : "text-muted-foreground",
         )}
       >
-        {tab.name}
+        <span className="min-w-0 truncate">{tab.name}</span>
+        {/*
+          Visual parens read fine on their own but say nothing useful spelled
+          out letter by letter — `sr-only` below carries the real sentence,
+          same bargain as the deadline/location markers in todo-row-parts.tsx.
+        */}
+        <span aria-hidden className="num shrink-0 text-2xs font-normal text-muted-foreground/70">
+          ({count.lists}/{count.items})
+        </span>
+        <span className="sr-only">
+          , {count.lists} {count.lists === 1 ? "list" : "lists"} with {count.items}{" "}
+          {count.items === 1 ? "item" : "items"}
+        </span>
       </button>
 
       <Button
@@ -262,12 +377,26 @@ function TabPill({
     </div>
   );
 
-  if (!tab.description) return pill;
+  const countLabel = `${count.lists} ${count.lists === 1 ? "list" : "lists"} with ${count.items} ${
+    count.items === 1 ? "item" : "items"
+  }`;
 
   return (
     <Tooltip>
       <TooltipTrigger render={pill} />
-      <TooltipContent>{tab.description}</TooltipContent>
+      <TooltipContent>
+        {tab.description ? (
+          // `TooltipContent`'s popup is `inline-flex` (row), so two direct
+          // children sit side by side, not stacked — this wrapper is the
+          // flex item, and stacks its own children as a column.
+          <span className="flex flex-col text-center">
+            <span>{tab.description}</span>
+            <span>{countLabel}</span>
+          </span>
+        ) : (
+          countLabel
+        )}
+      </TooltipContent>
     </Tooltip>
   );
 }

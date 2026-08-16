@@ -112,6 +112,7 @@ export function DesktopBoard({
     filteredListColumns,
     calendarCount,
     planningCount,
+    tabCounts,
     mentionLists,
     deadlineCounts,
     overTodoId,
@@ -521,6 +522,7 @@ export function DesktopBoard({
             tabs={tabs}
             activeTabId={activeTabId}
             archivedCount={archivedLists.length + archivedTabs.length}
+            counts={tabCounts}
             infoTabId={infoTabId}
             drop={tabDrop}
             isCardDragActive={!!activeTodo}
