@@ -509,6 +509,7 @@ export function DesktopBoard({
             infoTabId={infoTabId}
             drop={tabDrop}
             isCardDragActive={!!activeTodo}
+            isListDragActive={!!activeList}
             onSelect={selectTab}
             onOpenInfo={setInfoTabId}
             onCreate={(name) => void handleCreateTab(name)}

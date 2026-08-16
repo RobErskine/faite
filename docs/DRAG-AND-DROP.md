@@ -573,6 +573,85 @@ leaves the landing rect null — the card visibly returns home rather than flyin
 into the strip. Distinct from Overflow's refusal (§5.1), which raises a toast;
 this one is silent, because the tab switch the user just watched is the feedback.
 
+### 4.10c Carrying a whole list to another tab (EI-115)
+
+The fourth gesture, layered on the same dwell as §4.10b: grab a list column,
+hold it over another tab's pill, and the planning half switches — drop among
+the columns that just appeared (or on the pill itself) and the list, plus
+every todo filed under it, moves there. Reported feedback: "if I took the 'To
+Buy' list, dragged it over a different tab for a few seconds, that new tab
+should become active and I can drop my list in this new tab."
+
+**Todos carry `listId`, never `tabId`, so this is one field write on one
+record.** `moveTodoToList`/`scheduleTodo` never enter the picture — nothing
+about the todos changes, only which tab their list renders under. Scheduled
+todos keep their day-column placement and keep grouping under the moved
+list's name and colour either way, because `hiddenLists` (`use-board-data.ts`)
+already passes cross-tab lists as records rather than ids (§4.13) — that
+existed for the read path before this shipped, and needed no change.
+
+**Three things had to give a list drag the same reach a card drag already
+has:**
+
+1. `collisionDetection`'s `listdrag:` branch (§4.2) filtered to
+   `parseColumnId(...)?.kind === "list"`, so a tab pill was invisible to a
+   column drag — no hover, no dwell, nothing. It now falls back to a pill
+   collision when no column is under the pointer, same precedence a card
+   drag doesn't need (a pill and a column are never both hit at once, since
+   the strip and the track don't overlap).
+2. The dwell effect (§4.10b) was gated on `activeTodo` alone. It now fires
+   for `activeList` too — same 600 ms, same `overId`-keyed cancellation.
+3. The "card released on a pill writes nothing" guard used to run before the
+   list-reorder branch, so it silently swallowed a list dropped on a pill as
+   well. The list branch now runs first and handles its own pill case.
+
+**Unlike a card, releasing a list *on* the pill is not a no-op — it lands the
+list at the end of that tab's track.** A card can always fall back to
+"drop into one of the columns that just appeared," because a card drag can
+reach any column in the newly-mounted track. A list drag cannot reach a
+column past the last one any other way: `planListDrop`'s direction rule
+(§4.10) needs a column to drag rightwards onto, and there is no on-screen
+column past the end of a track that hasn't rendered yet until you already
+switched to it. Releasing on the pill is the only route to that slot, so it
+means something rather than nothing.
+
+**Position is computed in the DESTINATION tab's own ordering, never the
+source's — `planListTabDrop()` (`lib/board.ts`), not `planListDrop()`.**
+`use-board-actions.ts` holds `lists` as the *global* array — every tab,
+sorted by one shared position space — and `planListDrop`'s "did the pointer
+move left or right" direction rule works by comparing the dragged column's
+and the target's indices in that array. That comparison means nothing once
+the two columns never rendered in the same track: the dragged list isn't
+even a member of the destination tab's ordering yet. `planListTabDrop()`
+sidesteps the question instead of answering it wrong — every cross-tab drop
+lands **after** whatever it was dropped on (same convention `planListDrop`
+already uses for "dropped on Backlog": arriving content, not a neighbour
+changing places), scoped to `lists.filter(l => l.isBacklog || l.tabId ===
+destinationTabId)`. `overListId: null` is the pill-drop case above, and
+lands at the end of that filtered, ordered list.
+
+**Backlog decides the destination tab by where it's rendered, not by its own
+`tabId`.** Backlog carries `tabId: null` — it rides along on every tab — so
+dropping a cross-tab list onto it can't read the destination off the target
+the way dropping onto any other column can. It reads `activeTabId` instead:
+by the time a column is droppable under the pointer, the dwell has already
+switched the board to render it, so "whichever tab is currently on screen"
+and "the tab whose track this column belongs to" are the same tab, same as
+they are for a card (§4.10b, §4.2's `MeasuringStrategy.Always` note — the
+same requirement, unrestated, is why the destination track's columns are
+already visible to this drag too).
+
+**Dropping a list back on the tab it's already on is a no-op**, whether that
+lands on the pill directly (`dragged.tabId === overTabId` short-circuits) or
+among its own track's columns (`destinationTabId` compares equal to
+`dragged.tabId`, so the ordinary same-track `planListDrop()` path runs
+instead — same behaviour as before this shipped, unchanged).
+
+Undo restores both fields in one step: `inversePatch(dragged, { tabId,
+position })`, not two separate undo entries — a half-undone cross-tab move
+(list back on its old tab, but at some arbitrary new position, or vice
+versa) would be a worse landing than either applied change on its own.
+
 ### 4.11 The React Compiler rejects refs read during render
 
 Worth knowing before restructuring anything in `board.tsx`. The drop animation
@@ -1197,10 +1276,10 @@ on RSC data fetching, middleware, or `next/image`.
 ### Testing drag-and-drop
 
 Pure logic — `preferPreciseTarget`, `parseColumnId`, `parseListDragId`,
-`planListDrop`, `landingTransform`, `positionForIndex`, `buildBoard` — is
-unit-testable and already covered. **Prefer extracting a pure function over
-testing dnd-kit itself**; jsdom/happy-dom has no layout, so rect-based collision
-logic cannot be meaningfully tested there.
+`planListDrop`, `planListTabDrop`, `landingTransform`, `positionForIndex`,
+`buildBoard` — is unit-testable and already covered. **Prefer extracting a
+pure function over testing dnd-kit itself**; jsdom/happy-dom has no layout, so
+rect-based collision logic cannot be meaningfully tested there.
 
 **Manual checklist — cards**
 
@@ -1329,6 +1408,44 @@ logic cannot be meaningfully tested there.
     (`planListDrop` returns null for this case).
 25. Reload after each reorder — the order persists (it is a real `position`
     write, not view state).
+
+**Manual checklist — carrying a list to another tab (§4.10c, EI-115)**
+
+26. Grab a list column by its header, hold it over another tab's pill — the
+    pill shows the pending ring (not the filled column style), and after
+    ~600 ms that tab becomes active and its columns render underneath. Sweep
+    across the strip on the way past instead of holding — nothing switches.
+27. Drop directly on the pill (don't wait to see a column first) — the list
+    lands at the **end** of that tab's track, not a no-op.
+28. Drop among the destination tab's columns instead — the list lands
+    **after** whichever column it was released on, regardless of which
+    direction it came from (there is no "before" for an arriving list).
+29. Every todo that was in the moved list now shows under it **on the new
+    tab**; switch back to the old tab and confirm none are left stranded
+    there.
+30. Schedule a todo from the moved list onto a day *before* moving the list.
+    After the move, that day's group still shows the list's name and colour,
+    from either tab — nothing about a scheduled todo's placement should
+    change.
+31. Drop the list back onto the tab it's already on — via its own pill and
+    among its own columns — both are a no-op with no `tabId` write, same as
+    an ordinary reorder.
+32. Try to drag Backlog — it has no grip, so nothing starts. Drop an ordinary
+    list onto Backlog while it's showing a *different* tab's columns — it
+    lands first in **that** tab (the one on screen), not the list's own.
+33. Move a list to another tab, then ⌘Z — it reappears back on the original
+    tab, at its original position, in one step. No intermediate state where
+    it's on the right tab but the wrong position, or vice versa.
+34. Reload after a cross-tab move — it persists (`tabId` and `position` are
+    both real field writes).
+35. Drag a list over the "Archived" button, or the "new tab" `+` button —
+    nothing highlights, no write, no crash.
+36. Move a list into a brand-new tab that has no lists of its own yet (only
+    Backlog) — it still lands, at the end (which is also the only slot).
+37. During the whole gesture, confirm none of the card-drag-only chrome
+    shows: no dashed candidate outlines, no destructive styling, and the
+    tab-reorder insertion bar (§4.10b) never appears — that's gated on
+    `activeTab`, not `activeList`.
 
 **Manual checklist — the scrolling track (§4.12)**
 

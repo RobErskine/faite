@@ -27,6 +27,7 @@ import {
   parseTabDropId,
   parseWeekendColumnId,
   planListDrop,
+  planListTabDrop,
   planTabDrop,
   preferPreciseTarget,
 } from "@/lib/board";
@@ -169,10 +170,20 @@ export const collisionDetection: CollisionDetection = (args) => {
    * A column drag wants the opposite answer to a card drag. The pointer is
    * inside a column *and* the cards within it, and for reordering columns the
    * cards are noise — only the column is a meaningful reference point.
+   *
+   * A tab pill is also a valid target here, unlike for a card (EI-115):
+   * hovering one focuses that tab, mirroring §4.10b's card gesture, so a
+   * dragged list can be carried to another tab and dropped among its columns
+   * — or directly on the pill itself, which lands it at the end of that
+   * tab's track. Preferring the column over the pill when both are under the
+   * pointer keeps ordinary reordering (pointer over a column, pill nowhere
+   * near it) unaffected.
    */
   if (parseListDragId(String(args.active.id))) {
     const column = collisions.find((c) => parseColumnId(String(c.id))?.kind === "list");
-    return column ? [column] : [];
+    if (column) return [column];
+    const pill = collisions.find((c) => parseTabDropId(String(c.id)));
+    return pill ? [pill] : [];
   }
 
   /**
@@ -475,6 +486,7 @@ export function useBoardActions(
   const {
     activeTodo,
     setActiveTodo,
+    activeList,
     overId,
     setOverId,
     setActiveList,
@@ -570,24 +582,27 @@ export function useBoardActions(
   }, [setActiveTodo, setActiveList, setActiveTab, setOverId, landingRectRef]);
 
   /**
-   * Hovering a tab with a card in hand focuses that tab.
+   * Hovering a tab with a card OR a list column in hand focuses that tab.
    *
-   * This is what makes moving a to-do to another tab one gesture rather than a
-   * drop, a click, and a second drag. The dwell exists because the strip sits
-   * between the two halves: without it, dragging a card upward across the bar
+   * For a card, this is what makes moving a to-do to another tab one gesture
+   * rather than a drop, a click, and a second drag. For a list column
+   * (EI-115), it's what makes carrying a whole list — and everything filed
+   * under it — to another tab a single continuous drag: switch, then drop
+   * among the columns that just appeared. The dwell exists because the strip
+   * sits between the two halves: without it, dragging upward across the bar
    * would flip through every tab it passed over.
    *
    * The timer is keyed on `overId`, so leaving the pill before it fires
    * cancels — React tears down the effect on every change of target.
    */
   useEffect(() => {
-    if (!activeTodo || !overId) return;
+    if ((!activeTodo && !activeList) || !overId) return;
     const hovered = parseTabDropId(overId);
     if (!hovered || hovered === activeTabId) return;
 
     const timer = window.setTimeout(() => selectTab(hovered), TAB_FOCUS_DWELL_MS);
     return () => window.clearTimeout(timer);
-  }, [activeTodo, overId, activeTabId, selectTab]);
+  }, [activeTodo, activeList, overId, activeTabId, selectTab]);
 
   /**
    * Hovering a collapsed weekend strip with a card in hand opens it.
@@ -686,6 +701,86 @@ export function useBoardActions(
         return;
       }
 
+      // Reordering — or, since EI-115, re-homing — a list column. Separate
+      // from the card path below: it writes one list's fields and never
+      // touches a todo, since a todo carries `listId`, never `tabId`.
+      if (draggedListId) {
+        const dragged = lists.find((l) => l.id === draggedListId);
+        if (!dragged) return;
+
+        /**
+         * Dropped directly ON a tab pill: unlike a card (below), this is not
+         * a no-op. It's the only way to reach the LAST slot of another tab's
+         * track — there is no column past it to drag rightwards onto — so it
+         * lands the list at the end of that tab. Dropping on the pill of the
+         * tab the list is already on is a no-op; there is nowhere to go.
+         */
+        const overTabId = parseTabDropId(String(over.id));
+        if (overTabId) {
+          if (dragged.tabId === overTabId) return;
+          const plan = planListTabDrop(lists, draggedListId, overTabId, null);
+          if (!plan) return;
+          landingRectRef.current = landingRect;
+
+          pushUndo(`Moved “${short(dragged.name)}” to another tab`, [
+            {
+              kind: "list",
+              entityId: dragged.id,
+              patch: inversePatch(dragged, { tabId: plan.tabId, position: plan.position }),
+            },
+          ]);
+          await updateList(draggedListId, { tabId: plan.tabId, position: plan.position });
+          return;
+        }
+
+        const target = parseColumnId(String(over.id));
+        if (target?.kind !== "list") return; // dropped outside the planning half
+
+        /**
+         * Backlog carries no `tabId` of its own — it rides along on every
+         * tab — so "dropped on Backlog" means "the tab currently on screen",
+         * exactly as it always has. Any other column names its own tab
+         * directly. Comparing that against the dragged list's CURRENT tab is
+         * what tells an ordinary same-track reorder (still `planListDrop`,
+         * untouched) apart from a drop that arrived after the dwell already
+         * switched tabs (`planListTabDrop`, tab-scoped — `planListDrop`'s
+         * left/right direction rule has nothing to compare against once the
+         * two columns never shared a track).
+         */
+        const targetList = lists.find((l) => l.id === target.listId);
+        const destinationTabId = targetList?.isBacklog ? activeTabId : targetList?.tabId;
+
+        if (destinationTabId && dragged.tabId !== destinationTabId) {
+          const plan = planListTabDrop(lists, draggedListId, destinationTabId, target.listId);
+          if (!plan) return; // dropped on an unknown column
+          landingRectRef.current = landingRect;
+
+          pushUndo(`Moved “${short(dragged.name)}” to another tab`, [
+            {
+              kind: "list",
+              entityId: dragged.id,
+              patch: inversePatch(dragged, { tabId: plan.tabId, position: plan.position }),
+            },
+          ]);
+          await updateList(draggedListId, { tabId: plan.tabId, position: plan.position });
+          return;
+        }
+
+        const plan = planListDrop(lists, draggedListId, target.listId);
+        if (!plan) return; // dropped on itself, or an unknown column
+        landingRectRef.current = landingRect;
+
+        pushUndo(`Moved “${short(dragged.name)}”`, [
+          {
+            kind: "list",
+            entityId: dragged.id,
+            patch: inversePatch(dragged, { position: plan.position }),
+          },
+        ]);
+        await updateList(draggedListId, { position: plan.position });
+        return;
+      }
+
       /**
        * A card released ON a tab pill writes nothing.
        *
@@ -697,29 +792,6 @@ export function useBoardActions(
        * home rather than flying to the strip.
        */
       if (parseTabDropId(String(over.id))) return;
-
-      // Reordering a list column. Separate from the card path below: it writes
-      // one list's position and never touches a todo.
-      if (draggedListId) {
-        const target = parseColumnId(String(over.id));
-        if (target?.kind !== "list") return; // dropped outside the planning half
-        const plan = planListDrop(lists, draggedListId, target.listId);
-        if (!plan) return; // dropped on itself
-        landingRectRef.current = landingRect;
-
-        const list = lists.find((l) => l.id === draggedListId);
-        if (list) {
-          pushUndo(`Moved “${short(list.name)}”`, [
-            {
-              kind: "list",
-              entityId: list.id,
-              patch: inversePatch(list, { position: plan.position }),
-            },
-          ]);
-        }
-        await updateList(draggedListId, { position: plan.position });
-        return;
-      }
 
       if (!board) return;
 
@@ -865,6 +937,7 @@ export function useBoardActions(
       materializeIfNeeded,
       lists,
       tabs,
+      activeTabId,
       landingRectRef,
       setActiveTodo,
       setActiveList,

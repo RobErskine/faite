@@ -278,6 +278,69 @@ export function planTabDrop(
   };
 }
 
+export interface ListTabMovePlan {
+  /** The fractional index to write onto the dragged list. */
+  position: Position;
+  /** The tab id to write onto `list.tabId`. */
+  tabId: string;
+}
+
+/**
+ * Resolve where a list column lands when it is moved to a DIFFERENT tab —
+ * dragged onto a tab pill (EI-115's dwell, mirroring §4.10b's card version),
+ * or dropped among a destination tab's columns after that dwell has already
+ * switched the active tab.
+ *
+ * `planListDrop`'s "which side of the target" direction rule assumes both
+ * columns render in the same track, so it can compare their positions to see
+ * which way the pointer moved. That comparison is meaningless once the two
+ * columns live on different tabs — the dragged column isn't a member of the
+ * destination tab's own ordering at all, so there is no "direction" to read.
+ * This always lands AFTER the hovered column instead, the same convention
+ * `planListDrop` already uses for "dropped on Backlog" (`§4.10`): arriving
+ * content, not a neighbour changing places.
+ *
+ * `overListId: null` means "dropped directly on the pill", which lands at the
+ * END of the destination tab's track — the only way to reach the last slot
+ * cross-tab, since there is no on-screen column past it to drag rightwards
+ * onto. A real list id (including Backlog's own id, meaning "as far left as
+ * allowed") behaves like `planListDrop`'s Backlog case, scoped to the
+ * destination tab.
+ *
+ * `lists` is the GLOBAL list array (every tab), matching `planListDrop`'s and
+ * `planTabDrop`'s contract — this function does the tab-scoping itself via
+ * `destinationTabId`, rather than requiring the caller to pre-filter.
+ */
+export function planListTabDrop(
+  lists: readonly List[],
+  draggedId: string,
+  destinationTabId: string,
+  overListId: string | null,
+): ListTabMovePlan | null {
+  const dragged = lists.find((l) => l.id === draggedId);
+  if (!dragged || dragged.isBacklog) return null;
+
+  const backlog = lists.find((l) => l.isBacklog);
+  const movable = lists.filter((l) => !l.isBacklog && l.tabId === destinationTabId);
+  const ordered = backlog ? [backlog, ...movable] : movable;
+
+  if (overListId === null) {
+    return { position: positionForIndex(ordered, ordered.length), tabId: destinationTabId };
+  }
+
+  if (backlog && overListId === backlog.id) {
+    return { position: positionForIndex(ordered, 1), tabId: destinationTabId };
+  }
+
+  const overIndex = movable.findIndex((l) => l.id === overListId);
+  if (overIndex < 0) return null; // dropped on an unknown column
+
+  return {
+    position: positionForIndex(ordered, overIndex + 1 + (backlog ? 1 : 0)),
+    tabId: destinationTabId,
+  };
+}
+
 /**
  * "To " is a filing artefact, not part of the name.
  *

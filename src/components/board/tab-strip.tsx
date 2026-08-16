@@ -21,6 +21,12 @@ interface TabStripProps {
   drop: { tabId: string; side: "before" | "after" } | null;
   /** True while a card is in flight — pills become hover-to-focus targets. */
   isCardDragActive: boolean;
+  /**
+   * True while a list column is in flight (EI-115) — same hover-to-focus
+   * treatment as a card, so a list can be carried to another tab and dropped
+   * among its columns, or directly on the pill to land at the end.
+   */
+  isListDragActive: boolean;
   onSelect: (tabId: string) => void;
   onOpenInfo: (tabId: string) => void;
   onCreate: (name: string) => void;
@@ -46,6 +52,7 @@ export function TabStrip({
   infoTabId,
   drop,
   isCardDragActive,
+  isListDragActive,
   onSelect,
   onOpenInfo,
   onCreate,
@@ -74,6 +81,7 @@ export function TabStrip({
             isActive={tab.id === activeTabId}
             isInfoOpen={infoTabId === tab.id}
             isCardDragActive={isCardDragActive}
+            isListDragActive={isListDragActive}
             dropSide={drop?.tabId === tab.id ? drop.side : null}
             onSelect={() => onSelect(tab.id)}
             onOpenInfo={() => onOpenInfo(tab.id)}
@@ -138,6 +146,7 @@ interface TabPillProps {
   isActive: boolean;
   isInfoOpen: boolean;
   isCardDragActive: boolean;
+  isListDragActive: boolean;
   dropSide: "before" | "after" | null;
   onSelect: () => void;
   onOpenInfo: () => void;
@@ -148,6 +157,7 @@ function TabPill({
   isActive,
   isInfoOpen,
   isCardDragActive,
+  isListDragActive,
   dropSide,
   onSelect,
   onOpenInfo,
@@ -155,12 +165,15 @@ function TabPill({
   const { setNodeRef, isOver } = useDroppable({ id: tabDropId(tab.id) });
 
   /**
-   * Hovering a pill with a card in hand is a *focus* gesture, not a drop — the
-   * card lands in a column afterwards. Highlighting it as though it were a drop
-   * target would promise something releasing here does not deliver, so the
-   * pending state is a ring, distinct from a column's filled target styling.
+   * Hovering a pill with a card OR a list column in hand is a *focus*
+   * gesture — for a card, the item lands in a column afterwards; for a list
+   * (EI-115), releasing right here is also valid (it lands at the end of
+   * this tab), but the pointer doesn't yet know which the user will do.
+   * Highlighting it as though it were an ordinary drop target would promise
+   * something a card release here does not deliver, so the pending state is
+   * a ring, distinct from a column's filled target styling.
    */
-  const isFocusCandidate = isCardDragActive && isOver && !isActive;
+  const isFocusCandidate = (isCardDragActive || isListDragActive) && isOver && !isActive;
 
   const pill = (
     <div

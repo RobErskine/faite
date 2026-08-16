@@ -18,6 +18,7 @@ import {
   parseTabDropId,
   parseWeekendColumnId,
   planListDrop,
+  planListTabDrop,
   planTabDrop,
   preferPreciseTarget,
   tabDragId,
@@ -858,6 +859,64 @@ describe("planListDrop", () => {
     const plan = planListDrop(noBacklog, "buy", "brain")!;
     expect(plan.side).toBe("before");
     expect(plan.position < positionOf("brain")).toBe(true);
+  });
+});
+
+describe("planListTabDrop", () => {
+  // Backlog rides along on every tab (tabId stays null). "brain" and
+  // "grocery" belong to "personal"; "buy" starts on "work" — the reported
+  // scenario is carrying it over to "personal".
+  const withTab = (base: List, tabId: string | null): List => ({ ...base, tabId });
+
+  const backlog = withTab(list("backlog", "Backlog", true, positions[0]), null);
+  const brain = withTab(list("brain", "Brain Dump", false, positions[1]), "personal");
+  const grocery = withTab(list("grocery", "Grocery List", false, positions[2]), "personal");
+  const buy = withTab(list("buy", "To Buy", false, positions[3]), "work");
+
+  const all = [backlog, brain, grocery, buy];
+  const positionOf = (id: string) => all.find((l) => l.id === id)!.position;
+
+  it("dropped on the pill: lands at the end of the destination tab", () => {
+    const plan = planListTabDrop(all, "buy", "personal", null)!;
+    expect(plan.tabId).toBe("personal");
+    expect(plan.position > positionOf("grocery")).toBe(true);
+  });
+
+  it("dropped on Backlog: lands first, same as planListDrop's convention", () => {
+    const plan = planListTabDrop(all, "buy", "personal", "backlog")!;
+    expect(plan.tabId).toBe("personal");
+    expect(plan.position > positionOf("backlog")).toBe(true);
+    expect(plan.position < positionOf("brain")).toBe(true);
+  });
+
+  it("dropped on a column: always lands AFTER it — an arriving list has no side to be dragged from", () => {
+    const plan = planListTabDrop(all, "buy", "personal", "brain")!;
+    expect(plan.position > positionOf("brain")).toBe(true);
+    expect(plan.position < positionOf("grocery")).toBe(true);
+  });
+
+  it("dropped on the destination tab's last column: also lands at the end", () => {
+    const plan = planListTabDrop(all, "buy", "personal", "grocery")!;
+    expect(plan.position > positionOf("grocery")).toBe(true);
+  });
+
+  it("works when the destination tab has no lists of its own yet", () => {
+    const plan = planListTabDrop(all, "buy", "empty-tab", null)!;
+    expect(plan.tabId).toBe("empty-tab");
+    expect(plan.position > positionOf("backlog")).toBe(true);
+  });
+
+  it("refuses to move Backlog itself", () => {
+    expect(planListTabDrop(all, "backlog", "personal", null)).toBeNull();
+  });
+
+  it("returns null for an unknown dragged list", () => {
+    expect(planListTabDrop(all, "ghost", "personal", null)).toBeNull();
+  });
+
+  it("returns null when dropped on a column that isn't actually in the destination tab", () => {
+    // "buy" itself hasn't moved yet — it's still on "work", not "personal".
+    expect(planListTabDrop(all, "brain", "personal", "buy")).toBeNull();
   });
 });
 
