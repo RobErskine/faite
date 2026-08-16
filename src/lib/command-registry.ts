@@ -35,7 +35,6 @@ export type PaletteEntryMode =
   | "new-todo"
   | "new-list"
   | "new-label"
-  | "new-project"
   | "new-tab"
   | "delete-list"
   | "delete-tab";
@@ -108,12 +107,6 @@ const CREATE_COMMANDS: PaletteCommand[] = [
   { id: "create-new-todo", group: "Create", label: () => "New to-do", run: (ctx) => ctx.enterMode("new-todo") },
   { id: "create-new-list", group: "Create", label: () => "New list", run: (ctx) => ctx.enterMode("new-list") },
   { id: "create-new-label", group: "Create", label: () => "New label", run: (ctx) => ctx.enterMode("new-label") },
-  {
-    id: "create-new-project",
-    group: "Create",
-    label: () => "New project",
-    run: (ctx) => ctx.enterMode("new-project"),
-  },
   { id: "create-new-tab", group: "Create", label: () => "New tab", run: (ctx) => ctx.enterMode("new-tab") },
 ];
 

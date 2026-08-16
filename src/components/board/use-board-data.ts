@@ -40,7 +40,6 @@ import {
   useLists,
   usePlacementContext,
   usePlaces,
-  useProjects,
   useRecurrenceChildren,
   useReminderPresets,
   useSettings,
@@ -121,7 +120,6 @@ export function useBoardData(params: UseBoardDataParams) {
   const tabs = useTabs();
   const archivedTabs = useArchivedTabs();
   const labels = useLabels();
-  const projects = useProjects();
   const places = usePlaces();
   const reminderPresets = useReminderPresets();
   const settings = useSettings();
@@ -766,7 +764,6 @@ export function useBoardData(params: UseBoardDataParams) {
     tabs,
     archivedTabs,
     labels,
-    projects,
     places,
     reminderPresets,
     settings,

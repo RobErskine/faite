@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { TodoSheet, type RecurrenceInfo } from "./todo-sheet";
 import { defaultRule } from "@/lib/recurrence";
-import type { Label as LabelRecord, List, Todo, TodoEvent } from "@/lib/schema";
+import type { Label as LabelRecord, List, Tab, Todo, TodoEvent } from "@/lib/schema";
 import type { PlacementContext } from "@/lib/scheduling";
 
 /**
@@ -64,6 +64,8 @@ interface HarnessProps {
   labels?: LabelRecord[];
   events?: TodoEvent[];
   ctx?: PlacementContext;
+  listsById?: ReadonlyMap<string, List>;
+  tabsById?: ReadonlyMap<string, Tab>;
 }
 
 function Harness({
@@ -80,6 +82,8 @@ function Harness({
   labels = [],
   events,
   ctx,
+  listsById,
+  tabsById,
 }: HarnessProps) {
   return (
     <TodoSheet
@@ -89,10 +93,11 @@ function Harness({
       todos={todos}
       tabs={[]}
       labels={labels}
-      projects={[]}
       places={[]}
       events={events}
       ctx={ctx}
+      listsById={listsById}
+      tabsById={tabsById}
       onClose={vi.fn()}
       onSave={onSave}
       onSetStatus={onSetStatus}
@@ -128,7 +133,6 @@ describe("repeat section (a materialized occurrence)", () => {
         lists={[]}
         tabs={[]}
         labels={[]}
-        projects={[]}
         places={[]}
         onClose={vi.fn()}
         onSave={vi.fn()}
@@ -165,7 +169,6 @@ describe("location field", () => {
         lists={[]}
         tabs={[]}
         labels={[]}
-        projects={[]}
         places={[place]}
         onClose={vi.fn()}
         onSave={vi.fn()}
@@ -575,5 +578,86 @@ describe("History — the Faite Loop (EI-96)", () => {
     );
     expect(screen.queryByText("Rolled over")).toBeNull();
     expect(screen.queryByText("Fell into Overflow")).toBeNull();
+  });
+});
+
+/**
+ * EI-62: the Project picker is retired. The sheet now shows a read-only Tab
+ * field, derived `listId → list.tabId → tab` (see `tabForTodo`, lib/board.ts)
+ * rather than a stored, independently-editable field.
+ */
+describe("derived Tab field (EI-62)", () => {
+  const PERSONAL_TAB: Tab = {
+    id: "tab-personal",
+    ownerId: "local-user",
+    createdAt: "",
+    updatedAt: "",
+    deletedAt: null,
+    name: "Personal",
+    description: null,
+    isDefault: false,
+    archivedAt: null,
+    position: "a0",
+    color: null,
+    emoji: null,
+    iconUrl: null,
+  };
+
+  const TO_READ_LIST: List = {
+    id: "list-to-read",
+    ownerId: "local-user",
+    createdAt: "",
+    updatedAt: "",
+    deletedAt: null,
+    name: "To Read",
+    isBacklog: false,
+    archivedAt: null,
+    archivedWithTabId: null,
+    position: "a0",
+    tabId: PERSONAL_TAB.id,
+    color: null,
+    emoji: null,
+    iconUrl: null,
+  };
+
+  const BACKLOG_LIST: List = {
+    ...TO_READ_LIST,
+    id: "list-backlog",
+    name: "Backlog",
+    isBacklog: true,
+    tabId: null,
+  };
+
+  it("has no Project field", () => {
+    render(<Harness />);
+    expect(screen.queryByText("Project")).toBeNull();
+  });
+
+  it("shows the tab its list belongs to", () => {
+    render(
+      <Harness
+        todo={{ ...TODO, listId: TO_READ_LIST.id }}
+        listsById={new Map([[TO_READ_LIST.id, TO_READ_LIST]])}
+        tabsById={new Map([[PERSONAL_TAB.id, PERSONAL_TAB]])}
+      />,
+    );
+    expect(screen.getByText("Tab")).toBeTruthy();
+    expect(screen.getByText("Personal")).toBeTruthy();
+  });
+
+  it("is blank for a Backlog todo — list.tabId === null means pinned into every tab", () => {
+    render(
+      <Harness
+        todo={{ ...TODO, listId: BACKLOG_LIST.id }}
+        listsById={new Map([[BACKLOG_LIST.id, BACKLOG_LIST]])}
+        tabsById={new Map([[PERSONAL_TAB.id, PERSONAL_TAB]])}
+      />,
+    );
+    expect(screen.queryByText("Personal")).toBeNull();
+  });
+
+  it("is blank for an unfiled todo (listId === null)", () => {
+    render(<Harness todo={{ ...TODO, listId: null }} />);
+    expect(screen.queryByText("Personal")).toBeNull();
   });
 });

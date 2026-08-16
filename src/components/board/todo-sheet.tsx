@@ -53,6 +53,7 @@ import type { MentionListOption, MentionPick } from "@/components/board/board-co
 import { TimelineList, TimelineRow } from "@/components/board/timeline";
 import { cn } from "@/lib/utils";
 import { edge, effectiveListColor } from "@/lib/colors";
+import { tabForTodo } from "@/lib/board";
 import { TITLE_LINES } from "@/lib/title";
 import { formatEventStamp } from "@/lib/event-time";
 import { formatShortDate, type PlacementContext } from "@/lib/scheduling";
@@ -73,7 +74,6 @@ import type {
   List,
   Place,
   Priority,
-  Project,
   ReminderPreset,
   Tab,
   Todo,
@@ -87,6 +87,9 @@ const NONE = "__none__";
 /** Stable empty default for `listsById` — a fresh `new Map()` per render
  * would defeat memoization downstream for no reason. */
 const EMPTY_LISTS_BY_ID: ReadonlyMap<string, List> = new Map();
+
+/** Same rationale as `EMPTY_LISTS_BY_ID`, for `tabsById`. */
+const EMPTY_TABS_BY_ID: ReadonlyMap<string, Tab> = new Map();
 
 interface TodoSheetProps {
   todo: Todo | null;
@@ -103,7 +106,6 @@ interface TodoSheetProps {
   /** Every live tab — see the List field, grouped into "{tabName} > {listName}" sections. */
   tabs: Tab[];
   labels: LabelRecord[];
-  projects: Project[];
   /** Saved locations (`lib/schema.ts`'s `Place`) — see the Location field. */
   places: Place[];
   /** Named reminder times (EI-106) — see the Reminder field (`ReminderPicker`).
@@ -123,8 +125,12 @@ interface TodoSheetProps {
    */
   ctx?: PlacementContext;
   /** Live AND archived lists, so a `moved` event still colours its dot after
-   * the target list is filed. Mirrors `DaySheet`'s `listsById`. */
+   * the target list is filed. Mirrors `DaySheet`'s `listsById`. Also backs the
+   * derived Tab field below (EI-62) — see `tabForTodo` (`lib/board.ts`). */
   listsById?: ReadonlyMap<string, List>;
+  /** Live AND archived tabs, same reasoning as `listsById` — a todo's list can
+   * point at a tab that has since been archived. Backs the derived Tab field. */
+  tabsById?: ReadonlyMap<string, Tab>;
   onClose: () => void;
   onSave: (id: string, patch: Partial<Todo>) => void;
   /**
@@ -202,13 +208,13 @@ function TodoSheetContent({
   todos = [],
   tabs,
   labels,
-  projects,
   places,
   reminderPresets = [],
   events = [],
   timezone = "UTC",
   ctx,
   listsById = EMPTY_LISTS_BY_ID,
+  tabsById: tabsByIdProp = EMPTY_TABS_BY_ID,
   onClose,
   onSave,
   onSetStatus,
@@ -247,15 +253,24 @@ function TodoSheetContent({
     [todos, todo.id],
   );
 
-  const tabsById = useMemo(() => new Map(tabs.map((t) => [t.id, t])), [tabs]);
+  /** Live tabs only, for the "@list" mention color fallback — `lists` above
+   * is live lists too, so a hidden/archived tab never needs to resolve here.
+   * Deliberately distinct from `tabsById` (the `tabsById` prop, live +
+   * archived) below, which the derived Tab field needs. */
+  const liveTabsById = useMemo(() => new Map(tabs.map((t) => [t.id, t])), [tabs]);
   const mentionListOptions = useMemo(
     (): MentionListOption[] =>
       lists.map((list) => ({
         id: list.id,
         name: list.name,
-        color: effectiveListColor(list, tabsById),
+        color: effectiveListColor(list, liveTabsById),
       })),
-    [lists, tabsById],
+    [lists, liveTabsById],
+  );
+  /** `listId → list.tabId → tab`, derived (EI-62) — see `tabForTodo`. */
+  const todoTab = useMemo(
+    () => tabForTodo(todo, listsById, tabsByIdProp),
+    [todo, listsById, tabsByIdProp],
   );
   const mentionSources = useMemo((): MentionSource<MentionPick>[] => [
     {
@@ -621,40 +636,37 @@ function TodoSheetContent({
             </div>
           </div>
 
+          {/*
+            Read-only and derived (EI-62), not a picker: `listId → list.tabId
+            → tab` (`tabForTodo`, lib/board.ts) replaces the old Project
+            field. Setting it means moving the todo to a different list, not
+            editing a field here. Blank is a real state — a Backlog todo
+            (`tabId === null` means "pinned into every tab") and an unfiled
+            todo both render nothing, on purpose — see `tabForTodo`'s doc
+            comment for why a placeholder would be wrong.
+          */}
           <div className="space-y-1.5">
-            <Label htmlFor="todo-project">Project</Label>
-            <Select
-              value={todo.projectId ?? NONE}
-              onValueChange={(v) =>
-                onSave(todo.id, { projectId: v === NONE ? null : v })
-              }
+            <Label id="todo-tab-label">Tab</Label>
+            <div
+              aria-labelledby="todo-tab-label"
+              className="flex h-9 items-center gap-1.5 rounded-md border border-input bg-transparent px-3 text-sm"
             >
-              <SelectTrigger id="todo-project">
-                <SelectValue>
-                  {(value: string) => {
-                    if (value === NONE) return "None";
-                    // `deleteProject` clears every referencing todo's
-                    // `projectId` (repositories.ts), so an unresolved id here
-                    // would mean a genuinely different bug — not the
-                    // archived-list case `ListField` guards against — but
-                    // falling back rather than leaking the raw id costs
-                    // nothing.
-                    const project = projects.find((p) => p.id === value);
-                    if (!project) return "None";
-                    return project.emoji ? `${project.emoji} ${project.name}` : project.name;
-                  }}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={NONE}>None</SelectItem>
-                {projects.map((project) => (
-                  <SelectItem key={project.id} value={project.id}>
-                    {project.emoji ? `${project.emoji} ` : ""}
-                    {project.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              {todoTab && (
+                <>
+                  {todoTab.color && (
+                    <span
+                      aria-hidden
+                      className="size-2 shrink-0 rounded-full"
+                      style={{ backgroundColor: todoTab.color }}
+                    />
+                  )}
+                  <span className="truncate">
+                    {todoTab.emoji ? `${todoTab.emoji} ` : ""}
+                    {todoTab.name}
+                  </span>
+                </>
+              )}
+            </div>
           </div>
 
           <LabelPicker todo={todo} labels={labels} onToggleLabel={onToggleLabel} />
