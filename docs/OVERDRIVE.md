@@ -551,9 +551,66 @@ one-handed, and a grid anchored near the thumb is. The keyboard-only
 `"Enter to confirm"` hint hides on `touch:` — it has nothing to say on a
 device with no keyboard.
 
-**Swipe gestures are deliberately out of scope for v1** (EI-104) — the
-button layout should be lived with first; a swipe that fires the wrong
-verdict on a stale to-do is a more annoying mistake than a mis-tap.
+### 10a. Swipe — resolved (EI-104)
+
+Deferred out of v1 deliberately (the note above, kept for the history): the
+button layout needed to be lived with first, since a swipe firing the wrong
+verdict on a stale to-do is a more annoying mistake than a mis-tap. Picked
+back up once that held true for a while with no complaints.
+
+**Phone `layout` only, not `coarse`.** `OverdriveOverlayContent` reads
+`useViewport()` (`lib/use-viewport.ts`) and gates every pointer handler on
+`layout === "phone"` — a touchscreen laptop, or a tablet, still gets the
+button-only surface §10 already describes; the buttons already cover every
+verdict regardless, so nothing is lost by gating on the narrower condition.
+This also matters on a landscape phone: `phone-iphone-landscape` (734×343)
+is *wider* than `resolveLayout`'s 640px phone ceiling, so it reads `"tablet"`
+here — the exact same width-vs-height mismatch §9 already calls out for the
+dialog's own `tall:` split. Swipes are correctly inert there; the button row
+is the real path on that device, not a gap.
+
+**Why this doesn't contradict `docs/GESTURES.md`'s "no swipe-actions on
+cards" rule.** That rule is about `TodoCard` on the board: dnd-kit's
+`TouchSensor` already owns horizontal touch priority there, and a card can't
+cede an axis to the pager for scrolling AND claim it for a swipe action.
+`OverdriveCard` has neither constraint — no `DndContext` (§9), no pager to
+share an axis with, one card on screen at a time — so a from-scratch pointer
+handler on the card itself has nothing to fight.
+
+**The mapping mirrors the keyboard exactly** (`lib/overdrive-swipe.ts`):
+`←` won't-do, `↑` done, `↓` back-to-list, `→` ramp. Every swipe dispatches
+the identical `KeyAction` the keyboard/buttons already use, through the same
+`reduce()` (§3a's rule, extended to touch — never a fifth, divergent input
+path). `→` is the asymmetric one, per the ticket's own note: it **stages**
+exactly like a bare `→` keypress rather than committing, so it needs the
+same separate Confirm tap the staged-day box already provides (§4) — a swipe
+right does not schedule anything on its own, no matter how far or how fast.
+
+**The gesture itself**, all in `overdrive-overlay.tsx` (no new gesture
+library — `docs/GESTURES.md`'s own precedent for board-level dragging is
+scroll-snap/dnd-kit, neither of which applies here, so this is a plain
+`pointerdown`/`pointermove`/`pointerup` handler, the same primitive
+`rail-handle.tsx`/`split-handle.tsx` already build their own drag surfaces
+on): a direction locks once the drag clears a 12px deadzone
+(`SWIPE_AXIS_LOCK_PX`), matching whichever axis has travelled farther so a
+diagonal drag can't flip between verdicts mid-gesture; releasing past 96px
+(`SWIPE_COMMIT_PX`) on that axis fires the action, releasing short of it (or
+a `pointercancel`) eases the card back to center instead. The card itself
+translates 1:1 with the finger along the locked axis, plus a small rotation
+on the horizontal verdicts echoing the flick's own spin (§8a) — and a badge
+showing the target verdict's icon and label fades and scales in as the drag
+approaches the threshold, so the gesture reads as "here's what letting go
+does" rather than a mystery input, the same self-explaining goal the
+persistent decision toast (§7a) serves for the *result* of a verdict.
+
+**Verified by logic, not by feel — yet.** `e2e/overdrive.spec.ts`'s "swipe
+gestures (EI-104)" block drives real touch input via CDP
+(`e2e/support/touch.ts`) on `phone-iphone`/`phone-pixel` and confirms each
+direction fires its mapped action (or, for a short swipe, fires nothing).
+That proves the gesture logic is wired correctly; it does not — cannot —
+confirm the drag *feels* right on a physical phone (resistance, the 96px
+threshold, whether the indicator reads clearly at a glance). That pass still
+needs a human holding real hardware.
 
 ## 11. Testing and dev tooling
 
@@ -624,6 +681,7 @@ syncs like anything else.
 | File | Role |
 | --- | --- |
 | `lib/overdrive.ts` | the pure decision core — `reduce`, `rampDate`, `stagedDate`, `applyDecision`, `summarize`, the tunables block |
+| `lib/overdrive-swipe.ts` | swipe geometry (EI-104, §10a) — `resolveSwipeDirection`, `swipeProgress`, `SWIPE_ACTION`, `SWIPE_AXIS_LOCK_PX`/`SWIPE_COMMIT_PX` |
 | `lib/dev-seed.ts` | `seedOverflow()` — the dev-only Overflow-pile generator |
 | `components/board/overdrive-button.tsx` | the Overflow column's entry point |
 | `components/board/overdrive-overlay.tsx` | the Dialog, the keydown handler, the date picker, the finish screen, the persistent toast, the blocking flick transition |
@@ -632,6 +690,8 @@ syncs like anything else.
 | `components/board/use-board-ui-state.ts` | `overdriveOpen` + `computeModalOpen` |
 | `components/board/board-guards.test.ts` | the table-driven test that keeps a future overlay from forgetting the guard wiring above |
 
-Tests: `overdrive.test.ts`, `overdrive-overlay.test.tsx`, `board-column.test.tsx`
+Tests: `overdrive.test.ts`, `overdrive-swipe.test.ts`, `overdrive-overlay.test.tsx`
+(including its "swipe gestures (EI-104)" block), `board-column.test.tsx`
 ("footer" block), `board-guards.test.ts`, `developer-section.test.tsx`
-("Seed Overflow" block), `e2e/overdrive.spec.ts`.
+("Seed Overflow" block), `e2e/overdrive.spec.ts` (including its own "swipe
+gestures (EI-104)" block, real touch via CDP).

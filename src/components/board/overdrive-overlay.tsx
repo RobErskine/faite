@@ -31,6 +31,13 @@ import {
   type OverdriveSession,
   type Verdict,
 } from "@/lib/overdrive";
+import {
+  SWIPE_ACTION,
+  resolveSwipeDirection,
+  swipeProgress,
+  type SwipeDirection,
+} from "@/lib/overdrive-swipe";
+import { useViewport } from "@/lib/use-viewport";
 import { civilDateToLocalDate } from "./date-nav";
 import { OverdriveCard } from "./overdrive-card";
 
@@ -87,6 +94,40 @@ function directionForVerdict(kind: Verdict["kind"]): Direction {
       return "down";
     case "scheduled":
       return "right";
+  }
+}
+
+/** The lucide icon shown in the drag indicator (below), matching whichever
+ * verdict button the swipe direction fires — same iconography, so the badge
+ * that fades in mid-drag reads as a preview of a real button rather than a
+ * fifth, unrelated affordance. */
+const SWIPE_ICON: Record<SwipeDirection, typeof ArrowLeft> = {
+  left: ArrowLeft,
+  up: ArrowUp,
+  down: ArrowDown,
+  right: ArrowRight,
+};
+
+/** Degrees of rotation per px of horizontal drag while a swipe is in
+ * progress — `dx / SWIPE_ROTATE_DIVISOR`. Chosen so a drag that reaches
+ * `SWIPE_COMMIT_PX` (`lib/overdrive-swipe.ts`, 96px) rotates about 8°, a
+ * smaller echo of the flick's own 12° (`FLICK_CLASS`) rather than a match —
+ * the drag preview should read as a preview, not pre-empt the flick's own
+ * motion once it actually commits. */
+const SWIPE_ROTATE_DIVISOR = 12;
+
+/** Mirrors each verdict button's own label (below) — `down` needs the
+ * current card's list name, same as the "Back to …" button does. */
+function swipeIndicatorLabel(direction: SwipeDirection, listName: string): string {
+  switch (direction) {
+    case "left":
+      return "Won’t do";
+    case "up":
+      return "Done";
+    case "down":
+      return `Back to ${listName}`;
+    case "right":
+      return "Schedule";
   }
 }
 
@@ -191,6 +232,14 @@ function OverdriveOverlayContent({
   // todo's own fields (title edits, label changes) are always what renders.
   const [session, setSession] = useState<OverdriveSession>(() => createSession(todos));
   const [pickerOpen, setPickerOpen] = useState(false);
+
+  // Swipe gestures (EI-104) — phone layout only. `layout`, not `coarse`: a
+  // touchscreen laptop should still get the button-only desktop experience
+  // (`docs/MOBILE.md` §2's own rule for the same axis), and the on-screen
+  // buttons already cover every verdict regardless, so there's nothing lost
+  // by gating on the narrower condition.
+  const { layout } = useViewport();
+  const swipeEnabled = layout === "phone";
 
   const currentId = currentTodoId(session);
   const currentTodo = currentId ? (todosById.get(currentId) ?? null) : null;
@@ -431,6 +480,107 @@ function OverdriveOverlayContent({
     dispatchRef.current = dispatch;
   });
 
+  /**
+   * Swipe drag state (EI-104), phone layout only. `pointerId` scopes every
+   * handler to the finger that started the gesture — a second touch landing
+   * mid-drag (a stray thumb resting on the glass) is ignored rather than
+   * hijacking or resetting it. `direction` is `null` until the drag clears
+   * `SWIPE_AXIS_LOCK_PX` (`lib/overdrive-swipe.ts`), then stays fixed for
+   * the rest of the gesture. `active` is false only in the brief window
+   * after release where a drag that didn't reach the commit threshold is
+   * animating back to center — see the wrapper's className below for what
+   * that drives.
+   */
+  const [drag, setDrag] = useState<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    dx: number;
+    dy: number;
+    direction: SwipeDirection | null;
+    active: boolean;
+  } | null>(null);
+
+  const handleSwipeStart = (e: React.PointerEvent<HTMLDivElement>) => {
+    // Same "nothing is interactive mid-flick" rule `dispatch` itself
+    // enforces, plus: no card to swipe on the finish screen, a drag
+    // starting while the date picker is up would fight its own gestures,
+    // and — `drag` already set — a second finger landing mid-gesture (a
+    // stray thumb resting on the glass) must not hijack or reset the one
+    // already in progress.
+    if (!swipeEnabled || transitioning || pickerOpen || !currentTodo || drag) return;
+    // `setPointerCapture` keeps every subsequent move/up event for this
+    // finger targeted at this element even once it leaves the card's
+    // bounds — without it, a fast drag would lose the gesture the moment
+    // the finger crosses the card's edge. Guarded for test environments
+    // (jsdom/happy-dom) that don't implement it; the gesture still works
+    // there since Testing Library dispatches events directly at this node.
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    setDrag({
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      dx: 0,
+      dy: 0,
+      direction: null,
+      active: true,
+    });
+  };
+
+  const handleSwipeMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!drag || !drag.active || e.pointerId !== drag.pointerId) return;
+    const dx = e.clientX - drag.startX;
+    const dy = e.clientY - drag.startY;
+    const direction = drag.direction ?? resolveSwipeDirection(dx, dy);
+    setDrag({ ...drag, dx, dy, direction });
+  };
+
+  /** Shared by pointerup and pointercancel — the only difference is whether
+   * a completed gesture is allowed to commit (never on cancel: the OS/
+   * browser interrupting the touch is not the user releasing it on
+   * purpose). */
+  const endSwipe = (e: React.PointerEvent<HTMLDivElement>, allowCommit: boolean) => {
+    if (!drag || e.pointerId !== drag.pointerId) return;
+    const { direction, dx, dy } = drag;
+    const committed = allowCommit && direction !== null && swipeProgress(dx, dy, direction) >= 1;
+    // A commit hands off to the flick (`dispatch` → `triggerFlick`), which
+    // owns the card's transform from here via `FLICK_CLASS` — clear `drag`
+    // outright so nothing lingers to fight it. Otherwise, if a direction had
+    // locked, ease back to center instead of unmounting: `active: false`
+    // switches the wrapper to its `transition-transform` class (below) so
+    // the snap-back is a genuine animation, not a jump cut. A release still
+    // inside the deadzone (`direction` never locked) needed no visual in
+    // the first place, so it just clears.
+    setDrag(direction && !committed ? { ...drag, active: false, dx: 0, dy: 0 } : null);
+    if (committed && direction) dispatch(SWIPE_ACTION[direction]);
+  };
+
+  const swipeHandlers = swipeEnabled
+    ? {
+        onPointerDown: handleSwipeStart,
+        onPointerMove: handleSwipeMove,
+        onPointerUp: (e: React.PointerEvent<HTMLDivElement>) => endSwipe(e, true),
+        onPointerCancel: (e: React.PointerEvent<HTMLDivElement>) => endSwipe(e, false),
+      }
+    : {};
+
+  /** Translate (and, for the horizontal verdicts, a slight rotation echoing
+   * `FLICK_CLASS`'s own spin) following the drag 1:1 along whichever axis
+   * locked — `null` once the direction hasn't locked yet, so a drag still in
+   * the deadzone shows no motion at all rather than a jittery sub-pixel
+   * wobble. Never set while `transitioning`: that state already drives the
+   * flick's OWN transform via `FLICK_CLASS`, and an inline `style.transform`
+   * here would silently win the cascade over it. */
+  const dragStyle =
+    drag?.direction && !transitioning
+      ? {
+          transform:
+            drag.direction === "left" || drag.direction === "right"
+              ? `translateX(${drag.dx}px) rotate(${(drag.dx / SWIPE_ROTATE_DIVISOR).toFixed(2)}deg)`
+              : `translateY(${drag.dy}px)`,
+        }
+      : undefined;
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.defaultPrevented || isTextEntry(e.target)) return;
     // One early return covers the whole handler while a card is mid-flick —
@@ -480,6 +630,16 @@ function OverdriveOverlayContent({
 
   const staged = !done ? stagedDate(session, ctx) : null;
   const list = currentTodo?.listId ? (listsById.get(currentTodo.listId) ?? null) : null;
+  // The drag's visual feedback (below) — resolved once here rather than
+  // inline in the JSX, same reason `staged`/`list`/`tally` are.
+  const swipeIndicator =
+    swipeEnabled && drag?.direction && !transitioning
+      ? {
+          Icon: SWIPE_ICON[drag.direction],
+          label: swipeIndicatorLabel(drag.direction, list ? list.name : "Backlog"),
+          progress: swipeProgress(drag.dx, drag.dy, drag.direction),
+        }
+      : null;
   const tally = summarize(session.decided);
 
   return (
@@ -633,20 +793,44 @@ function OverdriveOverlayContent({
                 snaps the card back to dead center, at full opacity, for
                 however many frames that gap lasts — a flash of the
                 just-decided card reappearing before it vanishes.
+
+                **Swipe (EI-104), phone layout only.** `swipeHandlers` is `{}`
+                on tablet/desktop, so this carries no pointer listeners there
+                at all — the button row is the whole story off-phone, same as
+                before this ticket. `touch-none` only while a gesture could
+                actually start (`swipeEnabled && !transitioning`): it
+                pre-empts the ancestor's native touch-scroll on this element
+                specifically, the same `touch-action: none` trade
+                `rail-handle.tsx`/`split-handle.tsx` already make for their
+                own genuine drag surfaces (`docs/GESTURES.md`) — without it,
+                the browser can commit the touch to scrolling before this
+                component's own `pointermove` handler gets a say. The
+                `transition-transform` class (vs. `transition-none` while
+                actively dragging) is what turns a released, uncommitted drag
+                into a genuine ease-back-to-center rather than a jump cut;
+                `dragStyle`'s own comment covers why it can never fight the
+                flick's `FLICK_CLASS` transform.
               */}
               <div
                 key={transitioning ? `flick-${transitioning.seq}` : currentId}
                 onAnimationEnd={(e) => {
                   if (e.target === e.currentTarget) finishFlick();
                 }}
-                className={
+                className={cn(
+                  "relative",
+                  swipeEnabled && !transitioning && "touch-none select-none",
                   transitioning
                     ? cn(
                         "animate-out fade-out duration-320 ease-in fill-mode-forwards",
                         FLICK_CLASS[transitioning.direction],
                       )
-                    : "animate-in fade-in duration-220 ease-out motion-reduce:animate-none"
-                }
+                    : cn(
+                        "animate-in fade-in duration-220 ease-out motion-reduce:animate-none",
+                        drag?.active ? "transition-none" : "transition-transform duration-150 ease-out",
+                      ),
+                )}
+                style={dragStyle}
+                {...swipeHandlers}
               >
                 <OverdriveCard
                   todo={transitioning ? transitioning.todo : currentTodo}
@@ -657,6 +841,34 @@ function OverdriveOverlayContent({
                   index={transitioning ? transitioning.index : session.index}
                   total={transitioning ? transitioning.total : session.queue.length}
                 />
+
+                {/*
+                  The drag's visual feedback (EI-104) — a badge fading and
+                  scaling in as `swipeProgress` climbs toward 1, so the
+                  gesture reads as "here's what letting go does" rather than
+                  a mystery input. Same icon/label the matching verdict
+                  button already shows, so a user who has tried the buttons
+                  first recognizes this instantly. `pointer-events-none` +
+                  `aria-hidden`: purely decorative, and must never steal the
+                  pointer capture the card wrapper itself is holding.
+                */}
+                {swipeIndicator && (
+                  <div
+                    aria-hidden
+                    className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center"
+                  >
+                    <span
+                      className="flex items-center gap-2 rounded-full border-2 border-primary bg-background px-4 py-2 text-base font-semibold text-primary shadow-md"
+                      style={{
+                        opacity: swipeIndicator.progress,
+                        transform: `scale(${0.85 + swipeIndicator.progress * 0.15})`,
+                      }}
+                    >
+                      <swipeIndicator.Icon aria-hidden className="size-5" />
+                      {swipeIndicator.label}
+                    </span>
+                  </div>
+                )}
               </div>
 
               {staged && !transitioning && (

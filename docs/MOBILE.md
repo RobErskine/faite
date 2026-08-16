@@ -277,6 +277,14 @@ everything.
   action sheet is the replacement: strictly better for a *destructive*
   action anyway (discoverable, keyboard/AT-accessible, testable) than a
   hidden gesture would have been.
+  **Still true for `TodoCard` — does not extend to `OverdriveCard`.**
+  Overdrive's swipe gestures shipped in EI-104 (`docs/OVERDRIVE.md` §10a):
+  its card has no `DndContext`, no pager, no axis to contest, so the
+  constraint above simply doesn't apply there. `overdrive-overlay.tsx` gates
+  every pointer handler on `useViewport()`'s `layout === "phone"` — the same
+  axis this document's own `layout` classification already drives, so it's
+  a second, independent consumer of it (`board.tsx`-mounted, outside
+  `phone-board.tsx`), not a new one this document needed to introduce.
 - **Read-time layout overrides only, never write-time.** Phone needs
   `visibleDays: 1`, weekends expanded, rails collapsed — resolve these in
   whatever data hook reads `settings`, never via `mutateSettings`. Settings
