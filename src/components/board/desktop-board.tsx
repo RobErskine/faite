@@ -13,6 +13,7 @@ import { mutateSettings } from "@/lib/store/mutate";
 import { AppHeader } from "./app-header";
 import { SignedOutBanner } from "@/components/auth/signed-out-banner";
 import { BoardColumn } from "./board-column";
+import { BoardEmptyBanner } from "./board-empty-banner";
 import { CreateListColumn } from "./create-list-column";
 import { DateNav } from "./date-nav";
 import { OverdriveButton } from "./overdrive-button";
@@ -197,6 +198,13 @@ export function DesktopBoard({
         onJumpToDate={jumpToIndex}
         onToday={jumpToToday}
       />
+
+      {/*
+        Below the date nav, above both halves, so it reads regardless of
+        which half (or neither, if both are collapsed) is on screen — see
+        `BoardEmptyBanner`'s own comment for why this checks BOTH counts.
+      */}
+      {calendarCount === 0 && planningCount === 0 && <BoardEmptyBanner />}
 
       {/*
         Calendar half. Overflow sits OUTSIDE the scrolling track as a fixed
