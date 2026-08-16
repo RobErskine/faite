@@ -355,3 +355,91 @@ changed, the bootstrap fingerprint should **not** move and no
   untested on a real device. See `docs/DRAG-AND-DROP.md` §7.
 - **Settled work is not reachable outside the window.** There is no history
   view; `placeSettled` returns null past the horizon by design.
+
+---
+
+## 12. Sub-tasks (EI-55)
+
+`Todo.parentId` (`lib/schema.ts`) was reserved from P1 but had no UI until
+this. The scope is deliberately narrow — **one level of nesting**, and a
+sub-task never becomes a board citizen in its own right.
+
+### Where a sub-task lives
+
+**Only inside its parent's detail sheet** (`TodoSheet`'s Sub-tasks section) —
+never as its own card, day-column entry, or search/⌘K result. That is enforced
+by filtering `parentId`-having rows out of `visibleTodos` itself
+(`use-board-data.ts`), the same choke point archived-list orphans already go
+through — so every downstream reader (`nonTemplateTodos`, `buildBoard`, the
+palette, foreground reminders, the day sheet's timeline) is correct for free
+rather than needing its own `!t.parentId` guard.
+
+`TodoSheet` still receives the raw, unfiltered `todos` table (a new optional
+prop) purely to look up `t.parentId === todo.id` — the same reasoning that
+keeps `todosById` (`use-board-data.ts`) built from the raw table rather than
+`visibleTodos`, so a sub-task's own row is never actually inaccessible, just
+never surfaced as a first-class board object.
+
+### One level, enforced at the write site
+
+Rather than modelling depth, `createSubtask(parentId, title)`
+(`store/repositories.ts`) just refuses to set a `parentId` on a todo that
+already has one. `TodoSheet` mirrors that at the UI layer — the Sub-tasks
+section does not render at all when `todo.parentId` is already set — so the
+repository check is defense in depth (reachable only if a stale sheet somehow
+stays open across its own promotion), not the primary guard.
+
+### A sub-task is a real todo, not a checklist string
+
+It is an ordinary `Todo` row with its own `id`, `status`, `createdAt` — just
+one whose `parentId` keeps it off the board. That is what makes reopening,
+history (EI-94's `todoEvent` log), and sync all work on it with zero special
+casing: it goes through `createTodo`/`setTodoStatus`/`deleteTodo` exactly like
+any other row.
+
+What it deliberately does NOT get, in this UI: its own scheduling, list, or
+priority. `createSubtask` never sets `listId`/`scheduledDate`/`priority`, and
+`TodoSheet`'s Sub-tasks section exposes no fields for them — only a title, a
+checkbox (open ↔ done), and delete. Those fields stay at their zero value
+until the sub-task is PROMOTED (see below), at which point `buildBoard`'s
+existing "no list falls back to Backlog" rule places it sensibly with no new
+code.
+
+### Deletion: `parentId` is a LIVE reference, not provenance
+
+Deleting a todo with open sub-tasks does not cascade-delete them. `deleteTodo`
+promotes every live child first — clears `parentId`, same "cleared, not
+destroyed" rule `deleteList` uses for `listId` (rehoming orphans to Backlog)
+and `deleteSeries` uses for `recurrenceParentId` — and only then tombstones
+the parent. A sub-task's own work is real and outlives its parent going away.
+See `ARCHITECTURE.md` §2.8e's live-vs-provenance table.
+
+Completing or dropping the parent does **not** cascade either. Nothing forces
+open sub-tasks closed — the codebase has no existing pattern for that kind of
+cross-row cascade (§2.8e's whole point is that references are advisory), and
+inventing one here would be exactly the kind of complexity this feature's
+scope note (`schema.ts`'s doc comment: "one level of nesting") warns against.
+
+### Sync
+
+No migration was needed. `parentId` has been in `bootstrap.ts`'s frozen
+initial `todos` table since the very first P3 commit (`a247bd2`) — every
+account, old or new, already has the column — and `COLUMNS_BY_KIND`
+(`server/sync/columns.ts`) derives its whitelist from the Drizzle schema
+automatically, so `sanitizePatch` already let it through. `npm run
+schema:check` passes with no changes to the migration ledger.
+
+### Known limitations (deliberate)
+
+- **No progress badge on the board card.** A parent's "N/M sub-tasks" count
+  is visible only inside its own sheet, not on the collapsed card — adding it
+  would mean threading sub-task counts through `buildBoard`'s data flow,
+  which this pass deliberately kept out of. Candidate follow-up.
+- **No reordering, no promotion UI.** Sub-tasks list in creation order; there
+  is no drag handle, and the only way to detach one from its parent today is
+  deleting the parent (which promotes it) — there is no explicit "make this a
+  full todo" action.
+- **No mention grammar in the add row.** Unlike the title field and quick-add,
+  typing `@list` or `#label` into "Add a sub-task" is taken literally, not
+  resolved — consistent with sub-tasks having no list/label surface at all in
+  this UI.

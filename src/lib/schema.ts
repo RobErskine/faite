@@ -228,7 +228,28 @@ export const todoSchema = z.object({
    */
   placeId: idSchema.nullable().default(null),
 
-  /** One level of nesting. Sub-task UI is P6. */
+  /**
+   * One level of nesting (EI-55) — enforced at the write site, not here:
+   * `createSubtask` (`store/repositories.ts`) refuses to set this on a todo
+   * that already has a `parentId` of its own, rather than letting a
+   * grandchild get created with nowhere to render (see below).
+   *
+   * A LIVE reference (ARCHITECTURE §2.8e), not provenance: `deleteTodo`
+   * clears it on every child rather than cascading the delete, mirroring how
+   * `deleteList` rehomes orphaned todos to Backlog instead of destroying
+   * them — a sub-task's own work is real and outlives its parent. Completing
+   * or dropping the parent does NOT cascade to its sub-tasks; nothing forces
+   * them closed.
+   *
+   * Sub-tasks render ONLY inside the parent's detail sheet (`TodoSheet`'s
+   * Sub-tasks section) — filtered out of the board entirely
+   * (`use-board-data.ts`'s `visibleTodos`), and out of search/⌘K with it.
+   * They carry their own `status`, but this UI gives them no scheduling,
+   * list, or priority of their own — those stay at their zero value until a
+   * sub-task is PROMOTED to a standalone todo (its parent deleted), at which
+   * point a null `listId` resolves to Backlog like any other homeless todo
+   * (see `buildBoard`).
+   */
   parentId: idSchema.nullable().default(null),
 
   /** Fractional index, scoped to whichever column the todo currently sits in. */

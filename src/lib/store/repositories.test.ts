@@ -13,6 +13,7 @@ import {
   createPlace,
   createReminderPreset,
   createSeriesFromTodo,
+  createSubtask,
   createTab,
   createTodo,
   dayGroupPatch,
@@ -898,6 +899,53 @@ describe("deleteSeries", () => {
     const origin = (await getDb().todos.get(sourceId))!;
     expect(origin.recurrenceParentId).toBeNull();
     expect(origin.deletedAt).toBeNull();
+  });
+});
+
+describe("createSubtask (EI-55)", () => {
+  it("creates a todo with parentId set and no schedule/list/priority of its own", async () => {
+    const parentId = await createTodo({ title: "Plan the trip" });
+    const subtaskId = await createSubtask(parentId, "Book flights");
+
+    const subtask = (await getDb().todos.get(subtaskId))!;
+    expect(subtask.parentId).toBe(parentId);
+    expect(subtask.title).toBe("Book flights");
+    expect(subtask.listId).toBeNull();
+    expect(subtask.scheduledDate).toBeNull();
+    expect(subtask.priority).toBeNull();
+  });
+
+  it("refuses to nest a sub-task under another sub-task — one level only", async () => {
+    const parentId = await createTodo({ title: "Plan the trip" });
+    const childId = await createSubtask(parentId, "Book flights");
+
+    await expect(createSubtask(childId, "Pick a seat")).rejects.toThrow();
+  });
+});
+
+describe("deleteTodo — sub-tasks (EI-55)", () => {
+  it("promotes open sub-tasks to standalone todos rather than cascading the delete", async () => {
+    const parentId = await createTodo({ title: "Plan the trip" });
+    const subtaskId = await createSubtask(parentId, "Book flights");
+
+    await deleteTodo(parentId);
+
+    expect((await getDb().todos.get(parentId))?.deletedAt).toBeTruthy();
+    const subtask = (await getDb().todos.get(subtaskId))!;
+    expect(subtask.parentId).toBeNull();
+    expect(subtask.deletedAt).toBeNull();
+  });
+
+  it("leaves an already-deleted sub-task's parentId untouched — nothing to promote", async () => {
+    const parentId = await createTodo({ title: "Plan the trip" });
+    const subtaskId = await createSubtask(parentId, "Book flights");
+    await deleteTodo(subtaskId);
+
+    await deleteTodo(parentId);
+
+    const subtask = (await getDb().todos.get(subtaskId))!;
+    expect(subtask.deletedAt).toBeTruthy();
+    expect(subtask.parentId).toBe(parentId);
   });
 });
 

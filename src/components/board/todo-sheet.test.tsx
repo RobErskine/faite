@@ -57,7 +57,9 @@ interface HarnessProps {
   onDelete?: (id: string) => void;
   onSave?: (id: string, patch: Partial<Todo>) => void;
   onToggleLabel?: (todoId: string, labelId: string) => void;
+  onAddSubtask?: (parentId: string, title: string) => void;
   todo?: Todo;
+  todos?: Todo[];
   lists?: List[];
   labels?: LabelRecord[];
   events?: TodoEvent[];
@@ -71,7 +73,9 @@ function Harness({
   onDelete = vi.fn(),
   onSave = vi.fn(),
   onToggleLabel = vi.fn(),
+  onAddSubtask = vi.fn(),
   todo = TODO,
+  todos = [],
   lists = [],
   labels = [],
   events,
@@ -82,6 +86,7 @@ function Harness({
       todo={todo}
       today="2026-08-11"
       lists={lists}
+      todos={todos}
       tabs={[]}
       labels={labels}
       projects={[]}
@@ -93,6 +98,7 @@ function Harness({
       onSetStatus={onSetStatus}
       onToggleLabel={onToggleLabel}
       onDelete={onDelete}
+      onAddSubtask={onAddSubtask}
       backToDay={backToDay}
       onBackToDay={onBackToDay}
     />
@@ -435,6 +441,99 @@ describe("back-to-day affordance", () => {
   it("is absent if backToDay is set but no handler is wired (defensive)", () => {
     render(<Harness backToDay="2026-08-11" />);
     expect(screen.queryByRole("button", { name: /Back to/ })).toBeNull();
+  });
+});
+
+describe("Sub-tasks (EI-55)", () => {
+  const child = (id: string, title: string, status: Todo["status"] = "open"): Todo => ({
+    ...TODO,
+    id,
+    title,
+    status,
+    parentId: TODO.id,
+  });
+
+  it("renders no count and an empty list when there are no sub-tasks yet", () => {
+    render(<Harness />);
+    expect(screen.getByText("Sub-tasks")).toBeTruthy();
+    expect(screen.queryByLabelText(/Mark .* done/)).toBeNull();
+  });
+
+  it("lists existing sub-tasks with a done/total count, ignoring todos that are not children", () => {
+    render(
+      <Harness
+        todos={[
+          child("s1", "Book flights"),
+          child("s2", "Pack bags", "done"),
+          { ...TODO, id: "unrelated", title: "Not a child", parentId: null },
+        ]}
+      />,
+    );
+    expect(screen.getByText("Sub-tasks")).toBeTruthy();
+    expect(screen.getByText("(1/2)")).toBeTruthy();
+    expect(screen.getByText("Book flights")).toBeTruthy();
+    expect(screen.getByText("Pack bags")).toBeTruthy();
+    expect(screen.queryByText("Not a child")).toBeNull();
+  });
+
+  it("checking a sub-task's box calls onSetStatus with ITS id, not the parent's", () => {
+    const onSetStatus = vi.fn();
+    render(<Harness todos={[child("s1", "Book flights")]} onSetStatus={onSetStatus} />);
+    fireEvent.click(screen.getByLabelText("Mark Book flights done"));
+    expect(onSetStatus).toHaveBeenCalledWith("s1", "done");
+  });
+
+  it("unchecking a done sub-task reopens it", () => {
+    const onSetStatus = vi.fn();
+    render(
+      <Harness todos={[child("s1", "Book flights", "done")]} onSetStatus={onSetStatus} />,
+    );
+    fireEvent.click(screen.getByLabelText("Mark Book flights not done"));
+    expect(onSetStatus).toHaveBeenCalledWith("s1", "open");
+  });
+
+  it("deleting a sub-task calls onDelete with ITS id and does not close the sheet", () => {
+    const onDelete = vi.fn();
+    render(<Harness todos={[child("s1", "Book flights")]} onDelete={onDelete} />);
+    fireEvent.click(screen.getByLabelText("Delete sub-task Book flights"));
+    expect(onDelete).toHaveBeenCalledWith("s1");
+    // The sheet itself is still open — unlike the footer's Delete button,
+    // this must not also call onClose.
+    expect(screen.getByLabelText("Add a sub-task")).toBeTruthy();
+  });
+
+  it("typing a title and pressing Enter calls onAddSubtask with the parent id, then clears the draft", () => {
+    const onAddSubtask = vi.fn();
+    render(<Harness onAddSubtask={onAddSubtask} />);
+    const input = screen.getByLabelText("Add a sub-task");
+    fireEvent.change(input, { target: { value: "Book flights" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onAddSubtask).toHaveBeenCalledWith(TODO.id, "Book flights");
+    expect(input).toHaveProperty("value", "");
+  });
+
+  it("blurring with a typed title also commits it", () => {
+    const onAddSubtask = vi.fn();
+    render(<Harness onAddSubtask={onAddSubtask} />);
+    const input = screen.getByLabelText("Add a sub-task");
+    fireEvent.change(input, { target: { value: "Book flights" } });
+    fireEvent.blur(input);
+    expect(onAddSubtask).toHaveBeenCalledWith(TODO.id, "Book flights");
+  });
+
+  it("does not call onAddSubtask for a blank title", () => {
+    const onAddSubtask = vi.fn();
+    render(<Harness onAddSubtask={onAddSubtask} />);
+    const input = screen.getByLabelText("Add a sub-task");
+    fireEvent.keyDown(input, { key: "Enter" });
+    fireEvent.blur(input);
+    expect(onAddSubtask).not.toHaveBeenCalled();
+  });
+
+  it("one level of nesting: a sub-task's own sheet shows no Sub-tasks section at all", () => {
+    render(<Harness todo={{ ...TODO, parentId: "some-parent" }} />);
+    expect(screen.queryByText("Sub-tasks")).toBeNull();
+    expect(screen.queryByLabelText("Add a sub-task")).toBeNull();
   });
 });
 

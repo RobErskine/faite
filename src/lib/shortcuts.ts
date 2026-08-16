@@ -152,6 +152,13 @@ export const LOCAL_SHORTCUTS: ShortcutEntry[] = [
     scope: "To-do sheet",
     source: "todo-sheet.tsx",
   },
+  {
+    id: "sheet-subtask-commit",
+    combo: "enter",
+    label: "Add a sub-task from the draft (EI-55)",
+    scope: "To-do sheet",
+    source: "todo-sheet.tsx — SubtasksSection",
+  },
 
   // --- Command palette ----------------------------------------------------
   {

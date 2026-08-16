@@ -27,6 +27,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { MarkdownField } from "@/components/ui/markdown-field";
@@ -92,6 +93,13 @@ interface TodoSheetProps {
   /** For the title field's quick-add tokens (`p2`, `fri`, `2pm`, `!fri`) — see `commitTitle`. */
   today: CivilDate;
   lists: List[];
+  /**
+   * Every live todo — used only to find this todo's sub-tasks (EI-55,
+   * `t.parentId === todo.id`) for the Sub-tasks section below. Optional,
+   * defaulting to none, same reasoning as `events`/`reminderPresets` below —
+   * a caller/test with nothing to show doesn't have to thread it through.
+   */
+  todos?: Todo[];
   /** Every live tab — see the List field, grouped into "{tabName} > {listName}" sections. */
   tabs: Tab[];
   labels: LabelRecord[];
@@ -128,6 +136,14 @@ interface TodoSheetProps {
   onSetStatus: (id: string, status: Todo["status"]) => void;
   onToggleLabel: (todoId: string, labelId: string) => void;
   onDelete: (id: string) => void;
+  /**
+   * Create a sub-task titled `title` under this todo (EI-55). Optional —
+   * when omitted the Sub-tasks section still renders any existing children
+   * (from `todos` above) but its "Add a sub-task" row silently no-ops,
+   * matching `onStartSeries`'s "absent means don't offer this" convention
+   * below.
+   */
+  onAddSubtask?: (parentId: string, title: string) => void;
   /**
    * Set only when this sheet was opened from that day's timeline — renders a
    * "Back to Aug 11" affordance above the title. Absent for every other way of
@@ -183,6 +199,7 @@ function TodoSheetContent({
   todo,
   today,
   lists,
+  todos = [],
   tabs,
   labels,
   projects,
@@ -197,6 +214,7 @@ function TodoSheetContent({
   onSetStatus,
   onToggleLabel,
   onDelete,
+  onAddSubtask,
   backToDay,
   onBackToDay,
   recurrence,
@@ -216,6 +234,18 @@ function TodoSheetContent({
   const titleRef = useRef<HTMLTextAreaElement>(null);
   const [titleCursor, setTitleCursor] = useState(0);
   const pendingCaretRef = useRef<number | null>(null);
+
+  /**
+   * This todo's sub-tasks (EI-55) — `todos` is the raw, unfiltered table
+   * (see the prop's doc comment), so this finds them regardless of their own
+   * status or scheduling. Empty for a todo that is ITSELF a sub-task: one
+   * level of nesting only, and `parentId`-having rows never have their own
+   * `parentId` pointing at them (see `createSubtask`).
+   */
+  const subtasks = useMemo(
+    () => todos.filter((t) => t.parentId === todo.id),
+    [todos, todo.id],
+  );
 
   const tabsById = useMemo(() => new Map(tabs.map((t) => [t.id, t])), [tabs]);
   const mentionListOptions = useMemo(
@@ -651,6 +681,21 @@ function TodoSheetContent({
             )
           )}
 
+          {/*
+            One level of nesting only (EI-55): a todo that is itself a
+            sub-task never gets its own Sub-tasks section, so there is no
+            grandchild UI to build. `createSubtask` enforces the same rule
+            server-side; this is what keeps the sheet from ever offering it.
+          */}
+          {!todo.parentId && (
+            <SubtasksSection
+              subtasks={subtasks}
+              onToggleStatus={onSetStatus}
+              onDelete={onDelete}
+              onAdd={(title) => onAddSubtask?.(todo.id, title)}
+            />
+          )}
+
           <Separator />
 
           <div className="space-y-1.5">
@@ -755,6 +800,105 @@ function TodoSheetContent({
         />
       )}
     </Sheet>
+  );
+}
+
+interface SubtasksSectionProps {
+  subtasks: Todo[];
+  /** Reused verbatim from `TodoSheetProps` — both are already generic on
+   * WHICH todo id, not tied to the sheet's own open one. */
+  onToggleStatus: (id: string, status: Todo["status"]) => void;
+  onDelete: (id: string) => void;
+  onAdd: (title: string) => void;
+}
+
+/**
+ * One level of nesting (EI-55): a simple checklist, not a second `TodoCard`.
+ * A sub-task's own scheduling/list/priority stay unreachable from here on
+ * purpose — see `todoSchema.parentId`'s doc comment — so this needs none of
+ * `TodoCard`'s machinery (drag, badges, priority rail), just a title, a
+ * checkbox, and a way to remove it.
+ *
+ * Always rendered (even with zero sub-tasks yet), mirroring the Notes field
+ * below it — the "Add a sub-task" row is the only way in, so hiding the
+ * section until one exists would hide the only way to create the first one.
+ */
+function SubtasksSection({ subtasks, onToggleStatus, onDelete, onAdd }: SubtasksSectionProps) {
+  const [draft, setDraft] = useState("");
+
+  const doneCount = subtasks.filter((s) => s.status !== "open").length;
+
+  const commit = () => {
+    const title = draft.trim();
+    if (!title) return;
+    onAdd(title);
+    setDraft("");
+  };
+
+  return (
+    <section className="space-y-1.5">
+      <Label>
+        Sub-tasks
+        {subtasks.length > 0 && (
+          <span className="font-normal text-muted-foreground">
+            {" "}
+            ({doneCount}/{subtasks.length})
+          </span>
+        )}
+      </Label>
+
+      {subtasks.length > 0 && (
+        <ul className="space-y-1">
+          {subtasks.map((subtask) => (
+            <li key={subtask.id} className="flex items-center gap-2">
+              <Checkbox
+                checked={subtask.status === "done"}
+                onCheckedChange={() =>
+                  onToggleStatus(subtask.id, subtask.status === "done" ? "open" : "done")
+                }
+                aria-label={`Mark ${subtask.title} ${
+                  subtask.status === "done" ? "not done" : "done"
+                }`}
+              />
+              <span
+                className={cn(
+                  "min-w-0 flex-1 truncate text-sm",
+                  subtask.status !== "open" && "text-muted-foreground",
+                  subtask.status === "done" && "line-through",
+                )}
+              >
+                {subtask.title}
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-6 shrink-0 text-muted-foreground hover:text-destructive"
+                onClick={() => onDelete(subtask.id)}
+                aria-label={`Delete sub-task ${subtask.title}`}
+              >
+                <X className="size-3.5" aria-hidden />
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <Input
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commit();
+          }
+        }}
+        onBlur={commit}
+        placeholder="Add a sub-task"
+        aria-label="Add a sub-task"
+        className="h-8 text-sm"
+      />
+    </section>
   );
 }
 

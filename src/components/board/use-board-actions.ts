@@ -48,6 +48,7 @@ import {
 } from "@/lib/recurrence";
 import {
   createSeriesFromTodo,
+  createSubtask,
   createTodo,
   deleteSeries,
   deleteTodo,
@@ -1177,6 +1178,28 @@ export function useBoardActions(
   );
 
   /**
+   * Add a sub-task (EI-55) under `parentId` — `TodoSheet`'s Sub-tasks
+   * section. Same "record the undo step AFTER the write" shape as
+   * `handleQuickAdd`, and for the same reason: the id it needs doesn't exist
+   * until `createSubtask` returns. No toast — unlike a top-level quick-add,
+   * the new row appears immediately in the still-open sheet, so there is
+   * nothing invisible here for a toast to confirm.
+   */
+  const handleAddSubtask = useCallback(
+    (parentId: string, title: string) => {
+      const trimmed = title.trim();
+      if (!trimmed) return;
+      const parent = todosById.get(parentId);
+      void (async () => {
+        if (parent) await materializeIfNeeded(parent);
+        const id = await createSubtask(parentId, trimmed);
+        pushUndo(`Added “${short(trimmed)}”`, [createUndoStep("todo", id)]);
+      })();
+    },
+    [todosById, materializeIfNeeded],
+  );
+
+  /**
    * List settings. All three close the dialog: the write is instant and local,
    * so leaving it open would mean staring at a form describing a column that
    * has already changed — or, for archive and delete, one that has gone.
@@ -1332,6 +1355,7 @@ export function useBoardActions(
     handleOverdriveVerdict,
     handleToggleLabel,
     handleDelete,
+    handleAddSubtask,
     handleSaveList,
     handleArchiveList,
     handleDeleteList,

@@ -65,6 +65,10 @@ export interface CreateTodoInput {
   placeId?: string | null;
   /** Versioned JSON blob — see `lib/capture-source.ts`. Groundwork for D5. */
   source?: string | null;
+  /** One level of nesting (EI-55) — see `todoSchema.parentId`'s doc comment.
+   * Prefer `createSubtask` over passing this directly; it enforces the
+   * one-level rule. */
+  parentId?: string | null;
 }
 
 export async function createTodo(input: CreateTodoInput): Promise<string> {
@@ -92,7 +96,7 @@ export async function createTodo(input: CreateTodoInput): Promise<string> {
     labelIds: input.labelIds ?? [],
     location: input.location ?? null,
     placeId: input.placeId ?? null,
-    parentId: null,
+    parentId: input.parentId ?? null,
     position: input.position ?? (await nextTodoPosition()),
     recurrenceRule: null,
     recurrenceParentId: null,
@@ -134,6 +138,30 @@ async function nextTodoPosition(): Promise<string> {
   const db = getDb();
   const last = await db.todos.orderBy("position").last();
   return positionAtEnd(last?.position ?? null);
+}
+
+/**
+ * Create a sub-task under `parentId` (EI-55).
+ *
+ * Enforces the ONE level of nesting `todoSchema.parentId` promises: throws
+ * rather than silently creating a grandchild if `parentId` is itself already
+ * a sub-task. `TodoSheet` never renders the "Add a sub-task" control on a
+ * todo that already has a `parentId`, so this is a defense-in-depth check —
+ * reachable in practice only if a stale sheet stays open across its own
+ * promotion (its parent deleted out from under it in another tab).
+ *
+ * Deliberately no `listId`/`scheduledDate`/`priority` of its own: a
+ * sub-task is filtered off the board entirely (`use-board-data.ts`'s
+ * `visibleTodos`) while `parentId` is set, so those fields would have
+ * nowhere to render anyway. See `todoSchema.parentId`'s doc comment for what
+ * happens to them if the sub-task is later promoted.
+ */
+export async function createSubtask(parentId: string, title: string): Promise<string> {
+  const parent = await getDb().todos.get(parentId);
+  if (parent?.parentId) {
+    throw new Error("createSubtask: cannot nest a sub-task under another sub-task");
+  }
+  return createTodo({ title, parentId });
 }
 
 export async function updateTodo(
@@ -338,12 +366,27 @@ export async function reorderTodo(id: string, position: string): Promise<void> {
 }
 
 /**
- * Soft delete. There is no `restoreTodo` counterpart on purpose: undo writes
+ * Soft delete. Any sub-tasks are PROMOTED first — `parentId` cleared, never
+ * cascaded — the same "live reference, cleared not destroyed" rule
+ * `deleteList` uses for `listId` (rehoming orphans to Backlog) and
+ * `deleteSeries` uses for `recurrenceParentId`. A sub-task's own work is
+ * real; its parent going away should not silently discard it. Uses
+ * `.filter()` rather than a Dexie index — `parentId` is unindexed on
+ * purpose, same call as `deleteLabel`'s `labelIds` scan, since this table is
+ * small enough that an index would only exist to serve this one lookup.
+ *
+ * There is no `restoreTodo` counterpart on purpose: undo writes
  * `{deletedAt: null}` through mutate() like any other patch, so a bespoke
  * restore helper would be a second way to do the same thing.
  */
-export const deleteTodo = (id: string) =>
-  remove("todo", id, { events: [logTodoEvent(id, "deleted")] });
+export async function deleteTodo(id: string): Promise<void> {
+  const db = getDb();
+  const children = await db.todos.filter((t) => t.parentId === id && !t.deletedAt).toArray();
+  for (const child of children) {
+    await mutate("todo", child.id, { parentId: null });
+  }
+  await remove("todo", id, { events: [logTodoEvent(id, "deleted")] });
+}
 
 // ---------------------------------------------------------------------------
 // Recurrence
