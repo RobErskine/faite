@@ -250,6 +250,28 @@ describe("in-column filter", () => {
     expect(filterInput()).toBeTruthy();
   });
 
+  it("names the column's unfiltered total in the idle placeholder", () => {
+    render(
+      <Harness
+        todos={manyTodos(FILTER_MIN_TODOS)}
+        onFilterChange={vi.fn()}
+        totalCount={14}
+      />,
+    );
+    expect(filterInput()!.getAttribute("placeholder")).toBe("Filter 14 items");
+  });
+
+  it("singularizes the placeholder for exactly one item", () => {
+    render(<Harness todos={[todo("only")]} filter="o" onFilterChange={vi.fn()} totalCount={1} />);
+    expect(filterInput()!.getAttribute("placeholder")).toBe("Filter 1 item");
+  });
+
+  it("falls back to todos.length when totalCount is omitted", () => {
+    const todos = manyTodos(FILTER_MIN_TODOS);
+    render(<Harness todos={todos} filter="x" onFilterChange={vi.fn()} />);
+    expect(filterInput()!.getAttribute("placeholder")).toBe(`Filter ${FILTER_MIN_TODOS} items`);
+  });
+
   it("stays mounted while a filter is active even below the threshold", () => {
     render(
       <Harness
