@@ -89,6 +89,12 @@ export const SETTINGS_SYNCED_FIELDS: ReadonlySet<string> = new Set([
   // seed (EI-106 P3), so it must sync or a second device would re-seed the
   // five defaults the first device already customized or deleted.
   "reminderPresetsSeeded",
+  // Overdrive tunables (EI-103) — a triage-behaviour preference, same
+  // category as `overflowAfterDays` above, not a screen-dimension fact like
+  // the excluded rail widths. Both sync so the ramp habits a user builds on
+  // one device follow them to another.
+  "overdriveMinTodos",
+  "overdriveAutoConfirmMs",
 ]);
 
 export const SYNC_PROTOCOL_VERSION = 1 as const;

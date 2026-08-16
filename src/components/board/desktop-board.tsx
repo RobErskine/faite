@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { effectiveListColor } from "@/lib/colors";
 import { NAV_LOAD_MORE, navKeyOf } from "@/lib/column-nav";
 import { formatDay } from "@/lib/scheduling";
+import { OVERDRIVE_MIN_TODOS } from "@/lib/overdrive";
 import { LOCAL_OWNER_ID } from "@/lib/store/repositories";
 import { mutateSettings } from "@/lib/store/mutate";
 import { AppHeader } from "./app-header";
@@ -275,6 +276,7 @@ export function DesktopBoard({
             footer={
               <OverdriveButton
                 count={board.overflow.todos.length}
+                minTodos={settings?.overdriveMinTodos ?? OVERDRIVE_MIN_TODOS}
                 onOpen={() => ui.setOverdriveOpen(true)}
               />
             }

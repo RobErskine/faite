@@ -236,6 +236,18 @@ export const USER_DB_MIGRATIONS: readonly UserDbMigration[] = [
       "ALTER TABLE todos ADD COLUMN source text",
     ],
   },
+  {
+    id: 13,
+    name: "settings-add-overdrive-tunables",
+    statements: [
+      // NOT NULL with a DEFAULT matching the Zod default, same reasoning as
+      // migration 3/7/11: every existing row comes out with the exact
+      // behaviour it had before these were settings — the hardcoded
+      // `OVERDRIVE_MIN_TODOS` constant's value, and auto-confirm OFF.
+      "ALTER TABLE settings ADD COLUMN overdrive_min_todos integer DEFAULT 5 NOT NULL",
+      "ALTER TABLE settings ADD COLUMN overdrive_auto_confirm_ms integer DEFAULT 0 NOT NULL",
+    ],
+  },
   // Add new migrations here. Never edit one above this line.
   //
   // Example — adding a nullable column (the safe, ordinary case):

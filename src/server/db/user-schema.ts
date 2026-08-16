@@ -186,6 +186,11 @@ export const settings = sqliteTable("settings", {
   reminderPresetsSeeded: integer("reminder_presets_seeded", { mode: "boolean" })
     .notNull()
     .default(false),
+  /** Overdrive's entry threshold (EI-103) — see `settingsSchema.overdriveMinTodos`. */
+  overdriveMinTodos: integer("overdrive_min_todos").notNull().default(5),
+  /** Overdrive's opt-in auto-confirm delay, ms (EI-103) — see
+   * `settingsSchema.overdriveAutoConfirmMs`. 0 is OFF. */
+  overdriveAutoConfirmMs: integer("overdrive_auto_confirm_ms").notNull().default(0),
   updatedAt: text("updated_at").notNull(),
   version: integer("version").notNull(),
 });

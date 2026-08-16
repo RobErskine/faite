@@ -160,6 +160,13 @@ export interface OverdriveOverlayProps {
    * every verdict shares. Returns the `pushUndo` entry id synchronously,
    * plus the human-readable label the toast shows verbatim. */
   onVerdict: (todo: Todo, verdict: Verdict) => { undoId: string; label: string };
+  /**
+   * Opt-in auto-confirm delay (EI-103), ms — `settings?.overdriveAutoConfirmMs`.
+   * Defaults to `0` (off), so every existing caller/test that doesn't pass it
+   * keeps requiring an explicit Enter/Confirm exactly as before. See the
+   * effect below for the actual timer.
+   */
+  autoConfirmMs?: number;
 }
 
 /**
@@ -185,6 +192,7 @@ function OverdriveOverlayContent({
   ctx,
   onClose,
   onVerdict,
+  autoConfirmMs = 0,
 }: Omit<OverdriveOverlayProps, "open">) {
   // Lazy initializer runs exactly once, at mount — this IS the "frozen at
   // open" snapshot (decision #7). `todosById` below stays live so the CURRENT
@@ -195,6 +203,12 @@ function OverdriveOverlayContent({
   const currentId = currentTodoId(session);
   const currentTodo = currentId ? (todosById.get(currentId) ?? null) : null;
   const done = isComplete(session);
+  /** What `Enter`/Confirm would commit right now, or null if nothing is
+   * staged — hoisted above the render-only `return` below because the
+   * auto-confirm effect (further down) needs it too, and a CivilDate is a
+   * plain "YYYY-MM-DD" string (`schema.ts`), so it's a stable, comparable
+   * effect dependency on its own. */
+  const staged = !done ? stagedDate(session, ctx) : null;
 
   /**
    * `onKeyDown` below lives on this element, so keyboard control of the
@@ -431,6 +445,29 @@ function OverdriveOverlayContent({
     dispatchRef.current = dispatch;
   });
 
+  /**
+   * Opt-in auto-confirm (EI-103, docs/OVERDRIVE.md §4 "Deferred, not
+   * rejected"). Off by default (`autoConfirmMs` 0) — every stage still
+   * requires an explicit Enter/Confirm exactly as before this existed.
+   *
+   * Fires through `dispatchRef` rather than `dispatch` directly, same reason
+   * the toast's Undo button does (above): the timer's callback can outlive
+   * the render that scheduled it, and only the ref reaches whichever
+   * `dispatch` closes over the CURRENT `session` when it actually fires.
+   *
+   * Depends on `staged` (a plain "YYYY-MM-DD" string or null, so a stable,
+   * comparable value — not `session.ramp`/`session.picked` separately),
+   * `transitioning`, and `autoConfirmMs`: any further ramp/pick input clears
+   * and restarts the countdown from scratch, exactly like a real "commits
+   * after you stop touching it" delay should, and a flick in progress
+   * suspends it the same way `dispatch` itself already refuses input then.
+   */
+  useEffect(() => {
+    if (!staged || transitioning || autoConfirmMs <= 0) return;
+    const timer = setTimeout(() => dispatchRef.current("confirm"), autoConfirmMs);
+    return () => clearTimeout(timer);
+  }, [staged, transitioning, autoConfirmMs]);
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.defaultPrevented || isTextEntry(e.target)) return;
     // One early return covers the whole handler while a card is mid-flick —
@@ -478,7 +515,6 @@ function OverdriveOverlayContent({
     dispatch(action);
   };
 
-  const staged = !done ? stagedDate(session, ctx) : null;
   const list = currentTodo?.listId ? (listsById.get(currentTodo.listId) ?? null) : null;
   const tally = summarize(session.decided);
 
@@ -672,6 +708,16 @@ function OverdriveOverlayContent({
                   <span className="text-xs text-muted-foreground touch:hidden">
                     Enter to confirm
                   </span>
+                  {/* Opt-in only (EI-103) — most sessions never render this,
+                      since `autoConfirmMs` defaults to 0. No live countdown:
+                      a ticking number would need its own re-render cadence
+                      for a value nobody needs to the second, just a heads-up
+                      that stopping here isn't "doing nothing." */}
+                  {autoConfirmMs > 0 && (
+                    <span className="text-xs text-muted-foreground">
+                      Auto-confirms if untouched
+                    </span>
+                  )}
                 </div>
               )}
 
