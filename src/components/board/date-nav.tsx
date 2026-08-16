@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import type { CivilDate, Settings } from "@/lib/schema";
 import { addDays, formatShortDate } from "@/lib/scheduling";
 import { ViewSettings } from "./view-settings";
+import { SavedViewsMenu } from "./saved-views-menu";
 
 const WEEK = 7;
 const MONTH = 30;
@@ -31,10 +32,11 @@ interface DateNavProps {
   /**
    * The phone shell's context bar (`phone-board.tsx`, mobile plan M3). Drops
    * `ViewSettings` (the day-count toggle is moot — the pager always shows
-   * one) and the Quarter/Month/Week jump buttons, which don't fit at phone
-   * width and duplicate what a swipe already does faster. Range label,
-   * Today, and the date picker survive: swipe has no equivalent for "jump to
-   * a specific far-out date."
+   * one), `SavedViewsMenu` (a saved view snapshots `visibleDays` among other
+   * fields, so it's moot for the same reason), and the Quarter/Month/Week
+   * jump buttons, which don't fit at phone width and duplicate what a swipe
+   * already does faster. Range label, Today, and the date picker survive:
+   * swipe has no equivalent for "jump to a specific far-out date."
    */
   compact?: boolean;
 }
@@ -102,7 +104,10 @@ export function DateNav({
         {range}
       </span>
 
-      <ViewSettings settings={settings} />
+      <div className="flex items-center gap-1">
+        <ViewSettings settings={settings} />
+        <SavedViewsMenu settings={settings} />
+      </div>
 
       <div className="flex min-w-0 flex-1 items-center justify-end gap-1">
         {canJumpBack(QUARTER) && (
