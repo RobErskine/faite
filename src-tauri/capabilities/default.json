@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "enables the default permissions",
+  "windows": [
+    "main",
+    "board_a",
+    "board_b",
+    "hidden_probe"
+  ],
+  "permissions": [
+    "core:default"
+  ]
+}
