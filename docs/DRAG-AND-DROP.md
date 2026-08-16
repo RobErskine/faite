@@ -652,6 +652,51 @@ position })`, not two separate undo entries — a half-undone cross-tab move
 (list back on its old tab, but at some arbitrary new position, or vice
 versa) would be a worse landing than either applied change on its own.
 
+### 4.10d Tab strip legibility cleanup (EI-117 – EI-120)
+
+Four small changes to `tab-strip.tsx` and `board-column.tsx`, none of which
+touch drag mechanics — noted here because they live in the same file as
+§4.10b/§4.10c and a future drag change should know what else the strip does.
+
+**The filter placeholder names the column's size (EI-117, `board-column.tsx`).**
+Idle placeholder reads `Filter N items` instead of a bare `Filter`, built from
+`totalCount` (already threaded in for the `n of m` chip) with a `todos.length`
+fallback. `aria-label` is untouched — the count is a visual hint, not part of
+the accessible name.
+
+**Tab pills show `(lists/items)` (EI-118).** `use-board-data.ts` computes
+`tabCounts: Map<tabId, {lists, items}>` from raw `lists` + `nonTemplateTodos`,
+not from `board` — `board.lists` only ever holds the ACTIVE tab's columns, and
+`buildBoard` moves a scheduled todo out of its list column into a day column
+entirely (§4.13), so a board-derived count would be wrong for every inactive
+tab and too low for the active one. Backlog (`tabId === null`, pinned into
+every tab) is excluded from both halves, same reasoning as
+`archived-lists-sheet.tsx`'s `listsPerTab` — counting it everywhere would add
+the same constant to every pill. The visible `(2/17)` is `aria-hidden`; a
+paired `sr-only` span carries "2 lists with 17 items" as the real text, which
+means it also becomes part of the pill button's accessible name — deliberate,
+not a bug, since it gets a screen-reader user the count without a hover.
+
+**The Archived button is icon-only (EI-119).** `aria-label="Archived"` on the
+`<Button>` fully owns the accessible name, so the `aria-hidden` corner count
+badge can't turn it into "Archived 3". A `Tooltip` (new on this control)
+spells out the count on hover.
+
+**The strip gets a visible scrollbar, edge fades, and scroll-into-view
+(EI-120).** The scroll container already had `overflow-x-auto`; it now also
+carries the `column-track` utility (`globals.css`) that every other scrolling
+half of the board uses, because plain `overflow-x: auto` renders nothing on
+macOS overlay scrollbars until a scroll is already under way. `canScrollLeft`/
+`canScrollRight` state, updated on `scroll` and via a `ResizeObserver` on the
+container, drive two `pointer-events-none` gradient overlays — overlaid, not
+laid out, so a fade never itself shoves the last pill behind the other fade
+the moment it appears. A separate effect scrolls the active pill
+(`[data-tab-pill="<id>"]`) into view with `scrollIntoView({inline: "nearest"})`
+on every `activeTabId` change, so switching tabs from `⌘K` or the keyboard
+can't leave the newly active pill off-screen. No new auto-scroll-on-drag code
+was added: dnd-kit's own auto-scroll (§4.8) already reaches this container
+during a tab or list drag.
+
 ### 4.11 The React Compiler rejects refs read during render
 
 Worth knowing before restructuring anything in `board.tsx`. The drop animation
@@ -1446,6 +1491,34 @@ rect-based collision logic cannot be meaningfully tested there.
     shows: no dashed candidate outlines, no destructive styling, and the
     tab-reorder insertion bar (§4.10b) never appears — that's gated on
     `activeTab`, not `activeList`.
+
+**Manual checklist — tab strip legibility (§4.10d, EI-117 – EI-120)**
+
+38. A column with 8+ items shows "Filter N items" in the empty filter input;
+    typing replaces it with the value, and the existing "N of M todos" chip
+    still appears once a query is active.
+39. Every tab pill shows `(lists/items)`; hovering one reads "N lists with N
+    items" (or singular for exactly 1). A tab with no lists of its own reads
+    `(0/0)`.
+40. Move a list to another tab (§4.10c) or complete/reopen a todo — both
+    tabs' counts update live, and Backlog never moves either number.
+41. The "Archived" button shows only the icon (plus a corner count badge when
+    non-empty) — no visible word. Hovering it shows a tooltip reading
+    "Archived" or "Archived (N)". Its accessible name (VoiceOver/axe) is
+    still exactly "Archived".
+42. Create enough tabs to overflow the strip at a normal window width — a
+    thin scrollbar is visible at rest (not only mid-scroll, per §4.12's
+    overlay-scrollbar note), and a fade appears at whichever edge(s) still
+    have more tabs to reach.
+43. Select an off-screen tab via `⌘K` or the keyboard — the strip scrolls it
+    into view automatically. With `prefers-reduced-motion` on, the scroll is
+    instant, not smooth.
+44. With the strip scrolled, start a tab or list drag near an edge — dnd-kit's
+    own auto-scroll (§4.8) still carries it, unblocked by the fade overlays
+    (`pointer-events-none`).
+45. The "New tab" `+` button stays reachable by scrolling the strip; the
+    Archived button stays pinned outside the scroll region regardless of tab
+    count.
 
 **Manual checklist — the scrolling track (§4.12)**
 
