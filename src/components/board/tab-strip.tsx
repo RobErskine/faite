@@ -140,7 +140,15 @@ export function TabStrip({
         ref={scrollRef}
         onScroll={updateFades}
         className="column-track flex min-w-0 flex-1 items-center gap-1"
-        style={{ maskImage: trackMask, WebkitMaskImage: trackMask }}
+        // `column-track` (globals.css) deliberately leaves `overflow-y`
+        // computed to `auto` — right for a genuinely tall list column, wrong
+        // here: a single-row strip only ever needs the horizontal scrollbar,
+        // and a stray 1px of vertical overflow (a focus ring, a grip's
+        // pseudo-element inset) is enough to make the browser park a
+        // vertical scrollbar thumb over the strip — its rounded, semi-opaque
+        // thumb is what read as "a weird empty button" in review. Forced
+        // off with an inline style so it wins regardless of class order.
+        style={{ maskImage: trackMask, WebkitMaskImage: trackMask, overflowY: "hidden" }}
       >
         {tabs.map((tab) => (
           <TabPill

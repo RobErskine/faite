@@ -698,12 +698,30 @@ wrong: the planning half's actual backdrop is `bg-muted/30`
 (`desktop-board.tsx`), not `--background`, so the "invisible" fade rendered
 as a visibly mismatched gray box — reported back as "a weird empty button."
 A mask fades the alpha of the track's own content instead, so it's correct
-against any backdrop with nothing to keep in sync. A separate effect scrolls
-the active pill (`[data-tab-pill="<id>"]`) into view with
-`scrollIntoView({inline: "nearest"})` on every `activeTabId` change, so
-switching tabs from `⌘K` or the keyboard can't leave the newly active pill
-off-screen. No new auto-scroll-on-drag code was added: dnd-kit's own
-auto-scroll (§4.8) already reaches this container during a tab or list drag.
+against any backdrop with nothing to keep in sync.
+
+That mask fix turned out to only be half of "a weird empty button," reported
+again after it shipped. `column-track`'s CSS deliberately leaves
+`overflow-y` unset so it computes to `auto` (§4.12's rationale: a genuinely
+tall list column should scroll rather than truncate) — fine for a day or
+list column, wrong for a strip that's a single row. Any stray 1px of
+vertical overflow (a focus ring, a grip's `before:-inset-y-1.5` pseudo-
+element) is enough for the browser to park a permanent vertical scrollbar
+on the container, and its thumb — rounded via `column-track`'s own
+`::-webkit-scrollbar-thumb`, sized to nearly the full row height when the
+scrollable range is a single pixel — is what actually looked like a stray
+button sitting between the last tab and Archived. Fixed with an inline
+`overflowY: "hidden"` on the scroll container (inline so it beats
+`column-track`'s class regardless of stylesheet order); the horizontal
+scrollbar this section exists for is untouched, since only the vertical
+axis was ever the problem.
+
+A separate effect scrolls the active pill (`[data-tab-pill="<id>"]`) into
+view with `scrollIntoView({inline: "nearest"})` on every `activeTabId`
+change, so switching tabs from `⌘K` or the keyboard can't leave the newly
+active pill off-screen. No new auto-scroll-on-drag code was added: dnd-kit's
+own auto-scroll (§4.8) already reaches this container during a tab or list
+drag.
 
 ### 4.11 The React Compiler rejects refs read during render
 
@@ -1519,6 +1537,11 @@ rect-based collision logic cannot be meaningfully tested there.
     overlay-scrollbar note), and the pills nearest an edge with more to
     reach visibly fade out, blending into whatever sits behind the strip
     (no visible seam or box at either edge, on either half of the board).
+42b. At ANY tab count, including well under overflow, look for a gray oval
+    sitting between the last tab and the Archived button — that's a
+    vertical scrollbar thumb, and it means the strip picked up vertical
+    overflow again. Confirm `getComputedStyle` on the strip's
+    `.column-track` reports `overflow-y: hidden` regardless of tab count.
 43. Select an off-screen tab via `⌘K` or the keyboard — the strip scrolls it
     into view automatically. With `prefers-reduced-motion` on, the scroll is
     instant, not smooth.

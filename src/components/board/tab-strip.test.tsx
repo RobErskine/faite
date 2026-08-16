@@ -116,6 +116,15 @@ describe("tab pill counts", () => {
   });
 });
 
+describe("scroll track", () => {
+  it("forces overflow-y: hidden regardless of the mask, so a stray 1px of vertical overflow never parks a scrollbar thumb over the strip", () => {
+    const work = tab("t1", "Work");
+    render(<Harness tabs={[work]} activeTabId="t1" />);
+    const track = document.querySelector(".column-track")!;
+    expect((track as HTMLElement).style.overflowY).toBe("hidden");
+  });
+});
+
 describe("archived button", () => {
   it("renders icon-only, with the count inline in parens, not the word 'Archived'", () => {
     render(<Harness tabs={[]} activeTabId="none" archivedCount={3} />);
