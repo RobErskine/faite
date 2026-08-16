@@ -88,6 +88,20 @@ export function TabStrip({
     setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
   }, []);
 
+  /**
+   * Fades the track's own content in and out at its scrollable edges, via a
+   * mask on the scroll container rather than a gradient-filled overlay div.
+   * An overlay has to guess the surrounding background color to blend in —
+   * got wrong here once already (`from-background` over the planning half's
+   * actual `bg-muted/30`, which read as a stray solid box) — and would need
+   * a different guess in every context this component renders in (desktop,
+   * phone). A mask fades the alpha of the content itself, so it's correct
+   * against any backdrop with no color to maintain at all.
+   */
+  const trackMask = `linear-gradient(to right, ${
+    canScrollLeft ? "transparent, black 24px" : "black"
+  }, ${canScrollRight ? "black calc(100% - 24px), transparent" : "black"})`;
+
   // Re-checks on anything that can change the strip's content width —
   // creating/removing a tab or renaming one long enough to overflow — not
   // just on scroll.
@@ -120,80 +134,60 @@ export function TabStrip({
     <div className="flex shrink-0 items-center gap-1 px-4 py-1.5">
       {/*
         Scrolls on its own rather than pushing Archived off the bar. `min-w-0`
-        on this wrapper is what lets it actually shrink inside the flex row;
-        the scroll container and fades below size themselves off it.
+        is what lets it actually shrink inside the flex row.
       */}
-      <div className="relative min-w-0 flex-1">
-        <div
-          ref={scrollRef}
-          onScroll={updateFades}
-          className="column-track flex items-center gap-1"
-        >
-          {tabs.map((tab) => (
-            <TabPill
-              key={tab.id}
-              tab={tab}
-              isActive={tab.id === activeTabId}
-              isInfoOpen={infoTabId === tab.id}
-              isCardDragActive={isCardDragActive}
-              isListDragActive={isListDragActive}
-              dropSide={drop?.tabId === tab.id ? drop.side : null}
-              count={counts.get(tab.id) ?? { lists: 0, items: 0 }}
-              onSelect={() => onSelect(tab.id)}
-              onOpenInfo={() => onOpenInfo(tab.id)}
-            />
-          ))}
-
-          {draft === null ? (
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              onClick={() => setDraft("")}
-              aria-label="New tab"
-              className="shrink-0 text-muted-foreground"
-            >
-              <Plus aria-hidden />
-            </Button>
-          ) : (
-            <input
-              autoFocus
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  commit();
-                }
-                // Escape abandons outright; blur is the forgiving path. Same
-                // bargain as the quick-add and create-list fields.
-                if (e.key === "Escape") setDraft(null);
-              }}
-              onBlur={commit}
-              placeholder="Tab name"
-              aria-label="New tab name"
-              className={cn(
-                "w-28 shrink-0 rounded-md border border-dashed border-foreground/30 bg-background/60",
-                "px-2 py-1 text-xs outline-none placeholder:text-muted-foreground/60",
-              )}
-            />
-          )}
-        </div>
-
-        {/*
-          Overlaid rather than laid out, so they never take up track width of
-          their own — a fade that reserved space would itself shove the last
-          pill behind the other fade the moment it appeared.
-        */}
-        {canScrollLeft && (
-          <div
-            aria-hidden
-            className="pointer-events-none absolute inset-y-0 left-0 w-6 bg-gradient-to-r from-background to-transparent"
+      <div
+        ref={scrollRef}
+        onScroll={updateFades}
+        className="column-track flex min-w-0 flex-1 items-center gap-1"
+        style={{ maskImage: trackMask, WebkitMaskImage: trackMask }}
+      >
+        {tabs.map((tab) => (
+          <TabPill
+            key={tab.id}
+            tab={tab}
+            isActive={tab.id === activeTabId}
+            isInfoOpen={infoTabId === tab.id}
+            isCardDragActive={isCardDragActive}
+            isListDragActive={isListDragActive}
+            dropSide={drop?.tabId === tab.id ? drop.side : null}
+            count={counts.get(tab.id) ?? { lists: 0, items: 0 }}
+            onSelect={() => onSelect(tab.id)}
+            onOpenInfo={() => onOpenInfo(tab.id)}
           />
-        )}
-        {canScrollRight && (
-          <div
-            aria-hidden
-            className="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-background to-transparent"
+        ))}
+
+        {draft === null ? (
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            onClick={() => setDraft("")}
+            aria-label="New tab"
+            className="shrink-0 text-muted-foreground"
+          >
+            <Plus aria-hidden />
+          </Button>
+        ) : (
+          <input
+            autoFocus
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                commit();
+              }
+              // Escape abandons outright; blur is the forgiving path. Same
+              // bargain as the quick-add and create-list fields.
+              if (e.key === "Escape") setDraft(null);
+            }}
+            onBlur={commit}
+            placeholder="Tab name"
+            aria-label="New tab name"
+            className={cn(
+              "w-28 shrink-0 rounded-md border border-dashed border-foreground/30 bg-background/60",
+              "px-2 py-1 text-xs outline-none placeholder:text-muted-foreground/60",
+            )}
           />
         )}
       </div>
@@ -203,32 +197,27 @@ export function TabStrip({
         on the left, not another item in that group.
 
         Icon-only — the word "Archived" cost more strip width than it earned
-        once a board can carry a dozen tabs. `aria-label` fully owns the
-        accessible name so the corner badge (aria-hidden) can't garble it into
-        "Archived 3"; the tooltip is what says the count out loud.
+        once a board can carry a dozen tabs. The count sits inline in
+        parens, same as every tab pill's `(lists/items)`, rather than a
+        corner badge — a badge reads as "this needs your attention", which
+        an empty-able archive count is not. `aria-label` fully owns the
+        accessible name so the aria-hidden count can't garble it into
+        "Archived 3"; the tooltip spells the count out for anyone hovering.
       */}
       <Tooltip>
         <TooltipTrigger
           render={
             <Button
               variant="ghost"
-              size="icon-sm"
-              className="relative shrink-0 text-muted-foreground"
+              size="sm"
+              className="shrink-0 gap-1 text-muted-foreground"
               onClick={onOpenArchive}
               aria-label="Archived"
             >
               <Archive aria-hidden />
-              {archivedCount > 0 && (
-                <span
-                  aria-hidden
-                  className={cn(
-                    "num absolute -top-1 -right-1 flex h-3.5 min-w-3.5 items-center justify-center",
-                    "rounded-full bg-muted-foreground px-0.5 text-[10px] leading-none text-background",
-                  )}
-                >
-                  {archivedCount}
-                </span>
-              )}
+              <span aria-hidden className="num">
+                ({archivedCount})
+              </span>
             </Button>
           }
         />

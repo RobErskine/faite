@@ -678,9 +678,11 @@ means it also becomes part of the pill button's accessible name — deliberate,
 not a bug, since it gets a screen-reader user the count without a hover.
 
 **The Archived button is icon-only (EI-119).** `aria-label="Archived"` on the
-`<Button>` fully owns the accessible name, so the `aria-hidden` corner count
-badge can't turn it into "Archived 3". A `Tooltip` (new on this control)
-spells out the count on hover.
+`<Button>` fully owns the accessible name. The count sits inline as
+`aria-hidden` `(N)` text next to the icon — same shape as every tab pill's
+`(lists/items)` — rather than a corner badge: a badge reads as "this needs
+your attention," which an archive count is not, and real page feedback said
+so. A `Tooltip` spells the count out on hover.
 
 **The strip gets a visible scrollbar, edge fades, and scroll-into-view
 (EI-120).** The scroll container already had `overflow-x-auto`; it now also
@@ -688,14 +690,20 @@ carries the `column-track` utility (`globals.css`) that every other scrolling
 half of the board uses, because plain `overflow-x: auto` renders nothing on
 macOS overlay scrollbars until a scroll is already under way. `canScrollLeft`/
 `canScrollRight` state, updated on `scroll` and via a `ResizeObserver` on the
-container, drive two `pointer-events-none` gradient overlays — overlaid, not
-laid out, so a fade never itself shoves the last pill behind the other fade
-the moment it appears. A separate effect scrolls the active pill
-(`[data-tab-pill="<id>"]`) into view with `scrollIntoView({inline: "nearest"})`
-on every `activeTabId` change, so switching tabs from `⌘K` or the keyboard
-can't leave the newly active pill off-screen. No new auto-scroll-on-drag code
-was added: dnd-kit's own auto-scroll (§4.8) already reaches this container
-during a tab or list drag.
+container, build a `mask-image`/`-webkit-mask-image` applied to the scroll
+container itself — **not** a gradient-filled overlay div. The first attempt
+used an overlay (`bg-gradient-to-l from-background to-transparent`), which
+has to guess the surrounding background color to blend in, and guessed
+wrong: the planning half's actual backdrop is `bg-muted/30`
+(`desktop-board.tsx`), not `--background`, so the "invisible" fade rendered
+as a visibly mismatched gray box — reported back as "a weird empty button."
+A mask fades the alpha of the track's own content instead, so it's correct
+against any backdrop with nothing to keep in sync. A separate effect scrolls
+the active pill (`[data-tab-pill="<id>"]`) into view with
+`scrollIntoView({inline: "nearest"})` on every `activeTabId` change, so
+switching tabs from `⌘K` or the keyboard can't leave the newly active pill
+off-screen. No new auto-scroll-on-drag code was added: dnd-kit's own
+auto-scroll (§4.8) already reaches this container during a tab or list drag.
 
 ### 4.11 The React Compiler rejects refs read during render
 
@@ -1502,14 +1510,15 @@ rect-based collision logic cannot be meaningfully tested there.
     `(0/0)`.
 40. Move a list to another tab (§4.10c) or complete/reopen a todo — both
     tabs' counts update live, and Backlog never moves either number.
-41. The "Archived" button shows only the icon (plus a corner count badge when
-    non-empty) — no visible word. Hovering it shows a tooltip reading
+41. The "Archived" button shows only the icon and `(N)` inline next to it —
+    no visible word, no corner badge. Hovering it shows a tooltip reading
     "Archived" or "Archived (N)". Its accessible name (VoiceOver/axe) is
     still exactly "Archived".
 42. Create enough tabs to overflow the strip at a normal window width — a
     thin scrollbar is visible at rest (not only mid-scroll, per §4.12's
-    overlay-scrollbar note), and a fade appears at whichever edge(s) still
-    have more tabs to reach.
+    overlay-scrollbar note), and the pills nearest an edge with more to
+    reach visibly fade out, blending into whatever sits behind the strip
+    (no visible seam or box at either edge, on either half of the board).
 43. Select an off-screen tab via `⌘K` or the keyboard — the strip scrolls it
     into view automatically. With `prefers-reduced-motion` on, the scroll is
     instant, not smooth.

@@ -117,17 +117,17 @@ describe("tab pill counts", () => {
 });
 
 describe("archived button", () => {
-  it("renders icon-only, with 'Archived' as its accessible name", () => {
+  it("renders icon-only, with the count inline in parens, not the word 'Archived'", () => {
     render(<Harness tabs={[]} activeTabId="none" archivedCount={3} />);
     const button = screen.getByRole("button", { name: "Archived" });
     expect(button.textContent).not.toContain("Archived");
-    expect(button.textContent).toContain("3");
+    expect(button.textContent).toBe("(3)");
   });
 
-  it("carries no visible count badge when the archive is empty", () => {
+  it("shows (0) rather than hiding the count when the archive is empty", () => {
     render(<Harness tabs={[]} activeTabId="none" archivedCount={0} />);
     const button = screen.getByRole("button", { name: "Archived" });
-    expect(button.textContent).toBe("");
+    expect(button.textContent).toBe("(0)");
   });
 
   it("calls onOpenArchive on click", () => {
