@@ -83,7 +83,11 @@
     {
       "binding": "AUTH_DB",
       "database_name": "faite-auth",
-      "database_id": "d0be89ae-e45d-44f4-804f-7f88a2f169fa"
+      "database_id": "d0be89ae-e45d-44f4-804f-7f88a2f169fa",
+      // Points `wrangler d1 migrations *` at drizzle-kit's own output dir
+      // instead of the wrangler default (./migrations), so there's one
+      // migration directory, not two. See EI-79 / docs/AUTH.md.
+      "migrations_dir": "./drizzle/auth"
     }
   ],
 
