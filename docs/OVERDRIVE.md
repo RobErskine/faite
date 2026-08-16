@@ -391,7 +391,10 @@ Three details make it safe:
   is set well clear of the real animation plus any plausible start delay, so
   it never wins the race in normal operation. `finishFlick` is idempotent
   (`pendingAdvance` is nulled by whoever gets there first), so both firing
-  is harmless.
+  is harmless. **It is also a hard ceiling on how long the block can ever be
+  observed**, which matters to anything that stretches the animation to look
+  at the mid-flick state: past 1s the safety net, not `animationend`, is
+  what lifts the block. See §11 for the e2e test that has to live under it.
 - **`e.target === e.currentTarget`** — `animationend` bubbles, so without
   this a future animation on anything *inside* the card would end the flick
   early.
@@ -401,9 +404,10 @@ Three details make it safe:
   those frames — a visible flash of the card you just decided reappearing.
 
 `e2e/overdrive.spec.ts` regression-tests this directly by stretching
-`.animate-out` to a 3s animation via `addStyleTag` and asserting the block
-holds for its whole length: a clock-driven implementation would advance
-~340ms in regardless, so the test fails loudly if this ever regresses.
+`.animate-out` via `addStyleTag` and asserting the block holds for the
+animation's whole length: a clock-driven implementation would advance ~340ms
+in regardless, so the test fails loudly if this ever regresses. The stretch
+has to stay **under `FLICK_FALLBACK_MS`** to keep testing that — see §11.
 
 ### A real bug this surfaced: focus escaping the dialog
 
@@ -599,15 +603,56 @@ verdict on a stale to-do is a more annoying mistake than a mis-tap.
   `.animate-in` mainly for symmetry with the mid-flick assertions, which
   locate the outgoing card via `.animate-out` directly.
 
-  The dedicated flick test **stretches `.animate-out` to a 3s animation**
+  The dedicated flick test **stretches `.animate-out` to a 900ms animation**
   via `addStyleTag` before opening the overlay. Two reasons, both worth
-  keeping: at its real ~320ms the mid-flick window is narrower than the
-  three sequential auto-retrying assertions it takes to check it, so the
-  last one could legitimately land after the flick ended — a flaky test
-  about correct behaviour. And it's the sharpest available regression test
-  for round 4b: since the flick ends on `animationend`, a 3s animation means
-  a 3s block, whereas the clock-driven implementation this replaced would
-  advance ~340ms in no matter how long the animation ran.
+  keeping: at its real ~320ms the mid-flick window is narrower than a single
+  traced Playwright round trip on a loaded CI runner, so anything asserted
+  inside it lands after the flick ended — a flaky test about correct
+  behaviour. And it's the sharpest available regression test for round 4b:
+  the flick ends on `animationend`, so a 900ms animation means a 900ms
+  block, whereas the clock-driven implementation this replaced would advance
+  ~340ms in no matter how long the animation ran.
+
+  **Three rules keep that test honest, and all three were learned the hard
+  way (EI-185 — it had been red on every project since the day it landed):**
+
+  1. **The stretch must stay under `FLICK_FALLBACK_MS` (1000ms).** The
+     safety net fires 1s after `dispatch` regardless of whether the
+     animation is still running, so a 3s stretch — the original value — did
+     not buy a 3s block, it bought a 1s one, ended by the timer rather than
+     by `animationend`. The test was then no longer covering the path it
+     claimed to. 900ms leaves headroom over the animation's measured 8–13ms
+     start delay, and on a run where the net wins anyway the block is
+     *longer*, never shorter.
+  2. **Mid-flick button assertions need `includeHidden: true`.** The verdict
+     row is `invisible` as well as `disabled` while a flick runs (§8a), and
+     `visibility: hidden` is one of ARIA's tree-exclusion rules — so a plain
+     `getByRole("button", …)` matches *nothing* for the entire flick, then
+     matches the re-enabled button the instant the flick ends and reports
+     `expected disabled, received enabled`. What made this so slow to spot
+     is that it went green sometimes: `ui/button.tsx` carries
+     `transition-all`, a CSS visibility transition holds the old `visible`
+     value for its whole duration, so the button stayed ARIA-visible (and
+     already `disabled`) for the first ~150ms of every flick. The test was
+     really racing that 150ms sliver, not the animation — it won on a fast
+     desktop run and lost everywhere else. `overdrive-overlay.test.tsx`
+     asserts the same contract and never saw it, because jsdom loads no
+     stylesheet: there, `.invisible` is a class name with no computed
+     `visibility` behind it.
+  3. **Everything inside the window runs in one `Promise.all`, and there is
+     as little of it as possible.** ~1s is the hard ceiling (rule 1) and no
+     amount of lengthening the animation raises it, while each traced action
+     costs a round trip plus a DOM snapshot — four sequential ones do not
+     reliably fit, which is what the first EI-185 attempt proved by moving
+     the failure from `toBeDisabled` to the assertion after it. So the batch
+     holds only what cannot be observed later (the outgoing card is still on
+     screen; the buttons are inert) plus the two presses that must be
+     swallowed; whether they *were* swallowed is checked after the flick
+     settles, race-free, by the progress readout being exactly `2 of 10` —
+     a leaked `ArrowUp` makes it 3, a leaked `Backspace` makes it 1.
+     `toBeHidden()` is deliberately not in the batch: the visibility
+     transition in rule 2 guarantees it misses its first poll and burns a
+     retry interval the window cannot spare.
 
 **`lib/dev-seed.ts`'s `seedOverflow(count)`** creates `count` open to-dos
 backdated past the current `overflowAfterDays` threshold, spread across

@@ -156,41 +156,90 @@ test("a card flicks away, and only once that finishes can the next one be acted 
 
   /*
     Stretch the exit animation so the mid-flick window is wide enough to
-    assert against deterministically. At its real ~320ms, the three
-    sequential auto-retrying assertions below each cost a round trip, and
-    the last of them could legitimately land after the flick had already
-    ended — a flaky test about correct behaviour, not a real failure.
+    look at. At its real ~320ms it is narrower than a single traced round
+    trip on a loaded CI runner, so anything asserted inside it would be a
+    flaky test about correct behaviour, not a real failure.
 
-    This is also the sharpest regression test for round 4's fix. The flick
-    now ends on the card's OWN `animationend`, so a 3s animation means a 3s
-    block; the previous implementation, which advanced on a fixed ~340ms
-    wall-clock timer started at dispatch, would have moved on to the next
-    card long before any of these assertions ran. Only `.animate-out` is
-    touched — the incoming card's `.animate-in` keeps its real duration.
+    **900ms, and the ceiling is not negotiable.** `FLICK_FALLBACK_MS`
+    (`overdrive-overlay.tsx`, 1000ms) ends the flick on its own if
+    `animationend` hasn't arrived by then — a safety net for an animation
+    that never runs at all, but one that fires on a wall clock started at
+    `dispatch` and so caps the OBSERVABLE block at 1s no matter what this
+    stylesheet says. A 3s stretch (the original value) therefore never
+    bought a 3s block; it bought a 1s one ended by the timer rather than by
+    the animation, quietly not testing the round-4b path at all. 900ms sits
+    just under the net, so `animationend` still wins the race the way it
+    does in production (start delay measured at 8–13ms, §8a round 4b) —
+    and on the rare run where it doesn't, the net lifts the block at 1000ms
+    instead, which is *more* room, never less.
+
+    It is still the sharpest regression test for round 4's fix: the
+    implementation this replaced advanced on a fixed ~340ms timer started at
+    `dispatch`, so it would have moved on to the next card while the
+    assertions below were still in flight. Only `.animate-out` is touched —
+    the incoming card's `.animate-in` keeps its real duration.
   */
-  await page.addStyleTag({ content: ".animate-out { animation-duration: 3s !important; }" });
+  await page.addStyleTag({ content: ".animate-out { animation-duration: 900ms !important; }" });
 
   await overdriveButton(page).click();
   await expect(overlay(page)).toBeVisible();
 
   const firstTitle = await cardTitle(page).textContent();
+
+  /*
+    `includeHidden` is load-bearing, not a loosening. The verdict row goes
+    BOTH `invisible` and `disabled` the instant a flick starts (§8a) — and
+    `visibility: hidden` is one of ARIA's own tree-exclusion rules, which is
+    exactly what a bare `getByRole()` filters out. Without it this locator
+    matched NOTHING for the whole flick and then matched the re-enabled
+    button the moment the flick ended, reporting "expected disabled,
+    received enabled" — reading the state after the window it meant to
+    assert on rather than inside it. (`ui/button.tsx`'s `transition-all`
+    transitions `visibility` too, and a visibility transition holds the old
+    `visible` value until it completes, so the button stayed ARIA-visible
+    for the first ~150ms of every flick. That sliver — not the animation's
+    length — was the window this test was really racing, which is why it
+    went green on a fast desktop run and red everywhere else.)
+  */
+  const wontDo = overlay(page).getByRole("button", { name: /won.t do/i, includeHidden: true });
+  await expect(wontDo).toBeEnabled();
+
+  const flicking = overlay(page).locator(".animate-out");
   await page.keyboard.press("ArrowLeft");
 
-  // Mid-flick: the outgoing card is still the one on screen, animating —
-  // the queue has not advanced, and every key/button is inert.
-  const flicking = overlay(page).locator(".animate-out");
-  await expect(flicking).toBeVisible();
-  await expect(flicking).toContainText(firstTitle!);
-  await expect(overlay(page).getByRole("button", { name: /won.t do/i })).toBeDisabled();
+  /*
+    Everything that has to happen INSIDE the flick, concurrently rather than
+    one await after another. With the block capped at ~1s and each traced
+    Playwright action costing a round trip plus a DOM snapshot, four
+    sequential ones do not reliably fit — that is the whole of why this test
+    was flaky-to-red, and no amount of lengthening the animation can buy the
+    room back. Run together, the batch costs about one action's wall time.
 
-  await page.keyboard.press("ArrowUp"); // must be swallowed, not queued
-  await page.keyboard.press("Backspace"); // ditto
-  await expect(flicking).toContainText(firstTitle!); // still the outgoing card
+    What's asserted here is only what is unobservable afterwards: the
+    outgoing card is still the one on screen, and the verdict buttons are
+    inert. The two presses are the "swallowed, not queued" half — their
+    result is checked after the flick settles, where there's no clock to
+    race, by the progress readout being exactly "2 of 10": `ArrowUp` leaking
+    through would make it 3, `Backspace` leaking through would make it 1.
 
-  // Once it settles: the second card is the current, fully interactive one
-  // — nothing from the two ignored presses above leaked through.
+    (Deliberately NOT asserting `toBeHidden()` here as well, even though the
+    row is `invisible` too: that one is guaranteed to miss its first poll —
+    the `transition-all` visibility fade above keeps the button ARIA-visible
+    for ~150ms — and so costs a retry interval this window cannot spare.
+    `overdrive-overlay.test.tsx` covers the `invisible` class directly.)
+  */
+  await Promise.all([
+    expect(flicking).toContainText(firstTitle!),
+    expect(wontDo).toBeDisabled(),
+    page.keyboard.press("ArrowUp"), // must be swallowed, not queued
+    page.keyboard.press("Backspace"), // ditto
+  ]);
+
+  // Once it settles: the second card — not the third, not the first — is the
+  // current, fully interactive one.
   await expect(progress(page)).toHaveText("2 of 10", { timeout: 10_000 });
-  await expect(overlay(page).getByRole("button", { name: /won.t do/i })).toBeEnabled();
+  await expect(wontDo).toBeVisible();
+  await expect(wontDo).toBeEnabled();
 });
 
 test("the on-screen buttons drive the whole flow, not just the keyboard", async ({ page }) => {
