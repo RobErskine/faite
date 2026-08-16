@@ -1732,3 +1732,12 @@ clean). Manually verified all four in a running board at 1532×1029 and via
 a 10-tab overflow scenario — screenshots confirmed live count updates,
 tooltip text, icon-only Archived with corner badge, and the scrollbar/fade/
 scroll-into-view behavior all work as specced.
+
+**Follow-up** — real feedback on this branch's own build caught two things
+the manual pass above missed: the edge fade (`from-background` overlay)
+guessed the wrong backdrop color (`bg-muted/30`, not `--background`) and
+rendered as a visible gray box; the Archived corner badge read as "needs
+attention." Fixed by switching the fade to a `mask-image` on the scroll
+container (fades content alpha, no background color to guess) and moving
+the Archived count inline as `(N)` next to the icon, matching the tab
+pills' own count styling. Commit `3fb9be7`.
