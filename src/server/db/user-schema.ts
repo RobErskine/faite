@@ -84,6 +84,8 @@ export const todos = sqliteTable("todos", {
   recurrenceParentId: text("recurrence_parent_id"),
   completedAt: text("completed_at"),
   reminderTime: text("reminder_time"),
+  /** Versioned JSON blob — see `todoSchema.source` in `lib/schema.ts`. */
+  source: text("source"),
 });
 
 export const tabs = sqliteTable("tabs", {

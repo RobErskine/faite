@@ -63,6 +63,8 @@ export interface CreateTodoInput {
   position?: string;
   reminderTime?: string | null;
   placeId?: string | null;
+  /** Versioned JSON blob — see `lib/capture-source.ts`. Groundwork for D5. */
+  source?: string | null;
 }
 
 export async function createTodo(input: CreateTodoInput): Promise<string> {
@@ -95,6 +97,7 @@ export async function createTodo(input: CreateTodoInput): Promise<string> {
     recurrenceParentId: null,
     completedAt: null,
     reminderTime: input.reminderTime ?? null,
+    source: input.source ?? null,
   };
   return create("todo", todo, { events: [logTodoEvent(todo.id, "created")] });
 }

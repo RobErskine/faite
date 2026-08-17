@@ -43,6 +43,15 @@ describe("TABLE_NAME_BY_KIND / COLUMNS_BY_KIND", () => {
     });
     expect(COLUMNS_BY_KIND.settings.workdays.dataType).toBe("json");
   });
+
+  it("treats recurrenceRule and source as plain strings, not JSON_ENCODED_FIELDS", () => {
+    // Both are pre-serialized JSON blobs (see `lib/recurrence.ts` and
+    // `lib/capture-source.ts`) — the string IS the storage format, so double
+    // -encoding them through the `json` dataType coercion in `toColumnValue`
+    // would wrap an already-JSON string in another layer of quotes.
+    expect(COLUMNS_BY_KIND.todo.recurrenceRule.dataType).toBe("string");
+    expect(COLUMNS_BY_KIND.todo.source.dataType).toBe("string");
+  });
 });
 
 describe("sanitizePatch", () => {
@@ -103,5 +112,11 @@ describe("toColumnValue / fromColumnValue", () => {
   it("maps null/undefined to a null bind value", () => {
     expect(toColumnValue("todo", "description", null)).toBeNull();
     expect(toColumnValue("todo", "description", undefined)).toBeNull();
+  });
+
+  it("passes an already-serialized source blob through without double-encoding", () => {
+    const blob = '{"v":1,"kind":"browser","at":"2026-01-01T00:00:00.000Z"}';
+    expect(toColumnValue("todo", "source", blob)).toBe(blob);
+    expect(fromColumnValue("todo", "source", blob)).toBe(blob);
   });
 });

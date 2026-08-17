@@ -258,6 +258,19 @@ export const todoSchema = z.object({
     .regex(/^\d{2}:\d{2}$/, "Expected a HH:MM time")
     .nullable()
     .default(null),
+
+  /**
+   * Where this todo was captured FROM — a browser tab, a native app, a
+   * manual entry — as a versioned JSON blob, same convention as
+   * `recurrenceRule`: stored verbatim, never as discrete `sourceUrl`/
+   * `sourceApp`/`sourceTitle` columns. Under field-level LWW, splitting it
+   * would let device A's URL edit merge with device B's app-name edit into
+   * a context describing no real moment. See `lib/capture-source.ts` for
+   * the schema and `parseSource`/`serializeSource`.
+   *
+   * Groundwork for D5 (context capture) — nothing writes or reads this yet.
+   */
+  source: z.string().nullable().default(null),
 });
 export type Todo = z.infer<typeof todoSchema>;
 
