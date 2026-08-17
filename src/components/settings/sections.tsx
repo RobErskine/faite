@@ -1,9 +1,8 @@
-import { Bell, CornerDownRight, MapPin, Palette, User, Wrench, Zap } from "lucide-react";
+import { Bell, CornerDownRight, MapPin, Palette, User, Wrench } from "lucide-react";
 import type { SettingsSection } from "./types";
 import { ProfileSection } from "./profile-section";
 import { DesignSection } from "./design-section";
 import { LoopSection } from "./loop-section";
-import { OverdriveSection } from "./overdrive-section";
 import { RemindersSection } from "./reminders-section";
 import { PlacesSection } from "./places-section";
 import { DeveloperSection } from "./developer-section";
@@ -23,16 +22,10 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   {
     id: "loop",
     label: "Faite Loop",
-    description: "How long a missed to-do rolls before it falls into Overflow.",
+    description:
+      "How long a missed to-do rolls before it falls into Overflow, when the Overdrive button appears, and whether a staged day auto-confirms.",
     icon: CornerDownRight,
     Component: LoopSection,
-  },
-  {
-    id: "overdrive",
-    label: "Overdrive",
-    description: "When the Overdrive button appears, and whether a staged day auto-confirms.",
-    icon: Zap,
-    Component: OverdriveSection,
   },
   {
     id: "design",

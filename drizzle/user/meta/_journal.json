@@ -57,6 +57,13 @@
       "when": 1786892581330,
       "tag": "0007_romantic_orphan",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1786930916758,
+      "tag": "0008_clever_shockwave",
+      "breakpoints": true
     }
   ]
 }

@@ -232,7 +232,7 @@ describe("SettingsSheet", () => {
       />,
     );
 
-    fireEvent.click(screen.getByText("Overdrive"));
+    fireEvent.click(screen.getByText("Faite Loop"));
 
     const pressed = screen
       .getAllByRole("button")
@@ -245,7 +245,7 @@ describe("SettingsSheet", () => {
   it("falls back to the OVERDRIVE_MIN_TODOS default and auto-confirm off with no settings row at all", () => {
     render(<SettingsSheet open onOpenChange={() => {}} settings={undefined} />);
 
-    fireEvent.click(screen.getByText("Overdrive"));
+    fireEvent.click(screen.getByText("Faite Loop"));
 
     const pressed = screen
       .getAllByRole("button")

@@ -35,8 +35,8 @@ search string can never hide the button on a pile that's still there.
 > constant is now only the fallback for a `settings` row written before this
 > field existed — every read site does `settings?.overdriveMinTodos ??
 > OVERDRIVE_MIN_TODOS` — and the schema's own default (also 5) is what a
-> fresh account gets. Adjustable from Settings → Overdrive
-> (`overdrive-section.tsx`), bounded 1–50. Exactly the small, additive change
+> fresh account gets. Adjustable from Settings → Faite Loop
+> (`loop-section.tsx`), bounded 1–50. Exactly the small, additive change
 > the original doc comment predicted: one constant became one settings read,
 > nothing structural.
 
@@ -161,7 +161,7 @@ are not the obvious next action.
 
 > **Shipped, opt-in (EI-103)**: `settings.overdriveAutoConfirmMs`, a
 > per-user delay in milliseconds, `0` (off) by default — the exact behaviour
-> above, unchanged, unless a user turns it on from Settings → Overdrive. A
+> above, unchanged, unless a user turns it on from Settings → Faite Loop. A
 > nonzero value dispatches `"confirm"` (the same action `Enter`/the Confirm
 > button already trigger — no second commit path) after that many ms with no
 > further ramp/pick input; any further `→`/`⇧→`/`D`-then-pick restarts the
@@ -693,7 +693,7 @@ syncs like anything else.
 | `components/board/use-board-actions.ts` | `handleOverdriveVerdict` — the one write path, returns `{ undoId, label }` |
 | `components/board/use-board-ui-state.ts` | `overdriveOpen` + `computeModalOpen` |
 | `components/board/board-guards.test.ts` | the table-driven test that keeps a future overlay from forgetting the guard wiring above |
-| `components/settings/overdrive-section.tsx` | Settings → Overdrive (EI-103) — entry threshold and auto-confirm delay preset chips |
+| `components/settings/loop-section.tsx` | Settings → Faite Loop (EI-103) — entry threshold and auto-confirm delay preset chips, alongside the Loop's own settings |
 
 Tests: `overdrive.test.ts`, `overdrive-overlay.test.tsx`, `board-column.test.tsx`
 ("footer" block), `board-guards.test.ts`, `developer-section.test.tsx`
