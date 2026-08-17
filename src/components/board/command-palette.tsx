@@ -30,6 +30,12 @@ import { foldQuickAddDraft, parseQuickAdd, quickAddDraftToString, type QuickAddM
 import { useMention, MentionMenu, type MentionSource } from "@/components/mention-menu";
 import { searchTodos } from "@/lib/search";
 import { cn } from "@/lib/utils";
+import {
+  commandsByGroup,
+  type PaletteCommand,
+  type PaletteCommandCtx,
+  type PaletteEntryMode,
+} from "@/lib/command-registry";
 import { PriorityRail, TitleMarkers, TodoMetaBadges } from "./todo-row-parts";
 import { TITLE_CLAMP_CLASS } from "@/lib/title";
 import type {
@@ -52,16 +58,6 @@ const subscribeToNothing = () => () => {};
 function usePlatform(): Platform {
   return useSyncExternalStore(subscribeToNothing, detectPlatform, () => "other");
 }
-
-/**
- * The status filter, in the same order and wording as the DateNav control —
- * one vocabulary for one setting, whichever surface you reach it through.
- */
-const STATUS_FILTERS: ReadonlyArray<{ value: TodoStatus; label: string }> = [
-  { value: "open", label: "todo items" },
-  { value: "done", label: "completed items" },
-  { value: "dropped", label: "items marked as won't do" },
-];
 
 interface CommandPaletteProps {
   open: boolean;
@@ -96,15 +92,8 @@ interface CommandPaletteProps {
   onOpenHelp: () => void;
 }
 
-type Mode =
-  | { kind: "root" }
-  | { kind: "new-list" }
-  | { kind: "new-label" }
-  | { kind: "new-project" }
-  | { kind: "new-tab" }
-  | { kind: "new-todo" }
-  | { kind: "delete-list" }
-  | { kind: "delete-tab" };
+/** `PaletteEntryMode` (command-registry.ts) plus the always-present root. */
+type Mode = { kind: "root" } | { kind: PaletteEntryMode };
 
 /**
  * Keyboard-first entry point for everything that is not drag-and-drop.
@@ -289,6 +278,19 @@ export function CommandPalette({
   const close = () => handleOpenChange(false);
 
   /**
+   * Switches into an entry/picker mode with a clean input — every "New X" /
+   * "Delete a X…" root command does exactly this and nothing else. Factored
+   * out so the registry's `run` functions (command-registry.ts) have one
+   * thing to call instead of each root command inlining the same three
+   * `setState` calls.
+   */
+  const enterMode = (kind: PaletteEntryMode) => {
+    setMode({ kind });
+    setValue("");
+    setConfirmedMatches([]);
+  };
+
+  /**
    * Undoing a create is the same soft delete `remove()` performs.
    *
    * These toasts already existed; they gain an Undo button rather than a new
@@ -419,6 +421,62 @@ export function CommandPalette({
     mode.kind !== "root" &&
     mode.kind !== "delete-list" &&
     mode.kind !== "delete-tab";
+
+  /**
+   * Ctx for the command registry (`command-registry.ts`) — the root menu's
+   * "Create"/"Manage"/"View" groups render from `ROOT_COMMANDS` via this
+   * object rather than from inline JSX. Every registry action bottoms out in
+   * a helper already defined above/here; the registry itself never imports
+   * `mutateSettings` or any other persistence call directly.
+   */
+  const commandCtx: PaletteCommandCtx = {
+    query,
+    hasQuery: query.length > 0 || confirmedMatches.length > 0,
+    quickAddTitle: quickAdd.title,
+    settings,
+    overflowCount,
+    platform,
+    enterMode,
+    createFromQuery,
+    openHelp: onOpenHelp,
+    openOverdrive: onOpenOverdrive,
+    close,
+    setVisibleDays: async (days) => {
+      await mutateSettings(LOCAL_OWNER_ID, { visibleDays: days });
+      close();
+    },
+    setVisibleStatuses: async (next) => {
+      await mutateSettings(LOCAL_OWNER_ID, { visibleStatuses: next });
+      close();
+    },
+    toggleWeekends: async () => {
+      const next = !(settings?.showWeekends ?? true);
+      await mutateSettings(LOCAL_OWNER_ID, { showWeekends: next });
+      toast.success(next ? "Weekends shown" : "Weekends collapsed into a strip");
+      close();
+    },
+    toggleWorkdaysOnly: async () => {
+      await mutateSettings(LOCAL_OWNER_ID, { workdaysOnly: !settings?.workdaysOnly });
+      toast.success(
+        settings?.workdaysOnly ? "Rollover uses every day" : "Rollover skips weekends",
+      );
+      close();
+    },
+  };
+  const commandGroups = commandsByGroup(commandCtx);
+
+  const renderCommand = (cmd: PaletteCommand) => (
+    <CommandItem
+      key={cmd.id}
+      value={cmd.value?.(commandCtx)}
+      disabled={cmd.disabled?.(commandCtx)}
+      className={cmd.className}
+      onSelect={() => void cmd.run(commandCtx)}
+    >
+      {cmd.label(commandCtx)}
+      {cmd.shortcut ? <CommandShortcut>{cmd.shortcut(commandCtx)}</CommandShortcut> : null}
+    </CommandItem>
+  );
 
   return (
     <CommandDialog
@@ -694,36 +752,13 @@ export function CommandPalette({
               </>
             ) : null}
 
-            <CommandGroup heading="Create">
-              {/*
-                The fallback the whole search exists for: nothing matched what
-                you typed, so turn it into the to-do instead of making you
-                retype it behind "New to-do".
-              */}
-              {query || confirmedMatches.length > 0 ? (
-                <CommandItem
-                  value={`Create to-do ${query}`}
-                  onSelect={() => void createFromQuery()}
-                >
-                  Create to-do “{quickAdd.title}”
-                </CommandItem>
-              ) : null}
-              <CommandItem onSelect={() => { setMode({ kind: "new-todo" }); setValue(""); setConfirmedMatches([]); }}>
-                New to-do
-              </CommandItem>
-              <CommandItem onSelect={() => { setMode({ kind: "new-list" }); setValue(""); setConfirmedMatches([]); }}>
-                New list
-              </CommandItem>
-              <CommandItem onSelect={() => { setMode({ kind: "new-label" }); setValue(""); setConfirmedMatches([]); }}>
-                New label
-              </CommandItem>
-              <CommandItem onSelect={() => { setMode({ kind: "new-project" }); setValue(""); setConfirmedMatches([]); }}>
-                New project
-              </CommandItem>
-              <CommandItem onSelect={() => { setMode({ kind: "new-tab" }); setValue(""); setConfirmedMatches([]); }}>
-                New tab
-              </CommandItem>
-            </CommandGroup>
+            {/*
+              The fallback the whole search exists for: nothing matched what
+              you typed, so turn it into the to-do instead of making you
+              retype it behind "New to-do". Rendered from the registry
+              (command-registry.ts) — see `commandCtx`/`renderCommand` above.
+            */}
+            <CommandGroup heading="Create">{commandGroups.get("Create")!.map(renderCommand)}</CommandGroup>
 
             <CommandSeparator />
 
@@ -758,109 +793,20 @@ export function CommandPalette({
               </>
             ) : null}
 
-            <CommandGroup heading="Manage">
-              <CommandItem onSelect={() => { setMode({ kind: "delete-list" }); setValue(""); setConfirmedMatches([]); }}>
-                Delete a list…
-              </CommandItem>
-              <CommandItem onSelect={() => { setMode({ kind: "delete-tab" }); setValue(""); setConfirmedMatches([]); }}>
-                Delete a tab…
-              </CommandItem>
-              <CommandItem
-                onSelect={() => {
-                  onOpenHelp();
-                  close();
-                }}
-              >
-                Keyboard shortcuts
-                <CommandShortcut>{formatCombo("shift+slash", platform)}</CommandShortcut>
-              </CommandItem>
-            </CommandGroup>
+            <CommandGroup heading="Manage">{commandGroups.get("Manage")!.map(renderCommand)}</CommandGroup>
 
             <CommandSeparator />
 
-            <CommandGroup heading="View">
-              {[1, 3, 5, 7].map((days) => (
-                <CommandItem
-                  key={days}
-                  // On the item, not a wrapper span: CommandItem is a flex row
-                  // with a gap, so a span would break the phrase into columns.
-                  // font-variant-numeric inherits, and `nums` keeps the body font.
-                  className="nums"
-                  onSelect={async () => {
-                    await mutateSettings(LOCAL_OWNER_ID, { visibleDays: days });
-                    close();
-                  }}
-                >
-                  Show {days} day{days > 1 ? "s" : ""}
-                  {settings?.visibleDays === days ? " (current)" : ""}
-                </CommandItem>
-              ))}
-              {/*
-                Mirrors the status checkboxes in the DateNav's ViewSettings.
-                Same guard, too: the last remaining status cannot be turned
-                off, because an empty board looks broken rather than filtered.
-              */}
-              {STATUS_FILTERS.map((option) => {
-                const current = settings?.visibleStatuses ?? ["open"];
-                const on = current.includes(option.value);
-                return (
-                  <CommandItem
-                    key={option.value}
-                    disabled={on && current.length <= 1}
-                    onSelect={async () => {
-                      const next = on
-                        ? current.filter((s) => s !== option.value)
-                        : STATUS_FILTERS.filter(
-                            (o) => o.value === option.value || current.includes(o.value),
-                          ).map((o) => o.value);
-                      if (next.length === 0) return;
-                      await mutateSettings(LOCAL_OWNER_ID, { visibleStatuses: next });
-                      close();
-                    }}
-                  >
-                    {on ? "Hide" : "Show"} {option.label}
-                  </CommandItem>
-                );
-              })}
-              <CommandItem
-                onSelect={async () => {
-                  const next = !(settings?.showWeekends ?? true);
-                  await mutateSettings(LOCAL_OWNER_ID, { showWeekends: next });
-                  toast.success(
-                    next ? "Weekends shown" : "Weekends collapsed into a strip",
-                  );
-                  close();
-                }}
-              >
-                {settings?.showWeekends === false ? "Show weekends" : "Hide weekends"}
-              </CommandItem>
-              <CommandItem
-                onSelect={async () => {
-                  await mutateSettings(LOCAL_OWNER_ID, {
-                    workdaysOnly: !settings?.workdaysOnly,
-                  });
-                  toast.success(
-                    settings?.workdaysOnly
-                      ? "Rollover uses every day"
-                      : "Rollover skips weekends",
-                  );
-                  close();
-                }}
-              >
-                {settings?.workdaysOnly
-                  ? "Roll over on every day"
-                  : "Roll over on workdays only"}
-              </CommandItem>
-              <CommandItem
-                disabled={overflowCount === 0}
-                onSelect={() => {
-                  onOpenOverdrive();
-                  close();
-                }}
-              >
-                {overflowCount > 0 ? `Open Overdrive (${overflowCount})` : "Overdrive — Overflow is empty"}
-              </CommandItem>
-            </CommandGroup>
+            {/*
+              Day counts, status filters, weekends/workday toggles, and
+              Overdrive — same registry-driven rendering as Create/Manage
+              above. `className="nums"` on the day-count rows lives on the
+              registry entries themselves (`command-registry.ts`): on the
+              item, not a wrapper span, because CommandItem is a flex row
+              with a gap that a span would break into columns, and
+              font-variant-numeric inherits so `nums` keeps the body font.
+            */}
+            <CommandGroup heading="View">{commandGroups.get("View")!.map(renderCommand)}</CommandGroup>
           </>
         )}
       </CommandList>

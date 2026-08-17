@@ -48,6 +48,8 @@ Board
 | File | Role |
 | --- | --- |
 | `src/components/board/command-palette.tsx` | the whole surface |
+| `src/lib/command-registry.ts` | `ROOT_COMMANDS` — the root menu's Create/Manage/View commands as data, plus `commandsByGroup` — see §7.1 |
+| `src/lib/command-registry.test.ts` | pure unit tests for the registry — visibility, disabled/label logic, status-toggle math |
 | `src/lib/search.ts` | `searchTodos` — the matcher, pure and testable |
 | `src/lib/search.test.ts` | matcher unit tests |
 | `src/components/board/command-palette.test.tsx` | DOM-level tests, incl. search and §5 |
@@ -129,8 +131,9 @@ exempts `⌘⌫` when focus is in a text field, because that combo means "delete
 to line start" natively; the palette does not, since its search input is the
 only focus target and exempting it would just disable the shortcut.
 
-**The commands are hardcoded JSX, not data.** That is the main structural
-obstacle to everything in §8 — see §7.1.
+**The Create/Manage/View commands above are data, not hardcoded JSX** — see
+§7.1 (EI-77). To-do results, the Tabs switcher, and the delete pickers stay
+bespoke renders, deliberately (§7.1 explains why).
 
 ---
 
@@ -238,26 +241,54 @@ that do nothing on Enter are worse than absent rows.
 
 ## 7. Known limits
 
-### 7.1 Commands are JSX, not a registry
+### 7.1 Commands are JSX, not a registry — RESOLVED (EI-77)
 
-Every command is inline JSX with an inline `onSelect`. Nothing can enumerate,
-score, reorder, or filter them programmatically. This blocks: command ranking,
-frecency, "recently used", scoped modes, aliases, per-command keywords, and any
-custom filtering that requires `shouldFilter={false}`.
-
-**A command registry is the prerequisite for most of §8.** Shape it roughly as:
+~~Every command is inline JSX with an inline `onSelect`. Nothing can enumerate,
+score, reorder, or filter them programmatically.~~ The root menu's "Create",
+"Manage", and "View" groups now render from a data structure —
+`ROOT_COMMANDS` in `src/lib/command-registry.ts` — instead of hardcoded JSX.
+Each `PaletteCommand` is a plain object:
 
 ```ts
 interface PaletteCommand {
   id: string
-  group: "Create" | "Manage" | "View" | "Typography" | …
-  label: string
-  keywords?: string[]
-  hotkey?: string          // reuse the Hotkey table in board.tsx
-  when?: (ctx) => boolean  // e.g. hide "Delete a tab" when only one exists
-  run: () => void | Promise<void>
+  group: "Create" | "Manage" | "View"
+  label: (ctx: PaletteCommandCtx) => string
+  value?: (ctx) => string   // cmdk match value override — only the
+                             // create-from-query fallback needs one
+  shortcut?: (ctx) => string | undefined
+  when?: (ctx) => boolean   // omit to always show
+  disabled?: (ctx) => boolean
+  className?: string
+  run: (ctx: PaletteCommandCtx) => void | Promise<void>
 }
 ```
+
+`commandsByGroup(ctx)` filters by `when` and buckets by group in render
+order; `command-palette.tsx` builds one `PaletteCommandCtx` per render (query
+state, settings, the mode-switching/mutation callbacks) and maps each
+group's commands through a small `renderCommand` helper. The registry module
+itself never imports `mutateSettings`/`createTodo`/etc — every side effect is
+injected through `ctx`, so it stays pure and importable without pulling in
+`cmdk` or any of the palette's dialog machinery. This is what unblocks the
+planned `/capture` quick-add window (separate effort): it can import
+`ROOT_COMMANDS` and supply its own `ctx` rather than reimplementing the
+command list.
+
+**Deliberately still bespoke, not registry entries** — see the doc comment
+at the top of `command-registry.ts` for the full reasoning:
+- to-do search results and the Tabs switcher (existing entities, not
+  commands, one row per record)
+- the delete-list/delete-tab picker bodies (same reason)
+- the multi-step entry modes themselves (`new-list`, `new-todo`, …) — a
+  registry command only *switches into* one via `ctx.enterMode`; the mode
+  body (free-text input + its Enter-to-create row) stays a distinct concept
+  per the EI-77 brief, not force-fit into a single-shot command shape.
+
+This unblocks command ranking, frecency, "recently used", scoped modes,
+aliases, per-command keywords, and any custom filtering that requires
+`shouldFilter={false}` — the rest of §8 is still open, this was only the
+prerequisite.
 
 ### 7.2 Performance
 
@@ -335,6 +366,11 @@ Roughly ordered by value-to-effort. Each notes what it depends on.
 
 Three layers, all required:
 
+- **`src/lib/command-registry.test.ts`** — pure, node environment. Which
+  commands `commandsByGroup` returns per `ctx` (create-fallback visibility,
+  entry-mode ids), and the `label`/`disabled`/`run` logic on the View group
+  (current-day marker, last-status-can't-turn-off guard, status-toggle
+  ordering, Overdrive's count/disabled state).
 - **`src/lib/search.test.ts`** — pure matcher. Node environment, no DOM. Tier
   ordering, status ordering, recency tiebreak, soft-delete exclusion, limit.
 - **`src/lib/quick-add.test.ts`** / **`src/lib/mention.test.ts`** — pure,
