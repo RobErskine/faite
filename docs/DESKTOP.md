@@ -3,7 +3,7 @@
 **Self-contained handoff.** Everything needed to continue the desktop work on
 Faite without re-deriving it. This is a living document, updated as each
 milestone ships — read the milestone table below before assuming anything
-past D0 exists yet.
+past D1 exists yet.
 
 > **Numbering.** This document's milestones are **D0…D6** — a separate axis
 > from the product roadmap's **P0…P7** and the mobile track's **M-1…M6**
@@ -362,3 +362,126 @@ loop, since this cost real time to diagnose here.
 clean on top of these changes. `npm run verify`'s full build steps were not
 re-run end-to-end in this session for time reasons, but typecheck/lint/test
 — the parts any of this could plausibly have broken — are green.
+
+---
+
+## 6. D1 — real window model, desktop bridge, native app menu
+
+Ships the EI-129 cleanup plus EI-130/131/132. Bundled into one PR
+deliberately — all three touch `src-tauri/src/lib.rs`, and D0's own
+follow-up work had already hit a real merge conflict splitting overlapping
+`lib.rs` changes across parallel branches.
+
+### 6.1 EI-129 remainder — spike cleanup + freshness guard
+
+`src-tauri/src/d0_probe.rs` and its `FAITE_D0_PROBE` branch in `lib.rs` are
+gone; `run()` now unconditionally builds the real window set (§6.2). The
+probe's CSP scaffolding entry (`http://127.0.0.1:8799` in `connect-src`,
+flagged in §3.7 as spike-only) and its `.gitignore` line
+(`d0-probe-results.jsonl`) are removed too. `capabilities/default.json`'s
+window list was updated from the probe's `board_a`/`board_b`/`hidden_probe`
+labels to the real `main`/`core` labels (§6.2).
+
+`src-tauri/build.rs` now fails the build loudly (a `panic!` in the build
+script, before `tauri_build::build()` runs) if `frontendDist`
+(`../.next-static/`, relative to `src-tauri/`) is missing, empty, or older
+than `src/`'s newest file — a stale/missing export otherwise fails silently
+until someone launches the app and sees a blank or outdated window. Verified
+by hand: deleting `.next-static/` and touching a file under `src/` each
+independently produce the expected panic with a `npm run build:static`
+pointer; `npm run build:static` (with `NEXT_PUBLIC_AUTH_URL=https://myfaite.app`
+per §3.2) followed by `cargo build` then succeeds cleanly. Kept simple per
+scope — no attempt to gate this only for the `custom-protocol`-feature build
+(the one that actually embeds `frontendDist`); it runs, and can fail, on
+every `cargo build` including the plain `devUrl` dev loop.
+
+Also dropped, as general "this isn't a spike shell anymore" cleanup while
+touching these files: `tauri.conf.json`'s `productName`/`identifier` lost
+their `-spike`/`.spike` suffixes (`Faite` / `app.myfaite.desktop`), and
+`withGlobalTauri` flipped from the spike's `true` to `false` now that
+`bridge.ts` (§6.3) is the intended typed surface instead of the injected
+`window.__TAURI__` global — exactly the revisit §5 flagged.
+
+### 6.2 EI-130 — window inventory
+
+`src-tauri/src/lib.rs` builds two `WebviewWindow`s in `setup`:
+
+- `main` — the visible board window, `board.html`, `1200×800`. What the user
+  sees at launch.
+- `core` — hidden (`visible(false)`), same `board.html` origin (so it shares
+  IndexedDB/localStorage with `main`, per the D0 §3.3 finding), not wired to
+  anything yet. This is the future home for sync ownership (D2) and the
+  menu-bar popover (D3) per decision #4 — D1's job was only to establish
+  that it exists and stays alive, not to put sync logic in it. Its doc
+  comment in `lib.rs` repeats the §3.4 hidden-timer caveat inline so it's
+  not missed by whoever wires D2 in.
+
+Quit-on-last-window-close is disabled on macOS: `Builder::build()` +
+`App::run(|_, event| { #[cfg(target_os = "macos")] if let
+RunEvent::ExitRequested { api, .. } = event { api.prevent_exit(); } })`,
+replacing the old `.run(tauri::generate_context!())` shorthand that doesn't
+give access to `RunEvent`. Closing `main` alone now leaves `core` (hidden)
+running — standard menu-bar-app behavior. **Compile-verified only** — confirming
+NSApplication actually stays resident with the dock icon gone or present as
+expected needs a real launch and window-close, which needs a display
+session Rob has and this agent doesn't.
+
+### 6.3 EI-131 — desktop bridge
+
+`src/lib/desktop/bridge.ts`: `isDesktopShell(): boolean`, backed by
+`@tauri-apps/api/core`'s `isTauri()` (checks `globalThis.isTauri`, the flag
+Tauri's webview injects — not `window.__TAURI__`, which only exists when
+`withGlobalTauri` is on, which D1 turned off, see §6.1). SSR-safe (`isTauri()`
+reads `globalThis`, never touches `window` directly), so it's safe to call
+from code that also runs during prerender/static generation — it just
+resolves `false` there. `@tauri-apps/api@^2.11.1` added to `dependencies`
+(not `devDependencies` — this ships in the runtime bundle, unlike
+`@tauri-apps/cli`). Unit-tested (`bridge.test.ts`) against
+`globalThis.isTauri` directly, no Tauri runtime needed. Nothing consumes it
+yet — that's the point, it's the seam, not a feature.
+
+### 6.4 EI-132 — native app menu + window state
+
+`src-tauri/src/lib.rs`'s `app_menu()` builds an explicit macOS app menu via
+`tauri::menu::{MenuBuilder, SubmenuBuilder}`: an app submenu (About/
+Services/Hide/Hide Others/Show All/Quit), **Edit** (Undo/Redo/Cut/Copy/
+Paste/Select All), and Window (Minimize/Maximize/Close), set via
+`app.set_menu(...)` in `setup`.
+
+Worth being honest about what this actually fixes: Tauri v2 already
+auto-installs `tauri::menu::Menu::default()` on macOS whenever no custom
+menu is set (`Builder::enable_macos_default_menu`, on by default,
+`crates/tauri/src/app.rs`) — and that default already includes a full Edit
+submenu. So Cmd+C/Cmd+V/Cmd+A were very likely already working in the D0
+spike's shell, contrary to this ticket's premise that they'd be silently
+missing. `app_menu()` is built explicitly anyway rather than relying on that
+implicit default, both because the ticket asked for a menu built "via
+Tauri's menu API" and because an implicit default is one incidental
+`.menu()` call away from silently disappearing later. Non-macOS builds
+(not a real target yet, see decision #6) get a minimal fallback app.item +
+Edit + Window, just so `cargo build` stays sane on other host platforms.
+
+Window size/position persistence uses `tauri-plugin-window-state` (`2.4.1`,
+Rust crate; no JS package needed since nothing calls its manual
+save/restore APIs from the frontend) — registered as a target-scoped
+`[target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]`
+entry in `Cargo.toml` and gated with `#[cfg(desktop)]` at the `.plugin(...)`
+call site in `lib.rs`, matching the plugin's own docs. Restoration is
+automatic — no code needed beyond registering the plugin.
+`capabilities/default.json` grants `window-state:default`.
+
+**Compile-verified only.** `cargo build`, `cargo build --features
+tauri/custom-protocol`, and `cargo clippy --all-targets` are all clean with
+zero warnings. Actually seeing the menu bar render, confirming Cmd+C/Cmd+V
+work inside the webview, and confirming a resized/moved window is restored
+on relaunch all need a real display session and were not exercised here.
+
+### 6.5 Verification summary
+
+`npm run typecheck`, `npm run lint`, `npm run test` (1577 tests — 2 new,
+`bridge.test.ts`), `npm run build`, and `npm run build:static` all pass
+clean. `cargo build` / `cargo build --features tauri/custom-protocol` /
+`cargo clippy --all-targets` in `src-tauri/` all pass with zero warnings.
+Nothing in this milestone was interactively exercised in a running app —
+windows, menu, and window-state restoration are compile-verified only, per
+§6.2/§6.4 above.
