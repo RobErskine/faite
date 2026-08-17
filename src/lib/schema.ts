@@ -124,6 +124,22 @@ export const listSchema = z.object({
    * the default tab by `ensureDefaultTab`.
    */
   tabId: idSchema.nullable().default(null),
+  /**
+   * The reminder preset a new todo created in this list gets when the user
+   * hasn't picked one of their own (EI-112).
+   *
+   * A stored REFERENCE, unlike `Todo.reminderTime` — the one deliberate
+   * exception to the "bind by value" rule in `reminderPresetSchema`'s doc
+   * comment. A list default has nothing to resolve against until a todo is
+   * created from it, so there is no literal time to copy at the point this
+   * field itself is written; `createTodo` is what turns the reference into a
+   * literal `reminderTime` on the todo, at which point EI-106 decision 1
+   * applies again as normal. `deleteReminderPreset` clears this field on any
+   * list pointing at the deleted preset, the same cleanup `deleteLabel` does
+   * for `labelIds` — a dangling default would otherwise silently stop
+   * applying with no visible cause.
+   */
+  defaultReminderPresetId: idSchema.nullable().default(null),
 });
 export type List = z.infer<typeof listSchema>;
 
@@ -574,6 +590,11 @@ export type Tab = z.infer<typeof tabSchema>;
  * `reminderPresetId`. Retiming a preset therefore relabels existing
  * reminders sitting on the old time rather than moving them; deleting a
  * preset touches no todo at all. See `docs/REMINDERS.md`.
+ *
+ * `List.defaultReminderPresetId` (EI-112) is the one deliberate exception —
+ * see its doc comment above. That field is a real reference, and
+ * `deleteReminderPreset` clears it on delete; this schema's own "bind by
+ * value" rule still governs every `Todo.reminderTime` it resolves to.
  */
 export const reminderPresetSchema = z.object({
   ...syncableFields,

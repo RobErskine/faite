@@ -18,6 +18,7 @@ after EI-107:
 | EI-109 | Settings → Reminders (preset manager) + the first-run seed of five defaults |
 | EI-110 | Quick-add and the ⌘K palette learn preset names as vocabulary |
 | EI-113 | The card badge, this doc, and end-to-end coverage |
+| EI-112 | `List.defaultReminderPresetId` — a default preset per list, applied to new todos |
 
 ---
 
@@ -224,19 +225,55 @@ deserve the badge), `day-sheet.tsx`'s timeline, and `overdrive-overlay.tsx`.
 
 ---
 
-## 6. What's still deferred, and why
+## 6. A default preset per list (EI-112)
 
-Both tracked as their own tickets rather than folded in here — see
+`List.defaultReminderPresetId` — nullable, set from the list's own settings
+dialog (`ListInfoDialog`) via a plain `Select`, the same "None + emoji-name
+rows" shape `ListField` already uses for a todo's list. **List, not tab.**
+EI-62 had already made `listId` the one thing a todo is actually assigned —
+tab is derived from the list's `tabId`, and the Project picker was retired
+in favor of it — so a default that lives anywhere other than `list` would be
+answering a question nothing else in the schema asks anymore. A tab-level
+default was considered and dropped: it would need its own resolution order
+against a list-level one (which wins when a list sets its own default but
+its tab also has one?) for a case nothing in the current tab/list
+relationship motivates.
+
+This is the first feature here that sets a reminder the user didn't
+explicitly ask for, and the first case that actually wants a stored
+reference rather than a literal time — `List.defaultReminderPresetId` is a
+real id, unlike every `Todo.reminderTime`. `createTodo` (`store/
+repositories.ts`) is where the reference gets resolved into a literal: a
+todo created with `reminderTime` left unset and a `listId` whose list
+carries a default picks up that preset's `time` at creation, same as if the
+user had typed it. An explicit `reminderTime` — typed, picked, or matched by
+quick-add's preset vocabulary — always wins; the default never overrides a
+choice actually made. Decision 1 (§1) is untouched for `Todo.reminderTime`
+itself — only the list's own field is a reference, and only `createTodo`
+ever reads it, at the single moment it turns into a value.
+
+Because it's a real reference, `deleteReminderPreset` now does two things
+instead of one: it still touches no todo (unchanged from decision 1), but it
+clears `defaultReminderPresetId` on every list pointing at the deleted
+preset — the same cleanup `deleteLabel` does for `labelIds` — so a default
+doesn't dangle and silently stop applying with nothing in the UI to explain
+why.
+
+Not built: moving a todo INTO a list after creation (drag, `moveTodoToList`)
+does not retroactively apply that list's default. The ticket's scope is a
+NEW todo created in the list; applying a default on every list move would be
+a much louder behavior — an existing reminder (or lack of one) changing
+underneath a todo just because it changed columns — and wasn't asked for.
+
+## 7. What's still deferred, and why
+
+Tracked as its own ticket rather than folded in here — see
 `docs/SCHEMA-CHANGES.md` on why "while it's easy" is not a reason to build
 something nobody asked for yet:
 
 - **Relative offsets** ("30 min before") — nothing to be relative *to*.
   Todos have a date, not an event time; this needs a schema change of its
   own before the feature even makes sense.
-- **A default preset per list or tab** — the first feature here that would
-  set a reminder the user didn't explicitly ask for, and the first case
-  that would actually want a stored reference rather than a literal time
-  (decision 1 would need re-examining, not just a field added).
 
 Also not built: `color`/`iconUrl` on a preset carry no UI yet. The Zod shape
 includes them (via `decorationSchema`) for free, matching every other
@@ -246,19 +283,22 @@ follow-up whenever tinted preset chips are worth building.
 
 ---
 
-## 7. Verification
+## 8. Verification
 
 - **Unit** — `reminder-presets.test.ts` (pure core), `quick-add.test.ts`'s
   preset-vocabulary block, `repositories.test.ts`'s `seedReminderPresetsIfNeeded`
   block, `reminder-picker.test.tsx`, `reminders-section.test.tsx`,
-  `todo-card.test.tsx`'s reminder-badge block.
-- **Schema** — `npm run schema:check`, expects migration id 11
+  `todo-card.test.tsx`'s reminder-badge block. EI-112's default-preset
+  behavior is `repositories.test.ts`'s "createTodo — default reminder
+  preset" and "deleteReminderPreset — clearing a default" blocks.
+- **Schema** — `npm run schema:check`, expects migration id 12
+  (`lists-add-default-reminder-preset`), on top of migration 11
   (`add-reminder-presets`).
 - **E2E** — `e2e/reminders.spec.ts`, every project: fresh-boot seeding
   visible in Settings, picking a preset (placeholder + card badge, reopened
   through search rather than hunted for in a day column — `PhoneBoard`
   shows one day at a time), quick-add resolving a preset name, clearing a
-  reminder.
+  reminder. Does not yet cover EI-112's list default (see follow-ups below).
 - **Manual smoke** — fresh profile shows five seeded presets in
   Settings → Reminders. Todo sheet → set a date → Reminder field → type
   `morn` → pick *Morning* → card badge reads "🌅 Morning". Type `gym 9:30am`
@@ -266,3 +306,7 @@ follow-up whenever tinted preset chips are worth building.
   Settings → an existing 12:30 reminder keeps firing at 12:30 and relabels
   to plain `12:30 PM`. Delete a preset → todos using its time are
   unaffected. ⌘Z undoes a reminder change like any other field write.
+  List settings → set a default reminder → a new to-do created in that list
+  (with a date) shows the default's badge without touching the Reminder
+  field. Delete that preset → the list's Default reminder field reads
+  "None" again.

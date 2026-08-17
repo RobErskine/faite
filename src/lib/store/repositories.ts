@@ -69,6 +69,7 @@ export interface CreateTodoInput {
 
 export async function createTodo(input: CreateTodoInput): Promise<string> {
   const timestamp = now();
+  const listId = input.listId ?? null;
   const todo: Todo = {
     id: newId(),
     ownerId: getCurrentOwnerId(),
@@ -86,7 +87,7 @@ export async function createTodo(input: CreateTodoInput): Promise<string> {
     // `schedulePatch`/`dayGroupPatch`.
     scheduledAt: null,
     deadline: input.deadline ?? null,
-    listId: input.listId ?? null,
+    listId,
     projectId: input.projectId ?? null,
     labelIds: input.labelIds ?? [],
     location: input.location ?? null,
@@ -96,10 +97,37 @@ export async function createTodo(input: CreateTodoInput): Promise<string> {
     recurrenceRule: null,
     recurrenceParentId: null,
     completedAt: null,
-    reminderTime: input.reminderTime ?? null,
+    reminderTime: input.reminderTime ?? (await defaultReminderTimeForList(listId)),
     source: input.source ?? null,
   };
   return create("todo", todo, { events: [logTodoEvent(todo.id, "created")] });
+}
+
+/**
+ * The literal time `input.reminderTime` falls back to when a caller leaves
+ * it unset (EI-112) — every existing `createTodo` caller already passes
+ * `null` rather than omitting the key when it has nothing to offer (e.g.
+ * `parseQuickAdd`'s `reminderTime: string | null`), so `??` catching both
+ * `undefined` and `null` is what actually makes this reach quick-add,
+ * dev-seed, and the command palette without touching any of them.
+ *
+ * An unobtrusive default, not a forced one: any caller that DOES resolve a
+ * time — typed, picked, or a preset matched by name — always wins, and the
+ * result lands on the todo as an ordinary literal `reminderTime`, exactly as
+ * editable and clearable afterward as one the user picked by hand.
+ *
+ * Resolves `List.defaultReminderPresetId` — the stored reference, see its
+ * doc comment — rather than reading a cached time off the list itself, so
+ * retiming the preset in Settings changes what NEW todos in this list get
+ * from that point on, the same "reference resolved at read time" contract
+ * `reminderLabelFor` already gives existing todos by matching on time.
+ */
+async function defaultReminderTimeForList(listId: string | null): Promise<string | null> {
+  if (!listId) return null;
+  const list = await getDb().lists.get(listId);
+  if (!list?.defaultReminderPresetId) return null;
+  const preset = await getDb().reminderPresets.get(list.defaultReminderPresetId);
+  return preset && !preset.deletedAt ? preset.time : null;
 }
 
 async function nextTodoPosition(): Promise<string> {
@@ -516,6 +544,7 @@ export async function createList(
     archivedWithTabId: null,
     position: positionAtEnd(last?.position ?? null),
     tabId,
+    defaultReminderPresetId: null,
     color: decoration.color ?? null,
     emoji: decoration.emoji ?? null,
     iconUrl: decoration.iconUrl ?? null,
@@ -833,13 +862,21 @@ export async function updateReminderPreset(
 }
 
 /**
- * Deletes a preset and touches nothing else. Deliberately unlike
- * `deleteLabel`, which strips the id from every `labelIds` array — a todo's
- * `reminderTime` is a literal `"HH:MM"` value the preset resolved to, not a
- * reference, so there is nothing to clean up. The reminder survives the
- * preset and simply renders as a plain time again (EI-106 decision 4).
+ * Deletes a preset. Touches no TODO — a todo's `reminderTime` is a literal
+ * `"HH:MM"` value the preset resolved to, not a reference, so the reminder
+ * survives the preset and simply renders as a plain time again (EI-106
+ * decision 4). It DOES touch every LIST pointing at this preset as its
+ * default (EI-112): `List.defaultReminderPresetId` is a real reference (see
+ * its doc comment), so left alone it would dangle — a list's default would
+ * silently stop applying to new todos with nothing in the UI explaining why.
+ * Same shape as `deleteLabel` clearing `labelIds`.
  */
 export async function deleteReminderPreset(id: string): Promise<void> {
+  const db = getDb();
+  const defaulted = await db.lists.filter((l) => l.defaultReminderPresetId === id).toArray();
+  for (const list of defaulted) {
+    await mutate("list", list.id, { defaultReminderPresetId: null });
+  }
   await remove("reminderPreset", id);
 }
 
@@ -1085,6 +1122,7 @@ export async function seedIfEmpty(): Promise<void> {
         // Backlog is pinned into every tab, so it belongs to none of them.
         // Everything else starts on the default tab.
         tabId: seed.isBacklog ? null : DEFAULT_TAB_ID,
+        defaultReminderPresetId: null,
         color: null,
         emoji: null,
         iconUrl: null,

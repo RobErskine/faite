@@ -61,6 +61,7 @@ function list(
     archivedWithTabId: null,
     position,
     tabId: null,
+    defaultReminderPresetId: null,
     color: null,
     emoji: null,
     iconUrl: null,

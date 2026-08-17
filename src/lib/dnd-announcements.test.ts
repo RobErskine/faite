@@ -45,6 +45,7 @@ function list(id: string, name: string): List {
     archivedWithTabId: null,
     position: "a0",
     tabId: null,
+    defaultReminderPresetId: null,
     color: null,
     emoji: null,
     iconUrl: null,

@@ -248,6 +248,13 @@ export const USER_DB_MIGRATIONS: readonly UserDbMigration[] = [
       "ALTER TABLE settings ADD COLUMN overdrive_auto_confirm_ms integer DEFAULT 0 NOT NULL",
     ],
   },
+  {
+    id: 14,
+    name: "lists-add-default-reminder-preset",
+    statements: [
+      "ALTER TABLE lists ADD COLUMN default_reminder_preset_id text",
+    ],
+  },
   // Add new migrations here. Never edit one above this line.
   //
   // Example — adding a nullable column (the safe, ordinary case):

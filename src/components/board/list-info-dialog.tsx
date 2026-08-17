@@ -14,15 +14,26 @@ import { Button } from "@/components/ui/button";
 import { ColorPicker } from "@/components/ui/color-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type { List, Tab } from "@/lib/schema";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import type { List, ReminderPreset, Tab } from "@/lib/schema";
 
-export type ListPatch = Partial<Pick<List, "name" | "color">>;
+export type ListPatch = Partial<Pick<List, "name" | "color" | "defaultReminderPresetId">>;
+
+const NONE = "__none__";
 
 interface ListInfoDialogProps {
   /** The list whose settings are open, or null when the dialog is closed. */
   list: List | null;
   /** Live AND archived tabs — resolves the color shown when unset. */
   tabsById: ReadonlyMap<string, Pick<Tab, "color">>;
+  /** Live reminder presets — offered as this list's default (EI-112). */
+  reminderPresets: ReminderPreset[];
   onClose: () => void;
   onSave: (list: List, patch: ListPatch) => void;
   onArchive: (list: List) => void;
@@ -51,6 +62,7 @@ export function ListInfoDialog({ list, ...rest }: ListInfoDialogProps) {
 function ListInfoDialogContent({
   list,
   tabsById,
+  reminderPresets,
   onClose,
   onSave,
   onArchive,
@@ -58,6 +70,9 @@ function ListInfoDialogContent({
 }: ListInfoDialogProps & { list: List }) {
   const [name, setName] = useState(list.name);
   const [color, setColor] = useState<string | null>(list.color);
+  const [defaultReminderPresetId, setDefaultReminderPresetId] = useState<string | null>(
+    list.defaultReminderPresetId,
+  );
   const inheritedColor = list.tabId ? (tabsById.get(list.tabId)?.color ?? null) : null;
 
   const trimmed = name.trim();
@@ -67,6 +82,9 @@ function ListInfoDialogContent({
   const patch: ListPatch = {};
   if (trimmed && trimmed !== list.name) patch.name = trimmed;
   if (color !== list.color) patch.color = color;
+  if (defaultReminderPresetId !== list.defaultReminderPresetId) {
+    patch.defaultReminderPresetId = defaultReminderPresetId;
+  }
 
   const canSave = Object.keys(patch).length > 0;
 
@@ -114,6 +132,41 @@ function ListInfoDialogContent({
           <p className="text-xs text-muted-foreground">
             Tints this column&rsquo;s header, and groups this list&rsquo;s to-dos
             in the day columns. Falls back to the tab&rsquo;s color when unset.
+          </p>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="list-default-reminder">Default reminder</Label>
+          <Select
+            value={defaultReminderPresetId ?? NONE}
+            onValueChange={(v) => setDefaultReminderPresetId(v === NONE ? null : v)}
+          >
+            <SelectTrigger id="list-default-reminder">
+              <SelectValue>
+                {(value: string) => {
+                  if (value === NONE) return "None";
+                  const preset = reminderPresets.find((p) => p.id === value);
+                  return preset
+                    ? preset.emoji
+                      ? `${preset.emoji} ${preset.name}`
+                      : preset.name
+                    : "Deleted preset";
+                }}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={NONE}>None</SelectItem>
+              {reminderPresets.map((preset) => (
+                <SelectItem key={preset.id} value={preset.id}>
+                  {preset.emoji ? `${preset.emoji} ` : ""}
+                  {preset.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            A new to-do created in this list gets this reminder automatically,
+            once it has a date. Still easy to change or clear per to-do.
           </p>
         </div>
 

@@ -1,0 +1,1 @@
+ALTER TABLE `lists` ADD `default_reminder_preset_id` text;

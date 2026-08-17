@@ -1182,13 +1182,15 @@ export function useBoardActions(
    * has already changed — or, for archive and delete, one that has gone.
    */
   const handleSaveList = useCallback((list: List, patch: ListPatch) => {
-    // The undo entry names what actually changed. A rename and a recolor are the
-    // same write, and "Renamed" on a recolor is the sort of label that makes ⌘Z
-    // look broken.
+    // The undo entry names what actually changed. A rename, a recolor, and a
+    // default-reminder change are the same write, and "Renamed" on any of the
+    // others is the sort of label that makes ⌘Z look broken.
     const label =
       patch.name !== undefined
         ? `Renamed “${list.name}”`
-        : `Recolored “${list.name}”`;
+        : patch.defaultReminderPresetId !== undefined
+          ? `Changed default reminder for “${list.name}”`
+          : `Recolored “${list.name}”`;
     updateListWithUndo(list, patch, label);
   }, []);
 

@@ -36,6 +36,7 @@ const list = (id: string, name: string, isBacklog = false): List => ({
   archivedWithTabId: null,
   position: "a0",
   tabId: null,
+  defaultReminderPresetId: null,
   color: null,
   emoji: null,
   iconUrl: null,

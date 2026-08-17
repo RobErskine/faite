@@ -51,6 +51,7 @@ const list = (overrides: Partial<List> & { id: string }): List => ({
   archivedWithTabId: null,
   position: "a0",
   tabId: null,
+  defaultReminderPresetId: null,
   color: null,
   emoji: null,
   iconUrl: null,
