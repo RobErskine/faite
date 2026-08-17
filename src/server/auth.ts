@@ -3,6 +3,7 @@ import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { drizzle } from "drizzle-orm/d1";
 import * as schema from "./auth-schema";
 import { sendEmail } from "./email";
+import { apiTokenPlugin } from "./auth-tokens";
 
 /** Also the CORS allow-list for `/api/sync/*` (`src/server/sync/routes.ts`) —
  * one list, so it can't drift between the two seams. */
@@ -135,6 +136,12 @@ export function createAuth(env: CloudflareEnv, request?: Request) {
         },
       },
     },
+
+    // EI-50 P5 (scoped-down) token scaffold. New D1 table, new
+    // `/api/auth/api-key/*` endpoints, zero change to any existing path —
+    // see auth-tokens.ts's file-level comment for exactly why this is safe
+    // to add without cutting anything over.
+    plugins: [apiTokenPlugin],
   });
 }
 

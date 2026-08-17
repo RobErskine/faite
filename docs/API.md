@@ -1,7 +1,17 @@
 # P5 — documented API + tokens (EI-50)
 
-Not started. This is the design constraint a fresh agent needs *before*
-writing any endpoint, not a spec.
+**Scaffolded, not cut over.** A scoped-down first pass landed the token model
+(`src/server/auth-tokens.ts`), an OpenAPI-from-Zod generator
+(`scripts/openapi/generate.ts`), and the transport-agnostic service-layer
+shape (`src/lib/service/`, `src/server/service/`) — groundwork for the
+desktop-shell bearer-auth work (D2), reviewed but deliberately not wired
+into `/api/sync/*`'s live auth path. **"Who stamps the server-side HLC?"
+below is still open** — the scaffold makes it an injectable seam
+(`ServiceContext.nextHlc` in `src/lib/service/context.ts`) rather than
+answering it. See that PR for the rest of this file's open questions and
+what's still needed before any of this is real. This file otherwise remains
+the design constraint a fresh agent needs *before* writing any endpoint, not
+a spec.
 
 [EI-50](https://linear.app/rob-erskine/issue/EI-50/zod-openapi-documented-api-tokens):
 generate OpenAPI from the P1 Zod schemas, add API tokens with scopes and rate

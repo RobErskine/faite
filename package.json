@@ -27,10 +27,12 @@
     "schema:check": "vitest run src/server/db src/server/sync/columns.test.ts",
     "schema:snapshot": "vitest run src/server/db/schema-parity.test.ts -u",
     "schema:info": "node scripts/schema/info.mjs",
-    "schema:reset": "node scripts/schema/reset.mjs"
+    "schema:reset": "node scripts/schema/reset.mjs",
+    "openapi:generate": "vite-node -c vitest.config.ts scripts/openapi/generate.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
+    "@better-auth/api-key": "^1.6.29",
     "@better-auth/drizzle-adapter": "^1.6.26",
     "@blocknote/core": "^0.53.0",
     "@blocknote/react": "^0.53.0",
@@ -41,7 +43,7 @@
     "@floating-ui/react": "^0.27.20",
     "@opennextjs/cloudflare": "^1.20.2",
     "@tauri-apps/api": "^2.11.1",
-    "better-auth": "^1.6.26",
+    "better-auth": "^1.6.29",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
@@ -85,6 +87,7 @@
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^3.2.7",
-    "wrangler": "^4.118.0"
+    "wrangler": "^4.118.0",
+    "zod-openapi": "^6.0.1"
   }
 }
