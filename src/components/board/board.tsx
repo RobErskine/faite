@@ -577,6 +577,7 @@ export function Board() {
       ctx={data.ctx}
       onClose={() => ui.setOverdriveOpen(false)}
       onVerdict={actions.handleOverdriveVerdict}
+      autoConfirmMs={data.settings?.overdriveAutoConfirmMs ?? 0}
     />
     </>
   );

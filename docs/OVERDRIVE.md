@@ -22,21 +22,28 @@ field.
 `OverdriveButton` (`components/board/overdrive-button.tsx`) is passed as the
 Overflow column's `footer` slot (`BoardColumn`'s `footer` prop, mirroring its
 existing `actions` header slot) from both `desktop-board.tsx` and
-`phone-board.tsx`. It renders nothing until the column reaches
-`OVERDRIVE_MIN_TODOS` (`lib/overdrive.ts`, currently **5**). The count is
+`phone-board.tsx`. It renders nothing until the column reaches `minTodos`,
+a prop threaded down from `settings.overdriveMinTodos` (EI-103). The count is
 `board.overflow.todos.length`, the **unfiltered** total — the same
 convention the in-column filter already uses for its own reveal threshold
 (`FILTER_MIN_TODOS`, `board-column.tsx`), so narrowing the column with a
 search string can never hide the button on a pile that's still there.
 
-> **A constant, not a setting, for now.** A user-adjustable threshold is a
-> deliberate follow-up (EI-103), not an oversight — v1 needed one number that
-> works reasonably for everyone before it's worth building UI to change it
-> per-user. It lives in `lib/overdrive.ts`'s tunables block specifically so
-> that follow-up is a small change: one constant becomes one read of a
-> settings field, nothing structural.
+> **From a constant to a per-user setting (EI-103).** v1 shipped with one
+> number (`OVERDRIVE_MIN_TODOS`, `lib/overdrive.ts`, **5**) that had to work
+> reasonably for everyone before it was worth building UI to change it. That
+> constant is now only the fallback for a `settings` row written before this
+> field existed — every read site does `settings?.overdriveMinTodos ??
+> OVERDRIVE_MIN_TODOS` — and the schema's own default (also 5) is what a
+> fresh account gets. Adjustable from Settings → Faite Loop
+> (`loop-section.tsx`), bounded 1–50. Exactly the small, additive change
+> the original doc comment predicted: one constant became one settings read,
+> nothing structural.
 
-Also reachable from ⌘K — see `docs/COMMAND-PALETTE.md`.
+Also reachable from ⌘K — see `docs/COMMAND-PALETTE.md`. The palette's own
+"Open Overdrive" entry does not gate on this threshold at all (it shows
+whenever Overflow is non-empty); the threshold only governs whether the
+column's own footer button renders.
 
 **Floats, stuck to the column's bottom edge — round 4.** `BoardColumn`
 wraps the `footer` slot in `sticky bottom-0` (`board-column.tsx`), not a
@@ -152,10 +159,20 @@ exists to avoid. The other three verdict buttons dim to `opacity-60` at the
 same moment, for the same reason in reverse: while something is staged, they
 are not the obvious next action.
 
-> **Deferred, not rejected**: an opt-in auto-confirm delay once the ramp is
-> muscle memory (EI-103). The commit path is already one call site, so
-> adding a timer later is small — the constraint above is why it didn't ship
-> in v1.
+> **Shipped, opt-in (EI-103)**: `settings.overdriveAutoConfirmMs`, a
+> per-user delay in milliseconds, `0` (off) by default — the exact behaviour
+> above, unchanged, unless a user turns it on from Settings → Faite Loop. A
+> nonzero value dispatches `"confirm"` (the same action `Enter`/the Confirm
+> button already trigger — no second commit path) after that many ms with no
+> further ramp/pick input; any further `→`/`⇧→`/`D`-then-pick restarts the
+> countdown from scratch, and it's suspended entirely while a card is
+> mid-flick, same as every other action. Implemented as a single `useEffect`
+> in `overdrive-overlay.tsx`, keyed on the staged date (a plain
+> `"YYYY-MM-DD"` string, so a stable dependency) — exactly the "one call
+> site, so adding a timer later is small" shape this section originally
+> predicted. No live countdown UI: the staged-day chip gains a static "Auto-
+> confirms if untouched" line instead of a ticking number, so it isn't
+> re-rendering once a second for a value nobody needs to the second.
 
 ## 5. The ramp
 
@@ -676,6 +693,7 @@ syncs like anything else.
 | `components/board/use-board-actions.ts` | `handleOverdriveVerdict` — the one write path, returns `{ undoId, label }` |
 | `components/board/use-board-ui-state.ts` | `overdriveOpen` + `computeModalOpen` |
 | `components/board/board-guards.test.ts` | the table-driven test that keeps a future overlay from forgetting the guard wiring above |
+| `components/settings/loop-section.tsx` | Settings → Faite Loop (EI-103) — entry threshold and auto-confirm delay preset chips, alongside the Loop's own settings |
 
 Tests: `overdrive.test.ts`, `overdrive-overlay.test.tsx`, `board-column.test.tsx`
 ("footer" block), `board-guards.test.ts`, `developer-section.test.tsx`

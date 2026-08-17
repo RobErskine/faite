@@ -502,6 +502,27 @@ export const settingsSchema = z.object({
    * false again.
    */
   reminderPresetsSeeded: z.boolean().default(false),
+  /**
+   * Overdrive's entry threshold (EI-103) — the Overflow column must hold at
+   * least this many todos before `OverdriveButton` renders. Replaces the
+   * `OVERDRIVE_MIN_TODOS` constant in `lib/overdrive.ts`, which is now only
+   * the fallback for a row that predates this field (`?? OVERDRIVE_MIN_TODOS`
+   * at every read site) — see that constant's own doc comment, which flagged
+   * this exact follow-up. Bounded well short of "so high the button never
+   * shows" territory.
+   */
+  overdriveMinTodos: z.number().int().min(1).max(50).default(5),
+  /**
+   * Opt-in auto-confirm delay for a staged Overdrive schedule (`→`), in
+   * milliseconds (EI-103). `0`, the default, is OFF: every stage still
+   * requires an explicit Enter/Confirm, exactly as it does today. A nonzero
+   * value commits the staged day on its own after this many ms with no
+   * further ramp/pick input — for a user who's decided the confirm step is
+   * friction once the ramp is muscle memory. See docs/OVERDRIVE.md §4,
+   * "Deferred, not rejected" — the confirm-gate design that made this safe
+   * to add later as a single timer rather than a structural change.
+   */
+  overdriveAutoConfirmMs: z.number().int().min(0).max(10000).default(0),
   updatedAt: z.string(),
 });
 export type Settings = z.infer<typeof settingsSchema>;

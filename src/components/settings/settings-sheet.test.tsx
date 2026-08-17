@@ -57,6 +57,8 @@ function settingsWith(patch: Partial<Settings>): Settings {
     splitRatio: null,
     splitCollapsed: "none",
     reminderPresetsSeeded: false,
+    overdriveMinTodos: 5,
+    overdriveAutoConfirmMs: 0,
     updatedAt: "2026-08-03T00:00:00.000Z",
     ...patch,
   };
@@ -219,5 +221,37 @@ describe("SettingsSheet", () => {
     fireEvent.click(screen.getByText("Faite Loop"));
 
     expect(screen.getByRole("switch").getAttribute("aria-checked")).toBe("true");
+  });
+
+  it("marks the current entry-threshold and auto-confirm presets in the Overdrive panel (EI-103)", () => {
+    render(
+      <SettingsSheet
+        open
+        onOpenChange={() => {}}
+        settings={settingsWith({ overdriveMinTodos: 8, overdriveAutoConfirmMs: 3000 })}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Faite Loop"));
+
+    const pressed = screen
+      .getAllByRole("button")
+      .filter((el) => el.getAttribute("aria-pressed") === "true")
+      .map((el) => el.textContent?.trim());
+    expect(pressed).toContain("8");
+    expect(pressed).toContain("3s");
+  });
+
+  it("falls back to the OVERDRIVE_MIN_TODOS default and auto-confirm off with no settings row at all", () => {
+    render(<SettingsSheet open onOpenChange={() => {}} settings={undefined} />);
+
+    fireEvent.click(screen.getByText("Faite Loop"));
+
+    const pressed = screen
+      .getAllByRole("button")
+      .filter((el) => el.getAttribute("aria-pressed") === "true")
+      .map((el) => el.textContent?.trim());
+    expect(pressed).toContain("5");
+    expect(pressed).toContain("Off");
   });
 });

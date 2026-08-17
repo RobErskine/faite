@@ -22,7 +22,8 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   {
     id: "loop",
     label: "Faite Loop",
-    description: "How long a missed to-do rolls before it falls into Overflow.",
+    description:
+      "How long a missed to-do rolls before it falls into Overflow, when the Overdrive button appears, and whether a staged day auto-confirms.",
     icon: CornerDownRight,
     Component: LoopSection,
   },

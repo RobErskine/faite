@@ -10,9 +10,23 @@ import { OVERDRIVE_MIN_TODOS } from "@/lib/overdrive";
  * dedicated mode; `count` is the UNFILTERED column total, the same
  * convention `totalCount`/`FILTER_MIN_TODOS` already use, so narrowing the
  * in-column filter can never hide this on a pile that's still there.
+ *
+ * `minTodos` (EI-103) defaults to `OVERDRIVE_MIN_TODOS` — callers pass
+ * `settings?.overdriveMinTodos ?? OVERDRIVE_MIN_TODOS` explicitly
+ * (`desktop-board.tsx`/`phone-board.tsx`), but the default keeps every
+ * existing call site (and test) that doesn't pass it behaving exactly as
+ * before.
  */
-export function OverdriveButton({ count, onOpen }: { count: number; onOpen: () => void }) {
-  if (count < OVERDRIVE_MIN_TODOS) return null;
+export function OverdriveButton({
+  count,
+  onOpen,
+  minTodos = OVERDRIVE_MIN_TODOS,
+}: {
+  count: number;
+  onOpen: () => void;
+  minTodos?: number;
+}) {
+  if (count < minTodos) return null;
 
   return (
     <div className="border-t border-border/60 p-2">

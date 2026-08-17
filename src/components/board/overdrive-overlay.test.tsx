@@ -101,9 +101,12 @@ const LISTS = [list("list-1", "Brain Dump"), { ...list("list-backlog", "Backlog"
 interface HarnessOptions {
   onClose?: () => void;
   onVerdict?: (todo: Todo, verdict: Verdict) => { undoId: string; label: string };
+  /** EI-103 — omitted (undefined) exercises the component's own `= 0`
+   * default, same as every caller that predates this prop. */
+  autoConfirmMs?: number;
 }
 
-function renderOverlay({ onClose = vi.fn(), onVerdict }: HarnessOptions = {}) {
+function renderOverlay({ onClose = vi.fn(), onVerdict, autoConfirmMs }: HarnessOptions = {}) {
   const todosById = new Map(TODOS.map((t) => [t.id, t]));
   const listsById = new Map(LISTS.map((l) => [l.id, l]));
   const verdictSpy = onVerdict ?? vi.fn(() => ({ undoId: "undo-1", label: "Decided" }));
@@ -120,6 +123,7 @@ function renderOverlay({ onClose = vi.fn(), onVerdict }: HarnessOptions = {}) {
         ctx={ctx}
         onClose={onClose}
         onVerdict={verdictSpy}
+        autoConfirmMs={autoConfirmMs}
       />
     </TooltipProvider>,
   );
@@ -250,6 +254,69 @@ describe("OverdriveOverlay", () => {
     press("Escape");
     expect(onClose).not.toHaveBeenCalled();
     expect(screen.queryByText(/schedule for/i)).toBeNull();
+  });
+
+  describe("auto-confirm delay (EI-103)", () => {
+    it("is off by default — no auto-commit no matter how long a stage sits", () => {
+      const { verdictSpy } = renderOverlay();
+      press("ArrowRight");
+      act(() => {
+        vi.advanceTimersByTime(60_000);
+      });
+      expect(verdictSpy).not.toHaveBeenCalled();
+    });
+
+    it("commits the staged day on its own once the configured delay elapses", () => {
+      const { verdictSpy } = renderOverlay({ autoConfirmMs: 2000 });
+      press("ArrowRight"); // stages "Today"
+      expect(verdictSpy).not.toHaveBeenCalled();
+      act(() => {
+        vi.advanceTimersByTime(2000);
+      });
+      expect(verdictSpy).toHaveBeenCalledWith(TODOS[0], { kind: "scheduled", date: "2026-08-10" });
+    });
+
+    it("further ramp input restarts the countdown rather than stacking with it", () => {
+      const { verdictSpy } = renderOverlay({ autoConfirmMs: 2000 });
+      press("ArrowRight"); // stages "Today"
+      act(() => {
+        vi.advanceTimersByTime(1500);
+      });
+      expect(verdictSpy).not.toHaveBeenCalled();
+      press("ArrowRight"); // re-stages "Tomorrow" — restarts the timer
+      act(() => {
+        vi.advanceTimersByTime(1500);
+      });
+      // The ORIGINAL 2000ms window would have elapsed by now (1500 + 1500),
+      // but the restage reset the clock, so only 1500ms has passed since.
+      expect(verdictSpy).not.toHaveBeenCalled();
+      act(() => {
+        vi.advanceTimersByTime(500);
+      });
+      expect(verdictSpy).toHaveBeenCalledWith(TODOS[0], { kind: "scheduled", date: "2026-08-11" });
+    });
+
+    it("clearing the stage (Escape) cancels the pending auto-confirm", () => {
+      const { verdictSpy } = renderOverlay({ autoConfirmMs: 2000 });
+      press("ArrowRight");
+      press("Escape");
+      act(() => {
+        vi.advanceTimersByTime(5000);
+      });
+      expect(verdictSpy).not.toHaveBeenCalled();
+    });
+
+    it("shows the auto-confirm hint only when a delay is configured", () => {
+      renderOverlay({ autoConfirmMs: 2000 });
+      press("ArrowRight");
+      expect(screen.getByText(/auto-confirms/i)).toBeTruthy();
+    });
+
+    it("shows no auto-confirm hint when the delay is off", () => {
+      renderOverlay();
+      press("ArrowRight");
+      expect(screen.queryByText(/auto-confirms/i)).toBeNull();
+    });
   });
 
   it("shows a finish state once the queue is exhausted", () => {

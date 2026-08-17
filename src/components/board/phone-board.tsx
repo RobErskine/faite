@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { effectiveListColor } from "@/lib/colors";
 import { NAV_LOAD_MORE, navKeyOf } from "@/lib/column-nav";
 import { formatDay } from "@/lib/scheduling";
+import { OVERDRIVE_MIN_TODOS } from "@/lib/overdrive";
 import { AppHeader } from "./app-header";
 import { SignedOutBanner } from "@/components/auth/signed-out-banner";
 import { BoardColumn } from "./board-column";
@@ -193,6 +194,7 @@ export function PhoneBoard({
               footer={
                 <OverdriveButton
                   count={board.overflow.todos.length}
+                  minTodos={settings?.overdriveMinTodos ?? OVERDRIVE_MIN_TODOS}
                   onOpen={() => setOverdriveOpen(true)}
                 />
               }

@@ -14,10 +14,17 @@ import { daysBetween, formatDay, formatShortDate, type PlacementContext, rollove
 
 // ---------------------------------------------------------------------------
 // Tunables — one block, so feel can be adjusted without hunting through the
-// module. See EI-103 for the two of these slated to become user settings.
+// module.
 // ---------------------------------------------------------------------------
 
-/** Overflow's entry button appears once the column holds at least this many. */
+/**
+ * Overflow's entry button appears once the column holds at least this many —
+ * the fallback used only for a `settings` row that predates
+ * `settingsSchema.overdriveMinTodos` (EI-103 made the threshold a per-user
+ * setting; every read site does `settings?.overdriveMinTodos ??
+ * OVERDRIVE_MIN_TODOS`). Also the schema's own `default(5)`, so a fresh
+ * account gets the same number this constant used to hardcode for everyone.
+ */
 export const OVERDRIVE_MIN_TODOS = 5;
 /** Ceiling on the arrow ramp, in eligible days from today. Clamped, not
  * wrapped — silently landing back on today after enough presses would be
