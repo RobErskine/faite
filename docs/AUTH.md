@@ -97,12 +97,40 @@ Regenerate the schema and migration, then apply to **both** databases:
 
 ```bash
 npm run auth:schema                                            # → auth-schema.ts + SQL
-npx wrangler d1 execute faite-auth --local  --file=drizzle/auth/<new>.sql
-npx wrangler d1 execute faite-auth --remote --file=drizzle/auth/<new>.sql
+npm run auth:migrate:local
+npm run auth:migrate:remote
 ```
 
-Deploys do **not** run migrations. Applying only `--remote` breaks local dev;
-only `--local` breaks production *after* the next deploy, not at build time.
+(`wrangler d1 migrations apply AUTH_DB`, pointed at `./drizzle/auth` via
+`migrations_dir` in `wrangler.jsonc` — replaces the old hand-rolled
+`wrangler d1 execute --file=drizzle/auth/<new>.sql` two-liner. Same effect,
+but idempotent: it tracks applied migrations in a `d1_migrations` bookkeeping
+table and only runs what's new, so re-running either command is a safe no-op.
+A migration that fails rolls back and exits non-zero instead of silently
+leaving the DB half-migrated.)
+
+`npm run deploy` (the one Rob actually runs) does **not** run migrations —
+that's deliberate; see below. `npm run deploy:with-migrations` (EI-79) runs
+`auth:migrate:remote` then `deploy`, and is **not** wired into any deploy
+path (`npm run deploy`, CI, or Cloudflare Workers Builds) — it exists so the
+step can be reviewed and opted into consciously, not so it runs tonight.
+
+**Before ever using `auth:migrate:remote` / `deploy:with-migrations` for
+real: the production `faite-auth` D1 database has no bookkeeping history.**
+Every migration to date was applied by hand with `wrangler d1 execute
+--file`, which doesn't write to the `d1_migrations` table `migrations
+apply` uses to know what's already run. The first `--remote` run will see
+an empty bookkeeping table, conclude `0000_amused_ink.sql` is unapplied, and
+try to `CREATE TABLE account` etc. against tables that already exist —
+confirmed locally (see EI-79 PR) that this fails loudly (exit 1, migration
+rolled back, nothing left half-applied) rather than corrupting anything, but
+it **will** block a deploy that depends on it until production's
+`d1_migrations` table is manually seeded to mark `0000_amused_ink.sql` as
+already applied. Do that once, deliberately, before wiring this in — don't
+let a deploy discover it.
+
+Applying only `--remote` breaks local dev; only `--local` breaks production
+*after* the next deploy, not at build time.
 
 ### Inspect or fix users
 

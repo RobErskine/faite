@@ -300,9 +300,13 @@ Production-as-staging is a reasonable call while Faite has one user, but:
    Treat previews as "the real app on a different URL", not a sandbox. This is
    the first thing to fix when environments get split.
 2. **Deploys do not run D1 migrations.** New ones need
-   `npx wrangler d1 execute faite-auth --remote --file=drizzle/auth/<file>.sql`
-   applied by hand. Schema-dependent code deployed without it fails at runtime,
-   not at build.
+   `npm run auth:migrate:remote` (`wrangler d1 migrations apply AUTH_DB
+   --remote`) applied by hand. Schema-dependent code deployed without it
+   fails at runtime, not at build. `npm run deploy:with-migrations` (EI-79)
+   runs the migration step before deploying, but it is a standalone opt-in
+   script — nothing invokes it automatically; see docs/AUTH.md "Change auth
+   config" for the one-time bootstrap production needs before it's safe to
+   use with `--remote`.
 
 ---
 
