@@ -865,14 +865,38 @@ is still in `SYNC_KINDS` as of this writing; EI-62's retirement half is open.
 (EI-63, additive — `Todo.location` was never migrated to a reference), day
 notes + derived timeline (EI-87), foreground reminders (EI-88), resizable board
 split (EI-89), board view settings (EI-90), the ⌘K overhaul (EI-92), per-todo
-History timeline (EI-94 — `todoEvent`, the 9th sync kind, see below), plus list
-tabs, priority, and location pulled forward — see §2.8b.
+History timeline (EI-94 — `todoEvent`, the 9th sync kind, see below), saved
+views (EI-65 — see below), plus list tabs, priority, and location pulled
+forward — see §2.8b.
 
-**P6 fast-follow — still open:** sub-tasks (EI-55), saved views (EI-65 — a
-different thing from the view-settings dropdown that shipped), icon upload,
-magic-link auth (EI-66; Google moved into P2 — see §2.12), the palette command
-registry (EI-77), the shortcut help sheet (EI-75), and dnd-kit screen-reader
+**P6 fast-follow — still open:** sub-tasks (EI-55), icon upload, magic-link
+auth (EI-66; Google moved into P2 — see §2.12), the palette command registry
+(EI-77), the shortcut help sheet (EI-75), and dnd-kit screen-reader
 announcements (EI-84).
+
+**Saved views (EI-65) is a named snapshot of four existing settings fields**
+(`activeTabId`, `visibleStatuses`, `visibleDays`, `showWeekends` — the same
+fields `ViewSettings`/`TabStrip`, EI-90, already write live), switchable from
+`SavedViewsMenu` (`components/board/saved-views-menu.tsx`) next to
+`ViewSettings` in `DateNav`. Deliberately **not** a saved search or a label/
+list filter — neither exists as a persisted, reusable concept elsewhere in the
+app yet (column text filters are explicitly ephemeral, and there is no
+label-based board filtering at all), so building either into a "view" would
+have been new, unscoped surface rather than a snapshot of something that
+already exists. See `lib/saved-views.ts`'s module doc for the shape.
+
+**Local-only, not a synced entity.** Every field a saved view bundles is
+already device-relevant the way `activeTabId` itself is (excluded from
+`SETTINGS_SYNCED_FIELDS`, §2.12) — "which tab is open" doesn't obviously
+transfer between a phone and a desktop the way a percentage split does. There
+is also no stated need yet for a saved view to follow a user across devices,
+and turning it into a synced entity is the full `Place`/`ReminderPreset`
+seven-file ritual (`docs/SCHEMA-CHANGES.md`) for a feature whose only spec was
+its title. `lib/saved-views.ts` stores a plain JSON array under
+`localStorage["faite:saved-views"]`, same try/catch discipline as
+`lib/onboarding.ts`. If cross-device sync turns out to matter, migrating that
+array into a synced entity later is a contained follow-up, not a foreclosed
+option — explicitly out of scope for this first cut.
 
 **Markdown descriptions shipped** alongside day notes: `MarkdownField`
 (`components/ui/markdown-field.tsx`) wraps BlockNote and now backs both
