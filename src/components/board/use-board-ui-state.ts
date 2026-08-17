@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import type { CivilDate, List, Tab, Todo } from "@/lib/schema";
+import { civilDateSchema, type CivilDate, type List, type Tab, type Todo } from "@/lib/schema";
 import { LOCAL_OWNER_ID } from "@/lib/store/repositories";
 import { mutateSettings } from "@/lib/store/mutate";
 import { undoLast } from "@/lib/undo";
@@ -67,10 +67,72 @@ export function computeModalOpen(state: BoardOverlayState): boolean {
   );
 }
 
+const TODO_PARAM = "todo";
+const DAY_PARAM = "day";
+
+/**
+ * Reads `?todo=<id>` / `?day=<date>` off the current URL — the deep-link
+ * half of EI-149. Follows `readLayoutOverride`'s convention in
+ * `use-viewport.ts`: read straight off `window.location.search`, not
+ * through Next's router, since `/board` is a single client-only route
+ * (`ssr:false`) with no server render to reconcile against.
+ *
+ * `day` is validated against `civilDateSchema` so a malformed value
+ * degrades to "no day" rather than reaching `setOpenDay` with garbage.
+ * `todo` is deliberately NOT validated against anything here — whether it
+ * names a real todo is `data.openTodo`'s job (`board.tsx`), and
+ * `computeModalOpen` already treats an id that doesn't resolve as closed
+ * (`openTodoExists`). Setting `openTodoId` to a dead id via this path is
+ * exactly as safe as any other caller of `setOpenTodoId` doing the same.
+ *
+ * Mutually exclusive by convention, matching `board.tsx`'s day-sheet-to-
+ * todo-sheet handoff (which always closes the day sheet before opening a
+ * todo): a `todo` param wins over a `day` param if a URL somehow carries
+ * both.
+ */
+function readDeepLinkParams(): { todoId: string | null; day: CivilDate | null } {
+  if (typeof window === "undefined") return { todoId: null, day: null };
+  const params = new URLSearchParams(window.location.search);
+  const todoId = params.get(TODO_PARAM);
+  if (todoId) return { todoId, day: null };
+  const rawDay = params.get(DAY_PARAM);
+  const day = rawDay && civilDateSchema.safeParse(rawDay).success ? rawDay : null;
+  return { todoId: null, day };
+}
+
+/**
+ * Mirrors `openTodoId`/`openDay` back onto the URL — `history.replaceState`
+ * only, never `pushState`, so opening a sheet never adds a back-button stop
+ * (every card click would otherwise pollute history). Every other query
+ * param (`?layout=`, etc.) passes through untouched. A no-op write (the URL
+ * already matches) skips the `replaceState` call entirely, since it's
+ * called on every render where either input changed, including the initial
+ * one where the URL is often already correct (it's where the values came
+ * from in the first place).
+ */
+function writeDeepLinkParams(todoId: string | null, day: CivilDate | null): void {
+  const params = new URLSearchParams(window.location.search);
+  params.delete(TODO_PARAM);
+  params.delete(DAY_PARAM);
+  if (todoId) params.set(TODO_PARAM, todoId);
+  else if (day) params.set(DAY_PARAM, day);
+  const query = params.toString();
+  const next = `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`;
+  const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  if (next !== current) {
+    window.history.replaceState(window.history.state, "", next);
+  }
+}
+
 export function useBoardUiState() {
   const [activeTodo, setActiveTodo] = useState<Todo | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
-  const [openTodoId, setOpenTodoId] = useState<string | null>(null);
+  /** Lazy initializer, not an effect: reading `?todo=`/`?day=` (EI-149) here
+   * means the very first render already reflects the URL, with no flash of
+   * a closed sheet followed by it snapping open. See `readDeepLinkParams`. */
+  const [openTodoId, setOpenTodoId] = useState<string | null>(
+    () => readDeepLinkParams().todoId,
+  );
   /**
    * The day whose timeline the open todo sheet was reached from, if any —
    * powers the sheet's "Back to Aug 11" affordance. Null for every other way
@@ -85,8 +147,9 @@ export function useBoardUiState() {
   const [infoTabId, setInfoTabId] = useState<string | null>(null);
   const [archivedOpen, setArchivedOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  /** The day whose details sheet is open, if any. */
-  const [openDay, setOpenDay] = useState<CivilDate | null>(null);
+  /** The day whose details sheet is open, if any. Same lazy-initializer
+   * reasoning as `openTodoId` above — see `readDeepLinkParams`. */
+  const [openDay, setOpenDay] = useState<CivilDate | null>(() => readDeepLinkParams().day);
   /** Overdrive (EI-97). */
   const [overdriveOpen, setOverdriveOpen] = useState(false);
   /** The keyboard-shortcut help sheet (EI-75), opened by `?`. */
@@ -287,6 +350,42 @@ export function useBoardUiState() {
     setOpenDay(todoOriginDay);
     setTodoOriginDay(null);
   }, [todoOriginDay]);
+
+  /**
+   * `?todo=`/`?day=` deep links (EI-149), write direction. The initial read
+   * happens in the `openTodoId`/`openDay` lazy initializers above; this
+   * effect keeps the URL in sync as either changes thereafter — every sheet
+   * open (a board card, the palette, a `faite://` link once the desktop
+   * shell wires one up) and every close, via `replaceState` only (see
+   * `writeDeepLinkParams` for why never `pushState`). Platform-agnostic
+   * deliberately: this reads/writes `window.location` and nothing
+   * Tauri-specific, so it behaves identically on myfaite.app and inside the
+   * desktop shell's webview.
+   */
+  useEffect(() => {
+    writeDeepLinkParams(openTodoId, openDay);
+  }, [openTodoId, openDay]);
+
+  /**
+   * Back/forward support for the same deep links. `popstate` only fires for
+   * history entries that already existed before this hook's own
+   * `replaceState` calls above (which never create a new entry), so this
+   * exclusively covers the user's browser back/forward buttons and anything
+   * else that lands the app on a URL with different `?todo=`/`?day=`
+   * params — never something the write-direction effect above just did.
+   * Reads the URL fresh rather than trusting event details, matching
+   * `readDeepLinkParams`'s single source of truth.
+   */
+  useEffect(() => {
+    function onPopState() {
+      const { todoId, day } = readDeepLinkParams();
+      setOpenTodoId(todoId);
+      setTodoOriginDay(null);
+      setOpenDay(day);
+    }
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
 
   return {
     activeTodo,
