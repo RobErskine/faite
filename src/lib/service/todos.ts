@@ -30,6 +30,8 @@ export interface CreateTodoInput {
   position?: string;
   reminderTime?: string | null;
   placeId?: string | null;
+  /** Versioned JSON blob — see `lib/capture-source.ts`. Groundwork for D5. */
+  source?: string | null;
 }
 
 /**
@@ -106,6 +108,7 @@ export function buildCreateTodoEntry(ctx: ServiceContext, input: CreateTodoInput
     recurrenceParentId: null,
     completedAt: null,
     reminderTime: input.reminderTime ?? null,
+    source: input.source ?? null,
   };
 
   // The one safety net a hand-mirrored builder actually needs: fail loudly
