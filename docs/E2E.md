@@ -428,3 +428,73 @@ That is the deliberate trade: un-sharding costs latency and buys back ~8
 billed minutes per PR run, and with iteration counts of 5–8 pushes on a real
 feature branch, the per-run cost is what compounds. If wall clock ever
 matters more, sharding the gate 2× costs 3 more billed minutes.
+
+---
+
+## 9. Why CI runs a production build, and dev doesn't
+
+`webServer.command` in `playwright.config.ts` is `next dev` locally and
+`npx next start` in CI, against a real `next build`. That split reverses §5's
+original "dev everywhere for startup speed" — §5 was right that dev *starts*
+faster, but the cost is not paid at startup. It is paid on every single
+`page.goto("/board")`, once per test.
+
+### The measurement
+
+Same commit, same machine, one server at a time, over the 53-test gate
+(`npm run e2e:ci`, 5 workers):
+
+| server | total CPU | min | median | max | failures |
+| -- | -- | -- | -- | -- | -- |
+| `next dev` | **487s** | 2.9s | 8.1s | 26.1s | **5 of 53** |
+| `next start` | **225s** | 1.2s | 3.6s | 13.4s | **0 of 53** |
+
+**54% less CPU, and 55% faster per test.** Repeated three times against dev
+(613s / 536s / 487s) and twice against production (264s / 225s); the ratio
+held every time.
+
+### The reliability difference matters more than the speed
+
+All five dev-mode failures were the same thing — the fixture timing out after
+15s waiting for `Continue without an account`, i.e. the board never finishing
+its boot. That is not a flaky assertion; it is several workers hitting an
+on-demand-compiling dev server at once and starving it. It is the same
+failure that forced `workers` from 4 down to 3 (§8.4), and the same one that
+made `webServer.url` point at `/board` so the route is compiled during
+startup rather than by the first tests to arrive.
+
+Production serves pre-built chunks and simply does not have the failure mode.
+Zero failures across both runs, including the CDP touch specs.
+
+Testing the production bundle is also **higher fidelity** — it is what
+actually ships. The reason §5 could pick dev freely still holds (`/board` is
+`ssr:false` and reads only IndexedDB, so dev and prod render identically),
+which is exactly why this swap is safe.
+
+### Why local stays on `next dev`
+
+`reuseExistingServer: !CI` means a developer already running `npm run dev`
+has their server reused — that is the whole point locally. Requiring
+`npm run build` before every local e2e run would cost more developer time
+than the seconds it saves. The two paths differ, deliberately, in the same
+way `workers` and `retries` already do.
+
+To reproduce CI's setup locally:
+
+```bash
+npm run build
+npx next start -p 3001 &
+E2E_PORT=3001 npm run e2e:ci
+```
+
+`E2E_PORT` and `E2E_SERVER` exist for exactly this.
+
+### Cost
+
+The build costs ~35s in the e2e job (with `.next/cache` restored) and buys
+back roughly half of the test time, so it pays for itself on the gate and
+pays more on a full `workflow_dispatch` run.
+
+**Open follow-up:** `workers` was capped at 3 because the *dev* server needed
+a core. With production that constraint is weaker, so 4 may now be safe and
+would cut wall clock further. Not changed here — one variable at a time.
