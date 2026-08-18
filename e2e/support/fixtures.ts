@@ -51,6 +51,26 @@ export const test = base.extend({
     await expect(page.getByRole("region", { name: "Overflow" })).toBeVisible({
       timeout: 15_000,
     });
+
+    // Toasts never intercept a click in this suite (EI-187). Sonner renders
+    // bottom-right with a ~4s auto-dismiss, and on the narrow phone
+    // viewports that lands directly over the Overdrive button in the
+    // bottom-left rail — so any test that toasts and then clicks had to
+    // either race the toast or wait it out. `overdrive.spec.ts` waited it
+    // out, nine times per project, which measured as ~36s per project and
+    // ~20% of the entire suite's wall time spent watching an animation
+    // finish.
+    //
+    // Making the toast layer non-interactive removes the interception
+    // outright, so no spec needs the wait. Nothing here asserts that a toast
+    // is clickable — they are read for their text (`toBeVisible`) and
+    // nothing more — and sonner's own dismiss-on-tap is covered by unit
+    // tests, so this trades away no coverage. Scoped by `!important` because
+    // sonner sets `pointer-events` inline on the toaster root.
+    await page.addStyleTag({
+      content: "[data-sonner-toaster],[data-sonner-toast]{pointer-events:none!important}",
+    });
+
     await use(page);
   },
 });

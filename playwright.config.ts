@@ -27,16 +27,56 @@ const PORT = 3000;
 // no error surfaced anywhere except a WebSocket console warning.
 const BASE_URL = `http://localhost:${PORT}`;
 
+/**
+ * Which specs run under which device project — the single source of truth,
+ * and the main reason this suite is ~3 minutes rather than ~10 (EI-187).
+ *
+ * Before this existed, every project ran every spec: 36 tests x 5 projects =
+ * 180 runs, of which 56 were immediately thrown away by a
+ * `test.skip(project.name !== ...)` guard inside the spec. Those guards were
+ * correct about the coverage they wanted and wrong about where to say it —
+ * Playwright still had to schedule a worker slot, resolve fixtures and start
+ * a test for each one. Declaring it here means the runs are never created.
+ *
+ * The full rationale for each line, and the coverage deliberately traded
+ * away for time, is written down in docs/E2E.md §8 — read that before
+ * widening or narrowing any of these lists.
+ */
+const SPECS = {
+  foundations: "**/foundations.spec.ts",
+  desktopLayout: "**/desktop-layout.spec.ts",
+  keyboardDrag: "**/keyboard-drag.spec.ts",
+  coreFlows: "**/core-flows.spec.ts",
+  reminders: "**/reminders.spec.ts",
+  overdrive: "**/overdrive.spec.ts",
+  touchAffordances: "**/touch-affordances.spec.ts",
+  touchSmoke: "**/touch-smoke.spec.ts",
+} as const;
+
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
-  // CDP touch sessions (touch.ts) do not parallelize well against a single
-  // worker's browser process on CI runners with few cores; leave Playwright's
-  // own default (cpu count) locally, cap it in CI.
-  workers: process.env.CI ? 2 : undefined,
-  reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : "list",
+  // 3, measured, not 2 (too idle) and not 4 (too greedy) — EI-187.
+  //
+  // `ubuntu-latest` has 4 vCPUs and this was hardcoded to 2, leaving half the
+  // machine unused. But 4 is a worker per core with nothing left for the
+  // `next dev` server those workers all share, and that server is not a
+  // spectator here: it compiles routes on demand and answers every
+  // navigation. Measured at 4, it starved — cold `/board` compiles took 7.9s
+  // (four workers hitting an uncompiled route at once) and
+  // `dev-seed.ts`'s ten sequential IndexedDB writes stopped fitting in
+  // `expect`'s 5s default, failing all 24 `overdrive` tests outright.
+  // 3 leaves a core for the server. Locally, Playwright's own default (cpu
+  // count) still applies — a dev machine has cores to spare.
+  workers: process.env.CI ? 3 : undefined,
+  // `blob`, not `html`, in CI: the job is sharded across runners (EI-187), so
+  // no single runner sees the whole suite and no single runner can write a
+  // complete HTML report. Each shard emits a blob, and the `e2e-report` job
+  // stitches them into one HTML report — but only when something failed,
+  // which is the only time anyone opens it.
+  reporter: process.env.CI ? [["github"], ["blob"]] : "list",
   timeout: 30_000,
 
   use: {
@@ -47,7 +87,15 @@ export default defineConfig({
 
   webServer: {
     command: `npx next dev -p ${PORT}`,
-    url: BASE_URL,
+    // `/board`, not `/`. Playwright polls this URL until it answers and only
+    // then starts the run — so whatever it points at is the route that gets
+    // compiled during startup, for free, while the runner is otherwise idle.
+    // Pointed at `/`, that warmed the marketing page and left `/board`
+    // uncompiled, so the first N tests each paid a ~7.9s Turbopack compile
+    // out of their own 30s budget, concurrently, and timed out (EI-187).
+    // Every test in this suite lands on `/board`; warming it is warming the
+    // suite.
+    url: `${BASE_URL}/board`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
     stdout: "pipe",
@@ -58,6 +106,18 @@ export default defineConfig({
     {
       name: "desktop",
       use: { ...devices["Desktop Chrome"], viewport: { width: 1440, height: 900 } },
+      // The only project that runs the pointer/keyboard-bound specs, and the
+      // one that carries `foundations` — that spec asserts `<head>` and the
+      // manifest, which no viewport can change, so one project is a complete
+      // check of it and five were four redundant copies.
+      testMatch: [
+        SPECS.foundations,
+        SPECS.desktopLayout,
+        SPECS.keyboardDrag,
+        SPECS.coreFlows,
+        SPECS.reminders,
+        SPECS.overdrive,
+      ],
     },
     // Every touch/tablet project below forces `defaultBrowserType: "chromium"`
     // over whatever the device preset ships (iPhone/iPad presets default to
@@ -70,18 +130,44 @@ export default defineConfig({
     {
       name: "tablet-ipad-mini",
       use: { ...devices["iPad Mini"], defaultBrowserType: "chromium" },
+      // Tablet renders the same two-half layout as desktop, just narrower,
+      // so its distinct value is the coarse-pointer affordances plus the
+      // cross-viewport behaviour contract — not a third copy of the feature
+      // specs desktop and phone already cover.
+      testMatch: [SPECS.coreFlows, SPECS.touchAffordances],
     },
     {
       name: "phone-iphone",
       use: { ...devices["iPhone 15"], defaultBrowserType: "chromium" },
+      // The reference phone: `PhoneBoard`'s two-pager shell is the layout
+      // most different from desktop, so it is the second project to carry
+      // the full feature specs.
+      testMatch: [
+        SPECS.coreFlows,
+        SPECS.touchAffordances,
+        SPECS.touchSmoke,
+        SPECS.reminders,
+        SPECS.overdrive,
+      ],
     },
     {
       name: "phone-iphone-landscape",
       use: { ...devices["iPhone 15 landscape"], defaultBrowserType: "chromium" },
+      // Keeps `overdrive` because a 393px-tall viewport is where a
+      // full-screen overlay actually breaks, and this is the only project
+      // that exercises one. Drops `reminders`: that spec's assertions are
+      // about what got written to the store and which badge renders, neither
+      // of which turns on orientation.
+      testMatch: [SPECS.coreFlows, SPECS.touchAffordances, SPECS.touchSmoke, SPECS.overdrive],
     },
     {
       name: "phone-pixel",
       use: { ...devices["Pixel 7"] },
+      // The Android profile — a second portrait phone at a different DPR and
+      // UA. Carries the viewport-sensitive specs only; running the feature
+      // specs here as well duplicated `phone-iphone` at nearly the same
+      // width for nearly the same result.
+      testMatch: [SPECS.coreFlows, SPECS.touchAffordances, SPECS.touchSmoke],
     },
   ],
 });

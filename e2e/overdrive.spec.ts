@@ -29,12 +29,24 @@ async function seedOverflow(page: Page, count = 10): Promise<void> {
     .getByRole("button", { name: new RegExp(`seed overflow \\(${count}\\)`, "i") })
     .click();
   const toast = page.getByText(new RegExp(`seeded ${count} to-dos into overflow`, "i"));
-  await expect(toast).toBeVisible();
+  // Not `expect`'s 5s default. This is not waiting for a render — it is
+  // waiting for `dev-seed.ts` to finish, and that is `count` *sequential*
+  // `await createTodo()` calls, each its own IndexedDB transaction, each
+  // re-running the board's live queries. On a loaded CI runner that
+  // genuinely exceeds 5s, and the button is still reading "Seeding…" when
+  // the assertion gives up (EI-187). The test's own 30s budget is still the
+  // real bound; this just stops a slow-but-working seed reading as a
+  // missing toast.
+  await expect(toast).toBeVisible({ timeout: 20_000 });
   await page.keyboard.press("Escape"); // close Settings
-  // On the narrow phone viewport the toast (bottom-right) sits directly over
-  // the Overdrive button (bottom-left rail) — wait for sonner's own auto-
-  // dismiss so the very next click in a test never races it.
-  await expect(toast).toBeHidden({ timeout: 10_000 });
+  // No wait for the toast to clear. It used to block here for sonner's ~4s
+  // auto-dismiss, because on the narrow phone viewports the toast
+  // (bottom-right) sits directly over the Overdrive button (bottom-left
+  // rail) and the next click in a test would race it. The fixture now makes
+  // the whole toast layer `pointer-events: none` (support/fixtures.ts), so
+  // it cannot intercept anything and there is nothing left to wait for —
+  // this function is called nine times per project, so that wait was ~36s
+  // of every project's run (EI-187).
 }
 
 const overdriveButton = (page: Page) => page.getByRole("button", { name: /overdrive/i });

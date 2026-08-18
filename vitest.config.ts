@@ -8,7 +8,11 @@ import { fileURLToPath } from "node:url";
 export default defineConfig({
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    // `e2e/**/*.test.ts` is not the Playwright suite — those are `*.spec.ts`
+    // and Playwright runs them. It is for tests *about* the e2e setup that
+    // want to fail in seconds during `verify` rather than minutes into the
+    // e2e job; `e2e/config-coverage.test.ts` is the first (EI-187).
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx", "e2e/**/*.test.ts"],
   },
   resolve: {
     alias: {

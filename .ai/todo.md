@@ -1634,3 +1634,44 @@ Grepping the dev log for the subject, body, and sender: **0 hits inside our own
 - Zone config is not code: Email Routing must be enabled on `in.myfaite.app`
   with a catch-all → Worker rule, and the first deploy must be
   `npm run deploy:with-migrations`.
+
+## Review — EI-187, CI e2e job, 2026-08-18
+
+Diagnose-and-optimize pass on `.github/workflows/ci.yml` + the Playwright
+suite. PR RobErskine/faite#19, five commits, merged nothing.
+
+**Result: e2e job 599s → 252s (4.2 min), whole workflow ~10 min → 4:33.**
+All four of the issue's acceptance criteria met, numbers recorded on EI-187.
+
+Measured before guessing. A JSON-reporter run locally produced a per-spec ×
+per-project cost map, which reordered the whole plan: `overdrive.spec.ts`
+alone was **56% of the suite** (465s of 830s CPU) and nothing in the issue's
+option list would have touched the reason why. Its `seedOverflow()` helper —
+9 calls per project — ended by waiting out sonner's ~4s toast auto-dismiss.
+Making the toast layer `pointer-events: none` in the fixture removed the
+wait outright at zero coverage cost (~93s → ~54s per project).
+
+The structural fix was moving spec→project coverage out of in-spec
+`test.skip` guards and into per-project `testMatch`: 56 of 180 runs existed
+only to be scheduled, have fixtures resolved, and then exit. **180 → 89.**
+
+Then 3 shards, a Playwright container (kills the `apt` step that hung for 22
+and 35 min in the merge queue), job `timeout-minutes` (there were *none*,
+hence the 6-hour default), and `concurrency`/`cancel-in-progress` on PRs.
+
+Things worth remembering are in `lessons.md`; the short version is that the
+first CI run of this branch failed 21/89 because I raised `workers` to 4,
+and that failure was more informative than the success would have been.
+
+Verified rather than assumed: 4 consecutive green runs (worst shard 252/251/
+262/252s); `--shard` partitions the suite exactly and is balanced by
+duration; and the `e2e-report` merge job — which only runs `if: failure()`
+and would otherwise have shipped untested — was exercised by deliberately
+breaking a test and confirming it merged all three shards into one report.
+
+Closed the footgun the change introduced: a spec in no `testMatch` runs
+under zero projects and passes silently, so `e2e/config-coverage.test.ts`
+fails `npm test` in milliseconds if that ever happens. EI-161 (`/capture`
+coverage) was the ticket about to walk into it.
+
+**Open:** PR #19 is ready for review, not merged — Rob's call.

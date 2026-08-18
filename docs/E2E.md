@@ -175,16 +175,161 @@ runs it as a separate, parallel job (`.github/workflows/ci.yml`) instead.
   `desktop-layout.spec.ts`.
 - New behavior that should hold on every viewport goes in
   `core-flows.spec.ts`.
-- New gesture coverage goes in `touch-smoke.spec.ts`, guarded to
-  `phone-*` projects the same way the existing two tests are
-  (`test.beforeEach` + `test.skip(condition, reason)` — **not** a top-level
-  `test.skip(callback)`, which silently no-ops: `testInfo` isn't populated
-  outside a test/hook body, so the condition never actually skips anything
-  and every project just runs the file. This is easy to get wrong once and
-  hard to notice, since the failure mode is "tests ran when they shouldn't
-  have," not an error.)
+- New gesture coverage goes in `touch-smoke.spec.ts`. **Which projects a
+  spec runs under is decided in `playwright.config.ts`, not in the spec** —
+  add the file to the `testMatch` list of each project that should run it
+  (§8). A brand-new spec that nobody adds to a `testMatch` runs under *zero*
+  projects and passes silently; `e2e/config-coverage.test.ts` fails `npm
+  test` if you forget, so you find out in `verify` in seconds rather than
+  never. Specs used to carry a `test.beforeEach` + `test.skip(project.name
+  !== ...)` guard instead; those are gone, because a guard only skips a run
+  Playwright has already scheduled, started and resolved fixtures for.
+  - If you do need a conditional skip *within* a project — the way
+    `touch-smoke.spec.ts` skips its reorder test on
+    `phone-iphone-landscape` (§3) — it still has to be
+    `test.beforeEach` + `test.skip(condition, reason)`, and **not** a
+    top-level `test.skip(callback)`, which silently no-ops: `testInfo`
+    isn't populated outside a test/hook body, so the condition never
+    actually skips anything and every project just runs the file. Easy to
+    get wrong once and hard to notice, since the failure mode is "tests ran
+    when they shouldn't have," not an error.
 - When P0–P4 of the mobile plan land and the desktop-only layout gets a real
   phone/tablet shell, this suite's job changes from "prove nothing broke" to
   "prove the new shell actually works" — update the Tier A assertions in
   place to describe the new structure per breakpoint, rather than writing a
   parallel suite next to the old one.
+
+---
+
+## 8. What runs where, and what was traded away for time (EI-187)
+
+The suite used to take ~10 minutes of an ~11 minute CI job. It now takes
+about three. Most of that came from deleting work rather than parallelising
+it, which means **coverage was genuinely given up** — this section is the
+record of exactly what, so the trade can be re-argued later with the same
+information that was used to make it.
+
+### 8.1 The matrix
+
+`playwright.config.ts` gives every project a `testMatch`. That is the single
+source of truth; there are no project guards inside specs any more (§7).
+
+| Spec | desktop | tablet-ipad-mini | phone-iphone | phone-iphone-landscape | phone-pixel |
+| -- | :-: | :-: | :-: | :-: | :-: |
+| `foundations` (2) | ● | | | | |
+| `desktop-layout` (5) | ● | | | | |
+| `keyboard-drag` (7) | ● | | | | |
+| `core-flows` (5) | ● | ● | ● | ● | ● |
+| `reminders` (4) | ● | | ● | | |
+| `overdrive` (8) | ● | | ● | ● | |
+| `touch-affordances` (3) | | ● | ● | ● | ● |
+| `touch-smoke` (2) | | | ● | ● | ● |
+
+**89 tests.** Before, every project ran every spec — 36 x 5 = **180 runs**,
+of which 56 immediately hit a skip guard and exited.
+
+### 8.2 Why each cell is empty
+
+- **`foundations` on one project.** It asserts the `<head>` viewport meta tag
+  and fetches the PWA manifest. Neither can vary by emulated viewport, so
+  the other four runs were four identical assertions about one static file.
+  Nothing was traded here; the coverage is unchanged.
+- **`desktop-layout`, `keyboard-drag` on `desktop` only.** Unchanged from
+  before — these were already guarded to `desktop`. They are just declared
+  in the config now instead of skipped at runtime.
+- **`touch-affordances` off `desktop`, `touch-smoke` off desktop/tablet.**
+  Also unchanged: `pointer: coarse` doesn't exist on desktop, and CDP touch
+  dispatch is only wired for the `phone-*` projects (§3).
+- **`core-flows` everywhere.** Untouched on purpose. This is the
+  cross-viewport behaviour contract — it is the one suite whose whole reason
+  for existing is running on all five, and it stays that way.
+- **`reminders` on `desktop` + `phone-iphone` only.** *Traded away:* tablet,
+  landscape and Pixel. This spec asserts what got written to the store and
+  which badge renders on the card; the only viewport-sensitive step in it is
+  `switchToLists()`, and `core-flows` already exercises that helper on all
+  five projects. **Risk accepted:** a reminder badge that renders correctly
+  on `phone-iphone` but clips at iPad Mini's width would not be caught here.
+  Tier A asserts structure, not pixels, so it would most likely not have
+  been caught before either.
+- **`overdrive` on `desktop` + `phone-iphone` + `phone-iphone-landscape`.**
+  *Traded away:* tablet and Pixel. Kept landscape deliberately, even though
+  it is the most expensive of the three, because a 393px-tall viewport is
+  where a full-screen overlay actually breaks and this is the only project
+  that exercises one. **Risk accepted:** an Overdrive regression specific to
+  iPad Mini's width or to Pixel's device-pixel-ratio.
+
+### 8.3 The one change that wasn't a coverage trade
+
+`overdrive.spec.ts` was **56% of the entire suite** (465s of 830s CPU),
+because `seedOverflow()` — called nine times per project — ended with
+`await expect(toast).toBeHidden({ timeout: 10_000 })`, waiting out sonner's
+~4s auto-dismiss. That wait existed for a real reason: on the narrow phone
+viewports the toast (bottom-right) lands directly over the Overdrive button
+(bottom-left rail), and the next click in the test would race it.
+
+`support/fixtures.ts` now sets `pointer-events: none` on the toast layer, so
+a toast cannot intercept a click at all and there is nothing left to wait
+for. No spec asserts that a toast is clickable — they read toasts for their
+text and nothing more — so this cost no coverage. It took `overdrive` from
+~93s per project to ~54s on its own.
+
+If you ever *do* need to assert tapping a toast, remove that `addStyleTag`
+for that spec rather than deleting it globally.
+
+### 8.4 The CI job
+
+- **Runs in `mcr.microsoft.com/playwright:v<version>-noble`.** Not for
+  speed — for the hang. The old job cached the browser binaries but still
+  ran `npx playwright install-deps chromium` (i.e. `apt`) on *every* run,
+  and that call stalled twice during the Aug 17–18 merge queue: 22 min on
+  `ei-183`, 35 min on `ei-62`, both green on re-run, neither related to any
+  test. The image ships Chromium and its OS deps, so there is no `apt` call
+  left to stall and no browser cache to maintain.
+- **The image tag has to match `@playwright/test` in `package-lock.json`.**
+  Bumping Playwright without bumping the tag means the baked-in browsers
+  aren't the ones that version expects. The `Playwright version matches the
+  container` step fails the job immediately with the tag to change, rather
+  than letting it fail confusingly later.
+- **`workers: 3`, not 2 and not 4.** `ubuntu-latest` has 4 vCPUs and the
+  config had hardcoded 2, leaving half the machine idle. 4 was measured and
+  is *worse*: a worker per core leaves nothing for the `next dev` server all
+  of them share, and that server compiles routes on demand and answers every
+  navigation. At 4 it starved — cold `/board` compiles took 7.9s and
+  `dev-seed.ts`'s ten sequential IndexedDB writes stopped fitting in
+  `expect`'s 5s default, failing all 24 `overdrive` tests. 3 leaves the
+  server a core.
+- **`webServer.url` points at `/board`, not `/`.** Playwright polls that URL
+  until it answers and only then starts the run, so whichever route it names
+  is the one compiled during startup, for free, while the runner is
+  otherwise idle. Pointed at `/`, it warmed the marketing page and left
+  `/board` — the route *every* test in this suite loads — to be compiled by
+  whichever tests reached it first, concurrently, out of their own 30s
+  budgets.
+- **Sharded three ways**, with `--shard=i/N` driven by `strategy.job-total`
+  so the matrix is the only place the count is written down. Removing work
+  got the E2E step from 610s to 386s; the rest of the way to the 5-minute
+  bar had to come from more runners, because what was left is honest work.
+  Three and not four: the ~80s of container pull + `npm ci` is fixed per
+  shard and doesn't shrink, so each extra shard buys less for the same cost.
+- **`e2e/config-coverage.test.ts` guards the matrix.** Declaring coverage in
+  the config is what made the suite fast, but it moved the failure mode from
+  "slow" to "quiet": a spec absent from every `testMatch` runs nowhere and
+  reports nothing. That test runs in `npm test` — so in `verify`, in
+  milliseconds — and fails if any spec is unregistered, if a `testMatch`
+  names a file that no longer exists (a rename silently stops a spec
+  running), or if a project has no `testMatch` at all and has quietly gone
+  back to running everything.
+- **The HTML report is merged, and only on failure.** Each shard emits a
+  `blob` report; the `e2e-report` job stitches them with
+  `playwright merge-reports` into the single browsable report the job used
+  to upload directly. No shard sees the whole suite, so no shard can write a
+  complete report on its own. It is skipped when CI is green, which is when
+  nobody opens it anyway.
+- **Timeouts exist now.** `timeout-minutes: 15` on both jobs and 10 on the
+  E2E step. There were none at all before, so a stall ran to GitHub's
+  6-hour default — which is the only reason a hung `apt` could burn 35
+  minutes before a human noticed.
+- **`concurrency` with `cancel-in-progress` on PRs.** Pushing three times to
+  a PR used to leave three full runs racing for runners when only the last
+  one's result would ever be read. `main` is exempt: each push there gets
+  its own group, so a merge is never cancelled by the merge behind it.

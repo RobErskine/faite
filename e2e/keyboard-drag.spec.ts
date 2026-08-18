@@ -5,8 +5,9 @@ import { test, expect } from "./support/fixtures";
  * (EI-74; docs/DRAG-AND-DROP.md §7 item 1). dnd-kit's KeyboardSensor has been
  * wired since P1 but never driven by a real keyboard in this suite.
  *
- * `desktop` only — this is a keyboard path, not a touch or viewport one; see
- * `desktop-layout.spec.ts` for the same guard pattern.
+ * `desktop` only — this is a keyboard path, not a touch or viewport one.
+ * Enforced by `desktop`'s `testMatch` in playwright.config.ts, which is where
+ * every spec-to-project mapping now lives (EI-187); see docs/E2E.md §8.
  *
  * Activation: `.focus()` a card's drag grip
  * (`aria-label="Drag to reschedule or reorder <title>"`, `todo-card.tsx`),
@@ -27,10 +28,6 @@ import { test, expect } from "./support/fixtures";
  * invisible to the keyboard path.
  */
 test.describe("keyboard drag and drop", () => {
-  test.beforeEach(async ({}, testInfo) => {
-    test.skip(testInfo.project.name !== "desktop", "keyboard path, not a viewport one");
-  });
-
   test("Space lifts a card and Escape cancels, leaving order unchanged", async ({ page }) => {
     const backlog = page.getByRole("region", { name: "Backlog" });
     const addField = backlog.getByPlaceholder("Add a to-do");

@@ -5,7 +5,9 @@ import { switchToLists } from "./support/phone";
  * Tier A coverage for P1 (docs/MOBILE.md) — the two claims that phase makes:
  * hover-only reveals are visible without hovering, and touch targets are
  * comfortably tappable. `phone-*`/`tablet-*` projects only (all forced
- * `pointer: coarse` via device emulation — see playwright.config.ts).
+ * `pointer: coarse` via device emulation) — which projects those are is
+ * declared by their `testMatch` in playwright.config.ts, not guarded for in
+ * here; see docs/E2E.md §8.
  *
  * Scope, stated honestly: `pointer-coarse:min-h-11`-style fixes that land
  * directly on the interactive element (Button, SelectTrigger, the tab pill)
@@ -24,13 +26,6 @@ import { switchToLists } from "./support/phone";
  * which show both at once.
  */
 test.describe("touch affordances", () => {
-  test.beforeEach(async ({}, testInfo) => {
-    test.skip(
-      testInfo.project.name === "desktop",
-      "pointer: coarse only exists on the tablet/phone projects",
-    );
-  });
-
   test("hover-only reveals are visible without hovering", async ({ page }, testInfo) => {
     // Overflow's rail-collapse affordance only exists when Overflow renders
     // as a pinned rail (tablet/desktop layout) — on phone (P3) Overflow is a
