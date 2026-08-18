@@ -38,6 +38,7 @@ Everything is written down. The problem is knowing which file, so start here:
 | build the public API or MCP adapter | **[API.md](docs/API.md)** — not started; the design constraint to read *before* writing an endpoint |
 | work on locations — free text, saved places, or the Google typeahead | **[LOCATION.md](docs/LOCATION.md)** — the three-layer model, the Worker proxy, and the cost rules that break silently |
 | set up or re-key the Google Places API | **[GOOGLE-PLACES-SETUP.md](docs/GOOGLE-PLACES-SETUP.md)** — the one-time runbook. Do **not** referrer-restrict the key |
+| work on email capture — forwarding mail into Backlog | **[EMAIL-INGEST.md](docs/EMAIL-INGEST.md)** — the flow, the trust model, and the privacy invariants |
 
 Split by design: **rationale lives in ARCHITECTURE, setup in SETUP, operations
 in the subsystem doc.** No file repeats another's reasoning — two copies drift,

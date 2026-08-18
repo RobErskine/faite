@@ -24,7 +24,8 @@ export const auth = createAuth({
   GOOGLE_CLIENT_ID: "",
   GOOGLE_CLIENT_SECRET: "",
   // Unused by Better Auth — present only because this literal must satisfy the
-  // whole generated `CloudflareEnv`. Every new secret has to be added here too,
-  // or `npm run auth:schema` stops compiling.
+  // whole generated `CloudflareEnv`. Every new secret or `vars` entry has to be
+  // added here too, or `npm run auth:schema` stops compiling.
   GOOGLE_PLACES_API_KEY: "",
+  EMAIL_INGEST_DOMAIN: "in.myfaite.app",
 });

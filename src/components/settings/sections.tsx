@@ -1,10 +1,11 @@
-import { Bell, CornerDownRight, MapPin, Palette, User, Wrench } from "lucide-react";
+import { Bell, CornerDownRight, Mail, MapPin, Palette, User, Wrench } from "lucide-react";
 import type { SettingsSection } from "./types";
 import { ProfileSection } from "./profile-section";
 import { DesignSection } from "./design-section";
 import { LoopSection } from "./loop-section";
 import { RemindersSection } from "./reminders-section";
 import { PlacesSection } from "./places-section";
+import { EmailSection } from "./email-section";
 import { DeveloperSection } from "./developer-section";
 
 /**
@@ -47,6 +48,13 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     description: "Saved locations you can attach to a to-do.",
     icon: MapPin,
     Component: PlacesSection,
+  },
+  {
+    id: "email",
+    label: "Email capture",
+    description: "A private address that turns forwarded email into to-dos.",
+    icon: Mail,
+    Component: EmailSection,
   },
   {
     id: "developer",
