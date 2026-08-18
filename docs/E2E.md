@@ -287,9 +287,33 @@ for that spec rather than deleting it globally.
   aren't the ones that version expects. The `Playwright version matches the
   container` step fails the job immediately with the tag to change, rather
   than letting it fail confusingly later.
-- **`workers: 4`, not 2.** `ubuntu-latest` has 4 vCPUs and the config had
-  hardcoded 2. The old comment justified the cap as protection for the CDP
-  touch specs; measured at 4, they did not get flakier.
+- **`workers: 3`, not 2 and not 4.** `ubuntu-latest` has 4 vCPUs and the
+  config had hardcoded 2, leaving half the machine idle. 4 was measured and
+  is *worse*: a worker per core leaves nothing for the `next dev` server all
+  of them share, and that server compiles routes on demand and answers every
+  navigation. At 4 it starved — cold `/board` compiles took 7.9s and
+  `dev-seed.ts`'s ten sequential IndexedDB writes stopped fitting in
+  `expect`'s 5s default, failing all 24 `overdrive` tests. 3 leaves the
+  server a core.
+- **`webServer.url` points at `/board`, not `/`.** Playwright polls that URL
+  until it answers and only then starts the run, so whichever route it names
+  is the one compiled during startup, for free, while the runner is
+  otherwise idle. Pointed at `/`, it warmed the marketing page and left
+  `/board` — the route *every* test in this suite loads — to be compiled by
+  whichever tests reached it first, concurrently, out of their own 30s
+  budgets.
+- **Sharded three ways**, with `--shard=i/N` driven by `strategy.job-total`
+  so the matrix is the only place the count is written down. Removing work
+  got the E2E step from 610s to 386s; the rest of the way to the 5-minute
+  bar had to come from more runners, because what was left is honest work.
+  Three and not four: the ~80s of container pull + `npm ci` is fixed per
+  shard and doesn't shrink, so each extra shard buys less for the same cost.
+- **The HTML report is merged, and only on failure.** Each shard emits a
+  `blob` report; the `e2e-report` job stitches them with
+  `playwright merge-reports` into the single browsable report the job used
+  to upload directly. No shard sees the whole suite, so no shard can write a
+  complete report on its own. It is skipped when CI is green, which is when
+  nobody opens it anyway.
 - **Timeouts exist now.** `timeout-minutes: 15` on both jobs and 10 on the
   E2E step. There were none at all before, so a stall ran to GitHub's
   6-hour default — which is the only reason a hung `apt` could burn 35

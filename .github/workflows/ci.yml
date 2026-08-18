@@ -60,12 +60,32 @@ jobs:
         run: npm run build:static
 
   e2e:
+    name: e2e (${{ matrix.shard }}/${{ strategy.job-total }})
     runs-on: ubuntu-latest
     # Parallel to `verify`, not appended to it: `verify` already runs two
     # Next builds and takes minutes; browser launch + a live dev server adds
     # real time, and this suite doesn't depend on `verify`'s outcome, so
     # there's no reason to serialize them. See docs/E2E.md.
     timeout-minutes: 15
+
+    # Sharded three ways (EI-187). Cutting the suite from 180 runs to 89 and
+    # giving the dev server a core back took the E2E step from 610s to 386s,
+    # which is a real win but still over the 5-minute bar this job is held
+    # to. The rest has to come from more runners, because what's left is
+    # honest work rather than waste.
+    #
+    # Three, not four: setup (container pull + `npm ci`) is a fixed ~80s per
+    # shard that doesn't shrink, so the marginal shard buys progressively
+    # less wall-clock for the same fixed cost. Three lands the job at ~3.5
+    # min for ~30% more runner-minutes than the single job it replaces.
+    #
+    # `fail-fast: false` because a failure in shard 2 says nothing about
+    # shards 1 and 3, and cancelling them just means re-running to find out
+    # whether they'd have failed too.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
 
     # Runs in Playwright's own image rather than on bare `ubuntu-latest`
     # (EI-187). This is the fix for the intermittent hang, not a speed-up:
@@ -109,14 +129,59 @@ jobs:
           fi
 
       - name: E2E
-        # Belt and braces under the job timeout: this step is ~3 min, so 10
+        # Belt and braces under the job timeout: this step is ~2 min, so 10
         # bounds a hang to something a human notices in one coffee rather
         # than one afternoon.
         timeout-minutes: 10
-        run: npm run e2e
+        # `strategy.job-total` rather than a second hardcoded 3 — add or
+        # remove a shard in the matrix above and this follows it.
+        run: npm run e2e -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}
+
+      # Always, not `if: failure()` — a shard that fails still has to hand its
+      # blob to the report job, and so does every shard that passed, or the
+      # merged report is missing the context that makes the failure readable.
+      - name: Upload blob report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: blob-report-${{ matrix.shard }}
+          path: blob-report/
+          # Only an input to `e2e-report`, which runs minutes later.
+          retention-days: 1
+
+  # Stitches the shards' blobs into the single browsable HTML report the job
+  # used to upload directly. Only on failure: it is the artifact nobody opens
+  # when CI is green, and skipping it keeps the green path at three jobs.
+  e2e-report:
+    name: e2e report
+    needs: [e2e]
+    if: ${{ failure() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # `merge-reports` is pure report processing — no browser is launched,
+      # so this job wants neither the Playwright container nor a browser
+      # download.
+      - run: npm ci
+
+      - name: Download blob reports
+        uses: actions/download-artifact@v4
+        with:
+          path: all-blob-reports
+          pattern: blob-report-*
+          merge-multiple: true
+
+      - name: Merge into one HTML report
+        run: npx playwright merge-reports --reporter html ./all-blob-reports
 
       - name: Upload Playwright report
-        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report

@@ -71,7 +71,12 @@ export default defineConfig({
   // 3 leaves a core for the server. Locally, Playwright's own default (cpu
   // count) still applies — a dev machine has cores to spare.
   workers: process.env.CI ? 3 : undefined,
-  reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : "list",
+  // `blob`, not `html`, in CI: the job is sharded across runners (EI-187), so
+  // no single runner sees the whole suite and no single runner can write a
+  // complete HTML report. Each shard emits a blob, and the `e2e-report` job
+  // stitches them into one HTML report — but only when something failed,
+  // which is the only time anyone opens it.
+  reporter: process.env.CI ? [["github"], ["blob"]] : "list",
   timeout: 30_000,
 
   use: {
