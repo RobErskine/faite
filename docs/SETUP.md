@@ -149,54 +149,66 @@ Separate from §3, and in the opposite direction: §3 is **sending**, this is
 **receiving**. Needed only for the email-capture feature.
 
 Nav is **account-level**, not per-zone: **Compute → Email Service → Email
-Routing**, then pick the domain with the selector at the top. That selector is
-the thing to watch — see the trap below.
+Routing**, then pick the domain with the selector at the top.
 
 1. Domain selector → `myfaite.app` → **Settings → Subdomains** → add
    `in.myfaite.app`. Cloudflare writes that subdomain its own MX/SPF records.
-2. **Switch the domain selector to `in.myfaite.app`** → **Routing rules** →
-   turn **Catch-all** on → Action **Send to a Worker** → `faite` → Save.
-3. **Switch back to `myfaite.app`** and leave *its* Catch-all **Disabled**.
+2. **Routing rules** → turn **Catch-all** on → Action **Send to a Worker** →
+   `faite` → Save.
 
-Do step 2 before step 3, so there is never a window with no working path.
+That is the whole setup. Verified end to end on 2026-08-18.
 
-### The trap: which domain is the catch-all on?
+### The catch-all is ONE object for the whole zone
 
-**Routing rules are per-domain, and a subdomain is a separate domain.** The
-rules list defaults to an "All domains" filter, where a catch-all on the apex
-and a catch-all on `in.myfaite.app` look identical — same row, same
-`Catch-all` label, same Worker.
+This is the part worth understanding, because the shape of the UI actively
+suggests otherwise.
 
-Get this wrong and **the feature fails silently.** Mail to
-`<localpart>@in.myfaite.app` matches no rule on that domain, so Email Routing
-rejects it at the rule-match stage and **the Worker is never invoked** —
-nothing in `wrangler tail`, nothing in the app's logs, no `bad-recipient`. Just
-a bounce to the sender and silence everywhere you would think to look.
+**There is exactly one catch-all per zone, and it covers the apex *and* every
+enabled subdomain.** Not one per domain. Confirmed two ways: the API exposes it
+at `/zones/{zone_id}/email/routing/rules/catch_all` — a single object, no
+subdomain parameter, so a per-subdomain catch-all is not expressible — and a
+live test with only the zone catch-all enabled delivered
+`zzztest@in.myfaite.app` to the Worker:
 
-To check unambiguously, set the selector to `in.myfaite.app` and confirm the
-Catch-all row is there and Active. The **Activity log** tab is the other
-tell: a message that never reached the Worker shows as **Dropped**, whereas a
-handled one shows **Handled**.
+```
+Email from:… to:zzztest@in.myfaite.app - Ok
+  (log) [faite] email-ingest {"decision":"unknown-address","addressHash":"…"}
+```
 
-Note **Catch-all is a toggle at the top of the Routing rules page**, not
-something you add with "Create routing rule".
+Two consequences that are easy to get backwards:
 
-### Why the apex catch-all stays Disabled
+- **You cannot route the subdomain to the Worker while leaving the apex
+  unrouted.** Same toggle. Mail to `anything@myfaite.app` therefore also
+  reaches the Worker and is rejected `bad-recipient` (correct — the Worker
+  accepts exactly `EMAIL_INGEST_DOMAIN`), which is *the expected steady state*,
+  not a misconfiguration.
+- **"Disabling" the catch-all does not delete it.** It is a permanent singleton
+  and the toggle only flips `enabled`. Its id survives, so re-enabling restores
+  the same rule.
 
-Not Drop, and not Send to a Worker:
+**Literal rules ARE per-domain** — the Create routing rule form has a domain
+picker next to the local part, and those rules take priority over the
+catch-all. That is the seam for carving specific addresses out of the Worker's
+path (below). Note the form rejects `*`: wildcards are not a valid pattern, and
+a catch-all is the toggle, not a rule you create there.
 
-- **Disabled** → unknown apex recipients get a clean 550, and `rob@myfaite.app`
-  stays available as a literal rule later.
-- **Drop** → a silent blackhole; you would never learn mail to `rob@` was being
-  eaten.
-- **Send to a Worker** → the ingest Worker hard-550s `postmaster@`, `abuse@`,
-  and any bounce addressed to `noreply@myfaite.app`. Hard-rejecting
-  `postmaster@`/`abuse@` on a domain you *send* from is a deliverability
-  liability.
+### Carving addresses out of the Worker's path
 
-Want `rob@myfaite.app`? Domain selector → `myfaite.app` → Create routing rule →
-pattern `rob` → **Send to an email** → your Gmail. Free, no Worker, and it
-needs the destination address verified by a confirmation email first.
+Because the catch-all sends *everything* on the zone to the ingest Worker, any
+apex address you actually want has to be a literal rule that outranks it.
+
+Worth doing, since the Worker hard-550s anything it does not recognise and
+`myfaite.app` is a domain we *send* from — hard-rejecting `postmaster@` and
+`abuse@` is a deliverability liability:
+
+| Pattern | Domain | Action |
+|---|---|---|
+| `postmaster` | `myfaite.app` | Send to an email → your inbox |
+| `abuse` | `myfaite.app` | Send to an email → your inbox |
+| `rob` | `myfaite.app` | Send to an email → your inbox |
+
+Destination addresses must be verified by a confirmation email first
+(Destination Addresses tab) — `rob@roberskine.com` already is.
 
 ### What this does to the apex
 

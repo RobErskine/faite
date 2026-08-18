@@ -208,12 +208,14 @@ diagnosing an apex-vs-subdomain routing mistake.
 Cloudflare Workers Builds does not run D1 migrations, and `email_ingest` is a
 new table.
 
-Zone setup is a one-time job and lives in **`docs/SETUP.md` §3b** — including
-the trap that makes it worth reading rather than improvising: routing rules are
-**per-domain**, the rules list defaults to an "All domains" filter where an apex
-catch-all and a subdomain catch-all look identical, and getting it wrong fails
-**silently** (the Worker is never invoked, so there is nothing in
-`wrangler tail` at all).
+Zone setup is a one-time job and lives in **`docs/SETUP.md` §3b**. The one
+thing to carry over here: **the catch-all is a single object for the whole
+zone** and covers the apex *and* every enabled subdomain — not one per domain,
+and not expressible per-subdomain. So enabling ingest on `in.myfaite.app`
+necessarily points `myfaite.app` at this Worker too, and mail to the apex is
+rejected `bad-recipient`. That is the expected steady state, not a
+misconfiguration. Literal rules (which *are* per-domain) outrank the catch-all
+and are how specific apex addresses get carved back out.
 
 Testing without any of that: `scripts/email-smoke/README.md`.
 
@@ -224,10 +226,10 @@ Work down this list; each step rules out a whole class.
 | Symptom | Where to look | Means |
 |---|---|---|
 | Nothing in `wrangler tail` | Email Routing → **Activity log** | The Worker was never invoked — routing or authentication, not our code |
-| Activity log says **Dropped** | Routing rules, domain selector | No rule matched on that domain — catch-all is missing or on the apex |
+| Activity log says **Dropped** | Routing rules → Catch-all toggle | No rule matched — the zone catch-all is disabled, or a literal rule is shadowing the address |
 | Activity log says **Rejected** | Expand the row for SPF/DKIM/DMARC | Auth failure at stage 2, *before* rule match. Common on server-side auto-forwards — see below |
 | Activity log says **Forwarded** | Routing rules | The rule is a mail forward, not *Send to a Worker* |
-| `{"decision":"bad-recipient"}` | Routing rules | The Worker got a recipient on the wrong domain — an apex catch-all is pointed at it |
+| `{"decision":"bad-recipient"}` | Nothing — expected | Somebody mailed the apex. The zone catch-all covers it too, and the Worker only accepts `EMAIL_INGEST_DOMAIN` |
 | `{"decision":"unknown-address"}` | Settings → Email capture | Wrong or rotated address |
 | No `email-ingest` line but an `EXCEEDED_CPU` error | Workers logs | CPU/memory limit, not a routing problem |
 
