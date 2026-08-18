@@ -44,6 +44,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { RepeatDialog } from "@/components/board/repeat-dialog";
 import { RepeatSection, type RecurrenceInfo } from "@/components/board/repeat-section";
 import { LocationField } from "@/components/board/location-field";
+import { CaptureSourceBadge } from "@/components/todo/capture-source-badge";
 import { ListField } from "@/components/board/list-field";
 import { LabelPicker } from "@/components/board/label-picker";
 import { ReminderPicker } from "@/components/board/reminder-picker";
@@ -556,6 +557,13 @@ function TodoSheetContent({
             )}
           </div>
           <QuickAddPreview chips={titleChips} className="px-0 pt-1 pb-0" />
+          {/*
+            Provenance, in the header rather than down with the fields: "this
+            arrived from somewhere else" changes how you read the title and
+            the notes, so it has to be visible before them. Renders nothing at
+            all for a todo you typed yourself (EI-186).
+          */}
+          <CaptureSourceBadge source={todo.source} className="mt-1" />
         </SheetHeader>
 
         <div className="flex-1 space-y-5 overflow-y-auto px-4 pb-4">

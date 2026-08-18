@@ -15,6 +15,13 @@
       "when": 1786862133423,
       "tag": "0001_fast_venom",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1787022335453,
+      "tag": "0002_puzzling_cerebro",
+      "breakpoints": true
     }
   ]
 }

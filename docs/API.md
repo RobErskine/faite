@@ -51,6 +51,22 @@ Two consequences worth deciding early:
   one with its own node id, or the API caller supplies one. The DO stamping it
   is simpler and keeps `nodeId` meaningful; it needs a stable server node id,
   which does not exist yet.
+
+  **Half-answered by EI-186.** `serverHlcClock()`
+  (`src/server/service/hlc.ts`) stamps `<phys>:<counter>:server` and is safe
+  **for creates**: a create targets an entity with no `field_clocks` rows, so
+  there is no LWW comparison to lose and no durable node id is required.
+  **Server-originated UPDATES are still open** — the clock is per-isolate, so
+  two isolates can issue the same stamp inside one millisecond and an update
+  would silently lose. Do not reach for it from an update path until the
+  persisted-node-id question is answered.
+
+- **How does a server write resolve `position`?** *Answered by EI-186.* It
+  cannot use `buildCreateTodoEntry`'s `fallbackPosition()`, which is the
+  constant `"a0"` — every server-created todo would collide on one sort key.
+  `UserDurableObject.nextTodoPosition()` is the read-only RPC that resolves a
+  real one, mirroring the client's `nextTodoPosition()`
+  (`store/repositories.ts:137`). Reuse it; do not add a second answer.
 - **Live push comes free if you route through `push()`** — the P4 broadcast
   fires from inside it, so an API write already wakes every connected device.
   A parallel write path would not, and nobody would notice until a device sat
@@ -66,6 +82,7 @@ Two consequences worth deciding early:
 | LWW decision | `src/server/sync/apply-patch.ts` | Pure |
 | Auth + routing seam | `src/server/worker.ts`, `sync/routes.ts`, `places/routes.ts` | `output: export` forbids Next Route Handlers that read `Request` — API routes must live here too (ARCHITECTURE §2.12) |
 | A route that already gates on a session and proxies a paid upstream | `src/server/places/routes.ts` | The closest existing shape to a public API route: 501/401/400/429/502 mapping, and validation split into a testable pure module beside it |
+| The service layer's first real consumer | `src/server/email/ingest.ts` (EI-186) | Non-HTTP transport (`email()`) going through `createTodo` → `push()`. Shows what a `ServiceContext` and a `PushTransport` actually look like at a call site |
 | CORS allow-list | `src/server/auth.ts`'s `TRUSTED_ORIGINS` | One list |
 
 ## Open questions for P5

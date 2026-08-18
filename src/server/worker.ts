@@ -5,6 +5,12 @@
  * wrap it: delegate all HTTP handling to the OpenNext handler, and re-export the
  * DO class alongside it so the `USER_DO` binding in wrangler.jsonc can resolve.
  *
+ * `email()` sits beside `fetch()` for the same structural reason (EI-186):
+ * an inbound Email Routing message is delivered to a handler export on the
+ * Worker entry, and this file is the Worker entry. No new Worker, no new
+ * deploy target, no `wrangler.jsonc` change for receiving — Email Routing
+ * rules are zone configuration.
+ *
  * It also intercepts `/api/auth/*` for Better Auth (P2). That could not be a
  * Next.js Route Handler: `output: export` (the Capacitor build target, kept
  * green by CI) forbids Route Handlers that read `Request`, so the entire auth
@@ -17,6 +23,8 @@
 import openNextHandler from "open-next/worker";
 import { createAuth } from "./auth";
 import { handleOptions, withCors } from "./cors";
+import { handleEmail } from "./email/ingest";
+import { handleEmailRequest } from "./email/routes";
 import { handlePlacesRequest } from "./places/routes";
 import { handleSyncRequest } from "./sync/routes";
 
@@ -46,6 +54,11 @@ export default {
       // `Request`, so they can't be a Next.js Route Handler either.
       return handleSyncRequest(request, env);
     }
+    if (pathname.startsWith("/api/email")) {
+      // Same seam again (EI-186): reveal/rotate the caller's own secret
+      // ingest address. See ./email/routes.ts.
+      return handleEmailRequest(request, env);
+    }
     if (pathname.startsWith("/api/places")) {
       // Same reasoning again (EI-83), plus one of its own: this is the only
       // place `GOOGLE_PLACES_API_KEY` can live. It is a Worker secret, and
@@ -56,5 +69,19 @@ export default {
     // OpenNext always exports a fetch handler; the optional type is generic
     // ExportedHandler boilerplate, not a real possibility here.
     return openNextHandler.fetch!(request, env, ctx);
+  },
+
+  /**
+   * Inbound mail for `in.myfaite.app` (EI-186). Everything is in
+   * `./email/ingest.ts`; this stays a one-liner so the entry file keeps
+   * reading as a routing table.
+   *
+   * `handleEmail` never throws — an uncaught exception here would be
+   * captured verbatim by Workers Logs, and a MIME parser's error message
+   * quotes the bytes it choked on. See the privacy invariants in
+   * `docs/EMAIL-INGEST.md`.
+   */
+  email(message, env) {
+    return handleEmail(message, env);
   },
 } satisfies ExportedHandler<CloudflareEnv>;

@@ -1,5 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import { drizzle, type DrizzleSqliteDODatabase } from "drizzle-orm/durable-sqlite";
+import { positionAtEnd } from "@/lib/ordering";
 import type { PullResponse, PushRequest, PushResponse } from "@/lib/sync/wire";
 import { SETTINGS_ENTITY_ID, SYNC_KINDS, SYNC_PROTOCOL_VERSION } from "@/lib/sync/wire";
 import type { ServerMessage } from "@/lib/sync/ws-protocol";
@@ -345,6 +346,38 @@ export class UserDurableObject extends DurableObject {
       .one();
 
     return { migrations, tables, nextVersion: Number(meta.next_version) };
+  }
+
+  /**
+   * The position a new todo should take at the end of the board.
+   *
+   * Exists because `buildCreateTodoEntry`'s `fallbackPosition()` is
+   * `positionAtEnd(null)`, which is the *constant* `"a0"` — a server-created
+   * todo that accepts the fallback collides on the same sort key as every
+   * other one, and the board's `byPosition` comparator then orders them
+   * arbitrarily. A caller with no board in front of it (email ingest today,
+   * a `POST /todos` later) has no sibling positions to index between, so it
+   * has to ask the authoritative store.
+   *
+   * Mirrors the client's `nextTodoPosition()` (`store/repositories.ts:137`)
+   * deliberately, including both parts that read like bugs: the max is
+   * **global, not per-list**, and **tombstones are included** (the client
+   * does `db.todos.orderBy("position").last()`, which has no `deletedAt`
+   * filter). Matching it is the point — and the tombstone half is also the
+   * safer half: excluding deleted rows can generate a key a tombstone
+   * already holds, since `position` carries no unique index.
+   *
+   * `ORDER BY` on a TEXT column is BINARY-collated by default, which is the
+   * same comparison `byPosition` does in JS over the same ASCII alphabet.
+   *
+   * Read-only, so it allocates no `version` and writes no `field_clocks`;
+   * the write that uses the result still goes through `push()`.
+   */
+  async nextTodoPosition(): Promise<string> {
+    const [row] = this.ctx.storage.sql
+      .exec<{ position: string }>("SELECT position FROM todos ORDER BY position DESC LIMIT 1")
+      .toArray();
+    return positionAtEnd(row?.position ?? null);
   }
 
   /**

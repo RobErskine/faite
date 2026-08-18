@@ -58,6 +58,21 @@
     "enabled": true
   },
 
+  // Where inbound mail for EI-186 arrives. A SUBDOMAIN, not the apex: Email
+  // Routing is zone-level and claims the apex MX by default, and the apex is
+  // wanted for a real `rob@myfaite.app` later. Cloudflare supports unlocking
+  // the root-domain MX/SPF/DKIM to point at another provider while a
+  // configured subdomain keeps routing here (limit: 30 domains per zone).
+  //
+  // **Receiving needs nothing else in this file.** The catch-all rule that
+  // sends `*@in.myfaite.app` to this Worker is ZONE CONFIGURATION — set in the
+  // dashboard or the Email Routing REST API — not a binding. This var only
+  // tells the Worker which domain to accept, so a message delivered to some
+  // other hostname is rejected rather than silently resolved.
+  "vars": {
+    "EMAIL_INGEST_DOMAIN": "in.myfaite.app"
+  },
+
   // Per-user Durable Object: authoritative user data + sync coordinator (plan P3).
   // Declared at P0 so the custom worker entry and migrations exist before sync lands.
   "durable_objects": {

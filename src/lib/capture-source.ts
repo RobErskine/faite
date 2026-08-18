@@ -56,6 +56,27 @@ export const captureSourceSchema = z.object({
       automation: z.boolean().optional(),
     })
     .optional(),
+  /**
+   * `kind: "email"` — the forward that produced this todo (EI-186).
+   *
+   * No DB migration: `Todo.source` is an opaque `text` column, and Zod's
+   * `z.object` strips unknown keys, so a client shipped before this field
+   * existed parses the new blob into a `CapturedSource` without it rather
+   * than rejecting the row.
+   *
+   * `serializeSource`'s truncation ladder does NOT know about these fields
+   * (it only shrinks `window.title`/`pageTitle`), so the caller is
+   * responsible for bounding `subject` before it gets here — see
+   * `src/server/email/parse.ts`.
+   */
+  email: z
+    .object({
+      /** The parsed `From:` address, or the envelope sender as a fallback. */
+      from: z.string().optional(),
+      subject: z.string().optional(),
+      messageId: z.string().optional(),
+    })
+    .optional(),
 });
 export type CapturedSource = z.infer<typeof captureSourceSchema>;
 
