@@ -439,12 +439,12 @@ export function Board() {
         todos={data.todos}
         tabs={data.tabs}
         labels={data.labels}
-        projects={data.projects}
         places={data.places}
         reminderPresets={data.reminderPresets}
         events={data.todoEvents}
         timezone={data.settings?.timezone ?? "UTC"}
         listsById={data.listsById}
+        tabsById={data.tabsById}
         onClose={ui.closeTodoSheet}
         onSave={actions.handleSheetSave}
         onSetStatus={actions.handleSheetStatus}

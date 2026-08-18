@@ -16,7 +16,6 @@ import {
 import {
   createLabel,
   createList,
-  createProject,
   createTodo,
   LOCAL_OWNER_ID,
 } from "@/lib/store/repositories";
@@ -300,7 +299,7 @@ export function CommandPalette({
    */
   const recordCreate = (
     label: string,
-    kind: "todo" | "list" | "label" | "project",
+    kind: "todo" | "list" | "label",
     id: string,
   ) => {
     const entryId = pushUndo(label, [createUndoStep(kind, id)]);
@@ -360,13 +359,6 @@ export function CommandPalette({
       case "new-label":
         recordCreate(`Label "${name}" created`, "label", await createLabel(name));
         break;
-      case "new-project":
-        recordCreate(
-          `Project "${name}" created`,
-          "project",
-          await createProject(name),
-        );
-        break;
       case "new-todo": {
         const backlog = lists.find((l) => l.isBacklog);
         const listId = mentionedList?.id ?? backlog?.id ?? null;
@@ -408,13 +400,11 @@ export function CommandPalette({
       ? "List name…"
       : mode.kind === "new-label"
         ? "Label name…"
-        : mode.kind === "new-project"
-          ? "Project name…"
-          : mode.kind === "new-tab"
-            ? "Tab name…"
-            : mode.kind === "new-todo"
-              ? "What needs doing?"
-              : "Search to-dos or run a command…";
+        : mode.kind === "new-tab"
+          ? "Tab name…"
+          : mode.kind === "new-todo"
+            ? "What needs doing?"
+            : "Search to-dos or run a command…";
 
   /** The picker modes filter an existing set; the rest take free text. */
   const isEntryMode =
@@ -483,7 +473,7 @@ export function CommandPalette({
       open={open}
       onOpenChange={handleOpenChange}
       title="Command palette"
-      description="Create and manage to-dos, lists, labels, and projects"
+      description="Create and manage to-dos, lists, and labels"
       className="sm:max-w-2xl"
     >
       {/*

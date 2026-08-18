@@ -83,7 +83,6 @@ describe("commandsByGroup", () => {
       "create-new-todo",
       "create-new-list",
       "create-new-label",
-      "create-new-project",
       "create-new-tab",
     ]);
   });

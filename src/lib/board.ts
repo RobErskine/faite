@@ -498,6 +498,35 @@ export function filterListColumn(column: ListColumn, query: string): ListColumn 
 }
 
 /**
+ * The tab a todo's list belongs to — `listId → list.tabId → tab`, per
+ * ARCHITECTURE §2.14. DERIVED, never stored: moving a list to a different tab
+ * updates every todo in it for free, with no backfill and no risk of a stale
+ * denormalised copy (EI-62 — this replaced the `project` field).
+ *
+ * `null` is a real answer in two cases, not a missing value, and both must
+ * render blank rather than a placeholder:
+ *
+ * - A Backlog todo. `list.tabId === null` means "pinned into every tab"
+ *   (`schema.ts`'s `List.tabId` doc), so there is no single tab to name.
+ * - An unfiled todo (`listId === null`), or one pointing at a list that no
+ *   longer resolves.
+ *
+ * `listsById`/`tabsById` should carry ARCHIVED records too, mirroring
+ * `effectiveListColor` (`lib/colors.ts`) — a todo can sit in a list that has
+ * since been filed away, and its tab should still resolve.
+ */
+export function tabForTodo(
+  todo: Pick<Todo, "listId">,
+  listsById: ReadonlyMap<string, Pick<List, "tabId">>,
+  tabsById: ReadonlyMap<string, Tab>,
+): Tab | null {
+  if (!todo.listId) return null;
+  const list = listsById.get(todo.listId);
+  if (!list?.tabId) return null;
+  return tabsById.get(list.tabId) ?? null;
+}
+
+/**
  * Partition one computed column's cards by originating list.
  *
  * `index` must cover EVERY list that can own a scheduled card — the rendered

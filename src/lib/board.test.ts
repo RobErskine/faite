@@ -23,6 +23,7 @@ import {
   preferPreciseTarget,
   tabDragId,
   tabDropId,
+  tabForTodo,
   weekendColumnId,
   type ListColumn,
   type TodoGroup,
@@ -397,6 +398,48 @@ describe("buildBoard groups: color inheritance via tabsById", () => {
     );
     const day = board.days.find((d) => d.day === "2026-08-05")!;
     expect(colorOf(day, "groceries")).toBeNull();
+  });
+});
+
+describe("tabForTodo", () => {
+  const personal = tab("tab-personal", "Personal");
+  const tabsById = new Map([[personal.id, personal]]);
+
+  it("derives listId → list.tabId → tab", () => {
+    const toRead = list("to-read", "To Read");
+    toRead.tabId = personal.id;
+    const listsById = new Map([[toRead.id, toRead]]);
+
+    const result = tabForTodo(todo({ id: "a", listId: "to-read" }), listsById, tabsById);
+    expect(result).toEqual(personal);
+  });
+
+  it("is blank for a Backlog todo — list.tabId === null means pinned into every tab", () => {
+    const backlog = list("backlog", "Backlog", true);
+    backlog.tabId = null;
+    const listsById = new Map([[backlog.id, backlog]]);
+
+    const result = tabForTodo(todo({ id: "a", listId: "backlog" }), listsById, tabsById);
+    expect(result).toBeNull();
+  });
+
+  it("is blank for an unfiled todo (listId === null)", () => {
+    const result = tabForTodo(todo({ id: "a", listId: null }), new Map(), tabsById);
+    expect(result).toBeNull();
+  });
+
+  it("is blank when the list no longer resolves, rather than throwing", () => {
+    const result = tabForTodo(todo({ id: "a", listId: "gone" }), new Map(), tabsById);
+    expect(result).toBeNull();
+  });
+
+  it("is blank when the tab no longer resolves, rather than throwing", () => {
+    const toRead = list("to-read", "To Read");
+    toRead.tabId = "gone";
+    const listsById = new Map([[toRead.id, toRead]]);
+
+    const result = tabForTodo(todo({ id: "a", listId: "to-read" }), listsById, new Map());
+    expect(result).toBeNull();
   });
 });
 
