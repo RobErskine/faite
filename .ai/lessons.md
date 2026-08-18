@@ -530,3 +530,58 @@ claim to verify, not assume. `curl -i` against the worker separates *route
 missing* (404) from *route present, caller unauthenticated* (401) from *route
 present, unconfigured* (501) in one command — and that distinction is exactly
 what the latch hides in the UI.
+
+---
+
+## More parallelism starved the thing under test (EI-187, 2026-08-18)
+
+`playwright.config.ts` had `workers: process.env.CI ? 2 : undefined` with a
+comment justifying the cap. `ubuntu-latest` has 4 vCPUs, so 2 looked like
+half the machine sitting idle, and the issue itself suggested measuring 3
+and 4. I went to 4. **The first CI run failed 21 of 89 tests.**
+
+Not flakiness — all 24 `overdrive` tests failed, on the first attempt and on
+the retry. The trace screenshot showed the seed button still reading
+"Seeding…" when the assertion gave up.
+
+**The runner does not only run test workers.** It also runs the `next dev`
+server that every worker navigates against, and in dev that server compiles
+routes on demand. A worker per core leaves nothing for it. Two things broke
+at once: cold `/board` compiles took 7.9s because four workers hit an
+uncompiled route simultaneously, and `dev-seed.ts`'s ten *sequential*
+`await createTodo()` IndexedDB writes stopped fitting inside `expect`'s 5s
+default. 3 workers, leaving the server a core, is green and stable.
+
+**Rule:** when sizing test parallelism, count the processes under test, not
+just the test processes. A shared dev server, database, or emulator is a
+consumer of the same cores and gets no worker slot of its own.
+
+**Two things this surfaced that were worth more than the worker number:**
+
+- **`webServer.url` is a free warm-up and I had been ignoring it.**
+  Playwright polls that URL until it answers and only *then* starts the run.
+  Whatever route it names gets compiled during startup, on an idle runner,
+  outside every test's timeout. It pointed at `/`, so it warmed the
+  marketing page and left `/board` — the route *every* test loads — to be
+  compiled by whichever tests reached it first, concurrently, out of their
+  own 30s budgets. Point it at the route the suite actually uses.
+
+- **A timeout should be sized by what it is waiting for.** The failing
+  assertion was `expect(toast).toBeVisible()` on `expect`'s 5s default. That
+  default is calibrated for a *render*. This was waiting for ten sequential
+  IndexedDB transactions, each re-running the board's live queries — seconds
+  of real work, correctly. "The default timeout" is not a neutral choice; it
+  is an assertion that the thing being awaited is cheap.
+
+**And the general one:** the failing run taught me more than the green one
+would have. I had a local green run at 4 workers and could have shipped on
+it — it only passed because the dev server was already warm and the machine
+had 10 cores. Local green on a fast machine is not evidence about a
+4-vCPU runner with a cold cache. Push it at real CI before believing it.
+
+**Corollary — test the paths that only run when things go wrong.** The
+`e2e-report` job that merges sharded reports is `if: failure()`, so no green
+run ever executes it, and it is needed exactly when someone is debugging a
+red one. I broke a test on purpose to prove it worked, then force-pushed the
+break away. Untested-by-construction paths ship broken and are discovered at
+the worst possible moment.
