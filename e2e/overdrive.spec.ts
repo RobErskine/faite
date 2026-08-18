@@ -29,7 +29,15 @@ async function seedOverflow(page: Page, count = 10): Promise<void> {
     .getByRole("button", { name: new RegExp(`seed overflow \\(${count}\\)`, "i") })
     .click();
   const toast = page.getByText(new RegExp(`seeded ${count} to-dos into overflow`, "i"));
-  await expect(toast).toBeVisible();
+  // Not `expect`'s 5s default. This is not waiting for a render — it is
+  // waiting for `dev-seed.ts` to finish, and that is `count` *sequential*
+  // `await createTodo()` calls, each its own IndexedDB transaction, each
+  // re-running the board's live queries. On a loaded CI runner that
+  // genuinely exceeds 5s, and the button is still reading "Seeding…" when
+  // the assertion gives up (EI-187). The test's own 30s budget is still the
+  // real bound; this just stops a slow-but-working seed reading as a
+  // missing toast.
+  await expect(toast).toBeVisible({ timeout: 20_000 });
   await page.keyboard.press("Escape"); // close Settings
   // No wait for the toast to clear. It used to block here for sonner's ~4s
   // auto-dismiss, because on the narrow phone viewports the toast

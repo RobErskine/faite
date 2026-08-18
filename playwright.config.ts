@@ -58,12 +58,19 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
-  // GitHub's standard `ubuntu-latest` runner has 4 vCPUs, and this was
-  // hardcoded to 2 — half the machine idle for the whole run. Measured at 4
-  // (EI-187): no new flake in the CDP touch specs, which is what the old cap
-  // was protecting, and the E2E step drops by roughly the factor you'd
-  // expect. Left at Playwright's own default (cpu count) locally.
-  workers: process.env.CI ? 4 : undefined,
+  // 3, measured, not 2 (too idle) and not 4 (too greedy) — EI-187.
+  //
+  // `ubuntu-latest` has 4 vCPUs and this was hardcoded to 2, leaving half the
+  // machine unused. But 4 is a worker per core with nothing left for the
+  // `next dev` server those workers all share, and that server is not a
+  // spectator here: it compiles routes on demand and answers every
+  // navigation. Measured at 4, it starved — cold `/board` compiles took 7.9s
+  // (four workers hitting an uncompiled route at once) and
+  // `dev-seed.ts`'s ten sequential IndexedDB writes stopped fitting in
+  // `expect`'s 5s default, failing all 24 `overdrive` tests outright.
+  // 3 leaves a core for the server. Locally, Playwright's own default (cpu
+  // count) still applies — a dev machine has cores to spare.
+  workers: process.env.CI ? 3 : undefined,
   reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : "list",
   timeout: 30_000,
 
@@ -75,7 +82,15 @@ export default defineConfig({
 
   webServer: {
     command: `npx next dev -p ${PORT}`,
-    url: BASE_URL,
+    // `/board`, not `/`. Playwright polls this URL until it answers and only
+    // then starts the run — so whatever it points at is the route that gets
+    // compiled during startup, for free, while the runner is otherwise idle.
+    // Pointed at `/`, that warmed the marketing page and left `/board`
+    // uncompiled, so the first N tests each paid a ~7.9s Turbopack compile
+    // out of their own 30s budget, concurrently, and timed out (EI-187).
+    // Every test in this suite lands on `/board`; warming it is warming the
+    // suite.
+    url: `${BASE_URL}/board`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
     stdout: "pipe",
