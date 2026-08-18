@@ -11,6 +11,7 @@ import { OVERDRIVE_MIN_TODOS } from "@/lib/overdrive";
 import { AppHeader } from "./app-header";
 import { SignedOutBanner } from "@/components/auth/signed-out-banner";
 import { BoardColumn } from "./board-column";
+import { BoardEmptyBanner } from "./board-empty-banner";
 import { CreateListColumn } from "./create-list-column";
 import { DateNav } from "./date-nav";
 import { OverdriveButton } from "./overdrive-button";
@@ -79,6 +80,8 @@ export function PhoneBoard({
     filteredOverflow,
     filteredBacklogColumn,
     filteredListColumns,
+    calendarCount,
+    planningCount,
     mentionLists,
     deadlineCounts,
     overTodoId,
@@ -137,6 +140,13 @@ export function PhoneBoard({
         onOpenHelp={() => setHelpSheetOpen(true)}
         settings={settings}
       />
+
+      {/*
+        Above both pagers, not inside either — it has to read the same
+        whether the Days or Lists page is active, and neither pager alone
+        knows about the other's count. See `BoardEmptyBanner`'s own comment.
+      */}
+      {calendarCount === 0 && planningCount === 0 && <BoardEmptyBanner />}
 
       {phoneView === "days" && (
         <DateNav
