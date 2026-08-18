@@ -111,12 +111,20 @@ locally is in **[SETUP.md](docs/SETUP.md)**.
 | `npm run preview` | the real Workers runtime on :8787 — all of `/api/*` |
 | `npm test` | Vitest |
 | `npm run verify` | typecheck (app + worker), lint, tests, **both** build targets |
+| `npm run e2e:ci` | Playwright — the 53 tests a pull request runs |
+| `npm run e2e` | Playwright — the full 89-test, five-device matrix |
 | `npm run deploy` | build and deploy to Cloudflare Workers |
 
 `npm run verify` is the gate to run before committing. It includes a static
 export build that guards the future Capacitor target — if that fails, an app
 route has taken a dependency on RSC data fetching, middleware, or
 `next/image` optimization.
+
+**`verify` deliberately excludes the E2E suite** — browser launch and a live
+dev server add minutes a dev shouldn't pay on every run. CI runs it as a
+separate job. A PR runs `e2e:ci` (desktop + one phone); the full matrix runs
+locally or on demand, and is worth running before a large feature PR.
+**[E2E.md](docs/E2E.md)** covers what runs where and why, §8–§9.
 
 The `schema:*` and `auth:schema` scripts are the data-model toolchain
 (generate, parity-check, inspect, reset). Do not run them from memory —
