@@ -299,7 +299,7 @@ deliberately when adding one:
 
 |  | cleared when the target dies | example |
 | --- | --- | --- |
-| **live** | yes — `deleteList` rehomes to Backlog, `deleteProject` nulls it | `listId`, `projectId` |
+| **live** | yes — `deleteList` rehomes to Backlog, `deleteProject` nulls it, `deleteTodo` promotes sub-tasks | `listId`, `projectId`, `parentId` |
 | **provenance** | no — it deliberately outlives the target | `archivedWithTabId` |
 
 A provenance reference is *supposed* to point at something gone; that is its
@@ -866,13 +866,14 @@ is still in `SYNC_KINDS` as of this writing; EI-62's retirement half is open.
 notes + derived timeline (EI-87), foreground reminders (EI-88), resizable board
 split (EI-89), board view settings (EI-90), the ⌘K overhaul (EI-92), per-todo
 History timeline (EI-94 — `todoEvent`, the 9th sync kind, see below), saved
-views (EI-65 — see below), plus list tabs, priority, and location pulled
+views (EI-65 — see below), sub-tasks (EI-55 — one level of nesting, rendered
+only inside the parent's detail sheet, never as their own board card; see
+`docs/TODO-ITEM-DESIGN.md` §12), plus list tabs, priority, and location pulled
 forward — see §2.8b.
 
-**P6 fast-follow — still open:** sub-tasks (EI-55), icon upload, magic-link
-auth (EI-66; Google moved into P2 — see §2.12), the palette command registry
-(EI-77), the shortcut help sheet (EI-75), and dnd-kit screen-reader
-announcements (EI-84).
+**P6 fast-follow — still open:** icon upload, magic-link auth (EI-66; Google
+moved into P2 — see §2.12), the palette command registry (EI-77), the shortcut
+help sheet (EI-75), and dnd-kit screen-reader announcements (EI-84).
 
 **Saved views (EI-65) is a named snapshot of four existing settings fields**
 (`activeTabId`, `visibleStatuses`, `visibleDays`, `showWeekends` — the same

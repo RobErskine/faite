@@ -174,8 +174,20 @@ export function useBoardData(params: UseBoardDataParams) {
     [archivedLists],
   );
 
+  /**
+   * A sub-task (EI-55, `todoSchema.parentId`) never renders as its own board
+   * card, day-column entry, or search/⌘K result — it lives entirely inside
+   * its parent's `TodoSheet` (the Sub-tasks section). Filtering it out here,
+   * alongside the archived-list check, is what keeps that true everywhere
+   * downstream that reads `visibleTodos`/`nonTemplateTodos` rather than
+   * needing a `!t.parentId` guard at every one of those call sites. `todos`
+   * (the raw, unfiltered table) is what `TodoSheet` reads to find a given
+   * parent's children, and what `todosById` below is built from, so opening
+   * a sub-task's own sheet — never reachable from this filtered set — still
+   * works if some future surface needs it.
+   */
   const visibleTodos = useMemo(
-    () => todos.filter((t) => !(t.listId && archivedListIds.has(t.listId))),
+    () => todos.filter((t) => !(t.listId && archivedListIds.has(t.listId)) && !t.parentId),
     [todos, archivedListIds],
   );
 

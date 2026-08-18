@@ -436,6 +436,7 @@ export function Board() {
         today={data.ctx.today}
         ctx={data.ctx}
         lists={data.lists}
+        todos={data.todos}
         tabs={data.tabs}
         labels={data.labels}
         projects={data.projects}
@@ -449,6 +450,7 @@ export function Board() {
         onSetStatus={actions.handleSheetStatus}
         onToggleLabel={actions.handleToggleLabel}
         onDelete={actions.handleDelete}
+        onAddSubtask={actions.handleAddSubtask}
         backToDay={ui.todoOriginDay ?? undefined}
         onBackToDay={ui.handleBackToDay}
         recurrence={actions.recurrenceInfo}
