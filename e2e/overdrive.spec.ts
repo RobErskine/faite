@@ -31,10 +31,14 @@ async function seedOverflow(page: Page, count = 10): Promise<void> {
   const toast = page.getByText(new RegExp(`seeded ${count} to-dos into overflow`, "i"));
   await expect(toast).toBeVisible();
   await page.keyboard.press("Escape"); // close Settings
-  // On the narrow phone viewport the toast (bottom-right) sits directly over
-  // the Overdrive button (bottom-left rail) — wait for sonner's own auto-
-  // dismiss so the very next click in a test never races it.
-  await expect(toast).toBeHidden({ timeout: 10_000 });
+  // No wait for the toast to clear. It used to block here for sonner's ~4s
+  // auto-dismiss, because on the narrow phone viewports the toast
+  // (bottom-right) sits directly over the Overdrive button (bottom-left
+  // rail) and the next click in a test would race it. The fixture now makes
+  // the whole toast layer `pointer-events: none` (support/fixtures.ts), so
+  // it cannot intercept anything and there is nothing left to wait for —
+  // this function is called nine times per project, so that wait was ~36s
+  // of every project's run (EI-187).
 }
 
 const overdriveButton = (page: Page) => page.getByRole("button", { name: /overdrive/i });

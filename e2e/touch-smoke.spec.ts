@@ -6,6 +6,8 @@ import { switchToLists } from "./support/phone";
  * Tier B — real touch input via CDP (see support/touch.ts for why
  * `locator.dispatchEvent()` cannot do this). Chromium/`phone-*` projects
  * only: CDP's `Input.dispatchTouchEvent` is not available on WebKit/Firefox.
+ * That restriction is declared by each phone project's `testMatch` in
+ * playwright.config.ts rather than guarded for in here; see docs/E2E.md §8.
  *
  * This is the first time either gesture has been exercised against a real
  * touch input pipeline in this repo — `docs/DRAG-AND-DROP.md` §7 item 4 has
@@ -14,13 +16,6 @@ import { switchToLists } from "./support/phone";
  * of the mobile-responsive work landing.
  */
 test.describe("touch input", () => {
-  test.beforeEach(async ({}, testInfo) => {
-    test.skip(
-      !testInfo.project.name.startsWith("phone"),
-      "CDP touch dispatch is Chromium-only — see support/touch.ts",
-    );
-  });
-
   test("a horizontal swipe scrolls the day track", async ({ page }) => {
     // `.column-track` (`DesktopBoard`) and `.column-track-pager`
     // (`PhoneBoard`, P3) are the two shapes the day track can take — real CSS

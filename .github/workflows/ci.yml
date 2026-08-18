@@ -5,9 +5,24 @@ on:
     branches: [main]
   pull_request:
 
+# Superseded runs are dead work. Pushing three times to a PR used to leave
+# three full CI runs racing each other for runners, and only the last one's
+# result was ever looked at. Cancel the older ones (EI-187).
+#
+# `main` is deliberately exempt via the `github.ref` half of the key: every
+# push to main gets its own concurrency group, so a merge is never cancelled
+# by the merge behind it and each commit on main keeps an independent result.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   verify:
     runs-on: ubuntu-latest
+    # A stalled job otherwise runs to GitHub's 6-hour default. This job's
+    # p100 is ~4 min; 15 leaves generous headroom and still fails the same
+    # morning rather than the same afternoon.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -50,6 +65,27 @@ jobs:
     # Next builds and takes minutes; browser launch + a live dev server adds
     # real time, and this suite doesn't depend on `verify`'s outcome, so
     # there's no reason to serialize them. See docs/E2E.md.
+    timeout-minutes: 15
+
+    # Runs in Playwright's own image rather than on bare `ubuntu-latest`
+    # (EI-187). This is the fix for the intermittent hang, not a speed-up:
+    # the old job cached the browser binaries but still shelled out to `apt`
+    # on every single run to install their OS dependencies, and twice during
+    # the Aug 17–18 merge queue that `apt` call stalled with no output — 22
+    # min on `ei-183`, 35 min on `ei-62`, both green on re-run. The image
+    # ships Chromium *and* its OS deps preinstalled, so there is no `apt`
+    # step left to stall, no browser download, and no cache to maintain.
+    #
+    # The tag must track the `@playwright/test` version in package-lock.json
+    # or the baked-in browsers won't be the ones this Playwright expects.
+    # The "Playwright version" step below fails fast, with an actionable
+    # message, if the two ever drift.
+    container:
+      image: mcr.microsoft.com/playwright:v1.62.1-noble
+      # Playwright's documented option for this image: run as a non-root UID
+      # so files created in the workspace stay owned by the runner user.
+      options: --user 1001
+
     steps:
       - uses: actions/checkout@v4
 
@@ -60,22 +96,23 @@ jobs:
 
       - run: npm ci
 
-      - name: Cache Playwright browsers
-        uses: actions/cache@v4
-        id: playwright-cache
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-
-      - name: Install Playwright browsers
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps chromium
-
-      - name: Install Playwright's Chromium OS dependencies
-        if: steps.playwright-cache.outputs.cache-hit == 'true'
-        run: npx playwright install-deps chromium
+      - name: Playwright version matches the container
+        env:
+          # Keep in step with `container.image` above. It can't be read from
+          # there — GitHub doesn't expose the `env` context to `container`.
+          CONTAINER_PLAYWRIGHT_VERSION: 1.62.1
+        run: |
+          installed=$(node -p "require('@playwright/test/package.json').version")
+          if [ "$installed" != "$CONTAINER_PLAYWRIGHT_VERSION" ]; then
+            echo "::error file=.github/workflows/ci.yml::package-lock.json pins @playwright/test $installed, but this job runs in mcr.microsoft.com/playwright:v$CONTAINER_PLAYWRIGHT_VERSION-noble. Bump the container image tag (and CONTAINER_PLAYWRIGHT_VERSION next to it) to v$installed-noble."
+            exit 1
+          fi
 
       - name: E2E
+        # Belt and braces under the job timeout: this step is ~3 min, so 10
+        # bounds a hang to something a human notices in one coffee rather
+        # than one afternoon.
+        timeout-minutes: 10
         run: npm run e2e
 
       - name: Upload Playwright report

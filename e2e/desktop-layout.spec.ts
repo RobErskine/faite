@@ -13,14 +13,11 @@ import { test, expect } from "./support/fixtures";
  * one layout that exists today.
  */
 test.describe("desktop board layout", () => {
-  // Runs once, not once per project: without this guard Playwright still
-  // executes this file under every project in playwright.config.ts — five
-  // identical runs for no extra coverage. `core-flows.spec.ts` is the suite
-  // that actually wants every project.
-  test.beforeEach(async ({}, testInfo) => {
-    test.skip(testInfo.project.name !== "desktop", "desktop-only layout contract");
-  });
-
+  // Runs once, not once per project — declared by `desktop`'s `testMatch` in
+  // playwright.config.ts, not by a `test.skip` guard in here. The guard did
+  // work, but only after Playwright had already scheduled and started five
+  // copies of every test to throw four of them away; `testMatch` never
+  // creates them. `core-flows.spec.ts` is the suite that wants every project.
   test("renders a full week of day columns plus the pinned Overflow rail", async ({ page }) => {
     // Frozen on a Tuesday (support/fixtures.ts) with default visibleDays=7
     // and showWeekends=true, so all seven weekdays render as full columns —
