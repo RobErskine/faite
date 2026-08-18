@@ -10,6 +10,8 @@ import {
   createIngestAddress,
   fetchIngestAddress,
   IngestUnavailableError,
+  MAX_EMAIL_MB,
+  RATE_LIMIT,
   rotateIngestAddress,
   type IngestAddress,
 } from "@/lib/email-ingest";
@@ -103,6 +105,18 @@ export function EmailSection() {
             <p className="text-sm text-muted-foreground">
               Forward or send anything here and it becomes a to-do in Backlog — the subject is
               the title, the plaintext body becomes the notes. Attachments are dropped.
+            </p>
+            {/*
+              Stated plainly because the cap DESTROYS mail rather than delaying
+              it: a rejection is a permanent SMTP error, so the sender never
+              retries and nothing arrives later. A limit with that consequence
+              cannot be a detail buried in the docs — see `RATE_LIMIT` in
+              `src/server/email/addresses.ts`.
+            */}
+            <p className="text-sm text-muted-foreground">
+              Limits: up to <strong>{RATE_LIMIT} emails per hour</strong> and {MAX_EMAIL_MB} MB per
+              message. Anything over either limit is <strong>rejected, not queued</strong> — the
+              sender gets a bounce and it will not arrive later.
             </p>
             <p className="text-sm text-muted-foreground">
               {state.lastUsedAt

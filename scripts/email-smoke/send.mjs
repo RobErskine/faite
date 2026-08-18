@@ -13,7 +13,7 @@
 //   node scripts/email-smoke/send.mjs <localpart> --big       # ~400 KB body, exercises the 16 KB cap
 //   node scripts/email-smoke/send.mjs <localpart> --huge      # oversize (see the note below)
 //   node scripts/email-smoke/send.mjs <localpart> --count 3   # ordering: three in a row
-//   node scripts/email-smoke/send.mjs <localpart> --count 35  # rate cap: the 31st must reject
+//   node scripts/email-smoke/send.mjs <localpart> --count 55  # rate cap: the 51st must reject
 //
 // The local port defaults to 8787; override with FAITE_SMOKE_PORT.
 // The domain defaults to in.myfaite.app; override with FAITE_INGEST_DOMAIN.
@@ -96,7 +96,7 @@ console.log(`\nsending ${count} message(s) to ${localPart}@${DOMAIN} via ${ENDPO
 let accepted = 0;
 for (let i = 0; i < count; i++) {
   // Serial, not Promise.all: the rate window is a read-modify-write on one D1
-  // row, so concurrent sends would race it and the 31st-rejects assertion
+  // row, so concurrent sends would race it and the 51st-rejects assertion
   // would be flaky for reasons that have nothing to do with the cap.
   if (await send(i)) accepted++;
 }

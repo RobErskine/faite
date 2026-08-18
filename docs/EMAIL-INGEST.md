@@ -61,12 +61,29 @@ guesses had once been real.
 `+tag` is stripped for lookup and preserved for the mapper. Nothing routes on
 it yet; it is the seam the forwarding-rules follow-up plugs into.
 
-### Rate cap: 30/hour, on the row we already read
+### Rate cap: 50/hour, on the row we already read
 
 `windowStart`/`windowCount` live on `email_ingest`. Resolving the user already
 reads that row and already writes back `lastUsedAt`, so the cap costs one
 extra column in an UPDATE and **zero extra round trips**. A rejected message
 does not increment the count, so a flood cannot extend its own lockout.
+
+> **This is a data-loss cliff, not throttling.** `setReject()` emits a
+> *permanent* SMTP error — `ForwardableEmailMessage` has no defer/4xx API — so
+> the 51st message in an hour is **destroyed**. The sender does not retry and
+> nothing arrives later.
+>
+> The second-order effect is worse than the first. Every rejection is a bounce
+> back to whatever sent it, and a forwarder that collects enough bounces
+> (Gmail, for one) **disables the forwarding rule outright** — so a user who
+> points a busy inbox at their address sees mail simply stop, with no visible
+> cause. Email Routing does not forward non-delivery reports to the original
+> sender either.
+>
+> That is why `RATE_LIMIT` lives in `src/lib/email-limits.ts` rather than
+> beside the server code that enforces it: the Settings panel imports the same
+> constant and states it to the user, so the number they read is provably the
+> number the Worker applies.
 
 (`docs/API.md` suggests the Durable Object for per-user limits. Right for API
 traffic, wrong here — the DO is addressed by `idFromName(userId)`, so reaching
@@ -113,6 +130,17 @@ can issue the same stamp within a millisecond.
 | `listId` | always `null` (→ Backlog) |
 | `position` | `UserDurableObject.nextTodoPosition()` |
 | attachments | **dropped** — there is no blob store |
+
+> **On a forward, `from` is the forwarder, not the original sender.**
+> `addressOf(parsed.from)` reads the `From:` header, and a client-side forward
+> (hitting Forward in Gmail) makes that *the user's own address* — so the badge
+> reads "From email · your-own@gmail.com". Recovering the true sender means
+> parsing the `----- Forwarded message -----` block or `Resent-From:`. Known,
+> not a bug; see Follow-ups.
+>
+> Same reason the body of a forward opens with a `From:`/`Date:`/`Subject:`
+> header block and the title comes out as `Fwd: <original subject>`. That is
+> the actual v1 experience for the feature's main use case.
 
 The 16 KB cap is the one that would have bitten silently: `description` crosses
 the sync wire on **every future push of that to-do, to every device, forever**,
@@ -162,20 +190,74 @@ and the `To:` header itself. That is miniflare's output, not ours, and not
 production Workers Logs — but it does mean a local dev log contains the secret
 address.
 
+**The same is true of `npx wrangler tail` against production**, and that one is
+easier to get wrong. The runtime's own event line —
+`Email from:<sender> to:<localpart>@in.myfaite.app size:… - Ok` — precedes our
+`[faite] email-ingest` line and contains both the sender and the live secret
+address. Invariant 3 governs what *we* log; it cannot govern the platform's
+event envelope. Do not paste `wrangler tail` output into Linear, a PR, a
+screenshot, or a shared terminal.
+
+Ironically that line is also the only place the recipient *domain* is visible
+(`IngestLog` deliberately omits it), which makes it the load-bearing part when
+diagnosing an apex-vs-subdomain routing mistake.
+
 ## Operating it
 
 **Deploy with `npm run deploy:with-migrations`, not `npm run deploy`.**
 Cloudflare Workers Builds does not run D1 migrations, and `email_ingest` is a
 new table.
 
-Zone setup, once:
-
-1. Enable Email Routing on `in.myfaite.app` (dashboard → Email → Email
-   Routing → subdomains).
-2. Add a **catch-all** rule for that subdomain with the action *Send to a
-   Worker* → `faite`.
+Zone setup is a one-time job and lives in **`docs/SETUP.md` §3b**. The one
+thing to carry over here: **the catch-all is a single object for the whole
+zone** and covers the apex *and* every enabled subdomain — not one per domain,
+and not expressible per-subdomain. So enabling ingest on `in.myfaite.app`
+necessarily points `myfaite.app` at this Worker too, and mail to the apex is
+rejected `bad-recipient`. That is the expected steady state, not a
+misconfiguration. Literal rules (which *are* per-domain) outrank the catch-all
+and are how specific apex addresses get carved back out.
 
 Testing without any of that: `scripts/email-smoke/README.md`.
+
+### Diagnosing a message that did not arrive
+
+Work down this list; each step rules out a whole class.
+
+| Symptom | Where to look | Means |
+|---|---|---|
+| Nothing in `wrangler tail` | Email Routing → **Activity log** | The Worker was never invoked — routing or authentication, not our code |
+| Activity log says **Dropped** | Routing rules → Catch-all toggle | No rule matched — the zone catch-all is disabled, or a literal rule is shadowing the address |
+| Activity log says **Rejected** | Expand the row for SPF/DKIM/DMARC | Auth failure at stage 2, *before* rule match. Common on server-side auto-forwards — see below |
+| Activity log says **Forwarded** | Routing rules | The rule is a mail forward, not *Send to a Worker* |
+| `{"decision":"bad-recipient"}` | Nothing — expected | Somebody mailed the apex. The zone catch-all covers it too, and the Worker only accepts `EMAIL_INGEST_DOMAIN` |
+| `{"decision":"unknown-address"}` | Settings → Email capture | Wrong or rotated address |
+| No `email-ingest` line but an `EXCEEDED_CPU` error | Workers logs | CPU/memory limit, not a routing problem |
+
+`Settings → Email capture` showing "Last used …" is **necessary but not
+sufficient**: `markAccepted` runs *before* the parse and the push, so it stamps
+even on a message that later fails with `push-rejected` or `error`. It proves
+address resolution and the rate check passed, nothing more.
+
+Two red herrings: mail sent by the `EMAIL` binding shows as **dropped** in the
+Email Routing summary even when it delivered fine, and `wrangler tail` only
+shows events while attached (use Workers Logs for anything historical).
+
+### Forwarding, SPF, and DMARC
+
+Authentication is checked at **stage 2 of Cloudflare's pipeline — before rule
+match and before this Worker.** So an auth rejection never produces an
+`email-ingest` line; the Activity log is the only place it is visible.
+
+- **Client-side forward** (hitting Forward in a mail client) is a brand-new
+  message from the user's own address, DKIM-signed by their provider. Always
+  fine. This is what the Settings copy describes.
+- **Server-side auto-forward / redirect** (a Gmail forwarding rule, a mailing
+  list) preserves the original `From:`, so DMARC is evaluated against the
+  *original sender's* domain. SPF fails by construction, and DKIM survives only
+  if nothing rewrote the body or headers. Against a `p=reject` sender — banks,
+  PayPal, most SaaS — Cloudflare 550s it. ARC (which Gmail seals on forward)
+  rescues many of these, but it is not a guarantee and must not be promised in
+  the UI.
 
 ## Follow-ups
 
@@ -186,3 +268,12 @@ Testing without any of that: `scripts/email-smoke/README.md`.
   `+tag` are the seams it plugs into.
 - **Hard-delete / purge job** — nothing in this codebase ever hard-deletes, so
   email bodies survive to-do deletion indefinitely.
+- **Recover the original sender on a forward** — parse the
+  `----- Forwarded message -----` block or `Resent-From:` so the capture badge
+  names who actually sent it rather than the person who forwarded it. This is
+  the single biggest gap between what the badge promises and what it delivers
+  for the feature's main use case.
+- **Config-managed routing rules** — the Email Routing API exposes
+  `source: "api" | "wrangler"`, implying rules could live in `wrangler.jsonc`
+  and stop drifting from the dashboard. Not available in wrangler 4.118.0;
+  recheck on a later version.

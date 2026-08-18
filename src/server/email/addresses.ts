@@ -1,6 +1,7 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/d1";
 import { uuidv7 } from "uuidv7";
+import { RATE_LIMIT, RATE_WINDOW_MS } from "@/lib/email-limits";
 import { emailIngest } from "./schema";
 
 /**
@@ -90,9 +91,12 @@ export function splitRecipient(rcptTo: string, domain: string): Recipient | null
   return { key, tag: rawTag.length > 0 ? rawTag : null };
 }
 
-/** Fixed 1-hour window, 30 accepted messages. */
-export const RATE_WINDOW_MS = 60 * 60 * 1000;
-export const RATE_LIMIT = 30;
+/**
+ * Re-exported so this module stays the one place the email code imports
+ * address/rate concerns from, while the numbers themselves live where the
+ * Settings panel can also read them. See `@/lib/email-limits`.
+ */
+export { RATE_LIMIT, RATE_WINDOW_MS } from "@/lib/email-limits";
 
 export interface RateWindow {
   windowStart: number | null;
@@ -105,7 +109,9 @@ export interface RateWindow {
  *
  * A rejected message does NOT increment the count — the window is a budget of
  * accepted messages, so a flood cannot extend its own lockout past the hour
- * it started in. (`docs/API.md` suggests the Durable Object for per-user
+ * it started in. That matters more than it looks: every rejection is a
+ * permanent bounce back to the sender, and a forwarder that collects enough of
+ * them (Gmail, for one) disables the forwarding rule outright. (`docs/API.md` suggests the Durable Object for per-user
  * limits. That is right for API traffic and wrong here: the DO is addressed
  * by `idFromName(userId)`, so reaching it means a round trip we would be
  * paying before knowing whether to reject at all.)

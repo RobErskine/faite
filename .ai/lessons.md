@@ -620,3 +620,126 @@ cost ~125 billed minutes across eight pushes — 6% of the monthly allowance
 for one feature. Per-*merge* arithmetic hides that completely. Cost-model a
 change against how many times a branch gets pushed, not how many times it
 gets merged.
+
+---
+
+## A migration ledger can be empty while every table it creates already exists
+
+Shipping EI-186 meant one new D1 table, so the deploy was
+`npm run deploy:with-migrations` — the command the ticket, the PR, and
+`docs/SETUP.md` all name. Before running it I asked wrangler what it was about
+to do:
+
+```
+$ npx wrangler d1 migrations list AUTH_DB --remote
+Migrations to be applied:
+  0000_amused_ink.sql
+  0001_fast_venom.sql
+  0002_puzzling_cerebro.sql
+```
+
+It wanted to apply **all three**, including the one that creates `user`,
+`session`, `account`, and `verification` — tables production had been serving
+auth from for weeks. `d1_migrations` was empty: the original schema had been
+put there by some other route (`better-auth migrate`, or a hand-run
+`d1 execute`), which creates the tables and writes no ledger row.
+
+`0000`'s `CREATE TABLE` statements are unguarded — no `IF NOT EXISTS`, because
+drizzle-kit assumes it owns the database. So `deploy:with-migrations` would
+have aborted on the first statement, and `email_ingest` — the only migration
+that actually needed to run — would never have been created. The command
+documented as the safe deploy path was the one that could not work.
+
+Three things this shook out, in ascending order of how long they would have
+taken to find:
+
+**Workers Builds deploys on merge; it does not run migrations.** Between
+merging the PR and my first `curl`, production was already serving the new code
+against a database with no `email_ingest`. `/api/email/address` went 404 → 401
+in the ninety seconds I spent reading the ledger. Nothing was user-visible only
+because the zone routing wasn't configured yet and one settings panel was the
+whole blast radius. **The window between "merge" and "migrate" is real and it
+is not yours to schedule** — if CI auto-deploys, the migration is not a step
+after the merge, it is a prerequisite to it.
+
+**`0001` had never been applied at all.** It creates `apikey`, and
+`apiTokenPlugin` has been live in `auth.ts` the whole time — so every API-key
+endpoint in production had been answering off a table that did not exist.
+Latent, because nothing ships against them yet. It surfaced only because the
+ledger forced a full accounting; no test, no monitor, and no amount of "auth
+works fine" would ever have shown it.
+
+**Tables existing is not evidence the migration ran.** Before backfilling
+`0000` as applied I diffed prod's actual `sqlite_master` against what `0000`
+generates — normalising whitespace, backticks, and comments — and confirmed all
+nine objects matched byte-for-byte. That check is the entire difference between
+recording a true fact and papering over real drift. Had one column differed,
+the honest ledger row would have been a lie and the next migration would have
+failed somewhere much less obvious.
+
+**Rule:** never run `migrations apply` against a remote database without first
+running `migrations list` and reading what it intends to do — the answer
+"everything, from scratch" is common on any database whose schema was
+bootstrapped by a different tool than the one now managing it. Before marking
+an already-applied migration as applied, **diff the live schema against what
+that migration generates** rather than trusting that matching table *names*
+mean matching tables. And take a `time-travel info` bookmark first: it costs
+one command and is the only thing standing between you and a production auth
+database you cannot put back.
+
+---
+
+## I described a third-party config model three times without ever testing it
+
+Finishing EI-186 meant one Cloudflare Email Routing setting. I got its shape
+wrong three times running, and each wrong version was more confident and more
+expensive than the last:
+
+1. **From a screenshot:** "the catch-all is on the apex, so mail to the
+   subdomain matches nothing and the Worker is never invoked." Asserted from a
+   cropped rules list that did not show a domain column.
+2. **From the API:** confirmed the only catch-all object was tagged
+   `zone: myfaite.app`, and concluded the subdomain therefore had none. Then
+   **wrote that into `docs/SETUP.md` §3b** as a numbered runbook telling the
+   next person to enable a subdomain catch-all and disable the apex one.
+3. **From the OpenAPI spec:** noticed `/rules/catch_all` has no subdomain
+   parameter, which should have been the tell, and *still* only softened the
+   claim rather than testing it.
+
+One email settled it in forty seconds:
+
+```
+to:zzztest@in.myfaite.app → {"decision":"unknown-address","addressHash":"…"}
+```
+
+There is exactly **one catch-all per zone** and it covers the apex and every
+enabled subdomain. The original configuration had been correct the whole time.
+My "fix" instructions would have had the user disable the only rule making the
+feature work — and in fact they did disable it, mid-diagnosis, on my advice.
+
+Two things went wrong, and the second is the one that matters.
+
+**The evidence was ambiguous and I read it as confirming.** A single catch-all
+object tagged with the apex zone is equally consistent with "the subdomain has
+none" and "there is only ever one and it covers everything." I picked the first
+because it fit the story I already had. The spec detail in (3) — no subdomain
+parameter *anywhere* — actively favoured the second reading, and I noted it
+without letting it move me.
+
+**I wrote an unverified inference into a runbook.** A hedge in chat costs a
+follow-up message. The same hedge committed to `docs/SETUP.md` becomes the
+thing the next person follows at 2am, and it survives long after the
+conversation that produced it. Docs are where a guess stops being cheap.
+
+**Rule:** for third-party infrastructure, a config model is a *hypothesis*
+until an observation distinguishes it from its alternatives — dashboards and
+even API reads show you *state*, not *semantics*. Before writing one into
+docs, ask "what would I see if the opposite were true?" and go make that
+observation. Here it was one email and a `wrangler tail`. And when a spec
+lacks the parameter your theory requires, treat that absence as evidence
+against the theory, not as an inconvenience to route around.
+
+**Corollary:** when a diagnosis says "the thing you configured is wrong",
+weigh that it has been working-as-configured for someone who had no reason to
+set it up backwards. Ask for the cheap confirming test *before* recommending
+they change production, not after.
