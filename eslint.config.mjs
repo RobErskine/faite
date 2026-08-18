@@ -29,6 +29,11 @@ const eslintConfig = defineConfig([
     ".next-static/**",
     ".open-next/**",
     ".wrangler/**",
+    // Nested git worktrees (`.claude/worktrees/*`) are full checkouts of this
+    // same repo. Without this, `npm run lint` walks into every in-flight
+    // branch and reports its files as if they were ours — 200+ files and
+    // thousands of problems that have nothing to do with the current tree.
+    ".claude/**",
     // wrangler-generated (`npm run cf-typegen`); machine-formatted, not ours
     // to fix lint warnings in.
     "cloudflare-env.d.ts",
