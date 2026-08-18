@@ -1,9 +1,26 @@
 name: CI
 
+# This repo is private on a Free plan, so every runner-minute below is
+# metered against a 2,000/month allowance. The `paths-ignore` is not
+# housekeeping — a documentation-only commit ("docs: Wave 4 runbook",
+# 2026-08-18) is what triggered the six-hour `apt` hang that burned 360
+# billed minutes, 18% of a month, for a change that could not have broken a
+# test. Prose does not need a browser.
+#
+# `paths-ignore` skips a run only when *every* changed path matches, so a
+# commit touching both code and docs still runs in full. Nothing here is a
+# required status check (branch protection needs Pro), so a skipped run
+# cannot leave a PR stuck waiting on a check that will never arrive.
 on:
   push:
     branches: [main]
+    paths-ignore: ["**/*.md", ".ai/**", "LICENSE"]
   pull_request:
+    paths-ignore: ["**/*.md", ".ai/**", "LICENSE"]
+  # An escape hatch for the above: if a docs-only change ever does need a
+  # run, or a flake needs re-confirming, start one by hand rather than
+  # pushing an empty commit to trick the triggers.
+  workflow_dispatch:
 
 # Superseded runs are dead work. Pushing three times to a PR used to leave
 # three full CI runs racing each other for runners, and only the last one's
@@ -62,6 +79,25 @@ jobs:
   e2e:
     name: e2e (${{ matrix.shard }}/${{ strategy.job-total }})
     runs-on: ubuntu-latest
+
+    # Not on a merge into `main`. A `pull_request` run tests the *merge
+    # result* (`refs/pull/N/merge`), not the branch tip — so by the time a PR
+    # is merged, this exact tree has already had the full suite run against
+    # it minutes earlier, and re-running it on `main` bought a second copy of
+    # the same answer for ~14 more billed minutes every single merge. Across
+    # the last 40 runs, `push` cost 610 billed minutes against
+    # `pull_request`'s 350; that gap is almost entirely this duplicate.
+    #
+    # `verify` still runs on `main` and is the deliberate exception: it is
+    # ~5 min, and it is the one that catches a *semantic* conflict, where two
+    # PRs each pass alone and break together (typecheck, unit tests, both
+    # builds). That failure mode is real and only observable after the merge.
+    # An e2e regression that verify misses but the merged PR's own e2e run
+    # did not is a much narrower case, and not worth 14 minutes a merge.
+    #
+    # `workflow_dispatch` still runs it, so a full pre-release check on
+    # `main` is one button away when you want one.
+    if: github.event_name != 'push'
     # Parallel to `verify`, not appended to it: `verify` already runs two
     # Next builds and takes minutes; browser launch + a live dev server adds
     # real time, and this suite doesn't depend on `verify`'s outcome, so
