@@ -69,6 +69,12 @@ interface TodoCardProps {
    * content beyond the generic `sr-only` fallback.
    */
   recurrenceSummary?: string;
+  /**
+   * Sub-task done/total counts (EI-183) — see `use-board-data.ts`'s
+   * `subtaskCounts`. Undefined/null, or a `total` of 0, shows no badge: a
+   * todo with no sub-tasks has nothing to report progress on.
+   */
+  subtaskCount?: { done: number; total: number } | null;
 }
 
 export function TodoCard({
@@ -85,6 +91,7 @@ export function TodoCard({
   onNavigate,
   missedCount,
   recurrenceSummary,
+  subtaskCount,
 }: TodoCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: todo.id });
@@ -433,6 +440,7 @@ export function TodoCard({
           missedCount={missedCount}
           overflow={overflowInfo}
           reminderPresets={reminderPresets}
+          subtaskCount={subtaskCount}
         />
       </button>
     </div>

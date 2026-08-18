@@ -192,6 +192,34 @@ export function useBoardData(params: UseBoardDataParams) {
   );
 
   /**
+   * Sub-task done/total counts (EI-183), keyed by PARENT todo id.
+   *
+   * A sub-task (`todo.parentId`, wired up by EI-55) never renders as its own
+   * board card — it lives entirely inside its parent's `TodoSheet` — so its
+   * progress has to surface as a badge on the parent's card instead. Built
+   * from the raw `todos` table rather than `visibleTodos`, the same source
+   * EI-55's `TodoSheet` reads to find a given parent's children: an
+   * archived-list filter is about where the PARENT card renders, not
+   * whether a child counts towards its progress.
+   *
+   * `dropped` sub-tasks count towards `total` but not `done` — abandoned
+   * work is not progress, same distinction `todo-card.tsx` draws between
+   * `done` and `dropped` for the strike-through. A todo absent from this map
+   * has no sub-tasks, which is what keeps the badge off every ordinary card.
+   */
+  const subtaskCounts = useMemo(() => {
+    const counts = new Map<string, { done: number; total: number }>();
+    for (const todo of todos) {
+      if (!todo.parentId) continue;
+      const entry = counts.get(todo.parentId) ?? { done: 0, total: 0 };
+      entry.total += 1;
+      if (todo.status === "done") entry.done += 1;
+      counts.set(todo.parentId, entry);
+    }
+    return counts;
+  }, [todos]);
+
+  /**
    * `visibleTodos` split into recurrence templates (never rendered directly —
    * see `lib/recurrence-expand.ts`) and everything else. Everything downstream
    * that used to read `visibleTodos` for window sizing or search reads
@@ -749,6 +777,7 @@ export function useBoardData(params: UseBoardDataParams) {
     infoList,
     infoTab,
     visibleTodos,
+    subtaskCounts,
     templates,
     nonTemplateTodos,
     recurrenceSummaries,

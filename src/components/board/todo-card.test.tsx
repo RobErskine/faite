@@ -79,6 +79,7 @@ interface HarnessProps {
   missedCount?: number | null;
   recurrenceSummary?: string;
   reminderPresets?: ReminderPreset[];
+  subtaskCount?: { done: number; total: number } | null;
 }
 
 function Harness({
@@ -91,6 +92,7 @@ function Harness({
   missedCount,
   recurrenceSummary,
   reminderPresets,
+  subtaskCount,
 }: HarnessProps) {
   return (
     <TooltipProvider>
@@ -107,6 +109,7 @@ function Harness({
             showInsertionLine={showInsertionLine}
             missedCount={missedCount}
             recurrenceSummary={recurrenceSummary}
+            subtaskCount={subtaskCount}
           />
         </SortableContext>
       </DndContext>
@@ -387,6 +390,33 @@ describe("TodoCard — reminder badge (EI-106 P5)", () => {
   it("falls back to a formatted clock time when presets are omitted entirely", () => {
     render(<Harness todo={todo({ reminderTime: "08:00" })} />);
     expect(badgeRow()?.textContent).toContain("8:00 AM");
+  });
+});
+
+describe("TodoCard — sub-task progress badge (EI-183)", () => {
+  it("shows no badge with no sub-tasks", () => {
+    render(<Harness subtaskCount={undefined} />);
+    expect(badgeRow()).toBeNull();
+  });
+
+  it("shows no badge when the count is null", () => {
+    render(<Harness subtaskCount={null} />);
+    expect(badgeRow()).toBeNull();
+  });
+
+  it("shows no badge when total is 0", () => {
+    render(<Harness subtaskCount={{ done: 0, total: 0 }} />);
+    expect(badgeRow()).toBeNull();
+  });
+
+  it("shows the done/total count once there is at least one sub-task", () => {
+    render(<Harness subtaskCount={{ done: 2, total: 5 }} />);
+    expect(badgeRow()?.textContent).toContain("2/5");
+  });
+
+  it("shows 0/N for a sub-task group with none done yet", () => {
+    render(<Harness subtaskCount={{ done: 0, total: 3 }} />);
+    expect(badgeRow()?.textContent).toContain("0/3");
   });
 });
 

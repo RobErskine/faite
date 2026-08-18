@@ -1,6 +1,14 @@
 "use client";
 
-import { Bell, CalendarCheck, CalendarClock, CornerDownRight, MapPin, Repeat } from "lucide-react";
+import {
+  Bell,
+  CalendarCheck,
+  CalendarClock,
+  CornerDownRight,
+  ListChecks,
+  MapPin,
+  Repeat,
+} from "lucide-react";
 import { Badge, badgeVariants } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -181,6 +189,7 @@ export function TodoMetaBadges({
   missedCount,
   overflow,
   reminderPresets,
+  subtaskCount,
 }: {
   todo: Todo;
   labels: LabelRecord[];
@@ -196,6 +205,11 @@ export function TodoMetaBadges({
    * of a bare clock time. Omit (or pass `[]`) where presets aren't in scope;
    * the badge still renders, just always as a formatted clock time. */
   reminderPresets?: ReminderPreset[];
+  /**
+   * Sub-task done/total counts (EI-183) — see `use-board-data.ts`'s
+   * `subtaskCounts`. Undefined/null, or a `total` of 0, shows no badge.
+   */
+  subtaskCount?: { done: number; total: number } | null;
 }) {
   const deadlineMissed = isDeadlineMissed(todo, { today });
   const todoLabels = labels.filter((l) => todo.labelIds.includes(l.id));
@@ -206,7 +220,8 @@ export function TodoMetaBadges({
     (showScheduledDate && todo.scheduledDate) ||
     (missedCount ?? 0) > 1 ||
     Boolean(overflow) ||
-    Boolean(todo.reminderTime);
+    Boolean(todo.reminderTime) ||
+    (subtaskCount?.total ?? 0) > 0;
 
   if (!hasContent) return null;
 
@@ -222,6 +237,16 @@ export function TodoMetaBadges({
         <Badge variant="outline" className="num gap-1 text-2xs font-normal">
           <Bell className="size-2.5" aria-hidden />
           {reminderLabelFor(todo.reminderTime, reminderPresets ?? [])}
+        </Badge>
+      )}
+      {subtaskCount && subtaskCount.total > 0 && (
+        <Badge
+          variant="outline"
+          className="num gap-1 text-2xs font-normal"
+          title={`${subtaskCount.done} of ${subtaskCount.total} sub-tasks done`}
+        >
+          <ListChecks className="size-2.5" aria-hidden />
+          {subtaskCount.done}/{subtaskCount.total}
         </Badge>
       )}
       {overflow && (

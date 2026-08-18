@@ -255,6 +255,14 @@ interface BoardColumnProps {
    */
   recurrenceSummaries?: ReadonlyMap<string, string>;
   /**
+   * Sub-task done/total counts (EI-183), keyed by PARENT todo id — see
+   * `use-board-data.ts`'s `subtaskCounts`. Unlike `missedCounts`, which is
+   * only ever populated for cards forced into Overflow, a sub-task can hang
+   * off ANY card anywhere on the board, so this is threaded to every column
+   * rather than special-cased to one.
+   */
+  subtaskCounts?: ReadonlyMap<string, { done: number; total: number }>;
+  /**
    * Escape hatch, merged onto the root `<section>` after every other class
    * here. The phone pager (`phone-board.tsx`) uses it to add `pager-column`
    * (globals.css) — Y-axis scroll ownership for a column that fills the
@@ -320,6 +328,7 @@ export function BoardColumn({
   dayTrackColumn,
   missedCounts,
   recurrenceSummaries,
+  subtaskCounts,
   className,
   footer,
 }: BoardColumnProps) {
@@ -561,6 +570,7 @@ export function BoardColumn({
         recurrenceSummary={
           todo.recurrenceParentId ? recurrenceSummaries?.get(todo.recurrenceParentId) : undefined
         }
+        subtaskCount={subtaskCounts?.get(todo.id)}
       />
     ));
 
