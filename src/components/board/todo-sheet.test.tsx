@@ -615,6 +615,7 @@ describe("derived Tab field (EI-62)", () => {
     archivedWithTabId: null,
     position: "a0",
     tabId: PERSONAL_TAB.id,
+    defaultReminderPresetId: null,
     color: null,
     emoji: null,
     iconUrl: null,
