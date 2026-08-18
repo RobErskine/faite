@@ -620,3 +620,69 @@ cost ~125 billed minutes across eight pushes — 6% of the monthly allowance
 for one feature. Per-*merge* arithmetic hides that completely. Cost-model a
 change against how many times a branch gets pushed, not how many times it
 gets merged.
+
+---
+
+## A migration ledger can be empty while every table it creates already exists
+
+Shipping EI-186 meant one new D1 table, so the deploy was
+`npm run deploy:with-migrations` — the command the ticket, the PR, and
+`docs/SETUP.md` all name. Before running it I asked wrangler what it was about
+to do:
+
+```
+$ npx wrangler d1 migrations list AUTH_DB --remote
+Migrations to be applied:
+  0000_amused_ink.sql
+  0001_fast_venom.sql
+  0002_puzzling_cerebro.sql
+```
+
+It wanted to apply **all three**, including the one that creates `user`,
+`session`, `account`, and `verification` — tables production had been serving
+auth from for weeks. `d1_migrations` was empty: the original schema had been
+put there by some other route (`better-auth migrate`, or a hand-run
+`d1 execute`), which creates the tables and writes no ledger row.
+
+`0000`'s `CREATE TABLE` statements are unguarded — no `IF NOT EXISTS`, because
+drizzle-kit assumes it owns the database. So `deploy:with-migrations` would
+have aborted on the first statement, and `email_ingest` — the only migration
+that actually needed to run — would never have been created. The command
+documented as the safe deploy path was the one that could not work.
+
+Three things this shook out, in ascending order of how long they would have
+taken to find:
+
+**Workers Builds deploys on merge; it does not run migrations.** Between
+merging the PR and my first `curl`, production was already serving the new code
+against a database with no `email_ingest`. `/api/email/address` went 404 → 401
+in the ninety seconds I spent reading the ledger. Nothing was user-visible only
+because the zone routing wasn't configured yet and one settings panel was the
+whole blast radius. **The window between "merge" and "migrate" is real and it
+is not yours to schedule** — if CI auto-deploys, the migration is not a step
+after the merge, it is a prerequisite to it.
+
+**`0001` had never been applied at all.** It creates `apikey`, and
+`apiTokenPlugin` has been live in `auth.ts` the whole time — so every API-key
+endpoint in production had been answering off a table that did not exist.
+Latent, because nothing ships against them yet. It surfaced only because the
+ledger forced a full accounting; no test, no monitor, and no amount of "auth
+works fine" would ever have shown it.
+
+**Tables existing is not evidence the migration ran.** Before backfilling
+`0000` as applied I diffed prod's actual `sqlite_master` against what `0000`
+generates — normalising whitespace, backticks, and comments — and confirmed all
+nine objects matched byte-for-byte. That check is the entire difference between
+recording a true fact and papering over real drift. Had one column differed,
+the honest ledger row would have been a lie and the next migration would have
+failed somewhere much less obvious.
+
+**Rule:** never run `migrations apply` against a remote database without first
+running `migrations list` and reading what it intends to do — the answer
+"everything, from scratch" is common on any database whose schema was
+bootstrapped by a different tool than the one now managing it. Before marking
+an already-applied migration as applied, **diff the live schema against what
+that migration generates** rather than trusting that matching table *names*
+mean matching tables. And take a `time-travel info` bookmark first: it costs
+one command and is the only thing standing between you and a production auth
+database you cannot put back.
