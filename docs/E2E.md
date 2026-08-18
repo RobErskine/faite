@@ -154,6 +154,11 @@ In CI, nothing is listening on 3000 yet, so Playwright starts its own — the
 companion process on purpose, since a second process that can fail
 independently is a CI flake source neither Playwright nor this app needs.
 
+**What CI starts is not `next dev`.** It builds and serves a production
+bundle (`E2E_SERVER="npx next start -p 3000"`), which measured ~2x faster per
+test and strictly more reliable — see §9. Everything above still describes
+the local path, which is unchanged.
+
 ## 6. Running it
 
 ```bash
@@ -319,7 +324,10 @@ for that spec rather than deleting it globally.
   of them share, and that server compiles routes on demand and answers every
   navigation. At 4 it starved — cold `/board` compiles took 7.9s and
   `dev-seed.ts`'s ten sequential IndexedDB writes stopped fitting in
-  `expect`'s 5s default, failing all 24 `overdrive` tests. 3 leaves the
+  `expect`'s 5s default, failing all 24 `overdrive` tests. **This rationale
+  is now weaker than when it was written** — the server CI starves is the one
+  §9 replaced with a production build, so 4 may well be safe today. It has
+  not been re-measured; that is a live follow-up, not a settled decision. 3 leaves the
   server a core.
 - **`webServer.url` points at `/board`, not `/`.** Playwright polls that URL
   until it answers and only then starts the run, so whichever route it names

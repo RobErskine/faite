@@ -1675,3 +1675,21 @@ fails `npm test` in milliseconds if that ever happens. EI-161 (`/capture`
 coverage) was the ticket about to walk into it.
 
 **Open:** PR #19 is ready for review, not merged — Rob's call.
+
+### Superseded the same day — read this before trusting the above
+
+Two things in this entry were reversed within 24 hours, so it is a record of
+what happened, not of how CI works now:
+
+- **Sharding is gone.** It optimised wall clock and made every run ~27% more
+  expensive in billed runner-minutes, which is the currency that binds on a
+  private repo (see `lessons.md`). The e2e job is one unsharded job again,
+  which also retired the `blob` reporter and the `e2e-report` job this entry
+  says was verified.
+- **A PR no longer runs all 89 tests.** `npm run e2e:ci` runs 53 (desktop +
+  phone-iphone); the full matrix is local or `workflow_dispatch`.
+- **CI serves a production build**, not `next dev` — measured 54% less CPU
+  and, more importantly, 0 failures against dev's 5.
+
+Current state, with measurements, lives in `docs/E2E.md` §8–§9. Per merge
+went ~39 → ~15 billed minutes across PRs #19, #21 and #22 (EI-187, EI-189).

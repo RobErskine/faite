@@ -299,7 +299,14 @@ npm run typecheck
 npx vitest run
 npm run build && npm run build:static     # static is the P7 guard
 npx wrangler deploy --dry-run             # only thing that bundles worker.ts
+npm run e2e:ci                            # the 53 tests CI runs on a PR
 ```
+
+This bar predates the Playwright suite, hence the last line being an
+addition rather than part of the original list. `npm run e2e:ci` is the same
+gate CI runs on a pull request (desktop + one phone); `npm run e2e` is the
+full five-device matrix and is worth running before a large feature PR. See
+`docs/E2E.md` §8–§9 for what each covers and why the split exists.
 
 `npm run lint` used to have one **pre-existing** failure in
 `src/components/board/use-day-track.ts`, and this line used to tell you to leave it
