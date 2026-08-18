@@ -104,10 +104,13 @@ jobs:
         run: npm run build:static
 
   e2e:
-    # Both branches of every `A && B || C` in this job are non-empty on
-    # purpose. GitHub's is not a ternary — it is falsy-coalescing, so an
-    # empty string, 0 or false in B silently falls through to C.
-    name: e2e (${{ github.event_name == 'workflow_dispatch' && 'full matrix' || 'gate' }})
+    # Static, deliberately (EI-189). A computed name is only evaluated for
+    # jobs that actually *run* — a job skipped by its `if:` reports the raw
+    # `${{ ... }}` template to the checks API instead. Since this job is
+    # skipped on every push to `main`, a computed name meant every merge
+    # showed a checks entry that looked like a broken workflow. The E2E step
+    # below still says which scope it ran.
+    name: e2e
     runs-on: ubuntu-latest
 
     # Not on a merge into `main`. A `pull_request` run tests the *merge
@@ -197,7 +200,36 @@ jobs:
             exit 1
           fi
 
+      # Same cache as `verify`, same reasoning — and now this job builds too,
+      # so it benefits identically.
+      - name: Cache Next build
+        uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: next-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ hashFiles('src/**', 'next.config.ts') }}
+          restore-keys: |
+            next-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
+            next-${{ runner.os }}-
+
+      # The suite runs against a real production build, not `next dev`.
+      # Measured over the 53-test gate, same code, same machine:
+      #
+      #     next dev     487s CPU   median 8.1s/test   5 of 53 failed
+      #     next start   225s CPU   median 3.6s/test   0 of 53 failed
+      #
+      # This build costs ~35s and buys back ~2x the test time, so it is a net
+      # win on its own. The reliability difference is the bigger prize: every
+      # dev-mode failure was the fixture timing out on the board's boot while
+      # workers hit an on-demand-compiling server at once. It also means CI
+      # exercises the bundle that actually ships. docs/E2E.md §9.
+      - name: Build (production, served to the e2e suite)
+        run: npm run build
+
       - name: E2E
+        env:
+          # Overrides `webServer.command` in playwright.config.ts. The port
+          # matches its default, so `baseURL` needs no override.
+          E2E_SERVER: npx next start -p 3000
         timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && 15 || 8 }}
         # The mandatory/optional split, and the only place it is expressed.
         #

@@ -6,7 +6,9 @@ import { defineConfig, devices } from "@playwright/test";
  *
  * `/board` is `ssr:false` (`src/app/board/page.tsx`) and reads only from
  * IndexedDB, so `next dev` renders it identically to a production build —
- * dev is used everywhere for startup speed. Bypasses the `dev` npm script's
+ * dev is used *locally* for startup speed — CI runs against a production
+ * build instead, which measured ~2x faster per test and strictly more
+ * reliable (docs/E2E.md §9). Bypasses the `dev` npm script's
  * `concurrently` + agentation companion process on purpose: a second process
  * that can fail independently is a CI flake source neither Playwright nor
  * this app needs.
@@ -18,7 +20,11 @@ import { defineConfig, devices } from "@playwright/test";
  * fight that lock, `reuseExistingServer` targets whatever's already on 3000
  * locally and only spawns its own (in CI, where nothing is running yet).
  */
-const PORT = 3000;
+// `E2E_PORT` exists so this suite can be pointed at a second server without
+// editing the config — which is how the dev-vs-production comparison in §9
+// of docs/E2E.md was measured, and how it can be re-measured later. 3000
+// stays the default for the `reuseExistingServer` path below.
+const PORT = Number(process.env.E2E_PORT ?? 3000);
 // "localhost", not the equivalent "127.0.0.1": Next dev's HMR WebSocket does
 // an Origin check the IP literal fails (it isn't "localhost" and isn't in
 // next.config.ts's allowedDevOrigins), which silently breaks the handshake —
@@ -89,7 +95,25 @@ export default defineConfig({
   },
 
   webServer: {
-    command: `npx next dev -p ${PORT}`,
+    // CI overrides this to `npx next start` against a real production build
+    // (see .github/workflows/ci.yml). Measured, same code, same machine, one
+    // server at a time, over the 53-test gate:
+    //
+    //     next dev     487s CPU   median 8.1s/test   5 of 53 failed
+    //     next start   225s CPU   median 3.6s/test   0 of 53 failed
+    //
+    // Dev mode was not merely slower — it was *unreliable*. All five failures
+    // were the fixture timing out waiting for `Continue without an account`,
+    // i.e. the board never finishing its boot while several workers hit an
+    // on-demand-compiling dev server at once. That is the same starvation
+    // that forced `workers` down from 4 to 3 (see above). Production serves
+    // pre-built chunks and simply does not have the failure mode.
+    //
+    // Local runs keep `next dev`: `reuseExistingServer` means a dev already
+    // running `npm run dev` gets reused, which is the whole point locally,
+    // and requiring a build before every local e2e run would be a worse
+    // trade than the seconds it saves. docs/E2E.md §9.
+    command: process.env.E2E_SERVER ?? `npx next dev -p ${PORT}`,
     // `/board`, not `/`. Playwright polls this URL until it answers and only
     // then starts the run — so whatever it points at is the route that gets
     // compiled during startup, for free, while the runner is otherwise idle.
