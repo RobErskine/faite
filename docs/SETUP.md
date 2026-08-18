@@ -143,6 +143,37 @@ npx wrangler email sending send --from "noreply@myfaite.app" \
 
 ---
 
+## 3b. Turn on Email Routing for `in.myfaite.app` (EI-186)
+
+Separate from §3, and in the opposite direction: §3 is **sending**, this is
+**receiving**. Needed only for the email-capture feature.
+
+1. Dashboard → the `myfaite.app` zone → **Email** → **Email Routing** →
+   **Settings** → **Subdomains** → add `in.myfaite.app`. Cloudflare adds the
+   DNS records to the subdomain itself.
+2. On that subdomain, add a **catch-all** rule with the action **Send to a
+   Worker** → `faite`.
+
+Two things worth knowing before you start:
+
+- **This does not consume the apex.** Email Routing is zone-level and claims
+  the apex MX by default, but the root-domain MX/SPF/DKIM can be *unlocked* to
+  point at Google Workspace/Fastmail later while `in.myfaite.app` keeps
+  routing here. (Email Routing can also just give you `rob@myfaite.app`
+  forwarding to Gmail, free, as a rule on the apex — no Worker involved.)
+  Limit is 30 domains/subdomains per zone.
+- **None of this is in `wrangler.jsonc`.** Routing rules are zone
+  configuration — dashboard or the Email Routing REST API. The only config
+  change receiving needed was the `EMAIL_INGEST_DOMAIN` var.
+
+**Deploy with `npm run deploy:with-migrations`**, not `npm run deploy`:
+`email_ingest` is a new D1 table and Workers Builds does not run migrations.
+
+Testing this without touching DNS at all: `scripts/email-smoke/README.md`.
+Full rationale and the privacy invariants: `docs/EMAIL-INGEST.md`.
+
+---
+
 ## 4. Register the OAuth apps
 
 ### GitHub

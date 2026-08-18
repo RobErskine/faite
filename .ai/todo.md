@@ -1562,6 +1562,79 @@ Both Linear tickets (EI-74, EI-110) updated with the full writeup. EI-113's
 decorationSchema note and EI-107's migration-review flag are unchanged and
 still the only genuinely open items from this whole session.
 
+---
+
+## EI-186 — Email → Backlog ingest ✅
+
+Forward an email to a per-user secret address → it lands in Backlog, plaintext
+body as `description`, provenance in `Todo.source`. Rationale, decisions, and
+the privacy invariants live in **`docs/EMAIL-INGEST.md`**; only the build log
+is here.
+
+- [x] `email()` beside `fetch()` in `src/server/worker.ts` — no new Worker
+- [x] `src/server/email/ingest.ts` + 22 tests — guard → resolve → rate → parse
+      → push. Real postal-mime, real mapper, real `buildCreateTodoEntry`; only
+      the two D1 calls are faked. Mutation-checked: leaking `error.message`,
+      making the revoked bounce distinguishable from unknown, dropping the DO
+      position, and logging the subject each turn it red.
+- [x] `src/server/email/parse.ts` + 24 tests — pure mapper
+- [x] `src/server/email/addresses.ts` + 25 tests — 80-bit Crockford local part,
+      `+tag` split, revocation, fixed 1-hour/30-message window, D1 access
+- [x] `src/server/email/schema.ts` — drizzle `email_ingest`, kept OUT of
+      `auth-schema.ts` (regen would drop it); added to `drizzle.config.ts`'s
+      schema array → `drizzle/auth/0002_puzzling_cerebro.sql`
+- [x] `src/server/service/hlc.ts` + 5 tests — `serverHlcClock()`, creates only
+- [x] `UserDurableObject.nextTodoPosition()` RPC
+- [x] `src/server/email/routes.ts` + `src/lib/email-ingest.ts` +
+      `settings/email-section.tsx` — reveal, create, rotate, copy
+- [x] `capture-source.ts` gains an optional `email` object (no migration —
+      `source` is an opaque blob and Zod strips unknown keys)
+- [x] `components/todo/capture-source-badge.tsx` + 7 tests — generic
+      `kind`-switching badge, "Captured" fallback; rendered in `todo-sheet.tsx`
+- [x] `scripts/email-smoke/` — drives `/cdn-cgi/handler/email` under
+      `wrangler dev`, no real mail
+- [x] `docs/EMAIL-INGEST.md`; `docs/API.md` and `docs/ARCHITECTURE.md` §2.12
+      updated with the two now-(partly)-resolved open questions
+
+### Verified
+
+`npm run verify` green (1760 tests, 107 files). `npm run schema:check` green.
+`npx wrangler deploy --dry-run` green — the only check that proves
+`postal-mime` actually bundles.
+
+Real end-to-end against `wrangler dev`, no mail involved: to-do landed in
+Backlog with `listId: null`, correct `source` blob, and HLC
+`01a012e0a220:0000:server`. Three in a row → `a1`/`a2`/`a3`, in order. `+tag`
+and mixed-case recipients resolve; wrong domain → `bad-recipient`; unknown
+local part → `unknown-address`; rotation → old address `revoked-address`, new
+one accepted with a fresh window; 31st message in the hour → `rate-limited`.
+`--big` produced a description of exactly 16384 bytes ending `— truncated`.
+Grepping the dev log for the subject, body, and sender: **0 hits inside our own
+`[faite]` lines** (invariant 3).
+
+### Two things worth knowing before touching this again
+
+- **`wrangler dev`'s email endpoint always answers HTTP 200.** It reports that
+  the handler *ran*; `setReject()` is a normal return, not an exception. The
+  verdict is the `[faite] email-ingest {"decision":…}` log line. The smoke
+  script says so, because the first run of it read as "everything is accepted".
+- **The 10 MiB size guard cannot be exercised locally.** That endpoint refuses
+  any body over **1 MiB** with its own 400, so the request never reaches the
+  Worker. Production-only.
+
+### Still open (deliberately, follow-up tickets)
+
+- Forwarding rules — `emailToTodoInput(parsed, rules, context)` and the
+  preserved `+tag` are the seams. Full `docs/SCHEMA-CHANGES.md` 8-file change,
+  since rules should be a synced entity kind.
+- Hard-delete / purge — nothing in this codebase ever hard-deletes, so email
+  bodies survive to-do deletion indefinitely.
+- Server-originated **updates** still need the persisted-node-id answer;
+  `serverHlcClock()` is safe for creates only.
+- Zone config is not code: Email Routing must be enabled on `in.myfaite.app`
+  with a catch-all → Worker rule, and the first deploy must be
+  `npm run deploy:with-migrations`.
+
 ## Review — EI-187, CI e2e job, 2026-08-18
 
 Diagnose-and-optimize pass on `.github/workflows/ci.yml` + the Playwright
