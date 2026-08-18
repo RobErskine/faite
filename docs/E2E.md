@@ -178,7 +178,10 @@ runs it as a separate, parallel job (`.github/workflows/ci.yml`) instead.
 - New gesture coverage goes in `touch-smoke.spec.ts`. **Which projects a
   spec runs under is decided in `playwright.config.ts`, not in the spec** —
   add the file to the `testMatch` list of each project that should run it
-  (§8). Specs used to carry a `test.beforeEach` + `test.skip(project.name
+  (§8). A brand-new spec that nobody adds to a `testMatch` runs under *zero*
+  projects and passes silently; `e2e/config-coverage.test.ts` fails `npm
+  test` if you forget, so you find out in `verify` in seconds rather than
+  never. Specs used to carry a `test.beforeEach` + `test.skip(project.name
   !== ...)` guard instead; those are gone, because a guard only skips a run
   Playwright has already scheduled, started and resolved fixtures for.
   - If you do need a conditional skip *within* a project — the way
@@ -308,6 +311,14 @@ for that spec rather than deleting it globally.
   bar had to come from more runners, because what was left is honest work.
   Three and not four: the ~80s of container pull + `npm ci` is fixed per
   shard and doesn't shrink, so each extra shard buys less for the same cost.
+- **`e2e/config-coverage.test.ts` guards the matrix.** Declaring coverage in
+  the config is what made the suite fast, but it moved the failure mode from
+  "slow" to "quiet": a spec absent from every `testMatch` runs nowhere and
+  reports nothing. That test runs in `npm test` — so in `verify`, in
+  milliseconds — and fails if any spec is unregistered, if a `testMatch`
+  names a file that no longer exists (a rename silently stops a spec
+  running), or if a project has no `testMatch` at all and has quietly gone
+  back to running everything.
 - **The HTML report is merged, and only on failure.** Each shard emits a
   `blob` report; the `e2e-report` job stitches them with
   `playwright merge-reports` into the single browsable report the job used
