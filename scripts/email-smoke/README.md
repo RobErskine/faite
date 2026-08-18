@@ -20,7 +20,7 @@ node scripts/email-smoke/send.mjs <localpart> --count 3        # distinct positi
 node scripts/email-smoke/send.mjs <localpart> --html           # no text/plain part
 node scripts/email-smoke/send.mjs <localpart> --big            # exercises the 16 KB description cap
 node scripts/email-smoke/send.mjs <localpart> --huge           # >10 MiB, rejected before parsing
-node scripts/email-smoke/send.mjs <localpart> --count 35       # the 31st must reject
+node scripts/email-smoke/send.mjs <localpart> --count 55       # the 51st must reject
 node scripts/email-smoke/send.mjs nosuchaddress                # unknown local part
 node scripts/email-smoke/send.mjs <localpart> --rcpt '<localpart>+family@in.myfaite.app'
 ```

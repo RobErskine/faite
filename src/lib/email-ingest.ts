@@ -1,5 +1,9 @@
 import { apiUrl } from "@/lib/api-origin";
 
+/** Re-exported so the Settings panel has one import, and so the numbers it
+ * renders are provably the ones the Worker enforces. */
+export { MAX_EMAIL_MB, RATE_LIMIT } from "@/lib/email-limits";
+
 /**
  * The client half of `/api/email/address` (EI-186) — reveal and rotate the
  * secret forwarding address.

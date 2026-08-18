@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parseSource } from "@/lib/capture-source";
 import type { PushEntry } from "@/lib/sync/wire";
-import type { IngestAddressRow } from "./addresses";
+import { RATE_LIMIT, type IngestAddressRow } from "./addresses";
 
 /**
  * The orchestration test — the one that actually simulates a forwarded email
@@ -287,13 +287,13 @@ describe("handleEmail — rejections", () => {
   });
 
   it("rejects over the rate cap, and does not spend a DO round trip doing it", async () => {
-    vi.mocked(loadByLocalPart).mockResolvedValue(row({ windowStart: Date.now(), windowCount: 30 }));
+    vi.mocked(loadByLocalPart).mockResolvedValue(row({ windowStart: Date.now(), windowCount: RATE_LIMIT }));
     const { env, stub } = fakeEnv();
     const { message, state } = fakeMessage(mime());
 
     await handleEmail(message, env);
 
-    expect(state.rejected).toBe("rate limit exceeded");
+    expect(state.rejected).toMatch(/not delivered/);
     expect(state.rawReads).toBe(0);
     expect(markAccepted).not.toHaveBeenCalled();
     expect(stub.nextTodoPosition).not.toHaveBeenCalled();
@@ -307,7 +307,7 @@ describe("handleEmail — rejections", () => {
     const { message, state } = fakeMessage(mime());
 
     await expect(handleEmail(message, env)).resolves.toBeUndefined();
-    expect(state.rejected).toMatch(/temporary failure/);
+    expect(state.rejected).toBe("could not be processed");
     expect(decision()).toBe("error");
   });
 
@@ -441,7 +441,7 @@ describe("handleEmail — privacy invariant 3: no email content in logs", () => 
       () =>
         vi
           .mocked(loadByLocalPart)
-          .mockResolvedValue(row({ windowStart: Date.now(), windowCount: 30 })),
+          .mockResolvedValue(row({ windowStart: Date.now(), windowCount: RATE_LIMIT })),
     ];
 
     for (const setup of cases) {
@@ -471,5 +471,68 @@ describe("handleEmail — privacy invariant 3: no email content in logs", () => 
     const all = logs.join("\n");
     for (const leak of leaks) expect(all).not.toContain(leak);
     expect(all).toContain("TypeError");
+  });
+});
+
+/**
+ * `setReject()` is a PERMANENT SMTP error — Cloudflare's `ForwardableEmail
+ * Message` has no defer API. So a reason string that invites a retry is a
+ * promise the protocol cannot keep: the sender will not retry, and the message
+ * is already destroyed. This guards the wording, which is the only part we
+ * control.
+ */
+describe("handleEmail — reject reasons never promise a retry", () => {
+  const RETRY_WORDS = /try again|temporar|retry|later|resend/i;
+
+  it("uses no retry language on any rejection path", async () => {
+    const cases: Array<[string, () => void]> = [
+      ["unknown", () => vi.mocked(loadByLocalPart).mockResolvedValue(null)],
+      ["revoked", () => vi.mocked(loadByLocalPart).mockResolvedValue(row({ revokedAt: new Date() }))],
+      [
+        "rate-limited",
+        () =>
+          vi
+            .mocked(loadByLocalPart)
+            .mockResolvedValue(row({ windowStart: Date.now(), windowCount: RATE_LIMIT })),
+      ],
+      ["thrown", () => vi.mocked(loadByLocalPart).mockRejectedValue(new Error("boom"))],
+    ];
+
+    for (const [label, setup] of cases) {
+      setup();
+      const { env } = fakeEnv();
+      const { message, state } = fakeMessage(mime());
+      await handleEmail(message, env);
+      expect(state.rejected, `${label} produced no rejection`).not.toBeNull();
+      expect(state.rejected, `${label}: "${state.rejected}" invites a retry that cannot happen`)
+        .not.toMatch(RETRY_WORDS);
+    }
+  });
+
+  it("says plainly that a rate-limited message was NOT delivered", async () => {
+    vi.mocked(loadByLocalPart).mockResolvedValue(
+      row({ windowStart: Date.now(), windowCount: RATE_LIMIT }),
+    );
+    const { env } = fakeEnv();
+    const { message, state } = fakeMessage(mime());
+
+    await handleEmail(message, env);
+
+    // The cap destroys mail rather than deferring it; the bounce has to say so,
+    // because it is the only notice the sender ever gets.
+    expect(state.rejected).toMatch(/not delivered/);
+  });
+
+  it("still accepts the message one below the cap", async () => {
+    vi.mocked(loadByLocalPart).mockResolvedValue(
+      row({ windowStart: Date.now(), windowCount: RATE_LIMIT - 1 }),
+    );
+    const { env, stub } = fakeEnv();
+    const { message, state } = fakeMessage(mime());
+
+    await handleEmail(message, env);
+
+    expect(state.rejected).toBeNull();
+    expect(stub.push).toHaveBeenCalledTimes(1);
   });
 });

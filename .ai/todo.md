@@ -1607,7 +1607,7 @@ Backlog with `listId: null`, correct `source` blob, and HLC
 `01a012e0a220:0000:server`. Three in a row → `a1`/`a2`/`a3`, in order. `+tag`
 and mixed-case recipients resolve; wrong domain → `bad-recipient`; unknown
 local part → `unknown-address`; rotation → old address `revoked-address`, new
-one accepted with a fresh window; 31st message in the hour → `rate-limited`.
+one accepted with a fresh window; 31st message in the hour → `rate-limited` (cap later raised to 50/hr).
 `--big` produced a description of exactly 16384 bytes ending `— truncated`.
 Grepping the dev log for the subject, body, and sender: **0 hits inside our own
 `[faite]` lines** (invariant 3).

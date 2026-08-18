@@ -148,23 +148,86 @@ npx wrangler email sending send --from "noreply@myfaite.app" \
 Separate from §3, and in the opposite direction: §3 is **sending**, this is
 **receiving**. Needed only for the email-capture feature.
 
-1. Dashboard → the `myfaite.app` zone → **Email** → **Email Routing** →
-   **Settings** → **Subdomains** → add `in.myfaite.app`. Cloudflare adds the
-   DNS records to the subdomain itself.
-2. On that subdomain, add a **catch-all** rule with the action **Send to a
-   Worker** → `faite`.
+Nav is **account-level**, not per-zone: **Compute → Email Service → Email
+Routing**, then pick the domain with the selector at the top. That selector is
+the thing to watch — see the trap below.
 
-Two things worth knowing before you start:
+1. Domain selector → `myfaite.app` → **Settings → Subdomains** → add
+   `in.myfaite.app`. Cloudflare writes that subdomain its own MX/SPF records.
+2. **Switch the domain selector to `in.myfaite.app`** → **Routing rules** →
+   turn **Catch-all** on → Action **Send to a Worker** → `faite` → Save.
+3. **Switch back to `myfaite.app`** and leave *its* Catch-all **Disabled**.
 
-- **This does not consume the apex.** Email Routing is zone-level and claims
-  the apex MX by default, but the root-domain MX/SPF/DKIM can be *unlocked* to
-  point at Google Workspace/Fastmail later while `in.myfaite.app` keeps
-  routing here. (Email Routing can also just give you `rob@myfaite.app`
-  forwarding to Gmail, free, as a rule on the apex — no Worker involved.)
-  Limit is 30 domains/subdomains per zone.
-- **None of this is in `wrangler.jsonc`.** Routing rules are zone
-  configuration — dashboard or the Email Routing REST API. The only config
-  change receiving needed was the `EMAIL_INGEST_DOMAIN` var.
+Do step 2 before step 3, so there is never a window with no working path.
+
+### The trap: which domain is the catch-all on?
+
+**Routing rules are per-domain, and a subdomain is a separate domain.** The
+rules list defaults to an "All domains" filter, where a catch-all on the apex
+and a catch-all on `in.myfaite.app` look identical — same row, same
+`Catch-all` label, same Worker.
+
+Get this wrong and **the feature fails silently.** Mail to
+`<localpart>@in.myfaite.app` matches no rule on that domain, so Email Routing
+rejects it at the rule-match stage and **the Worker is never invoked** —
+nothing in `wrangler tail`, nothing in the app's logs, no `bad-recipient`. Just
+a bounce to the sender and silence everywhere you would think to look.
+
+To check unambiguously, set the selector to `in.myfaite.app` and confirm the
+Catch-all row is there and Active. The **Activity log** tab is the other
+tell: a message that never reached the Worker shows as **Dropped**, whereas a
+handled one shows **Handled**.
+
+Note **Catch-all is a toggle at the top of the Routing rules page**, not
+something you add with "Create routing rule".
+
+### Why the apex catch-all stays Disabled
+
+Not Drop, and not Send to a Worker:
+
+- **Disabled** → unknown apex recipients get a clean 550, and `rob@myfaite.app`
+  stays available as a literal rule later.
+- **Drop** → a silent blackhole; you would never learn mail to `rob@` was being
+  eaten.
+- **Send to a Worker** → the ingest Worker hard-550s `postmaster@`, `abuse@`,
+  and any bounce addressed to `noreply@myfaite.app`. Hard-rejecting
+  `postmaster@`/`abuse@` on a domain you *send* from is a deliverability
+  liability.
+
+Want `rob@myfaite.app`? Domain selector → `myfaite.app` → Create routing rule →
+pattern `rob` → **Send to an email** → your Gmail. Free, no Worker, and it
+needs the destination address verified by a confirmation email first.
+
+### What this does to the apex
+
+Onboarding the zone **does** put Email Routing MX/SPF/DKIM on the apex and
+**locks** them — `dig MX myfaite.app` now returns `route1/2/3.mx.cloudflare.net`.
+The apex is *recoverable*, not *untouched*: Email Routing supports **Unlock**
+on those records so another provider can be swapped in later while
+`in.myfaite.app` keeps routing here (limit: 30 domains/subdomains per zone).
+Cloudflare's guidance is to unlock and add the new provider's records **before**
+disabling Email Routing, so mail flow is never interrupted.
+
+> **The SPF merge is the part that will bite.** The apex already publishes
+> `v=spf1 include:_spf.mx.cloudflare.net ~all` and `_dmarc.myfaite.app` is
+> `p=reject` (both from §3, Email **Sending**). When you point the apex at
+> Google Workspace you must **merge into the single existing SPF TXT**:
+>
+> ```
+> v=spf1 include:_spf.google.com include:_spf.mx.cloudflare.net ~all
+> ```
+>
+> Two SPF TXT records on one name is a permerror, and with `p=reject` already
+> published that silently destroys every password-reset and verification email
+> the app sends. One record, both includes.
+
+### Not in `wrangler.jsonc`
+
+Routing rules are zone configuration — dashboard or the Email Routing REST API.
+The only config change receiving needed was the `EMAIL_INGEST_DOMAIN` var.
+(The API exposes `source: "api" | "wrangler"` on rules, hinting that
+config-managed routing exists, but wrangler 4.118.0's config schema has no
+`email_routing` key. Worth revisiting on a later wrangler.)
 
 **Deploy with `npm run deploy:with-migrations`**, not `npm run deploy`:
 `email_ingest` is a new D1 table and Workers Builds does not run migrations.

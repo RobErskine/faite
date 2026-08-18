@@ -1,4 +1,5 @@
 import PostalMime from "postal-mime";
+import { MAX_RAW_SIZE_BYTES } from "@/lib/email-limits";
 import { createTodo, pushTransportFor } from "../service/todos";
 import { serverHlcClock } from "../service/hlc";
 import {
@@ -32,13 +33,9 @@ import { emailToTodoInput } from "./parse";
  * live, without a reload.
  */
 
-/**
- * Cloudflare accepts up to 25 MiB inbound. Parsing that inside a Worker
- * risks the memory and CPU limits for a message that is, by definition,
- * mostly attachments we are about to throw away. Checked against `rawSize`
- * **before** `message.raw` is touched, so an oversized message costs nothing.
- */
-export const MAX_RAW_SIZE_BYTES = 10 * 1024 * 1024;
+/** Re-exported for the tests and for symmetry with the other guards; the
+ * number and its reasoning live in `@/lib/email-limits`. */
+export { MAX_RAW_SIZE_BYTES } from "@/lib/email-limits";
 
 /**
  * The single SMTP reason for every address-resolution failure.
@@ -49,6 +46,17 @@ export const MAX_RAW_SIZE_BYTES = 10 * 1024 * 1024;
  * secret this feature has.
  */
 const REJECT_UNKNOWN = "no such recipient";
+
+/**
+ * **Every `setReject()` in this file is a PERMANENT SMTP error.** Cloudflare's
+ * `ForwardableEmailMessage` has no defer/4xx API — "Reject emails with a
+ * permanent SMTP error" is the whole contract. So a rejected message is
+ * destroyed, the sender does not retry, and the reason string below is the
+ * only explanation anyone ever gets. Word them as final, never as "try again":
+ * a reason that invites a retry that cannot happen is worse than no reason.
+ */
+const REJECT_RATE_LIMITED = "too many messages this hour — this one was not delivered";
+const REJECT_INTERNAL = "could not be processed";
 
 /**
  * Module-scoped so successive messages handled by the same isolate get
@@ -110,7 +118,7 @@ export async function handleEmail(
 
     if (!decision.ok) {
       message.setReject(
-        decision.reason === "rate-limited" ? "rate limit exceeded" : REJECT_UNKNOWN,
+        decision.reason === "rate-limited" ? REJECT_RATE_LIMITED : REJECT_UNKNOWN,
       );
       log({ decision: decision.reason, addressHash, rawSize });
       return;
@@ -160,7 +168,9 @@ export async function handleEmail(
     // of the failure, never its contents.
     log({ decision: "error", rawSize });
     console.error(`[faite] email-ingest failed: ${errorLabel(error)}`);
-    message.setReject("temporary failure, try again later");
+    // NOT "try again later" — see REJECT_INTERNAL. `setReject` is permanent,
+    // so telling the sender to retry is a promise the protocol cannot keep.
+    message.setReject(REJECT_INTERNAL);
   }
 }
 
