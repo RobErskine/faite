@@ -1,9 +1,33 @@
 name: CI
 
+# This repo is private on a Free plan, so every runner-minute below is
+# metered against a 2,000/month allowance. The `paths-ignore` is not
+# housekeeping — a documentation-only commit ("docs: Wave 4 runbook",
+# 2026-08-18) is what triggered the six-hour `apt` hang that burned 360
+# billed minutes, 18% of a month, for a change that could not have broken a
+# test. Prose does not need a browser.
+#
+# `paths-ignore` skips a run only when *every* changed path matches, so a
+# commit touching both code and docs still runs in full. Nothing here is a
+# required status check (branch protection needs Pro), so a skipped run
+# cannot leave a PR stuck waiting on a check that will never arrive.
 on:
   push:
     branches: [main]
+    paths-ignore: ["**/*.md", ".ai/**", "LICENSE"]
   pull_request:
+    paths-ignore: ["**/*.md", ".ai/**", "LICENSE"]
+  # An escape hatch for the above: if a docs-only change ever does need a
+  # run, or a flake needs re-confirming, start one by hand rather than
+  # pushing an empty commit to trick the triggers. It is also the only place
+  # the full 5-project e2e matrix runs in CI — see the `e2e` job.
+  workflow_dispatch:
+    inputs:
+      e2e:
+        description: "e2e scope — the full 5-project matrix, or just the PR gate"
+        type: choice
+        options: [full, gate]
+        default: full
 
 # Superseded runs are dead work. Pushing three times to a PR used to leave
 # three full CI runs racing each other for runners, and only the last one's
@@ -33,6 +57,26 @@ jobs:
 
       - run: npm ci
 
+      # Next's own compiler cache. This job runs `next build` twice (Workers
+      # target, then the static export) on a fresh checkout, so without this
+      # both start from zero every run. `verify` now runs on every PR *and*
+      # every merge, and is the co-critical path opposite `e2e`, so ~30s here
+      # is ~30s off the whole workflow twice per merge.
+      #
+      # Keyed on the lockfile plus the source tree: a dependency bump or a
+      # source change gets a fresh entry, and `restore-keys` still seeds it
+      # from the last good cache rather than starting cold. Only `.next/cache`
+      # — never `.next` itself, which holds the build output and would make a
+      # stale artifact look like a fresh one.
+      - name: Cache Next build
+        uses: actions/cache@v4
+        with:
+          path: .next/cache
+          key: next-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ hashFiles('src/**', 'next.config.ts') }}
+          restore-keys: |
+            next-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-
+            next-${{ runner.os }}-
+
       - name: Typecheck (app + worker)
         run: npm run typecheck
 
@@ -60,32 +104,57 @@ jobs:
         run: npm run build:static
 
   e2e:
-    name: e2e (${{ matrix.shard }}/${{ strategy.job-total }})
+    # Both branches of every `A && B || C` in this job are non-empty on
+    # purpose. GitHub's is not a ternary — it is falsy-coalescing, so an
+    # empty string, 0 or false in B silently falls through to C.
+    name: e2e (${{ github.event_name == 'workflow_dispatch' && 'full matrix' || 'gate' }})
     runs-on: ubuntu-latest
+
+    # Not on a merge into `main`. A `pull_request` run tests the *merge
+    # result* (`refs/pull/N/merge`), not the branch tip — so by the time a PR
+    # is merged, this exact tree has already had the full suite run against
+    # it minutes earlier, and re-running it on `main` bought a second copy of
+    # the same answer for ~14 more billed minutes every single merge. Across
+    # the last 40 runs, `push` cost 610 billed minutes against
+    # `pull_request`'s 350; that gap is almost entirely this duplicate.
+    #
+    # `verify` still runs on `main` and is the deliberate exception: it is
+    # ~5 min, and it is the one that catches a *semantic* conflict, where two
+    # PRs each pass alone and break together (typecheck, unit tests, both
+    # builds). That failure mode is real and only observable after the merge.
+    # An e2e regression that verify misses but the merged PR's own e2e run
+    # did not is a much narrower case, and not worth 14 minutes a merge.
+    #
+    # `workflow_dispatch` still runs it, so a full pre-release check on
+    # `main` is one button away when you want one.
+    if: github.event_name != 'push'
     # Parallel to `verify`, not appended to it: `verify` already runs two
     # Next builds and takes minutes; browser launch + a live dev server adds
     # real time, and this suite doesn't depend on `verify`'s outcome, so
     # there's no reason to serialize them. See docs/E2E.md.
-    timeout-minutes: 15
+    #
+    # ~2x each path's own p100, so a stall is caught in one coffee rather
+    # than one afternoon.
+    timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && 20 || 10 }}
 
-    # Sharded three ways (EI-187). Cutting the suite from 180 runs to 89 and
-    # giving the dev server a core back took the E2E step from 610s to 386s,
-    # which is a real win but still over the 5-minute bar this job is held
-    # to. The rest has to come from more runners, because what's left is
-    # honest work rather than waste.
+    # NOT sharded any more, and the reasoning is worth keeping because it
+    # reverses EI-187's.
     #
-    # Three, not four: setup (container pull + `npm ci`) is a fixed ~80s per
-    # shard that doesn't shrink, so the marginal shard buys progressively
-    # less wall-clock for the same fixed cost. Three lands the job at ~3.5
-    # min for ~30% more runner-minutes than the single job it replaces.
+    # Sharding's only product is wall clock on the blocking path, and it buys
+    # that by paying the fixed setup — container pull + `npm ci` + `next dev`
+    # boot, ~140s — once per shard. EI-187 took the three-shard job to ~4m30,
+    # but `verify` runs alongside at ~4m30 regardless, so the PR was never
+    # going to finish sooner than that. The shards bought nothing on the
+    # critical path and cost ~10 billed runner-minutes per PR run.
     #
-    # `fail-fast: false` because a failure in shard 2 says nothing about
-    # shards 1 and 3, and cancelling them just means re-running to find out
-    # whether they'd have failed too.
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2, 3]
+    # That was the wrong currency to optimise. This repo is private on a Free
+    # plan: 2,000 minutes a month, and landing EI-187 itself burned ~125 of
+    # them across eight pushes. Iteration count is the multiplier, so what
+    # matters is the cost of *one* run, not its wall clock.
+    #
+    # Unsharded, the gate is ~6m and 7 billed minutes against the old 15 —
+    # and the full matrix on `workflow_dispatch` gets cheaper too (9 vs 15),
+    # just slower, which is the right trade for a button nobody waits on.
 
     # Runs in Playwright's own image rather than on bare `ubuntu-latest`
     # (EI-187). This is the fix for the intermittent hang, not a speed-up:
@@ -129,59 +198,34 @@ jobs:
           fi
 
       - name: E2E
-        # Belt and braces under the job timeout: this step is ~2 min, so 10
-        # bounds a hang to something a human notices in one coffee rather
-        # than one afternoon.
-        timeout-minutes: 10
-        # `strategy.job-total` rather than a second hardcoded 3 — add or
-        # remove a shard in the matrix above and this follows it.
-        run: npm run e2e -- --shard=${{ matrix.shard }}/${{ strategy.job-total }}
+        timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && 15 || 8 }}
+        # The mandatory/optional split, and the only place it is expressed.
+        #
+        # `e2e:ci` is the gate: `--project=desktop --project=phone-iphone`.
+        # That pair is not arbitrary — `resolveLayout()` in
+        # src/lib/use-viewport.ts is `<640` phone / `<1024` tablet, so iPad
+        # Mini (768) and landscape iPhone (852) both render `DesktopBoard`,
+        # and only a sub-640 project ever renders `PhoneBoard`. desktop +
+        # phone-iphone is therefore the cheapest pair that exercises both
+        # shells; a desktop-only gate would give phone-board.tsx zero
+        # PR-time execution. See docs/E2E.md §8.5.
+        #
+        # The project list lives in package.json, not here, so
+        # `npm run e2e:ci` locally is the same run a PR gets — and so that
+        # widening the gate is a one-line change in one file.
+        #
+        # Note this selects *projects at invocation*; it never edits
+        # `testMatch` in playwright.config.ts. That is what keeps
+        # e2e/config-coverage.test.ts honest, and keeps "doesn't run on a
+        # PR" and "doesn't run at all" different things.
+        run: npm run ${{ (github.event_name == 'workflow_dispatch' && inputs.e2e != 'gate') && 'e2e' || 'e2e:ci' }}
 
-      # Always, not `if: failure()` — a shard that fails still has to hand its
-      # blob to the report job, and so does every shard that passed, or the
-      # merged report is missing the context that makes the failure readable.
-      - name: Upload blob report
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: blob-report-${{ matrix.shard }}
-          path: blob-report/
-          # Only an input to `e2e-report`, which runs minutes later.
-          retention-days: 1
-
-  # Stitches the shards' blobs into the single browsable HTML report the job
-  # used to upload directly. Only on failure: it is the artifact nobody opens
-  # when CI is green, and skipping it keeps the green path at three jobs.
-  e2e-report:
-    name: e2e report
-    needs: [e2e]
-    if: ${{ failure() }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      # `merge-reports` is pure report processing — no browser is launched,
-      # so this job wants neither the Playwright container nor a browser
-      # download.
-      - run: npm ci
-
-      - name: Download blob reports
-        uses: actions/download-artifact@v4
-        with:
-          path: all-blob-reports
-          pattern: blob-report-*
-          merge-multiple: true
-
-      - name: Merge into one HTML report
-        run: npx playwright merge-reports --reporter html ./all-blob-reports
-
+      # One job, so there are no per-shard blobs left to stitch together —
+      # Playwright writes the browsable report directly and this uploads it.
+      # Only on failure: a green report is 14 days of metered artifact
+      # storage nobody opens.
       - name: Upload Playwright report
+        if: ${{ failure() }}
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report

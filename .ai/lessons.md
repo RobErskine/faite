@@ -585,3 +585,38 @@ run ever executes it, and it is needed exactly when someone is debugging a
 red one. I broke a test on purpose to prove it worked, then force-pushed the
 break away. Untested-by-construction paths ship broken and are discovered at
 the worst possible moment.
+
+*(That job no longer exists — un-sharding retired it a day later, see the
+cost lesson below. The corollary is the durable part: the report upload it
+became is still `if: failure()`, and still wants proving the same way.)*
+
+---
+
+## Wall clock and billed minutes are different currencies (EI-187 follow-up, 2026-08-18)
+
+I optimised CI for wall clock, reported it as a cost win, and was wrong.
+Sharding the e2e job three ways took it from ~10 min to ~4m30 — and took
+billed runner-minutes *up*, 15 → 19 per run, because each shard pays the
+fixed ~140s of container pull + `npm ci` + dev-server boot all over again.
+On a private repo those minutes are metered. I had even written "~30% more
+runner-minutes" in the workflow comment, then summarised it to Rob as
+"~60% cheaper per run". The comment was right and the summary was wrong.
+
+**Rule:** when reporting a CI improvement, say which currency. Wall clock is
+what a person waits for; billed minutes are what an allowance pays for.
+Parallelism almost always trades one for the other, and which one matters is
+a product decision, not a technical one — ask.
+
+**What the numbers actually were, and the lever that mattered.** Of 960
+billed minutes across 40 runs, **360 were a single hung `apt` step** that ran
+to GitHub's 6-hour default on a *docs-only* commit. Not the suite. Not the
+sharding. One stall, 18% of a month. The fixes that paid were the boring
+ones — `timeout-minutes` so nothing can run to the 6-hour default, a
+container with no `apt` step to hang, `paths-ignore` so prose doesn't boot a
+browser, and not re-running e2e on `main` for a tree the PR already tested.
+
+**And the multiplier is iteration count, not merges.** Landing EI-187 itself
+cost ~125 billed minutes across eight pushes — 6% of the monthly allowance
+for one feature. Per-*merge* arithmetic hides that completely. Cost-model a
+change against how many times a branch gets pushed, not how many times it
+gets merged.

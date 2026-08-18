@@ -157,12 +157,24 @@ independently is a CI flake source neither Playwright nor this app needs.
 ## 6. Running it
 
 ```bash
-npm run e2e              # headless, all projects
+npm run e2e:ci           # the PR gate — desktop + phone-iphone (53 tests)
+npm run e2e              # the full matrix — all five projects (89 tests)
 npm run e2e -- --project=desktop
 npm run e2e -- --project=phone-iphone e2e/touch-smoke.spec.ts
 npm run e2e:ui            # Playwright's interactive UI mode
 npm run e2e:report        # open the last HTML report
 ```
+
+**`e2e:ci` is what a PR actually runs; `e2e` is the optional deeper pass.**
+The full matrix is no longer run on every PR — see §8.5. Run it locally
+before opening a large feature PR, or trigger the `CI` workflow by hand
+(`workflow_dispatch`, `e2e: full`) to get it on a runner. Everything else
+about the two is identical; `e2e:ci` differs only by two `--project` flags.
+
+For exact parity with CI, `CI=1 npm run e2e:ci` — but note `CI=1` also flips
+`reuseExistingServer` to false, so Playwright will try to start its own
+`next dev` and fail if you already have one on port 3000 (§5). Stop your dev
+server first, or leave `CI` unset and accept 3 workers' worth of difference.
 
 **Deliberately not part of `npm run verify`.** Verify already runs two Next
 builds and takes minutes; browser launch and a live dev server add real time
@@ -181,7 +193,12 @@ runs it as a separate, parallel job (`.github/workflows/ci.yml`) instead.
   (§8). A brand-new spec that nobody adds to a `testMatch` runs under *zero*
   projects and passes silently; `e2e/config-coverage.test.ts` fails `npm
   test` if you forget, so you find out in `verify` in seconds rather than
-  never. Specs used to carry a `test.beforeEach` + `test.skip(project.name
+  never.
+  - Register it in every project that *should* run it, not just the two the
+    PR gate happens to use. The gate narrows by `--project` at invocation
+    (§8.5) and never by editing `testMatch`, which is what keeps "doesn't
+    run on a PR" and "doesn't run at all" different things — only the second
+    is a bug, and only the second is what `config-coverage.test.ts` guards. Specs used to carry a `test.beforeEach` + `test.skip(project.name
   !== ...)` guard instead; those are gone, because a guard only skips a run
   Playwright has already scheduled, started and resolved fixtures for.
   - If you do need a conditional skip *within* a project — the way
@@ -227,6 +244,12 @@ source of truth; there are no project guards inside specs any more (§7).
 
 **89 tests.** Before, every project ran every spec — 36 x 5 = **180 runs**,
 of which 56 immediately hit a skip guard and exited.
+
+This table is what `npm run e2e` runs, and it is the *full* matrix. A pull
+request runs a subset of it: the **`desktop` and `phone-iphone` columns
+only** (53 tests, `npm run e2e:ci`). The other three columns are deferred to
+a local run or a `workflow_dispatch` — see §8.5 for why those two, and what
+deferring the rest gives up.
 
 ### 8.2 Why each cell is empty
 
@@ -305,12 +328,16 @@ for that spec rather than deleting it globally.
   `/board` — the route *every* test in this suite loads — to be compiled by
   whichever tests reached it first, concurrently, out of their own 30s
   budgets.
-- **Sharded three ways**, with `--shard=i/N` driven by `strategy.job-total`
-  so the matrix is the only place the count is written down. Removing work
-  got the E2E step from 610s to 386s; the rest of the way to the 5-minute
-  bar had to come from more runners, because what was left is honest work.
-  Three and not four: the ~80s of container pull + `npm ci` is fixed per
-  shard and doesn't shrink, so each extra shard buys less for the same cost.
+- **Not sharded** — and this reverses an earlier decision, so the reasoning
+  matters. Sharding's only product is wall clock on the blocking path, and
+  it buys that by paying the fixed setup (container pull + `npm ci` +
+  `next dev` boot, ~140s) once *per shard*. Three shards took the job to
+  ~4m30 — but `verify` runs alongside at ~4m30 regardless, so the PR was
+  never going to finish sooner than that. The shards bought nothing on the
+  critical path and cost ~10 billed runner-minutes per PR run. That was the
+  wrong currency: this repo is private on a Free plan (2,000 min/month), and
+  landing EI-187 itself burned ~125 of them across eight pushes. Iteration
+  count is the multiplier, so the cost of *one* run is what matters.
 - **`e2e/config-coverage.test.ts` guards the matrix.** Declaring coverage in
   the config is what made the suite fast, but it moved the failure mode from
   "slow" to "quiet": a spec absent from every `testMatch` runs nowhere and
@@ -319,17 +346,85 @@ for that spec rather than deleting it globally.
   names a file that no longer exists (a rename silently stops a spec
   running), or if a project has no `testMatch` at all and has quietly gone
   back to running everything.
-- **The HTML report is merged, and only on failure.** Each shard emits a
-  `blob` report; the `e2e-report` job stitches them with
-  `playwright merge-reports` into the single browsable report the job used
-  to upload directly. No shard sees the whole suite, so no shard can write a
-  complete report on its own. It is skipped when CI is green, which is when
-  nobody opens it anyway.
-- **Timeouts exist now.** `timeout-minutes: 15` on both jobs and 10 on the
-  E2E step. There were none at all before, so a stall ran to GitHub's
-  6-hour default — which is the only reason a hung `apt` could burn 35
-  minutes before a human noticed.
+- **The HTML report is written directly, and uploaded only on failure.**
+  With one job there are no per-shard blobs to stitch, so the `blob`
+  reporter and the whole `e2e-report` merge job are gone; the reporter is
+  `html` with `open: "never"` (explicitly, because this runs in a container
+  as `--user 1001`, where opening a browser hangs rather than errors).
+  Uploaded on failure only — a green report is 14 days of metered artifact
+  storage nobody opens.
+- **Timeouts exist now**, and scale with the path: `timeout-minutes: 10` on
+  the gate job / 8 on its E2E step, 20 / 15 on a `workflow_dispatch` full
+  run, 15 on `verify`. There were none at all before, so a stall ran to
+  GitHub's 6-hour default — which is exactly how one hung `apt` step burned
+  **360 billed minutes**, 18% of a month's allowance, on a docs-only commit.
 - **`concurrency` with `cancel-in-progress` on PRs.** Pushing three times to
   a PR used to leave three full runs racing for runners when only the last
   one's result would ever be read. `main` is exempt: each push there gets
   its own group, so a merge is never cancelled by the merge behind it.
+- **CI is skipped for docs-only commits** (`paths-ignore: **/*.md`, `.ai/**`,
+  `LICENSE`) and **e2e is skipped on merges to `main`**. A `pull_request`
+  run tests the *merge result*, not the branch tip, so re-running e2e on
+  `main` bought a second copy of an answer already given minutes earlier.
+  `verify` still runs there — it is the one that catches a semantic conflict,
+  where two PRs pass alone and break together.
+
+### 8.5 Mandatory vs optional — what a PR actually runs
+
+The full matrix stopped running on every PR. `npm run e2e:ci` — the **gate** —
+runs `--project=desktop --project=phone-iphone`, **53 of the 89 tests**.
+
+**Why that pair, and not just `desktop`.** `resolveLayout()`
+(`src/lib/use-viewport.ts`) is `< 640` phone, `< 1024` tablet, `>= 1024`
+desktop. Against the device widths in `playwright.config.ts`:
+
+| project | width | shell rendered |
+| -- | -- | -- |
+| `desktop` | 1440 | `DesktopBoard` |
+| `tablet-ipad-mini` | 768 | `DesktopBoard` |
+| `phone-iphone-landscape` | 852 | `DesktopBoard` |
+| **`phone-iphone`** | **393** | **`PhoneBoard`** |
+| `phone-pixel` | 412 | `PhoneBoard` |
+
+Only a sub-640 project ever renders `PhoneBoard`. So desktop + phone-iphone
+is the *cheapest pair that exercises both shells*; a desktop-only gate would
+give `phone-board.tsx` and `phone-bottom-bar.tsx` zero PR-time execution, and
+would leave `touch-affordances.spec.ts` and `touch-smoke.spec.ts` — plus the
+whole CDP touch pipeline in `support/touch.ts` — running under no project at
+all. Every spec file still executes under the gate.
+
+**Deferred to the full matrix** (viewport redundancy; no spec is lost):
+
+- `tablet-ipad-mini` — the only check that the two-half board still fits
+  below 1024px (`src/lib/split.ts`'s `SPLIT_MIN` arithmetic).
+- `phone-iphone-landscape` — the 393px-*tall* case, the one viewport short
+  enough to break a full-screen overlay (`overdrive`).
+- `phone-pixel` — a second phone DPR/UA. `PhoneBoard` itself is covered by
+  `phone-iphone`, so this is the cheapest of the three to defer.
+
+**Where the full matrix still runs:** `npm run e2e` locally, and the `CI`
+workflow's `workflow_dispatch` with `e2e: full`. Run it before opening a
+large feature PR, or before a release.
+
+**The rule:** the gate narrows by `--project` **at invocation**, never by
+editing `testMatch`. Widening it is a one-line change to the `e2e:ci` script
+in `package.json` — `playwright.config.ts` is not involved, which is what
+keeps `config-coverage.test.ts` meaningful (§8.4).
+
+If a third project ever earns its ~1.5 billed minutes, add
+`phone-iphone-landscape` (the overlay case) rather than the tablet.
+
+**Arithmetic** (GitHub bills each job rounded *up* to the minute; Linux 1×):
+
+| path | e2e billed | + `verify` | total | wall clock |
+| -- | -- | -- | -- | -- |
+| 3-shard full matrix (before) | 15 | 5 | **20** | ~4m30 |
+| gate (now) | 7 | 5 | **12** | ~6m |
+| merge to `main` | 0 | 5 | **5** | ~4m30 |
+| `workflow_dispatch`, full | 9 | — | **9** | ~8m |
+
+The gate is ~1m30 *slower* in wall clock than the 3-shard run it replaces.
+That is the deliberate trade: un-sharding costs latency and buys back ~8
+billed minutes per PR run, and with iteration counts of 5–8 pushes on a real
+feature branch, the per-run cost is what compounds. If wall clock ever
+matters more, sharding the gate 2× costs 3 more billed minutes.
