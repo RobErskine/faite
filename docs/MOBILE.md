@@ -161,10 +161,10 @@ silently ignores it anyway.
 `src/app/manifest.ts` (Next's file-convention route) — `display:
 "standalone"`, `start_url: "/board"` (not `"/"`: a device that already has
 the app installed should reopen straight into it, not back onto the
-marketing pitch), icons at 192/512 + a maskable 512. **Icons are
-placeholders** (`public/icon-{192,512,maskable-512}.png` — a dark square
-with a bold white "F", generated with ImageMagick) pending real artwork;
-swap the files, not `manifest.ts`, once branded icons exist.
+marketing pitch), icons at 192/512 + a maskable 512. Icons are branded
+artwork (`public/icon-{192,512,maskable-512}.png`), generated from
+`assets/icons/` via `npm run icons` — regenerate them, don't hand-edit the
+PNGs.
 
 **`export const dynamic = "force-static"` is required on `manifest.ts` under
 `output: "export"`** (`npm run build:static`) — without it the static export
@@ -237,7 +237,7 @@ everything.
 | Phase | Scope | Status |
 |---|---|---|
 | **M-1** | Playwright E2E harness — desktop/tablet/phone projects, Tier A structural contract, Tier B real touch via CDP | **Shipped.** See docs/E2E.md. |
-| **M0** | `viewport` export, safe-area vars, manifest + placeholder icons, `@custom-variant`s, `use-viewport.ts` + `?layout=` override, `overscroll-none`, static-export entry fix | **Shipped.** This document. |
+| **M0** | `viewport` export, safe-area vars, manifest + branded icons, `@custom-variant`s, `use-viewport.ts` + `?layout=` override, `overscroll-none`, static-export entry fix | **Shipped.** This document. |
 | **M1** | Touch remediation on the *existing* desktop layout — the 4 hover-only reveals, `buttonVariants`/`SelectTrigger`/tab-pill coarse sizes, checkbox/resize-handle `::after` hit areas, coarse-tuned dnd-kit sensors + haptic, guard test | **Shipped.** §3, §9, `docs/DRAG-AND-DROP.md` §4.9b. |
 | **M2** | Extract `board.tsx` (2574 lines, no `board.test.tsx`) into `use-board-data`/`use-board-ui-state`/`use-board-actions` + a `DesktopBoard` seam | **Shipped.** See docs/ARCHITECTURE.md §4. |
 | **M3** | The phone shell — scroll-snap pager, bottom segmented control (Days / Lists), compact header, `layout` (the other half of `useViewport()`) finally consumed | **Shipped.** §10. |

@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "agentation": "agentation-mcp server",
-    "dev": "NEXT_PUBLIC_AGENTATION=1 NEXT_PUBLIC_AUTH_URL=http://localhost:8787 concurrently -k -n agentation,next -c magenta,cyan \"npm:agentation\" \"next dev\"",
+    "dev": "NEXT_PUBLIC_AGENTATION=1 NEXT_PUBLIC_AUTH_URL=http://localhost:8787 NEXT_PUBLIC_APP_ENV=development concurrently -k -n agentation,next -c magenta,cyan \"npm:agentation\" \"next dev\"",
     "build": "next build",
     "build:static": "BUILD_TARGET=static NEXT_PUBLIC_APP_SHELL=1 next build",
     "start": "next start",
@@ -17,7 +17,7 @@
     "e2e:ui": "playwright test --ui",
     "e2e:report": "playwright show-report",
     "verify": "npm run typecheck && npm run lint && npm run test && npm run build && npm run build:static",
-    "preview": "NEXT_PUBLIC_AGENTATION=1 opennextjs-cloudflare build && concurrently -k -n agentation,preview -c magenta,cyan \"npm:agentation\" \"opennextjs-cloudflare preview\"",
+    "preview": "NEXT_PUBLIC_AGENTATION=1 NEXT_PUBLIC_APP_ENV=development opennextjs-cloudflare build && concurrently -k -n agentation,preview -c magenta,cyan \"npm:agentation\" \"opennextjs-cloudflare preview\"",
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
     "auth:schema": "better-auth generate --config src/server/auth-cli.ts --output src/server/auth-schema.ts --yes && drizzle-kit generate",
@@ -29,7 +29,8 @@
     "schema:snapshot": "vitest run src/server/db/schema-parity.test.ts -u",
     "schema:info": "node scripts/schema/info.mjs",
     "schema:reset": "node scripts/schema/reset.mjs",
-    "openapi:generate": "vite-node -c vitest.config.ts scripts/openapi/generate.ts"
+    "openapi:generate": "vite-node -c vitest.config.ts scripts/openapi/generate.ts",
+    "icons": "node scripts/icons/generate.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
@@ -86,6 +87,7 @@
     "eslint-config-next": "16.2.12",
     "fake-indexeddb": "^6.2.5",
     "happy-dom": "^20.11.1",
+    "sharp": "^0.34.5",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vitest": "^3.2.7",

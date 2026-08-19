@@ -13,8 +13,8 @@ export const dynamic = "force-static";
  * build:static`) this file-convention route emits a static
  * `manifest.webmanifest` the same as any other build. See docs/MOBILE.md.
  *
- * Icons are placeholders (`public/icon-*.png`) pending real artwork — swap
- * the files, not this config, once branded icons exist.
+ * Icons (`public/icon-*.png`) are generated from `assets/icons/` via
+ * `npm run icons` — regenerate them, don't hand-edit the PNGs.
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {

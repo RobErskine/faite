@@ -29,6 +29,44 @@ export const metadata: Metadata = {
     statusBarStyle: "black-translucent",
     title: "Faite",
   },
+  // Tab favicon: transparent-background glyph, one variant per OS theme
+  // (`media`, standard `<link>` behavior — the browser swaps it live as the
+  // OS theme changes, no JS involved) crossed with which environment built
+  // the page. `NEXT_PUBLIC_APP_ENV=development` is set by the `dev` and
+  // `preview` npm scripts only, so a real localhost/`preview` tab renders an
+  // amber glyph and everything else (prod build, static export) renders
+  // black/white — the same literal-`process.env` pattern as
+  // `NEXT_PUBLIC_AGENTATION` below, required for Next to inline it at build
+  // time. `src/app/favicon.ico` (file convention, always black-on-white) is
+  // the legacy fallback for browsers that don't support SVG favicons.
+  // Regenerate all four, plus `apple` below, from `assets/icons/` via
+  // `npm run icons`.
+  //
+  // `apple` has to be spelled out here too: setting `icons.icon` opts out of
+  // Next's automatic file-convention icon detection for the whole `icons`
+  // field (favicon.ico is the one exception — a separate mechanism), so
+  // without this line `src/app/apple-icon.png` stops being linked at all.
+  icons: {
+    icon: [
+      {
+        url:
+          process.env.NEXT_PUBLIC_APP_ENV === "development"
+            ? "/favicon/icon-light-dev.svg"
+            : "/favicon/icon-light.svg",
+        type: "image/svg+xml",
+        media: "(prefers-color-scheme: light)",
+      },
+      {
+        url:
+          process.env.NEXT_PUBLIC_APP_ENV === "development"
+            ? "/favicon/icon-dark-dev.svg"
+            : "/favicon/icon-dark.svg",
+        type: "image/svg+xml",
+        media: "(prefers-color-scheme: dark)",
+      },
+    ],
+    apple: "/apple-icon.png",
+  },
 };
 
 export const viewport: Viewport = {
