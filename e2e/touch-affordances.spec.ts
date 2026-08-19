@@ -83,8 +83,10 @@ test.describe("touch affordances", () => {
     // not the label button inside it — checking the button directly would
     // only see its unpadded label height, not the tap target a thumb
     // actually gets. Locate the ancestor that carries the min-height.
+    // Anchored, not exact: EI-118 appended an `sr-only` count sentence, making
+    // the accessible name "My Lists, N lists with M items". See core-flows.spec.ts.
     const pillBox = await page
-      .getByRole("button", { name: "My Lists", exact: true })
+      .getByRole("button", { name: /^My Lists\b/ })
       .locator("xpath=ancestor::div[contains(@class,'group/tab')]")
       .boundingBox();
     expect(pillBox).not.toBeNull();
