@@ -1693,3 +1693,60 @@ what happened, not of how CI works now:
 
 Current state, with measurements, lives in `docs/E2E.md` §8–§9. Per merge
 went ~39 → ~15 billed minutes across PRs #19, #21 and #22 (EI-187, EI-189).
+
+---
+
+## Review — Tab strip & counts, 2026-08-16
+
+User dropped raw Agentation page feedback for `/board`'s tab strip — four
+items about legibility as tabs/lists multiply. Filed as four Linear tickets
+(EI-117 through EI-120) after reading the actual code (not just the
+feedback text), then implemented all four on branch
+`rob/ei-117-tab-strip-counts`.
+
+- **EI-117** — column filter's idle placeholder now reads "Filter N items"
+  (`board-column.tsx`), built from the `totalCount` prop that was already
+  threaded in for the `n of m` chip. No new plumbing.
+- **EI-118** — tab pills show `(lists/items)` with a tooltip spelling it out.
+  The real work: per-tab counts can't be read off `board.lists` (active tab
+  only) or column contents (`buildBoard` moves scheduled todos into day
+  columns, out of their list column). New `tabCounts` memo in
+  `use-board-data.ts` reads raw `lists` + `nonTemplateTodos` instead,
+  excluding Backlog (pinned into every tab) the same way
+  `archived-lists-sheet.tsx`'s `listsPerTab` already does.
+- **EI-119** — "Archived" button is icon-only now, `aria-label="Archived"`
+  owning the accessible name, tooltip carrying the count.
+- **EI-120** — strip gets the `column-track` scrollbar utility (was bare
+  `overflow-x-auto`, invisible on macOS overlay scrollbars until mid-scroll),
+  edge fade overlays gated on scroll position, and scroll-into-view on the
+  active pill so a `⌘K`/keyboard tab switch can't land off-screen. No new
+  drag code — dnd-kit's existing auto-scroll already reaches the container.
+
+`docs/DRAG-AND-DROP.md` §4.10d documents all four (new subsection after
+§4.10c), plus 8 new manual checklist items (38-45) after the list-to-tab
+checklist. Added `tab-strip.test.tsx` (7 tests: count badge, tooltip
+composition with/without a description, icon-only Archived button and its
+accessible name) and 3 tests to `board-column.test.tsx` for the placeholder.
+`npm run verify` green (1585 tests, typecheck/lint/build/build:static all
+clean). Manually verified all four in a running board at 1532×1029 and via
+a 10-tab overflow scenario — screenshots confirmed live count updates,
+tooltip text, icon-only Archived with corner badge, and the scrollbar/fade/
+scroll-into-view behavior all work as specced.
+
+**Follow-up** — real feedback on this branch's own build caught two things
+the manual pass above missed: the edge fade (`from-background` overlay)
+guessed the wrong backdrop color (`bg-muted/30`, not `--background`) and
+rendered as a visible gray box; the Archived corner badge read as "needs
+attention." Fixed by switching the fade to a `mask-image` on the scroll
+container (fades content alpha, no background color to guess) and moving
+the Archived count inline as `(N)` next to the icon, matching the tab
+pills' own count styling. Commit `3fb9be7`.
+
+**Follow-up 2** — the gray-oval report recurred after `3fb9be7`, at a tab
+count nowhere near overflow, which the mask fix couldn't explain. Actual
+root cause: `column-track` (globals.css) leaves `overflow-y` at `auto` by
+design for tall list columns; on the tab strip's single-row layout, a
+stray 1px of vertical overflow (measured: `scrollHeight` 25 vs
+`clientHeight` 24) was enough to park a permanent vertical scrollbar whose
+rounded thumb read as a floating button. Fixed with an inline
+`overflowY: "hidden"` on the strip's scroll container. Commit `f643d18`.

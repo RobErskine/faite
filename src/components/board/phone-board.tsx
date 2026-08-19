@@ -82,6 +82,7 @@ export function PhoneBoard({
     filteredListColumns,
     calendarCount,
     planningCount,
+    tabCounts,
     mentionLists,
     deadlineCounts,
     overTodoId,
@@ -298,6 +299,7 @@ export function PhoneBoard({
               tabs={tabs}
               activeTabId={activeTabId}
               archivedCount={archivedLists.length + archivedTabs.length}
+              counts={tabCounts}
               infoTabId={infoTabId}
               drop={tabDrop}
               isCardDragActive={!!activeTodo}

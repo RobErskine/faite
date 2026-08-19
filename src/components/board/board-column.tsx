@@ -346,6 +346,11 @@ export function BoardColumn({
   // back under the threshold.
   const showsFilter =
     !collapsed && !!onFilterChange && ((totalCount ?? 0) >= FILTER_MIN_TODOS || filterActive);
+  // Names the column's unfiltered size so the count is legible before typing
+  // anything — `totalCount` rather than `todos.length`, which is already
+  // narrowed by an active filter (see the prop doc above).
+  const filterCount = totalCount ?? todos.length;
+  const filterPlaceholder = `Filter ${filterCount} item${filterCount === 1 ? "" : "s"}`;
 
   /**
    * The list name when this column can be reordered, null when it cannot.
@@ -831,7 +836,7 @@ export function BoardColumn({
                 if (filterActive) onFilterChange?.(""); // first press clears, keeps focus
                 else e.currentTarget.blur(); // second press leaves
               }}
-              placeholder="Filter"
+              placeholder={filterPlaceholder}
               aria-label={typeof title === "string" ? `Filter ${title}` : "Filter this column"}
               autoComplete="off"
               autoCorrect="off"

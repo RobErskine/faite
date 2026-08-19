@@ -169,8 +169,14 @@ ledger stays at 14. Workers Builds auto-deploys `main`, so merging is deploying;
 
 Then the queue is empty: 16 of 16 PRs resolved. Remaining worktrees `ei-104` and `ei-178`
 can both be removed, and the stale local branches
-(`rob/ei-117-tab-strip-counts`, `rob/ei-111-reminder-relative-offsets`, ~20
-`worktree-agent-*`) pruned.
+(`rob/ei-111-reminder-relative-offsets`, ~20 `worktree-agent-*`) pruned.
+
+**`rob/ei-117-tab-strip-counts` was NOT stale — do not prune it.** An earlier
+revision of this list called it stale; it actually held 7 unpushed commits (the
+tab-pill counts, EI-117 – EI-120) that had never been PR'd, and nearly lost them.
+The work was rebased onto main and shipped as `rob/ei-118-tab-strip-counts`.
+Before pruning any branch off a list like this, check `git log origin/main..<branch>`
+is empty first.
 
 ## Open follow-ups, already filed
 
