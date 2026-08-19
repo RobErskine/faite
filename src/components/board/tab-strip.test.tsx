@@ -41,7 +41,7 @@ interface HarnessProps {
   tabs: Tab[];
   activeTabId: string;
   archivedCount?: number;
-  counts?: ReadonlyMap<string, { lists: number; items: number }>;
+  counts?: ReadonlyMap<string, { lists: number; items: number; assigned: number }>;
 }
 
 function Harness({ tabs, activeTabId, archivedCount = 0, counts = new Map() }: HarnessProps) {
@@ -68,22 +68,22 @@ function Harness({ tabs, activeTabId, archivedCount = 0, counts = new Map() }: H
 }
 
 describe("tab pill counts", () => {
-  it("shows (lists/items) next to the tab name", () => {
+  it("shows lists/items/assigned next to the tab name, without parens", () => {
     const work = tab("t1", "Work");
     render(
       <Harness
         tabs={[work]}
         activeTabId="t1"
-        counts={new Map([["t1", { lists: 2, items: 17 }]])}
+        counts={new Map([["t1", { lists: 2, items: 17, assigned: 4 }]])}
       />,
     );
-    expect(screen.getByRole("button", { name: /^Work\b/ }).textContent).toContain("(2/17)");
+    expect(screen.getByRole("button", { name: /^Work\b/ }).textContent).toContain("2/17/4");
   });
 
-  it("shows (0/0) for a tab absent from the counts map", () => {
+  it("shows 0/0/0 for a tab absent from the counts map", () => {
     const empty = tab("t2", "Empty");
     render(<Harness tabs={[empty]} activeTabId="t2" />);
-    expect(screen.getByRole("button", { name: /^Empty\b/ }).textContent).toContain("(0/0)");
+    expect(screen.getByRole("button", { name: /^Empty\b/ }).textContent).toContain("0/0/0");
   });
 
   it("gets a tooltip spelling out the count even with no description", async () => {
@@ -92,12 +92,30 @@ describe("tab pill counts", () => {
       <Harness
         tabs={[work]}
         activeTabId="t1"
-        counts={new Map([["t1", { lists: 1, items: 1 }]])}
+        counts={new Map([["t1", { lists: 1, items: 1, assigned: 0 }]])}
       />,
     );
     const pill = screen.getByRole("button", { name: /^Work\b/ }).closest("[data-tab-pill]")!;
     fireEvent.mouseEnter(pill);
     expect(await screen.findByText("1 list with 1 item")).toBeTruthy();
+  });
+
+  it("spells out the assigned tally only when there is one", async () => {
+    // The whole point of the third number: a tab whose lists look empty still
+    // reads 3/0/1, and the tooltip has to say why.
+    const work = tab("t1", "Work");
+    render(
+      <Harness
+        tabs={[work]}
+        activeTabId="t1"
+        counts={new Map([["t1", { lists: 3, items: 0, assigned: 1 }]])}
+      />,
+    );
+    const pill = screen.getByRole("button", { name: /^Work\b/ }).closest("[data-tab-pill]")!;
+    fireEvent.mouseEnter(pill);
+    expect(
+      await screen.findByText("3 lists with 0 items, plus 1 item assigned to a day"),
+    ).toBeTruthy();
   });
 
   it("shows the description above the count when both are present", async () => {
@@ -106,7 +124,7 @@ describe("tab pill counts", () => {
       <Harness
         tabs={[work]}
         activeTabId="t1"
-        counts={new Map([["t1", { lists: 2, items: 17 }]])}
+        counts={new Map([["t1", { lists: 2, items: 17, assigned: 0 }]])}
       />,
     );
     const pill = screen.getByRole("button", { name: /^Work\b/ }).closest("[data-tab-pill]")!;
