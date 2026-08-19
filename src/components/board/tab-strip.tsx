@@ -5,7 +5,7 @@ import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { Archive, Info, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { tabDragId, tabDropId } from "@/lib/board";
+import { tabDragId, tabDropId, type TabCount } from "@/lib/board";
 import { edge, tint } from "@/lib/colors";
 import type { Tab } from "@/lib/schema";
 import { cn } from "@/lib/utils";
@@ -16,11 +16,11 @@ interface TabStripProps {
   activeTabId: string;
   archivedCount: number;
   /**
-   * Lists and open to-dos per tab (EI-118), keyed by tab id. Backlog is
-   * excluded from both — see the doc comment on `tabCounts` in
-   * `use-board-data.ts`. A tab absent from the map has no lists of its own.
+   * Lists and open to-dos per tab (EI-118), keyed by tab id. Backlog and
+   * finished work are excluded — see `tabCountsFrom` in `lib/board.ts`.
+   * A tab absent from the map has no lists of its own.
    */
-  counts: ReadonlyMap<string, { lists: number; items: number }>;
+  counts: ReadonlyMap<string, TabCount>;
   /** The tab whose settings dialog is open, if any. */
   infoTabId: string | null;
   /** Edge to draw the insertion bar on while a tab drag hovers. */
@@ -159,7 +159,7 @@ export function TabStrip({
             isCardDragActive={isCardDragActive}
             isListDragActive={isListDragActive}
             dropSide={drop?.tabId === tab.id ? drop.side : null}
-            count={counts.get(tab.id) ?? { lists: 0, items: 0 }}
+            count={counts.get(tab.id) ?? { lists: 0, items: 0, assigned: 0 }}
             onSelect={() => onSelect(tab.id)}
             onOpenInfo={() => onOpenInfo(tab.id)}
           />
@@ -245,7 +245,7 @@ interface TabPillProps {
   isListDragActive: boolean;
   dropSide: "before" | "after" | null;
   /** Lists and open to-dos on this tab, Backlog excluded — see `TabStripProps.counts`. */
-  count: { lists: number; items: number };
+  count: TabCount;
   onSelect: () => void;
   onOpenInfo: () => void;
 }
@@ -273,6 +273,22 @@ function TabPill({
    * a ring, distinct from a column's filled target styling.
    */
   const isFocusCandidate = (isCardDragActive || isListDragActive) && isOver && !isActive;
+
+  /**
+   * Spells out the bare `3/0/1` badge for the tooltip and for screen readers.
+   * Declared above `pill` because that JSX is built at assignment, not on
+   * render — referencing this below it would be a temporal-dead-zone throw.
+   *
+   * "assigned to a day" rather than "scheduled": the third number exists
+   * precisely because those to-dos have LEFT their list column for the
+   * calendar half, which is what makes a tab read `3/0/1` while its lists
+   * all look empty.
+   */
+  const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+  const countLabel =
+    `${plural(count.lists, "list", "lists")} with ` +
+    `${plural(count.items, "item", "items")}` +
+    (count.assigned > 0 ? `, plus ${plural(count.assigned, "item", "items")} assigned to a day` : "");
 
   const pill = (
     <div
@@ -324,17 +340,16 @@ function TabPill({
       >
         <span className="min-w-0 truncate">{tab.name}</span>
         {/*
-          Visual parens read fine on their own but say nothing useful spelled
-          out letter by letter — `sr-only` below carries the real sentence,
-          same bargain as the deadline/location markers in todo-row-parts.tsx.
+          `lists/items/assigned`, bare — no parens. Three numbers plus
+          brackets is more punctuation than name on a narrow pill, and the
+          slashes already group them. Says nothing useful spelled out letter
+          by letter, so `sr-only` below carries the real sentence — the same
+          bargain as the deadline/location markers in todo-row-parts.tsx.
         */}
         <span aria-hidden className="num shrink-0 text-2xs font-normal text-muted-foreground/70">
-          ({count.lists}/{count.items})
+          {count.lists}/{count.items}/{count.assigned}
         </span>
-        <span className="sr-only">
-          , {count.lists} {count.lists === 1 ? "list" : "lists"} with {count.items}{" "}
-          {count.items === 1 ? "item" : "items"}
-        </span>
+        <span className="sr-only">, {countLabel}</span>
       </button>
 
       <Button
@@ -374,9 +389,6 @@ function TabPill({
     </div>
   );
 
-  const countLabel = `${count.lists} ${count.lists === 1 ? "list" : "lists"} with ${count.items} ${
-    count.items === 1 ? "item" : "items"
-  }`;
 
   return (
     <Tooltip>

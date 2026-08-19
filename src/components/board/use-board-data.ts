@@ -11,6 +11,7 @@ import {
   parseTabDropId,
   planListDrop,
   planTabDrop,
+  tabCountsFrom,
   type TodoGroup,
 } from "@/lib/board";
 import { effectiveListColor } from "@/lib/colors";
@@ -539,47 +540,15 @@ export function useBoardData(params: UseBoardDataParams) {
   /**
    * Lists and open to-dos per tab, for the tab pill badge (EI-118).
    *
-   * Built from raw `lists`/`nonTemplateTodos`, not from `board` — `board.lists`
-   * only ever holds the ACTIVE tab's columns (`tabLists` above), and a to-do
-   * scheduled into a day column still belongs to its list's tab even though
-   * `buildBoard` moved it out of the list column entirely. Reading from the
-   * board would make every inactive tab's count wrong and the active tab's
-   * count too low.
-   *
-   * Backlog (`list.tabId === null`, pinned into every tab) is excluded from
-   * both halves on purpose: counting it on every tab would add the same
-   * constant everywhere and make the numbers incomparable, exactly the
-   * reasoning `archived-lists-sheet.tsx`'s `listsPerTab` already applies.
-   *
    * `nonTemplateTodos` rather than `recurrenceExpansion.todos`: the expansion
    * is bounded to the visible window, so a badge built from it would change
-   * as the user scrolls or loads more days. Open-only mirrors
-   * `archived-lists-sheet.tsx`'s `counts` and `buildBoard`'s default
-   * `visibleStatuses`.
+   * as the user scrolls or loads more days.
+   *
+   * The counting rules themselves — and the reason behind every exclusion
+   * they make — live in `tabCountsFrom` (lib/board.ts), which is pure and
+   * unit-tested.
    */
-  const tabCounts = useMemo(() => {
-    const listTabId = new Map<string, string>();
-    for (const list of lists) {
-      if (list.isBacklog || !list.tabId) continue;
-      listTabId.set(list.id, list.tabId);
-    }
-
-    const counts = new Map<string, { lists: number; items: number }>();
-    const bump = (tabId: string, field: "lists" | "items") => {
-      const entry = counts.get(tabId) ?? { lists: 0, items: 0 };
-      entry[field]++;
-      counts.set(tabId, entry);
-    };
-
-    for (const tabId of listTabId.values()) bump(tabId, "lists");
-    for (const todo of nonTemplateTodos) {
-      if (todo.status !== "open" || !todo.listId) continue;
-      const tabId = listTabId.get(todo.listId);
-      if (tabId) bump(tabId, "items");
-    }
-
-    return counts;
-  }, [lists, nonTemplateTodos]);
+  const tabCounts = useMemo(() => tabCountsFrom(lists, nonTemplateTodos), [lists, nonTemplateTodos]);
 
   /**
    * Every list a todo could point at, for the day sheet's timeline colours.

@@ -764,3 +764,78 @@ export function buildBoard(
 
   return { days, overflow, lists: listColumns, awayTodoIds };
 }
+
+/** Per-tab pill badge counts — see `tabCountsFrom`. */
+export interface TabCount {
+  /** Lists filed under this tab, Backlog excluded. */
+  lists: number;
+  /** Open todos still sitting in one of those list columns. */
+  items: number;
+  /** Open todos given a day, so they render in the calendar half instead. */
+  assigned: number;
+}
+
+/**
+ * Lists and open todos per tab, for the tab pill badge (EI-118).
+ *
+ * Split out of `use-board-data.ts` as a pure function so the counting rules
+ * are testable without standing up the whole hook — the rules are where the
+ * bugs live, and every one of them below is a deliberate exclusion.
+ *
+ * Built from raw `lists`/`todos`, NOT from a built board: `board.lists` only
+ * ever holds the ACTIVE tab's columns, and `buildBoard` moves a scheduled
+ * todo out of its list column entirely. Reading from the board would make
+ * every inactive tab's count wrong and the active tab's count too low.
+ *
+ * Exclusions, each for its own reason:
+ *
+ * - **Backlog** (`list.tabId === null`, pinned into every tab) — counting it
+ *   everywhere would add the same constant to every pill and make the numbers
+ *   incomparable. Same reasoning as `archived-lists-sheet.tsx`'s `listsPerTab`.
+ * - **`done` and `dropped`** — the badge answers "how much is left here", and
+ *   neither finished nor abandoned work is left. `dropped` ("won't do", see
+ *   `todoStatusSchema`) is excluded for the same reason as `done`, not lumped
+ *   in with it.
+ * - **Sub-tasks** — callers pass `nonTemplateTodos`, which already drops
+ *   `parentId` rows via `visibleTodos`. A parent counts once, not once per child.
+ *
+ * `items` vs `assigned` splits on `scheduledDate` alone, deliberately NOT on
+ * `deriveColumn`: that function's answer depends on `today` and the visible
+ * window, so a badge built on it would change as the user scrolls or loads
+ * more days. The one divergence is a todo scheduled past the day cap, which
+ * `deriveColumn` bounces back to the planning half — it counts as `assigned`
+ * here even though it renders dimmed in its list. That is the documented
+ * safety valve, and pinning the badge to view state to chase it would cost
+ * far more than it buys.
+ */
+export function tabCountsFrom(
+  lists: readonly List[],
+  todos: readonly Todo[],
+): ReadonlyMap<string, TabCount> {
+  const listTabId = new Map<string, string>();
+  for (const list of lists) {
+    if (list.isBacklog || !list.tabId) continue;
+    listTabId.set(list.id, list.tabId);
+  }
+
+  const counts = new Map<string, TabCount>();
+  const entryFor = (tabId: string) => {
+    const existing = counts.get(tabId);
+    if (existing) return existing;
+    const fresh: TabCount = { lists: 0, items: 0, assigned: 0 };
+    counts.set(tabId, fresh);
+    return fresh;
+  };
+
+  for (const tabId of listTabId.values()) entryFor(tabId).lists++;
+
+  for (const todo of todos) {
+    if (todo.status !== "open" || !todo.listId) continue;
+    const tabId = listTabId.get(todo.listId);
+    if (!tabId) continue;
+    if (todo.scheduledDate) entryFor(tabId).assigned++;
+    else entryFor(tabId).items++;
+  }
+
+  return counts;
+}

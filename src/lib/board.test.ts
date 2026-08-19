@@ -18,6 +18,7 @@ import {
   parseTabDropId,
   parseWeekendColumnId,
   planListDrop,
+  tabCountsFrom,
   planListTabDrop,
   planTabDrop,
   preferPreciseTarget,
@@ -1191,5 +1192,85 @@ describe("filterListColumn", () => {
 
     const filtered = filterListColumn(column, "gro");
     expect(filtered.todos.map((t) => t.id)).toEqual(["desc", "title"]);
+  });
+});
+
+describe("tabCountsFrom", () => {
+  /** A list filed under `tabId` — the `list()` helper defaults `tabId` to null. */
+  const onTab = (id: string, tabId: string, position = positions[0]): List => ({
+    ...list(id, id, false, position),
+    tabId,
+  });
+
+  it("counts lists per tab, and open unscheduled todos as `items`", () => {
+    const counts = tabCountsFrom(
+      [onTab("l1", "t1"), onTab("l2", "t1", positions[1]), onTab("l3", "t2", positions[2])],
+      [
+        todo({ id: "a", listId: "l1" }),
+        todo({ id: "b", listId: "l2" }),
+        todo({ id: "c", listId: "l3" }),
+      ],
+    );
+
+    expect(counts.get("t1")).toEqual({ lists: 2, items: 2, assigned: 0 });
+    expect(counts.get("t2")).toEqual({ lists: 1, items: 1, assigned: 0 });
+  });
+
+  it("excludes `dropped` — a won't-do is not work left to do", () => {
+    const counts = tabCountsFrom(
+      [onTab("l1", "t1")],
+      [
+        todo({ id: "open", listId: "l1" }),
+        todo({ id: "wontdo", listId: "l1", status: "dropped" }),
+        todo({ id: "finished", listId: "l1", status: "done" }),
+      ],
+    );
+
+    expect(counts.get("t1")).toEqual({ lists: 1, items: 1, assigned: 0 });
+  });
+
+  it("counts a todo given a day as `assigned`, not `items`", () => {
+    // The reported confusion: the list columns look empty but the pill still
+    // showed a count, because a scheduled todo renders in the calendar half.
+    const counts = tabCountsFrom(
+      [onTab("l1", "t1")],
+      [todo({ id: "scheduled", listId: "l1", scheduledDate: "2026-08-19" })],
+    );
+
+    expect(counts.get("t1")).toEqual({ lists: 1, items: 0, assigned: 1 });
+  });
+
+  it("never counts Backlog, which is pinned into every tab", () => {
+    const counts = tabCountsFrom(
+      [onTab("l1", "t1"), list("bl", "Backlog", true)],
+      [todo({ id: "a", listId: "l1" }), todo({ id: "b", listId: "bl" })],
+    );
+
+    expect(counts.get("t1")).toEqual({ lists: 1, items: 1, assigned: 0 });
+  });
+
+  it("ignores todos with no list, and lists on no tab", () => {
+    const counts = tabCountsFrom(
+      [onTab("l1", "t1"), list("orphan", "Orphan")],
+      [
+        todo({ id: "a", listId: "l1" }),
+        todo({ id: "homeless" }),
+        todo({ id: "untabbed", listId: "orphan" }),
+      ],
+    );
+
+    expect(counts.get("t1")).toEqual({ lists: 1, items: 1, assigned: 0 });
+    expect(counts.size).toBe(1);
+  });
+
+  it("gives a tab with lists but nothing open an entry, not an absence", () => {
+    // `3/0/0` and a missing badge are different claims — the first says
+    // "nothing left here", the second would read as "no lists at all".
+    const counts = tabCountsFrom(
+      [onTab("l1", "t1")],
+      [todo({ id: "done", listId: "l1", status: "done" })],
+    );
+
+    expect(counts.get("t1")).toEqual({ lists: 1, items: 0, assigned: 0 });
   });
 });
