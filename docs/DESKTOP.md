@@ -82,10 +82,18 @@ D0 is throwaway — **nothing here ships**. Its only job was answering the
 architecture questions above against a real build before D1+ commits to them.
 Everything below is from an actual `cargo build`/`tauri build --debug` run on
 this machine, not "should work in theory." The harness that produced these
-numbers is `src-tauri/src/d0_probe.rs` — read its doc comment for how it
-works; it is explicitly spike-only and not wired into any non-probe build
-path (`FAITE_D0_PROBE=1` env var gates it; unset, the app just opens one
-window on `/board`, same as D1's shell would).
+numbers was `src-tauri/src/d0_probe.rs`, gated behind `FAITE_D0_PROBE=1` and
+never wired into a non-probe build path. **It is no longer on `main`** — EI-129
+removed it in PR #14 once D1's real window model landed, on the principle that
+throwaway spike code does not stay in shipped desktop code. To read it, recover
+it from the D0 branch:
+
+```bash
+git show rob/d0-desktop-spike:src-tauri/src/d0_probe.rs
+```
+
+The same treatment was applied to EI-178's probe — see
+`docs/DESKTOP-SYNC-TIMER-SPIKE.md`.
 
 ### 3.1 Tauri shell loads the real static export — **PASS**
 
