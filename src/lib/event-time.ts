@@ -55,3 +55,32 @@ export function formatEventStamp(instant: string, timezone: string): string {
 
   return `${dateFormatter.format(dt)} · ${formatEventTime(instant, timezone)}`;
 }
+
+/**
+ * "Completed Aug 14 · 9:41 AM" for a settled todo, or null when there is
+ * nothing to say.
+ *
+ * `done` and `dropped` are worded differently on purpose. `statusPatch`
+ * stamps `completedAt` for both — the field really means "settled at" — but
+ * "Completed" over an abandoned to-do claims credit for work that was
+ * explicitly given up on, which is the distinction `todoStatusSchema` keeps
+ * `dropped` separate for in the first place.
+ *
+ * Takes primitives rather than a `Todo` so this module stays schema-free, the
+ * way every other formatter here already is.
+ */
+export function formatCompletionStamp(
+  status: "open" | "done" | "dropped",
+  completedAt: string | null,
+  timezone: string,
+): string | null {
+  if (status === "open" || !completedAt) return null;
+
+  // `formatEventStamp` returns "" for an unparseable instant. Passing that
+  // through would render an empty tooltip popup on hover — a control that
+  // reacts by showing nothing reads as a bug, so say nothing instead.
+  const stamp = formatEventStamp(completedAt, timezone);
+  if (!stamp) return null;
+
+  return `${status === "done" ? "Completed" : "Dropped"} ${stamp}`;
+}

@@ -253,6 +253,7 @@ export function DesktopBoard({
             labels={labels}
             reminderPresets={data.reminderPresets}
             ctx={ctx}
+            timezone={settings?.timezone ?? "UTC"}
             // Grouped like a day column — the origin of a stale to-do is as
             // useful as anything here. `rejectsDrop` below means its groups
             // register no droppable, so they read but do not receive.
@@ -359,6 +360,7 @@ export function DesktopBoard({
                   todos={column.todos}
                   labels={labels}
                   ctx={ctx}
+                  timezone={settings?.timezone ?? "UTC"}
                   dueCount={deadlineCounts.get(column.day)}
                   recurrenceSummaries={recurrenceSummaries}
                   subtaskCounts={subtaskCounts}
@@ -461,6 +463,7 @@ export function DesktopBoard({
               todos={filteredBacklogColumn.todos}
               labels={labels}
               ctx={ctx}
+              timezone={settings?.timezone ?? "UTC"}
               awayTodoIds={board.awayTodoIds}
               onToggle={handleToggle}
               onOpen={(todo) => openTodoSheet(todo.id)}
@@ -556,6 +559,7 @@ export function DesktopBoard({
                   todos={column.todos}
                   labels={labels}
                   ctx={ctx}
+                  timezone={settings?.timezone ?? "UTC"}
                   awayTodoIds={board.awayTodoIds}
                   onToggle={handleToggle}
                   onOpen={(todo) => openTodoSheet(todo.id)}

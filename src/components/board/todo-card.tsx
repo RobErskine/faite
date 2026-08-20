@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { DragGrip } from "./drag-grip";
 import { PriorityRail, TitleMarkers, TodoMetaBadges } from "./todo-row-parts";
 import { cardStop, navKeyOf, type NavKey } from "@/lib/column-nav";
+import { formatCompletionStamp } from "@/lib/event-time";
 import { priorityRail } from "@/lib/priority";
 import { TITLE_CLAMP_CLASS } from "@/lib/title";
 import { rollEventsFor } from "@/lib/rollover-events";
@@ -26,6 +27,15 @@ interface TodoCardProps {
   /** Named reminder times (EI-106 P5) — see `TodoMetaBadges`. */
   reminderPresets?: ReminderPreset[];
   ctx: PlacementContext;
+  /**
+   * IANA zone for the completion stamp on the checkbox (EI-192).
+   *
+   * A prop rather than a field on `ctx`, matching how `TodoSheet` and
+   * `DaySheet` already receive it. `PlacementContext` carries civil dates and
+   * every formatter that reads it is pinned to UTC on purpose
+   * (`scheduling.ts`'s header); a zone-aware instant has no business in there.
+   */
+  timezone?: string;
   /** Scheduled outside the visible window — shown dimmed in its list column. */
   isAway?: boolean;
   /** Draw the drop indicator immediately above this card. */
@@ -82,6 +92,7 @@ export function TodoCard({
   labels,
   reminderPresets,
   ctx,
+  timezone = "UTC",
   isAway,
   showInsertionLine,
   isLanding,
@@ -117,6 +128,14 @@ export function TodoCard({
   /** Kept locally only for the sr-only priority label below — the visual
    * rail itself is rendered by `<PriorityRail>`. */
   const rail = priorityRail(todo.priority);
+
+  /*
+   * Null for an open to-do, which is what keeps the tooltip off every card on
+   * an ordinary board. `completedAt` is stamped for `dropped` as well as
+   * `done` — the field really means "settled at" — so the wording branches
+   * rather than claiming everything was completed.
+   */
+  const completionStamp = formatCompletionStamp(todo.status, todo.completedAt, timezone);
 
   /**
    * The Faite Loop, made visible: the last roll event tells us whether this
@@ -346,15 +365,44 @@ export function TodoCard({
         widen the tap target back into the grip on exactly the devices where
         a stray tap is most likely.
       */}
-      <Checkbox
-        checked={todo.status === "done"}
-        onCheckedChange={() => onToggle(todo)}
-        aria-label={`Mark ${todo.title} ${todo.status === "done" ? "not done" : "done"}`}
-        // Cursor is inherited, so without this the checkbox would read as a
-        // drag surface. It still drags if you pull from it; it just should not
-        // advertise that over being a checkbox.
-        className="absolute left-3 top-2 cursor-pointer after:-inset-x-1 pointer-coarse:after:-inset-x-1"
-      />
+      <Tooltip>
+        {/*
+          `render` puts the trigger's props ONTO the Checkbox rather than
+          wrapping it. A wrapper would have to carry the positioning above,
+          and that geometry is load-bearing against the grip — exactly what
+          the `after:-inset-x-1` regression test exists to protect.
+
+          `disabled` when there is nothing to say, the same gate shape the
+          title's `disabled={!titleClamped}` uses, so an open to-do's checkbox
+          behaves exactly as it did before EI-192.
+        */}
+        <TooltipTrigger
+          disabled={!completionStamp}
+          /*
+            Base UI merges the trigger's own props ONTO the rendered element,
+            and the trigger's win — so without this the wrapper's
+            `data-slot="tooltip-trigger"` silently replaces the Checkbox's
+            `data-slot="checkbox"`, and this one checkbox stops answering to
+            the shadcn slot every other one in the app answers to. Nothing
+            targets it in CSS today; `**:data-[slot=kbd]` in `ui/tooltip.tsx`
+            is proof that something could tomorrow.
+          */
+          data-slot="checkbox"
+          render={
+            <Checkbox
+              checked={todo.status === "done"}
+              onCheckedChange={() => onToggle(todo)}
+              aria-label={`Mark ${todo.title} ${todo.status === "done" ? "not done" : "done"}`}
+              data-completed-at={todo.completedAt ?? undefined}
+              // Cursor is inherited, so without this the checkbox would read as a
+              // drag surface. It still drags if you pull from it; it just should not
+              // advertise that over being a checkbox.
+              className="absolute left-3 top-2 cursor-pointer after:-inset-x-1 pointer-coarse:after:-inset-x-1"
+            />
+          }
+        />
+        {completionStamp && <TooltipContent>{completionStamp}</TooltipContent>}
+      </Tooltip>
 
       <button
         type="button"
@@ -426,6 +474,14 @@ export function TodoCard({
                 />
                 {todo.title}
                 {rail && <span className="sr-only"> — {rail.label}</span>}
+                {/*
+                  The tooltip is a pointer nicety; this is the real channel.
+                  Base UI's `aria-describedby` only exists while the tooltip is
+                  OPEN, so a screen-reader user who never hovers would never
+                  hear it — and the checkbox's own `aria-label` is a name, not
+                  a place to put a description.
+                */}
+                {completionStamp && <span className="sr-only"> — {completionStamp}</span>}
               </span>
             }
           />

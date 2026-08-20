@@ -187,6 +187,7 @@ export function PhoneBoard({
               labels={labels}
               reminderPresets={data.reminderPresets}
               ctx={ctx}
+              timezone={settings?.timezone ?? "UTC"}
               groups={filteredOverflow.groups}
               collapsedGroups={collapsedGroups}
               onToggleGroup={toggleGroup}
@@ -248,6 +249,7 @@ export function PhoneBoard({
                   todos={column.todos}
                   labels={labels}
                   ctx={ctx}
+                  timezone={settings?.timezone ?? "UTC"}
                   dueCount={deadlineCounts.get(column.day)}
                   recurrenceSummaries={recurrenceSummaries}
                   subtaskCounts={subtaskCounts}
@@ -323,6 +325,7 @@ export function PhoneBoard({
                   todos={filteredBacklogColumn.todos}
                   labels={labels}
                   ctx={ctx}
+                  timezone={settings?.timezone ?? "UTC"}
                   awayTodoIds={board.awayTodoIds}
                   onToggle={handleToggle}
                   onOpen={(todo) => openTodoSheet(todo.id)}
@@ -363,6 +366,7 @@ export function PhoneBoard({
                   todos={column.todos}
                   labels={labels}
                   ctx={ctx}
+                  timezone={settings?.timezone ?? "UTC"}
                   awayTodoIds={board.awayTodoIds}
                   onToggle={handleToggle}
                   onOpen={(todo) => openTodoSheet(todo.id)}
