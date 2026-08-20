@@ -15,7 +15,7 @@ past D1 exists yet.
 | D0 | Architecture spike — stress-test the locked decisions (§2) against a real build | ✅ Done — §3 |
 | D1 | Real window model, desktop bridge (`isDesktopShell()`), native app menu, window-state persistence | ✅ Done — §6 |
 | D1.5 | Installable, dock-resident `.app` — hide-on-close/reopen, ad-hoc signing, `desktop:build`/`desktop:dev` scripts | ✅ Done — §7 |
-| D1.6 | Developer ID + notarization | Not started |
+| D1.6 | Developer ID + notarization | ✅ Done — §8 |
 | D2a | Desktop login + sync — `TRUSTED_ORIGINS`, Better Auth `bearer` plugin, OS-keychain token storage, WS auth | Not started |
 | D2b (EI-145) | Background sync while the window is closed — Rust-driven timer into the hidden webview | Not started |
 | D3 | Feature A — menu bar popover (today/overdue to-dos, read-on-show) | Not started |
@@ -695,3 +695,108 @@ this milestone** — the install path is `cp -R Faite.app /Applications/`, no
 `dmg` unilaterally; Rob's own interactive session (which has real Automation
 permissions granted to Terminal/Finder already, unlike this one) should just
 work. Worth a two-minute check next time this doc is touched, not a blocker.
+
+---
+
+## 8. D1.6 — Developer ID + notarization
+
+Real signing and notarization, verified end to end the same session, same
+day as D1.5 — Rob enrolled in the Apple Developer Program and walked through
+certificate creation live.
+
+### 8.1 What Rob did (not scriptable — Apple's portal + Keychain Access are GUI-only)
+
+1. Confirmed Apple Developer Program enrollment.
+2. Generated a CSR via **Keychain Access → Certificate Assistant → Request a
+   Certificate From a Certificate Authority**, saved to disk (this is also
+   what creates the paired private key in the login keychain — the step that
+   makes everything downstream work).
+3. Created a **Developer ID Application** certificate on
+   developer.apple.com's Certificates page using that CSR, downloaded the
+   `.cer`, double-clicked to install it into the login keychain (pairs it
+   with the CSR's private key).
+4. Confirmed via `security find-identity -v -p codesigning`:
+   `"Developer ID Application: rob erskine (48XAK39593)"`.
+5. Generated an **App Store Connect API key** (Users and Access →
+   Integrations, "Developer" role) — the modern notarization auth method,
+   preferred over Apple ID + app-specific password because it doesn't hit 2FA
+   prompts and doesn't expire the same way. Saved the `.p8` outside any git
+   working directory (`~/.config/apple/`, `chmod 600`) — **never shared, and
+   never should be**; only its file path is a build input.
+6. Set four env vars in `~/.zshrc`: `APPLE_SIGNING_IDENTITY`,
+   `APPLE_API_ISSUER`, `APPLE_API_KEY`, `APPLE_API_KEY_PATH`.
+
+### 8.2 What changed in the repo — nothing
+
+**Deliberately no `tauri.conf.json` change.** `signingIdentity` stays `"-"`
+(ad-hoc, D1.5's default). `APPLE_SIGNING_IDENTITY` overrides it at build time
+per Tauri's own env-var precedence
+([reference](https://v2.tauri.app/reference/environment-variables/)), so a
+real signed+notarized build happens exactly when those four vars are present
+in the environment and not otherwise. Two reasons this beats hardcoding the
+identity into the committed config: it doesn't bake a personal name/Team ID
+into git history, and it doesn't go stale if the certificate is ever rotated
+or revoked — the file needs no edit either way. Anyone building without the
+vars set (a fresh contributor, CI with no secrets configured) silently falls
+back to ad-hoc, matching D1.5's existing safe default — never a hard failure.
+
+`hardenedRuntime` needed no config either — it **defaults to `true`** in
+Tauri v2's schema, and notarization requires it; confirmed active in the
+signed binary's own code signature (`flags=0x10000(runtime)`, §8.3).
+`providerShortName` (relevant to the older Apple-ID/app-specific-password
+notarization path, for disambiguating which team when an Apple ID belongs to
+several) wasn't needed — the API-key method identifies the team via
+`APPLE_API_ISSUER` unambiguously.
+
+### 8.3 Verified — real signing, real notarization, real Gatekeeper acceptance
+
+`npm run desktop:build -- --bundles app` (scoped to skip the still-unresolved
+`.dmg`/Automation-permission issue from §7.6) with all four env vars live:
+
+```
+Signing with identity "Developer ID Application: rob erskine (48XAK39593)"
+Notarizing Finished with status Accepted for id f71f1c65-1097-48ae-9097-89662e40cad6
+Stapling app...
+    Finished 1 bundle
+```
+
+Confirmed independently, not just trusting the build log:
+
+- `spctl -a -vv Faite.app` → **`accepted`**, `source=Notarized Developer ID`
+  — this is the same check macOS itself runs before allowing a downloaded
+  app to launch, and it now passes (§7.6's ad-hoc build was, correctly,
+  `rejected` by this same check — ad-hoc signing only avoids the "damaged"
+  false-positive for an *unquarantined*, locally-built copy; it was never
+  going to pass Gatekeeper's real assessment, which is what this milestone
+  actually fixes).
+- `codesign -dv --verbose=4` → full valid chain (`Developer ID Application:
+  rob erskine (48XAK39593)` → `Developer ID Certification Authority` →
+  `Apple Root CA`), `TeamIdentifier=48XAK39593`, `flags=0x10000(runtime)`.
+- `xcrun stapler validate Faite.app` → **"The validate action worked!"** —
+  the notarization ticket is stapled into the bundle itself, so Gatekeeper
+  can verify it offline; a user doesn't need network access at first launch.
+- Launched the real signed bundle directly (`open Faite.app`) and confirmed
+  via `lsappinfo list` it registered as `"Faite"`, `(in front)` — same
+  non-visual verification method as §7.6, same caveat about no Screen
+  Recording grant in this session to actually photograph it.
+
+**This is a materially stronger result than §7.6's ad-hoc build**: this
+`.app` would install and launch cleanly on *any* Mac, downloaded from
+anywhere, with zero Gatekeeper friction — not just on the machine that built
+it. `.dmg` bundling was not re-attempted here (already demonstrated to hang
+on this session's missing Automation permission in §7.6; unrelated to
+signing, so no reason to expect this milestone changed that outcome).
+
+### 8.4 What's still open
+
+- **Rob's own interactive-session checklist from §7.6 is unchanged and still
+  outstanding** — dock-icon reopen, Cmd-W hide, window-geometry restore,
+  Cmd-C/V, and an actual look at the rendered board all still need a human
+  at a real display session. Signing/notarization doesn't touch any of that
+  behavior.
+- **`.dmg` bundling** — still blocked in this environment; untested whether
+  Rob's own interactive session resolves it (§7.6).
+- **CI signing** — everything above is a local-keychain flow
+  (`APPLE_SIGNING_IDENTITY` alone, no `.p12`/`APPLE_CERTIFICATE`). A future
+  CI-built release would need the certificate exported and base64-encoded as
+  a GitHub Actions secret — not attempted, not needed yet.
