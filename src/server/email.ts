@@ -27,6 +27,15 @@ interface SendEmailInput {
   subject: string;
   html: string;
   text: string;
+  /**
+   * Set by the contact form (EI-206) to the submitter's own address, so a
+   * reply in Rob's inbox goes straight back to them. The `from` field stays
+   * `noreply@myfaite.app` regardless — `allowed_sender_addresses` in
+   * wrangler.jsonc only permits that one sender, and putting an arbitrary
+   * visitor-supplied address in `from` is also how a contact form becomes an
+   * open relay.
+   */
+  replyTo?: string;
 }
 
 const FROM = { email: "noreply@myfaite.app", name: "Faite" };
