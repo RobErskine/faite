@@ -7,6 +7,7 @@ import {
   FONT_PAIRING_IDS,
   FONT_STORAGE_KEY,
 } from "@/lib/fonts";
+import { SITE_DESCRIPTION, SITE_NAME, SITE_ORIGIN } from "@/lib/site";
 import {
   DARK_CLASS,
   DEFAULT_THEME_MODE,
@@ -18,8 +19,36 @@ import { fontVariables } from "./fonts";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Faite",
-  description: "Control your fate by getting things done.",
+  // Every relative `alternates.canonical` / `openGraph.url` set by
+  // `pageMetadata()` (`src/lib/metadata.ts`) resolves against this. Fixed at
+  // the custom domain (`wrangler.jsonc`), including on `*.workers.dev`
+  // previews and in the Capacitor/Tauri static export — a preview that
+  // self-canonicalised would compete with production for the same queries.
+  metadataBase: new URL(SITE_ORIGIN),
+  // `default`, not a bare string: `/board` and the auth routes export no
+  // metadata of their own, so they keep resolving to exactly "Faite" as
+  // before this change. A page that sets a title (via `pageMetadata()`)
+  // gets "<title> · Faite" instead.
+  title: { default: SITE_NAME, template: `%s · ${SITE_NAME}` },
+  description: SITE_DESCRIPTION,
+  applicationName: SITE_NAME,
+  // Fallback only, for routes that export no metadata of their own (`/board`,
+  // the auth routes). Every static page under `src/lib/site.ts`'s SITE_PAGES
+  // replaces this wholesale via `pageMetadata()` — see that function for why
+  // it has to emit a complete object rather than a partial one.
+  openGraph: {
+    type: "website",
+    siteName: SITE_NAME,
+    locale: "en_US",
+    url: "/",
+    title: SITE_NAME,
+    description: SITE_DESCRIPTION,
+  },
+  // Card type only. Title/description/images are back-filled per page from
+  // `openGraph` by Next's metadata resolver; putting a title here would stick
+  // to EVERY page, because no page declares a `twitter` key of its own and
+  // the merge only touches keys a segment actually sets.
+  twitter: { card: "summary_large_image" },
   // `black-translucent` is what makes board content extend under the status
   // bar on iOS when added to the home screen — the payoff for
   // `viewportFit: "cover"` below. Without both, `env(safe-area-inset-*)`
