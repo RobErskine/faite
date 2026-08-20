@@ -118,6 +118,7 @@ export function DesktopBoard({
     overTodoId,
     overGroupId,
     columnDropTargetId,
+    listDayDrop,
     tabDrop,
     activeTabId,
     tabsById,
@@ -137,7 +138,7 @@ export function DesktopBoard({
     expandWeekend,
     columnFilters,
     setColumnFilter,
-    landingTodoId,
+    landingTodoIds,
     infoTabId,
     setInfoListId,
     setInfoTabId,
@@ -274,7 +275,7 @@ export function DesktopBoard({
             emphasis
             isDragActive={!!activeTodo}
             overTodoId={overTodoId}
-            landingTodoId={landingTodoId}
+            landingTodoIds={landingTodoIds}
             rejectsDrop
             pinned
             collapsed={overflowCollapsed}
@@ -334,6 +335,15 @@ export function DesktopBoard({
                   // in use-day-track.ts, which must not measure a 40px
                   // weekend strip that happens to sort first.
                   dayTrackColumn
+                  // EI-193: a list dragged over this day will schedule its
+                  // unscheduled to-dos onto it. Reuses the column-drag chrome
+                  // the planning half already has; `count > 0` keeps a day
+                  // where nothing would move unhighlighted, so the outline
+                  // never promises a write that will not happen.
+                  isColumnDragActive={!!activeList}
+                  isColumnDropTarget={
+                    listDayDrop?.day === column.day && listDayDrop.count > 0
+                  }
                   title={weekday}
                   // `subtitle` also carries prose on other columns, so the
                   // numeral face is applied here rather than in BoardColumn.
@@ -382,7 +392,7 @@ export function DesktopBoard({
                   totalCount={board.days.find((d) => d.id === column.id)?.todos.length}
                   isDragActive={!!activeTodo}
                   overTodoId={overTodoId}
-                  landingTodoId={landingTodoId}
+                  landingTodoIds={landingTodoIds}
                 />
               );
             })}
@@ -484,7 +494,7 @@ export function DesktopBoard({
               minRows={5}
               isDragActive={!!activeTodo}
               overTodoId={overTodoId}
-              landingTodoId={landingTodoId}
+              landingTodoIds={landingTodoIds}
               recurrenceSummaries={recurrenceSummaries}
               subtaskCounts={subtaskCounts}
               // Backlog cannot be renamed, archived, or deleted, so its one
@@ -575,7 +585,7 @@ export function DesktopBoard({
                   minRows={5}
                   isDragActive={!!activeTodo}
                   overTodoId={overTodoId}
-                  landingTodoId={landingTodoId}
+                  landingTodoIds={landingTodoIds}
                   recurrenceSummaries={recurrenceSummaries}
                   subtaskCounts={subtaskCounts}
                   reorderListId={column.list.id}

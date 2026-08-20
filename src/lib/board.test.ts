@@ -19,6 +19,7 @@ import {
   parseWeekendColumnId,
   planListDrop,
   tabCountsFrom,
+  planListDayDrop,
   planListTabDrop,
   planTabDrop,
   preferPreciseTarget,
@@ -1272,5 +1273,70 @@ describe("tabCountsFrom", () => {
     );
 
     expect(counts.get("t1")).toEqual({ lists: 1, items: 0, assigned: 0 });
+  });
+});
+
+describe("planListDayDrop", () => {
+  /**
+   * EI-193. Rob's example verbatim: a grocery list where one to-do — buy
+   * honey at the farmers market — is already scheduled two weeks out and must
+   * not move when the rest of the list is dropped on a day.
+   */
+  const column = (todos: Todo[]) => [
+    { id: listColumnId("grocery"), list: list("grocery", "Grocery List", false, positions[1]), todos },
+  ];
+
+  const milk = todo({ id: "milk", listId: "grocery" });
+  const eggs = todo({ id: "eggs", listId: "grocery" });
+  const honey = todo({ id: "honey", listId: "grocery", scheduledDate: "2026-08-28" });
+
+  it("schedules the undated to-dos and leaves the dated one alone", () => {
+    const plan = planListDayDrop(column([milk, eggs, honey]), "grocery", "2026-08-14")!;
+    expect(plan.day).toBe("2026-08-14");
+    expect(plan.todos.map((t) => t.id)).toEqual(["milk", "eggs"]);
+    expect(plan.skipped).toBe(1);
+  });
+
+  it("keeps board order", () => {
+    const plan = planListDayDrop(column([eggs, milk]), "grocery", "2026-08-14")!;
+    expect(plan.todos.map((t) => t.id)).toEqual(["eggs", "milk"]);
+  });
+
+  it("leaves an AWAY to-do alone — it has a day, it just renders in the list", () => {
+    // Scheduled past the day cap, so it renders in its list column dimmed
+    // with a date chip (§5.3). Reading placement instead of `scheduledDate`
+    // would silently drag these back into the visible window.
+    const away = todo({ id: "away", listId: "grocery", scheduledDate: "2027-06-01" });
+    const plan = planListDayDrop(column([milk, away]), "grocery", "2026-08-14")!;
+    expect(plan.todos.map((t) => t.id)).toEqual(["milk"]);
+    expect(plan.skipped).toBe(1);
+  });
+
+  it("leaves settled to-dos alone", () => {
+    // With `done` visible, an undated finished to-do sits in the column
+    // looking like any other. Scheduling it would resurrect finished work.
+    const done = todo({ id: "done", listId: "grocery", status: "done" });
+    const dropped = todo({ id: "dropped", listId: "grocery", status: "dropped" });
+    const plan = planListDayDrop(column([milk, done, dropped]), "grocery", "2026-08-14")!;
+    expect(plan.todos.map((t) => t.id)).toEqual(["milk"]);
+    expect(plan.skipped).toBe(2);
+  });
+
+  it("reports the nothing-to-schedule case rather than failing", () => {
+    // Empty `todos` with a non-zero `skipped` is a real answer — the caller
+    // has to explain it, because the column visibly has cards in it.
+    const plan = planListDayDrop(column([honey]), "grocery", "2026-08-14")!;
+    expect(plan.todos).toEqual([]);
+    expect(plan.skipped).toBe(1);
+  });
+
+  it("handles an empty list", () => {
+    const plan = planListDayDrop(column([]), "grocery", "2026-08-14")!;
+    expect(plan.todos).toEqual([]);
+    expect(plan.skipped).toBe(0);
+  });
+
+  it("returns null for a list that is not on the board", () => {
+    expect(planListDayDrop(column([milk]), "nope", "2026-08-14")).toBeNull();
   });
 });
