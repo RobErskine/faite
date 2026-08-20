@@ -79,6 +79,27 @@ export const SITE_PAGES: readonly SitePage[] = [
     footerLabel: "Privacy",
     showUpdated: true,
   },
+  {
+    path: "/help",
+    title: "Help",
+    description: "How to use the board: lists, days, Overdrive, reminders.",
+    updated: "2026-08-20",
+    footerGroup: "product",
+  },
+  {
+    path: "/support",
+    title: "Support",
+    description: "Something broken? Start here.",
+    updated: "2026-08-20",
+    footerGroup: "support",
+  },
+  {
+    path: "/about",
+    title: "About",
+    description: "Who makes Faite, and why it works the way it does.",
+    updated: "2026-08-20",
+    footerGroup: "product",
+  },
 ];
 
 /**
