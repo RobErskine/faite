@@ -3,7 +3,9 @@ import "fake-indexeddb/auto";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const deleteUser = vi.fn(async () => ({ error: null }));
+const deleteUser = vi.fn(
+  async (): Promise<{ error: { status: number; message?: string } | null }> => ({ error: null }),
+);
 const resetLocalDataForNewOwner = vi.fn(async () => {});
 const toastSuccess = vi.fn();
 const toastError = vi.fn();
