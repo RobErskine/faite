@@ -61,6 +61,24 @@ export const SITE_PAGES: readonly SitePage[] = [
     updated: "2026-08-20",
     footerGroup: null,
   },
+  {
+    path: "/terms",
+    title: "Terms of Service",
+    description: "The agreement between you and Faite.",
+    updated: "2026-08-20",
+    footerGroup: "legal",
+    footerLabel: "Terms",
+    showUpdated: true,
+  },
+  {
+    path: "/privacy",
+    title: "Privacy Policy",
+    description: "What Faite collects, what it doesn't, and who can see it.",
+    updated: "2026-08-20",
+    footerGroup: "legal",
+    footerLabel: "Privacy",
+    showUpdated: true,
+  },
 ];
 
 /**
