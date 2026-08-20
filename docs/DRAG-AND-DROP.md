@@ -1414,6 +1414,17 @@ sliding along it. On release it flies to the drop indicator over 200 ms while
 settling flat and morphing to the destination column's width, then crossfades
 into the real row over the final 90 ms. See §4.7.
 
+> **A Base UI `render` prop will not compose two Base UI components** (EI-196).
+> `<TooltipTrigger render={<Checkbox/>}/>` type-checks, renders, keeps every
+> prop, and silently drops the trigger's pointer handlers — the tooltip simply
+> never opens. Every working tooltip here triggers off a plain `span` or a
+> shadcn `Button` (a bare `<button>`); wrap the primitive instead of rendering
+> through it. Nothing catches this: happy-dom cannot open a Base UI tooltip,
+> and neither can Playwright's `locator.hover()` — see the note in
+> `e2e/support/hover.ts` about needing real CDP pointer input, and always
+> include a CONTROL case, or "the tooltip did not open" is ambiguous between a
+> broken app and a blind harness.
+
 > Tailwind silently drops classes it does not recognize, so a typo leaves an
 > outline as an invisible no-op with everything still "passing". Verify new
 > utilities actually emit CSS:
