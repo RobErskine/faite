@@ -364,7 +364,9 @@ adding it is not a change in behaviour.
 
 > For the file map, request flow, and operational recipes, see
 > `docs/AUTH.md`. This section and §2.13 carry the reasoning; AUTH.md
-> deliberately does not repeat it.
+> deliberately does not repeat it. For the marketing/legal/support static
+> pages (the S milestone) built on the same static-export constraint, see
+> `docs/SITE.md`.
 
 The obvious place for Better Auth is `app/api/auth/[...all]/route.ts` — that is
 what its own docs show. It does not work here: `output: export` (§6, the
@@ -380,7 +382,7 @@ factory called fresh per request, for the same reason recorded in §7: the D1
 and Email bindings only exist inside `fetch()`.
 
 The same constraint has since claimed every other server route, so the worker
-entry now owns four seams. All four read `Request`; none could be a Route
+entry now owns five seams. All five read `Request`; none could be a Route
 Handler:
 
 | Prefix | Handler | Purpose |
@@ -389,6 +391,7 @@ Handler:
 | `/api/sync/*` | `sync/routes.ts` | push/pull/ws/schema/reset (EI-46/48) |
 | `/api/places/*` | `places/routes.ts` | Google Places proxy (EI-83) |
 | `/api/email/*` | `email/routes.ts` | reveal/rotate the ingest address (EI-186) |
+| `/api/contact` | `contact/routes.ts` | contact-form Turnstile verify + send (EI-206, the S milestone) |
 
 **And one seam that is not HTTP at all.** `worker.ts` also exports `email()`
 beside `fetch()` (EI-186): an inbound Cloudflare Email Routing message is
