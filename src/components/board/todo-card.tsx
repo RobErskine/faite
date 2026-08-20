@@ -430,40 +430,43 @@ export function TodoCard({
       */}
       <Tooltip>
         {/*
-          `render` puts the trigger's props ONTO the Checkbox rather than
-          wrapping it. A wrapper would have to carry the positioning above,
-          and that geometry is load-bearing against the grip — exactly what
-          the `after:-inset-x-1` regression test exists to protect.
+          The trigger is a plain `span` WRAPPING the checkbox, not the checkbox
+          itself.
 
-          `disabled` when there is nothing to say, the same gate shape the
-          title's `disabled={!titleClamped}` uses, so an open to-do's checkbox
-          behaves exactly as it did before EI-192.
+          `render={<Checkbox/>}` was the obvious spelling and it does not work:
+          `Checkbox` is Base UI's own `useRender` component, and composing two
+          of those drops the trigger's pointer handlers on the floor. The
+          checkbox rendered fine, kept every prop, and simply never opened a
+          tooltip — `aria-describedby` stayed null through a full hover. Every
+          working tooltip in this codebase triggers off a plain element (the
+          location pin's span, the title's span) or a shadcn `Button`, which is
+          a bare `<button>`; none of them nests a second Base UI primitive.
+
+          Base UI adds no role and no tabIndex to a span trigger, so the
+          checkbox remains the only control here — same reasoning as the
+          location pin inside the title button.
+
+          The positioning moves to this wrapper, but the HIT AREA does not:
+          `after:-inset-x-1` stays on the checkbox and is measured from the
+          checkbox's own box, so the 4px expansion still stops clear of the
+          grip's glyph. That boundary is what its regression test protects,
+          and it is unchanged.
         */}
         <TooltipTrigger
           disabled={!completionStamp}
-          /*
-            Base UI merges the trigger's own props ONTO the rendered element,
-            and the trigger's win — so without this the wrapper's
-            `data-slot="tooltip-trigger"` silently replaces the Checkbox's
-            `data-slot="checkbox"`, and this one checkbox stops answering to
-            the shadcn slot every other one in the app answers to. Nothing
-            targets it in CSS today; `**:data-[slot=kbd]` in `ui/tooltip.tsx`
-            is proof that something could tomorrow.
-          */
-          data-slot="checkbox"
-          render={
-            <Checkbox
-              checked={todo.status === "done"}
-              onCheckedChange={() => onToggle(todo)}
-              aria-label={`Mark ${todo.title} ${todo.status === "done" ? "not done" : "done"}`}
-              data-completed-at={todo.completedAt ?? undefined}
-              // Cursor is inherited, so without this the checkbox would read as a
-              // drag surface. It still drags if you pull from it; it just should not
-              // advertise that over being a checkbox.
-              className="absolute left-3 top-2 cursor-pointer after:-inset-x-1 pointer-coarse:after:-inset-x-1"
-            />
-          }
-        />
+          render={<span className="absolute left-3 top-2 inline-flex" />}
+        >
+          <Checkbox
+            checked={todo.status === "done"}
+            onCheckedChange={() => onToggle(todo)}
+            aria-label={`Mark ${todo.title} ${todo.status === "done" ? "not done" : "done"}`}
+            data-completed-at={todo.completedAt ?? undefined}
+            // Cursor is inherited, so without this the checkbox would read as a
+            // drag surface. It still drags if you pull from it; it just should not
+            // advertise that over being a checkbox.
+            className="cursor-pointer after:-inset-x-1 pointer-coarse:after:-inset-x-1"
+          />
+        </TooltipTrigger>
         {completionStamp && <TooltipContent>{completionStamp}</TooltipContent>}
       </Tooltip>
 

@@ -532,10 +532,41 @@ describe("the completion stamp", () => {
   });
 
   it("keeps the checkbox out of the grip's hit area when it has a tooltip", () => {
-    // The positioning must stay ON the checkbox, not migrate to a wrapper.
+    /*
+     * The hit-area expansion stays on the CHECKBOX (it is measured from the
+     * checkbox's own box, and 4px is what stops it clear of the grip's
+     * glyph), while the positioning lives on the tooltip trigger wrapping
+     * it. Both halves asserted, because moving either one alone silently
+     * breaks the geometry §5.4 depends on.
+     */
     render(<Harness todo={done()} timezone="UTC" />);
-    expect(checkbox().className).toContain("absolute left-3 top-2");
     expect(checkbox().className).toContain("after:-inset-x-1");
+    // `after:absolute` is in the shadcn base and stays; what must be gone is
+    // the positioning the wrapper now owns.
+    expect(checkbox().className).not.toContain("absolute left-3");
+
+    const wrapper = checkbox().parentElement!;
+    expect(wrapper.tagName).toBe("SPAN");
+    expect(wrapper.className).toContain("absolute left-3 top-2");
+  });
+
+  it("triggers the tooltip from a plain span, never from the Checkbox itself", () => {
+    /*
+     * The regression this file exists to prevent (EI-196): `TooltipTrigger
+     * render={<Checkbox/>}` composes two Base UI `useRender` components, and
+     * the trigger's pointer handlers are dropped on the floor. Everything
+     * rendered, every prop survived, and the tooltip simply never opened —
+     * invisible to typecheck, lint, and every assertion in this file at the
+     * time.
+     *
+     * happy-dom cannot open a Base UI tooltip (that needs real pointer
+     * input — see e2e/completion-tooltip.spec.ts), so what is pinned here is
+     * the SHAPE: the checkbox must not be the trigger.
+     */
+    render(<Harness todo={done()} timezone="UTC" />);
+    expect(checkbox().getAttribute("data-slot")).toBe("checkbox");
+    const wrapper = checkbox().parentElement!;
+    expect(wrapper.getAttribute("data-slot")).toBe("tooltip-trigger");
   });
 });
 
@@ -628,5 +659,45 @@ describe("multi-select", () => {
 
     fireEvent.keyDown(el, { key: " ", target: el });
     expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * EI-197. The card's checkbox was a Complete button, not a toggle — it wrote
+ * `done` over `done` and the card sat there while its own `aria-label`
+ * promised otherwise. The handler lives in `use-board-actions.ts`, so what is
+ * pinned here is the CARD's half of the contract: the label has to state the
+ * action, because that label is the only thing telling a user (or a screen
+ * reader) which way a click will go.
+ */
+describe("the checkbox's promise", () => {
+  const box = () => document.querySelector<HTMLElement>('[data-slot="checkbox"]')!;
+
+  it("offers to complete an open to-do", () => {
+    render(<Harness />);
+    expect(box().getAttribute("aria-label")).toBe("Mark Buy milk done");
+    expect(box().getAttribute("data-checked")).toBeNull();
+  });
+
+  it("offers to REOPEN a completed one", () => {
+    render(<Harness todo={todo({ status: "done", completedAt: "2026-08-14T21:41:00.000Z" })} />);
+    expect(box().getAttribute("aria-label")).toBe("Mark Buy milk not done");
+  });
+
+  it("shows a won't-do to-do as unticked, so the checkbox reads as available", () => {
+    // `dropped` is settled but not done; ticking it means "actually, it's
+    // back on", which only makes sense if the box looks empty.
+    render(<Harness todo={todo({ status: "dropped", completedAt: "2026-08-14T21:41:00.000Z" })} />);
+    expect(box().getAttribute("aria-label")).toBe("Mark Buy milk done");
+  });
+
+  it("hands the whole todo to onToggle, so the handler can read its status", () => {
+    // The bug was the handler ignoring this. Passing the record rather than
+    // an id is what makes reading it possible at all.
+    const onToggle = vi.fn();
+    const done = todo({ status: "done", completedAt: "2026-08-14T21:41:00.000Z" });
+    render(<Harness todo={done} onToggle={onToggle} />);
+    fireEvent.click(box());
+    expect(onToggle).toHaveBeenCalledWith(done);
   });
 });

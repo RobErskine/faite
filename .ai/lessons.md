@@ -743,3 +743,33 @@ against the theory, not as an inconvenience to route around.
 weigh that it has been working-as-configured for someone who had no reason to
 set it up backwards. Ask for the cheap confirming test *before* recommending
 they change production, not after.
+
+## A green test suite can be blind rather than right (EI-196 / EI-197)
+
+Two bugs shipped behind eleven passing assertions, and the pattern is the same
+in both: the test could not physically observe the thing it claimed to cover.
+
+1. **`TooltipTrigger render={<Checkbox/>}`** — composing two Base UI
+   `useRender` components drops the trigger's pointer handlers. Type-checks,
+   renders, keeps every prop, never opens. happy-dom cannot open a Base UI
+   tooltip at all, so the component tests were asserting the trigger's
+   *props* and calling it coverage.
+2. **`handleToggle` hardcoded to `"done"`** — a Complete handler named Toggle.
+   Invisible for months because it was unreachable: completing a to-do removed
+   it from the board, so there was no done checkbox left to click. A feature
+   that made it reachable (the completed view) is what exposed it.
+
+**Two habits that came out of this:**
+
+- **Write the CONTROL case first.** When a probe reported "the tooltip did not
+  open", that was ambiguous between a broken app and a harness that cannot
+  open any tooltip. It was the harness — Playwright's `locator.hover()` cannot
+  open a Base UI tooltip either. Hovering a *known-good* tooltip in the same
+  run is what turned a dead end into a diagnosis. Without it I would have
+  "fixed" the app against a blind test.
+- **Prove the old code fails before trusting the new code's test.** Reverting
+  just the changed lines and re-running is cheap, and it is the only thing
+  that distinguishes a regression test from a test that happens to pass.
+
+Both are the specific form of `docs/DRAG-AND-DROP.md` §8's caution: say what
+was and was not *exercised*, not what passed.

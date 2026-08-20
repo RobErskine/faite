@@ -1329,24 +1329,51 @@ export function useBoardActions(
    */
   const handleToggle = useCallback(
     (todo: Todo) => {
-      const forward = statusPatch("done");
-      const entryId = pushUndo(`Completed “${short(todo.title)}”`, [
+      /*
+       * A real toggle, reading the current status (EI-197).
+       *
+       * This was hardcoded to `"done"` — a Complete handler wearing a
+       * Toggle's name. Clicking a finished to-do's checkbox wrote `done` over
+       * `done`, `setTodoStatus` correctly reported "nothing changed" and
+       * returned null, and the card sat there unmoved while its own
+       * `aria-label` promised "Mark X not done".
+       *
+       * It was invisible for as long as it was unreachable: with the default
+       * `visibleStatuses` of `["open"]`, completing a to-do removes it from
+       * the board, so there was no done checkbox left to click. The completed
+       * view (EI-90) and then the completion stamp (EI-192) put one back.
+       *
+       * `dropped` reopens too — the checkbox is binary, and the only sensible
+       * meaning of ticking a won't-do item is "actually, it's back on".
+       */
+      const next: Todo["status"] = todo.status === "open" ? "done" : "open";
+      const forward = statusPatch(next);
+      const entryId = pushUndo(`${STATUS_VERB[next]} “${short(todo.title)}”`, [
         { kind: "todo", entityId: todo.id, patch: inversePatch(todo, forward) },
       ]);
       // `todo` may be a virtual recurrence occurrence with no row yet —
       // materialize before writing. A no-op when it already has one.
       void (async () => {
         await materializeIfNeeded(todo);
-        const eventId = await setTodoStatus(todo.id, "done");
+        const eventId = await setTodoStatus(todo.id, next);
         // EI-94 Phase 3: an instant undo tombstones the `done` event too, so
         // history doesn't show "Completed" for something un-done a second
         // later.
         if (eventId) attachEventIds(entryId, [eventId]);
       })();
-      toast.success(`Completed “${short(todo.title)}”`, {
-        duration: 6000,
-        action: { label: "Undo", onClick: () => void undoById(entryId) },
-      });
+      /*
+       * Only a departure needs a toast. Completing drops the to-do off the
+       * board under the default view, so there is nothing left on screen to
+       * confirm it — but REOPENING puts a card back where you can see it, and
+       * announcing something already visible is noise. Same rule
+       * `handleSheetStatus` applies just below.
+       */
+      if (next !== "open") {
+        toast.success(`${STATUS_VERB[next]} “${short(todo.title)}”`, {
+          duration: 6000,
+          action: { label: "Undo", onClick: () => void undoById(entryId) },
+        });
+      }
     },
     [materializeIfNeeded],
   );
