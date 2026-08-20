@@ -41,12 +41,15 @@ handle mid-drag.
 
 | File | Role |
 |---|---|
-| `src/components/board/board.tsx` | `DndContext`, sensors, collision detection, all drag handlers, `DragOverlay` |
+| `src/components/board/board.tsx` | The shell: mounts the one `DndContext` and the one `DragOverlay`. The handlers themselves moved out — see the next row |
+| `src/components/board/use-board-actions.ts` | Sensors, `collisionDetection`, `keyboardCoordinates`, and every drag handler (`handleDragStart`/`Over`/`End`/`Cancel`). **The file to open first** |
+| `src/components/board/use-board-data.ts` | The derived drag values — `overTodoId`, `overGroupId`, `columnDrop`, `listDayDrop`, `selectedTodos`. Each mirrors a write in `handleDragEnd` and must not disagree with it (§4.4) |
+| `src/components/board/use-board-ui-state.ts` | Owns all drag state (`activeTodo`/`activeList`/`activeTab`, `overId`, `landingTodoIds`) plus the multi-selection (§4.14) |
 | `src/components/board/board-column.tsx` | `useDroppable` + `SortableContext`; `useDraggable` for column reorder; whole-header drag; drop-target visual states |
 | `src/components/board/todo-card.tsx` | `useSortable`; whole-row drag, out-of-flow grip, priority rail, inline location pin, insertion line |
 | `src/components/board/drag-grip.tsx` | The one grip affordance, shared by rows, columns and tabs |
 | `src/lib/priority.ts` | `PRIORITY_RAILS` — the width and colour of a card's priority rail, shared with the drag overlay chip; `byPriorityThenPosition`, which orders a group |
-| `src/lib/board.ts` | …plus `TodoGroup`, `listSortKey`, `byListGroup`, `dayGroupId` — the calendar half's computed grouping (§4.13) |
+| `src/lib/board.ts` | Id codecs, `preferPreciseTarget()`, and every pure drop planner — `planListDrop`, `planTabDrop`, `planListTabDrop`, `planListDayDrop` (§4.10e), `selectedTodosInBoardOrder`/`rangeSelectionIds` (§4.14). Plus `TodoGroup`, `listSortKey`, `byListGroup`, `dayGroupId` — the calendar half's computed grouping (§4.13) |
 | `src/components/board/create-list-column.tsx` | End-of-track "Create list" slot. Column-sized, deliberately **not** a droppable (§5.6) |
 | `src/components/board/use-day-track.ts` | Pure scroll-position/jump math for the day track (anchor index, jump clamping) — not itself drag-and-drop, but shares the track dnd-kit measures |
 | `src/components/board/date-nav.tsx` | Week/Month/Quarter jump buttons + calendar date picker above the day track |
@@ -54,11 +57,12 @@ handle mid-drag.
 | `src/components/board/rail-handle.tsx` | The draggable seam on a pinned panel's right edge — one per rail, resizing independently (§4.12) |
 | `src/lib/rail.ts` | `RAIL_MIN`/`RAIL_MAX`/`RAIL_COLLAPSE_THRESHOLD`/etc. — shared so `schema.ts` can bound the stored width without importing a component |
 | `src/app/globals.css` | `--column-min` / `--column-max` / `--list-column-min`, and the `column-track` utility (§4.12) |
-| `src/lib/board.ts` | Column grouping, id codecs, `preferPreciseTarget()`, `planListDrop()` |
 | `src/lib/drop-animation.ts` | Drop animation: `readLandingRect()`, `landingTransform()`, `runLandingDropAnimation()` |
-| `src/lib/ordering.ts` | Fractional index helpers (`positionForIndex`) |
+| `src/lib/ordering.ts` | Fractional index helpers. `positionForDropOnItem()` is the one a card drop uses — it keeps the exclude-the-dragged-item filter and the target lookup together (§4.5); `positionsForDropOnItem()` is its N-card counterpart (§4.14) |
 | `src/lib/board.test.ts` | Tests for id codecs, target selection, column reordering |
 | `src/lib/drop-animation.test.ts` | Tests for the landing rect math |
+| `e2e/multi-drag.spec.ts` | Real-browser cmd+click and multi-card drag — the click/threshold interference happy-dom cannot reach (§4.14) |
+| `e2e/support/hover.ts` | Real pointer input via CDP. `locator.hover()` cannot open a Base UI tooltip; see the caution at the end of §6 |
 
 **Two gestures share one `DndContext`**: dragging a todo card, and dragging a
 list column to reorder it. `active.id` is the only thing that tells them apart —
@@ -1546,7 +1550,7 @@ list — see §4.7 and §4.9.)
 
 ```bash
 npm run dev        # http://localhost:3000 (or the next free port if taken)
-npm test           # vitest run — 692 tests (see ARCHITECTURE.md §8)
+npm test           # vitest run — 1868 tests (see ARCHITECTURE.md §8)
 npm run verify     # typecheck + lint + tests + BOTH builds; run before commit
 ```
 
@@ -1728,6 +1732,42 @@ rect-based collision logic cannot be meaningfully tested there.
     tab-reorder insertion bar (§4.10b) never appears — that's gated on
     `activeTab`, not `activeList`.
 
+**Manual checklist — a list onto a day (§4.10e, EI-193)**
+
+46. Grab a list header, cross the tab strip, hold over a day. **Only that day
+    outlines**, solid. No dashed candidate outlines on any other column, no
+    destructive styling, no end-of-column card dot, and the tab-reorder
+    insertion bar never appears.
+47. Release. Every unscheduled to-do from that list appears under that day,
+    grouped under the list's own name and colour. **The list column is still
+    in the planning half, in the same slot** — check its neighbours did not
+    shuffle.
+48. A to-do in that list that already had a different day is still on that
+    day, untouched.
+49. A to-do in that list scheduled past the day cap — dimmed, with a date
+    chip — is untouched. *(This is the case that separates "has a date" from
+    "renders in the list column"; they are not the same set.)*
+50. With "Completed" on in view settings, put a finished undated to-do in the
+    list and repeat. It stays put.
+51. Drop the list on a day where **every** one of its to-dos already has a
+    date. No outline while hovering, one toast on release, no write.
+52. Drop the list onto a *different* list's group header inside a day column.
+    It schedules onto **that day**, and the arriving to-dos group under their
+    own list's name, not the group you dropped on.
+53. Drag the list over Overflow — nothing highlights, nothing happens, no
+    toast, the chip flies home.
+54. Drag it over a collapsed weekend strip — nothing highlights, and the
+    strip does **not** expand (the dwell is card-only; §7).
+55. Watch the flight on a list with several movers: exactly one chip flies,
+    and **no row appears in the day column before it lands**. None is left
+    invisible afterwards either.
+56. ⌘Z once — every moved to-do returns to the list unscheduled, in one
+    press, with its original dates restored.
+57. Reload — the moves persist, and the list's own position is unchanged.
+58. Confirm the existing gestures still work: reorder a list within its
+    track, and carry one to another tab (§4.10c). Neither should have
+    changed.
+
 **Manual checklist — multi-select (§4.14, EI-194)**
 
 59. Cmd+click three cards in one list. Each highlights, **no sheet opens, and
@@ -1765,42 +1805,6 @@ rect-based collision logic cannot be meaningfully tested there.
     still toggles done, `Enter` still opens the sheet.
 75. Select 20+ and drop. The flight and the writes both finish; no row is
     stuck at zero opacity, and none is revealed before it exists.
-
-**Manual checklist — a list onto a day (§4.10e, EI-193)**
-
-46. Grab a list header, cross the tab strip, hold over a day. **Only that day
-    outlines**, solid. No dashed candidate outlines on any other column, no
-    destructive styling, no end-of-column card dot, and the tab-reorder
-    insertion bar never appears.
-47. Release. Every unscheduled to-do from that list appears under that day,
-    grouped under the list's own name and colour. **The list column is still
-    in the planning half, in the same slot** — check its neighbours did not
-    shuffle.
-48. A to-do in that list that already had a different day is still on that
-    day, untouched.
-49. A to-do in that list scheduled past the day cap — dimmed, with a date
-    chip — is untouched. *(This is the case that separates "has a date" from
-    "renders in the list column"; they are not the same set.)*
-50. With "Completed" on in view settings, put a finished undated to-do in the
-    list and repeat. It stays put.
-51. Drop the list on a day where **every** one of its to-dos already has a
-    date. No outline while hovering, one toast on release, no write.
-52. Drop the list onto a *different* list's group header inside a day column.
-    It schedules onto **that day**, and the arriving to-dos group under their
-    own list's name, not the group you dropped on.
-53. Drag the list over Overflow — nothing highlights, nothing happens, no
-    toast, the chip flies home.
-54. Drag it over a collapsed weekend strip — nothing highlights, and the
-    strip does **not** expand (the dwell is card-only; §7).
-55. Watch the flight on a list with several movers: exactly one chip flies,
-    and **no row appears in the day column before it lands**. None is left
-    invisible afterwards either.
-56. ⌘Z once — every moved to-do returns to the list unscheduled, in one
-    press, with its original dates restored.
-57. Reload — the moves persist, and the list's own position is unchanged.
-58. Confirm the existing gestures still work: reorder a list within its
-    track, and carry one to another tab (§4.10c). Neither should have
-    changed.
 
 **Manual checklist — tab strip legibility (§4.10d, EI-117 – EI-120)**
 

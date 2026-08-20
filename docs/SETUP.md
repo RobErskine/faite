@@ -520,7 +520,7 @@ several docs told you to expect and not fix. **It is fixed** — the queued jump
 a monotonic request now rather than state the layout effect cleared on its way
 out, so nothing calls `setState` from inside an effect. See DRAG-AND-DROP §4.11.
 
-Typecheck, lint and all 692 tests are green as of 2026-08-09. So a red `verify`
+Typecheck, lint and all 1868 tests are green as of 2026-08-20. So a red `verify`
 here now really does mean something just broke — there is no baseline to discount
 any more.
 

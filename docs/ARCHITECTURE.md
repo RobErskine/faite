@@ -650,7 +650,7 @@ See "Not built yet, and why" in `docs/SCHEMA-CHANGES.md`, and
 | Auth storage | D1 + Drizzle (`@better-auth/drizzle-adapter`) | auth tables only; todo data stays in the DO |
 | Email | Cloudflare Email Service (`send_email` binding) | password reset + verification, see §2.12 |
 | Validation | Zod | source of truth for Drizzle, OpenAPI, MCP |
-| Tests | Vitest (+ fake-indexeddb, Testing Library) | 692 tests |
+| Tests | Vitest (+ fake-indexeddb, Testing Library) | 1868 tests; plus 100 Playwright e2e (docs/E2E.md §8) |
 
 ---
 
@@ -1001,9 +1001,10 @@ npm run verify   # typecheck (app + worker), lint, tests, both builds
 npm test         # vitest run
 ```
 
-692 tests (52 files), verified 2026-08-09 via `npm test` with `npm run lint`
-clean, including the board card redesign and the day-column list grouping
-(DRAG-AND-DROP §4.13). The load-bearing ones:
+1868 tests (111 files), verified 2026-08-20 via `npm run verify`, including the
+board card redesign, the day-column list grouping (DRAG-AND-DROP §4.13), and
+the multi-select / list-onto-day drag work (§4.14, §4.10e). The load-bearing
+ones:
 
 - **`scheduling.test.ts`** — timezone boundaries, DST, roll thresholds,
   workday rollover, deadline independence. The most heavily tested file, for

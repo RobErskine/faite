@@ -1750,3 +1750,91 @@ stray 1px of vertical overflow (measured: `scrollHeight` 25 vs
 `clientHeight` 24) was enough to park a permanent vertical scrollbar whose
 rounded thumb read as a floating button. Fixed with an inline
 `overflowY: "hidden"` on the strip's scroll container. Commit `f643d18`.
+
+---
+
+## Board quality-of-life batch — EI-191 … EI-197
+
+Rob's ask: multi-select and drag several cards at once; drag a list header
+onto a day; and see when a to-do was completed by hovering its checkbox.
+Five tickets planned, seven shipped — two bugs surfaced on the way.
+All merged and deployed together (Cloudflare `c653d1fb`, 2026-08-20).
+
+- [x] **EI-191** — drop landed one slot below its insertion line on a
+      same-column *downward* drag. Pre-existing: the target's index was read
+      from the unfiltered sibling list and applied to the filtered one.
+      Only that one quadrant was wrong, and fractional indexing absorbed it
+      without ever looking corrupt. Fixed by moving both halves of the rule
+      into one pure `positionForDropOnItem()`. PR #27.
+- [x] **EI-192** — completion stamp on checkbox hover.
+      `formatCompletionStamp()` in `event-time.ts` (not `scheduling.ts`,
+      whose formatters are UTC-pinned by design); `timezone` threaded to
+      `TodoCard` as a prop, matching `TodoSheet`/`DaySheet`. PR #28.
+- [x] **EI-193** — drag a list header onto a day (§4.10e). Schedules every
+      to-do with no `scheduledDate`; anything already dated stays put,
+      *including* away-dated to-dos past the day cap — "has a date" and
+      "renders in the list column" are different sets, and that distinction
+      is the whole feature. Two gates: `collisionDetection`'s `listdrag:`
+      branch never *offered* a day column, and `handleDragEnd` returned on
+      anything but `kind === "list"`. `landingTodoId` became a Set here.
+      PR #29.
+- [x] **EI-194** — cmd+click multi-select and drag a run (§4.14). Closed
+      §7 item 5, open since the board was built. Shift+click range included,
+      scoped to the anchor's own column. One `onClickCapture` on the row is
+      the whole interception point — dnd-kit's own document-level capture
+      listener is what guarantees a cmd+drag can't also toggle selection.
+      PR #30.
+- [ ] **EI-195** — bulk-action toolbar. Deliberately parked; Rob wants to
+      feel the selection first.
+- [x] **EI-196** — the completion tooltip never opened.
+      `TooltipTrigger render={<Checkbox/>}` composes two Base UI
+      `useRender` components and drops the trigger's pointer handlers.
+      Fixed by wrapping rather than rendering through. PR #31.
+- [x] **EI-197** — a completed to-do could not be reopened from the board.
+      `handleToggle` was hardcoded to `"done"` — a Complete handler named
+      Toggle. Unreachable until the completed view put a done checkbox back
+      on screen. PR #31.
+
+### Review
+
+**The two bugs found late are the interesting part**, and both were found by
+tests written for something else. EI-197 surfaced while writing a guard
+against EI-196's fix swallowing clicks; the click wasn't swallowed, the
+handler had never been a toggle. My first read was "I broke it" — reverting
+to the shipped code and re-running showed identical behaviour, which turned a
+suspected regression into a much older bug in a different file.
+
+**A green suite can be blind rather than right.** Three layers were all
+structurally incapable of seeing EI-196: typecheck (nothing type-wrong),
+happy-dom (cannot open a Base UI tooltip at all), and Playwright's
+`locator.hover()` (same). The fix was a **CONTROL** case — hover a known-good
+tooltip in the same run. It also reported nothing, which is what identified
+the harness rather than the app as the problem. `e2e/support/hover.ts` now
+drives real CDP pointer input, the mouse counterpart of what
+`support/touch.ts` already did for touch, and the control is the first test
+in `completion-tooltip.spec.ts` with a comment saying so.
+
+**Habit worth keeping: prove the old code fails.** Done for EI-191 (rebuilt
+the old two-array arithmetic in a scratch test and watched it land wrong),
+EI-193 (reverted just the day lookup; the two new cases went red, the other
+five stayed green) and EI-196. It is the only thing separating a regression
+test from a test that happens to pass.
+
+Two tests were written and then **deleted** rather than kept green: a
+`[data-end-dot]` assertion against an attribute that does not exist (so it
+passed vacuously), and an e2e undo test — ⌘Z after a drag does not fire under
+Playwright's synthetic modifier press, verified against a *single*-card drag
+too, so it was asserting the harness. That undo coverage moved into
+`undo.test.ts` where it is deterministic.
+
+### Open
+
+- [ ] Nothing here has been drag-tested by hand. `docs/DRAG-AND-DROP.md` §8
+      items 46–58 (list onto a day) and 59–75 (multi-select) are the pass.
+- [ ] **No cap on multi-selection size.** N writes are N sequential Dexie
+      transactions and N outbox entries; there is no batch helper, and adding
+      one would change the single-write-path contract `mutate.ts` and
+      `lib/sync/wire.ts` are built on. EI-195 would make large selections far
+      more likely.
+- [ ] A list drag still has no keyboard path (§7 item 5a), and a collapsed
+      weekend strip does not expand for one (§7 item 5b).
