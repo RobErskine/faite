@@ -1,9 +1,46 @@
 # Desktop D1.5 runbook — installable, dock-resident Faite.app
 
-**Self-contained handoff.** Everything needed to execute D1.5 without
-re-deriving it. Written 2026-08-20. Read `docs/DESKTOP.md` §1–§6 for the
-architecture decisions and the D0/D1 findings this builds on;
-`docs/DESKTOP-SYNC-TIMER-SPIKE.md` for the background-timer measurements.
+**Status: done, 2026-08-20 (overnight session), commit `398f0ef` on
+`d15-desktop-app`.** All of §4's code changes landed, `npm run verify` and
+`cargo clippy --all-targets` are green, and the real signed `.app` was built
+and launched (not just compile-checked) — see `docs/DESKTOP.md` §7 for the
+full record, including what could and couldn't be automated-verified without
+a real display session. **Not pushed to origin** — Rob's review first, same
+as every prior overnight session on this repo.
+
+**What's next, and why this session stopped here rather than continuing into
+it:**
+
+1. **D1.6 (Developer ID + notarization) needs Rob's actual Apple Developer
+   Program credentials** — not something an agent session can supply. `§5`
+   below has the full scope once that's available.
+2. **D2a has an explicit open design question the runbook itself flags as
+   needing a decision before writing any code** — item 5 in `§5`: a browser
+   `WebSocket` can't set an `Authorization` header, so the bearer token has to
+   go over the wire some other way (query param vs. subprotocol), and
+   `ws-server.ts` needs to accept whichever is chosen. That's a real security
+   surface (token-in-URL logging exposure is the standard objection to the
+   query-param route) worth your call, not a default an agent should just
+   pick. D2a also formalizes "the shipped desktop app requires an account"
+   (§2.3) as live behavior for the first time — worth confirming that's still
+   the right call before it ships.
+3. **The manual checklist in §6 still needs a human at a real display
+   session** — this session's `osascript`-driven keystroke simulation hung on
+   what reads as a blocked macOS Automation permission prompt (see
+   `docs/DESKTOP.md` §7.6's last paragraph before "not verified" — if a
+   system permission dialog is sitting on your screen from this session, it's
+   safe to dismiss). Non-interactive checks (launch, process/webview
+   registration, RSS, log-scan for crashes) all passed; the genuinely
+   interactive ones (dock-icon reopen, Cmd-W hide, window-geometry restore,
+   Cmd-C/V, an actual look at the rendered board) are exactly the D0/D1 gap
+   this milestone was supposed to close and still couldn't, for the same
+   "no agent has hands on your display" reason as every prior desktop
+   session.
+
+Read `docs/DESKTOP.md` §1–§6 for the architecture decisions and the D0/D1
+findings this builds on; `docs/DESKTOP-SYNC-TIMER-SPIKE.md` for the
+background-timer measurements. The rest of this file is the original,
+as-written plan — left unedited below as the record of what was executed.
 
 **Goal:** Rob can `cp` a real `.app` into `/Applications`, Cmd-Tab to it, and
 use Faite as a daily driver without a browser. Close the window → app stays in
