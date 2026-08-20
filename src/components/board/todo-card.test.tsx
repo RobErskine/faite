@@ -80,6 +80,7 @@ interface HarnessProps {
   recurrenceSummary?: string;
   reminderPresets?: ReminderPreset[];
   subtaskCount?: { done: number; total: number } | null;
+  timezone?: string;
 }
 
 function Harness({
@@ -93,6 +94,7 @@ function Harness({
   recurrenceSummary,
   reminderPresets,
   subtaskCount,
+  timezone,
 }: HarnessProps) {
   return (
     <TooltipProvider>
@@ -103,6 +105,7 @@ function Harness({
             labels={[]}
             reminderPresets={reminderPresets}
             ctx={ctx}
+            timezone={timezone}
             onToggle={onToggle}
             onOpen={onOpen}
             onNavigate={onNavigate}
@@ -466,5 +469,63 @@ describe("the Faite Loop", () => {
     expect(row().querySelector("[data-rollover-marker]")).toBeNull();
     // The repeat marker still shows; the badge row exists only for it.
     expect(badgeRow()).toBeNull();
+  });
+});
+
+/**
+ * EI-192. The tooltip popup itself is portalled and hover-gated, so — as with
+ * the location pin and the clamped title — these assert the trigger's state
+ * and the `sr-only` channel rather than the rendered popup.
+ */
+describe("the completion stamp", () => {
+  const checkbox = () => document.querySelector<HTMLElement>('[data-slot="checkbox"]')!;
+  const done = (overrides: Partial<Todo> = {}) =>
+    todo({ status: "done", completedAt: "2026-08-14T21:41:00.000Z", ...overrides });
+
+  it("says nothing on an open to-do", () => {
+    render(<Harness />);
+    expect(checkbox().hasAttribute("data-completed-at")).toBe(false);
+    expect(title().textContent).not.toContain("Completed");
+  });
+
+  it("carries the completion time for a done to-do", () => {
+    render(<Harness todo={done()} timezone="UTC" />);
+    expect(checkbox().getAttribute("data-completed-at")).toBe("2026-08-14T21:41:00.000Z");
+    expect(title().textContent).toContain("Completed Aug 14 · 9:41 PM");
+  });
+
+  it("says dropped, not completed, for a won't-do", () => {
+    render(<Harness todo={done({ status: "dropped" })} timezone="UTC" />);
+    expect(title().textContent).toContain("Dropped Aug 14 · 9:41 PM");
+    expect(title().textContent).not.toContain("Completed");
+  });
+
+  it("renders the stamp in the given timezone", () => {
+    render(<Harness todo={done()} timezone="America/Los_Angeles" />);
+    expect(title().textContent).toContain("Completed Aug 14 · 2:41 PM");
+  });
+
+  it("leaves the accessible name alone", () => {
+    // A tooltip is a description. Folding it into the name would make the
+    // control announce itself as "Mark Buy milk not done Completed Aug 14…".
+    render(<Harness todo={done()} timezone="UTC" />);
+    expect(checkbox().getAttribute("aria-label")).toBe("Mark Buy milk not done");
+  });
+
+  it("still toggles while a tooltip is attached", () => {
+    // Base UI's `render` merges the trigger's props onto the Checkbox. If that
+    // merge ever swallowed `onCheckedChange`, completed cards would silently
+    // stop being reopenable — and nothing else here would catch it.
+    const onToggle = vi.fn();
+    render(<Harness todo={done()} timezone="UTC" onToggle={onToggle} />);
+    fireEvent.click(checkbox());
+    expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the checkbox out of the grip's hit area when it has a tooltip", () => {
+    // The positioning must stay ON the checkbox, not migrate to a wrapper.
+    render(<Harness todo={done()} timezone="UTC" />);
+    expect(checkbox().className).toContain("absolute left-3 top-2");
+    expect(checkbox().className).toContain("after:-inset-x-1");
   });
 });

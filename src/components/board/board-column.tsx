@@ -100,6 +100,8 @@ interface BoardColumnProps {
   todos: Todo[];
   labels: LabelRecord[];
   ctx: PlacementContext;
+  /** IANA zone, forwarded to each card's completion stamp (EI-192). */
+  timezone?: string;
   awayTodoIds?: Set<string>;
   /**
    * How many to-dos anywhere on the board carry a deadline on this column's
@@ -294,6 +296,7 @@ export function BoardColumn({
   todos,
   labels,
   ctx,
+  timezone,
   awayTodoIds,
   dueCount,
   groups,
@@ -562,6 +565,7 @@ export function BoardColumn({
         labels={labels}
         reminderPresets={reminderPresets}
         ctx={ctx}
+        timezone={timezone}
         isAway={awayTodoIds?.has(todo.id)}
         // A grouped column has no per-card insertion line: its cards are not
         // droppables, so `overTodoId` can never name one of them anyway (see
