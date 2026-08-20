@@ -239,6 +239,7 @@ source of truth; there are no project guards inside specs any more (§7).
 | Spec | desktop | tablet-ipad-mini | phone-iphone | phone-iphone-landscape | phone-pixel |
 | -- | :-: | :-: | :-: | :-: | :-: |
 | `foundations` (2) | ● | | | | |
+| `marketing-pages` (11) | ● | | | | |
 | `desktop-layout` (5) | ● | | | | |
 | `keyboard-drag` (7) | ● | | | | |
 | `multi-drag` (5) | ● | | | | |
@@ -249,12 +250,12 @@ source of truth; there are no project guards inside specs any more (§7).
 | `touch-affordances` (3) | | ● | ● | ● | ● |
 | `touch-smoke` (2) | | | ● | ● | ● |
 
-**100 tests.** Before, every project ran every spec — 36 x 5 = **180 runs**,
+**111 tests.** Before, every project ran every spec — 36 x 5 = **180 runs**,
 of which 56 immediately hit a skip guard and exited.
 
 This table is what `npm run e2e` runs, and it is the *full* matrix. A pull
 request runs a subset of it: the **`desktop` and `phone-iphone` columns
-only** (64 tests, `npm run e2e:ci`). The other three columns are deferred to
+only** (75 tests, `npm run e2e:ci`). The other three columns are deferred to
 a local run or a `workflow_dispatch` — see §8.5 for why those two, and what
 deferring the rest gives up.
 
@@ -264,6 +265,12 @@ deferring the rest gives up.
   and fetches the PWA manifest. Neither can vary by emulated viewport, so
   the other four runs were four identical assertions about one static file.
   Nothing was traded here; the coverage is unchanged.
+- **`marketing-pages` on `desktop` only** (the S milestone, EI-212). Static
+  content — title, description, canonical, `og:site_name`, footer, the
+  legal placeholder notice, `sitemap.xml`/`robots.txt` — none of which
+  varies by viewport. Table-driven off `SITE_PAGES` (`src/lib/site.ts`), the
+  same table `sitemap.ts` and `MarketingFooter` read, so a page added there
+  without a passing test here is a build failure, not a silent gap.
 - **`desktop-layout`, `keyboard-drag` on `desktop` only.** Unchanged from
   before — these were already guarded to `desktop`. They are just declared
   in the config now instead of skipped at runtime.

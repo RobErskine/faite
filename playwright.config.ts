@@ -50,6 +50,7 @@ const BASE_URL = `http://localhost:${PORT}`;
  */
 const SPECS = {
   foundations: "**/foundations.spec.ts",
+  marketingPages: "**/marketing-pages.spec.ts",
   desktopLayout: "**/desktop-layout.spec.ts",
   keyboardDrag: "**/keyboard-drag.spec.ts",
   multiDrag: "**/multi-drag.spec.ts",
@@ -141,6 +142,7 @@ export default defineConfig({
       // check of it and five were four redundant copies.
       testMatch: [
         SPECS.foundations,
+        SPECS.marketingPages,
         SPECS.desktopLayout,
         SPECS.keyboardDrag,
         SPECS.multiDrag,
