@@ -185,6 +185,11 @@ interface BoardColumnProps {
   overTodoId?: string | null;
   /** Id of the todo flying to its new slot — hidden until the ghost arrives. */
   landingTodoIds?: ReadonlySet<string>;
+  /** Cmd/Ctrl+click multi-selection (EI-194). */
+  selectedIds?: ReadonlySet<string>;
+  /** Non-dragged members of a multi-selection currently in flight. */
+  movingIds?: ReadonlySet<string>;
+  onSelect?: (todoId: string, modifiers: { additive: boolean; range: boolean }) => void;
   /**
    * Dropping here will be refused (Overflow). Styled as a rejecting target so
    * the outcome is obvious before the pointer is released.
@@ -319,6 +324,9 @@ export function BoardColumn({
   isDragActive,
   overTodoId,
   landingTodoIds,
+  selectedIds,
+  movingIds,
+  onSelect,
   rejectsDrop,
   reorderListId,
   reservesGripSlot,
@@ -572,6 +580,9 @@ export function BoardColumn({
         // CARDS_NOT_DROPPABLE). The group highlight is the indicator there.
         showInsertionLine={!rejectsDrop && overTodoId === todo.id}
         isLanding={landingTodoIds?.has(todo.id)}
+        isSelected={selectedIds?.has(todo.id)}
+        isGhosted={movingIds?.has(todo.id)}
+        onSelect={onSelect}
         onToggle={onToggle}
         onOpen={onOpen}
         onNavigate={onNavigate}

@@ -5,6 +5,7 @@ import {
   positionAtStart,
   positionBetween,
   positionForDropOnItem,
+  positionsForDropOnItem,
   positionForIndex,
   positionsBetween,
 } from "./ordering";
@@ -135,6 +136,61 @@ describe("positionForDropOnItem", () => {
   it("handles a column holding only the dragged card", () => {
     const items = column().slice(0, 1);
     expect(typeof positionForDropOnItem(items, "a", null)).toBe("string");
+  });
+});
+
+describe("positionsForDropOnItem", () => {
+  const column = () =>
+    ["a", "b", "c", "d"].map((id, i) => ({ id, position: positionsBetween(null, null, 4)[i] }));
+
+  it("agrees with the single-card path at count 1", () => {
+    // Required, not incidental: a one-card selection must land exactly where
+    // a plain drag of that card would.
+    const items = column();
+    const [multi] = positionsForDropOnItem(items, new Set(["a"]), "c", 1);
+    expect(multi).toBe(positionForDropOnItem(items, "a", "c"));
+  });
+
+  it("returns strictly ascending keys inside the target gap", () => {
+    const items = column();
+    const out = positionsForDropOnItem(items, new Set(["a"]), "c", 3);
+    expect(out).toHaveLength(3);
+    expect([...out].sort()).toEqual(out);
+    expect(items[1].position < out[0]).toBe(true);
+    expect(out[2] < items[2].position).toBe(true);
+  });
+
+  it("excludes every mover from the neighbour list, not just the hovered one", () => {
+    // With b and c both moving, a run dropped on d must not be interleaved
+    // with cards that are about to leave from between them.
+    const items = column();
+    const out = positionsForDropOnItem(items, new Set(["b", "c"]), "d", 2);
+    expect(items[0].position < out[0]).toBe(true);
+    expect(out[1] < items[3].position).toBe(true);
+  });
+
+  it("appends past the end when no card was hovered", () => {
+    const items = column();
+    const out = positionsForDropOnItem(items, new Set(["elsewhere"]), null, 2);
+    expect(items[3].position < out[0]).toBe(true);
+    expect(out[0] < out[1]).toBe(true);
+  });
+
+  it("lands above the first card when the top is the target", () => {
+    const items = column();
+    const out = positionsForDropOnItem(items, new Set(["d"]), "a", 2);
+    expect(out[1] < items[0].position).toBe(true);
+  });
+
+  it("handles a column where every card is moving", () => {
+    const items = column();
+    const out = positionsForDropOnItem(items, new Set(["a", "b", "c", "d"]), null, 4);
+    expect(out).toHaveLength(4);
+    expect([...out].sort()).toEqual(out);
+  });
+
+  it("returns nothing for a count of zero", () => {
+    expect(positionsForDropOnItem(column(), new Set(), null, 0)).toEqual([]);
   });
 });
 

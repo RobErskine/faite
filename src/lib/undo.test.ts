@@ -5,6 +5,7 @@ import { getDb, resetDbForTests } from "@/lib/store/db";
 import {
   createTodo,
   listPatch,
+  schedulePatch,
   setTodoStatus,
   statusPatch,
 } from "@/lib/store/repositories";
@@ -291,5 +292,66 @@ describe("undo against the real store", () => {
       const entryId = pushUndo("No-op", [{ kind: "todo", entityId: "t1", patch: {} }]);
       expect(() => attachEventIds(entryId, [])).not.toThrow();
     });
+  });
+});
+
+describe("a multi-drag's undo entry", () => {
+  /**
+   * EI-194. One gesture moves N cards, and ⌘Z has to put all N back in a
+   * single press — a half-undone run (some cards restored, some not) would be
+   * a worse landing than either state on its own.
+   *
+   * `UndoEntry.steps` was already `UndoStep[]`, so this asserts the shape a
+   * multi-drag builds rather than any new machinery.
+   */
+  it("restores every mover's OWN previous date, not a shared one", () => {
+    // The trap: reusing the dragged card's `scheduledDate` for all N steps
+    // would send them all back to one date on undo.
+    const movers = [
+      { id: "a", scheduledDate: null, scheduledAt: null },
+      { id: "b", scheduledDate: "2026-08-03", scheduledAt: "2026-08-03T00:00:00.000Z" },
+      { id: "c", scheduledDate: "2026-08-09", scheduledAt: "2026-08-09T00:00:00.000Z" },
+    ];
+
+    const steps = movers.map((t) => ({
+      kind: "todo" as const,
+      entityId: t.id,
+      patch: inversePatch(t, schedulePatch("2026-08-14", t.scheduledDate)),
+    }));
+
+    expect(steps).toHaveLength(3);
+    expect(steps[0].patch.scheduledDate).toBeNull();
+    expect(steps[1].patch.scheduledDate).toBe("2026-08-03");
+    expect(steps[2].patch.scheduledDate).toBe("2026-08-09");
+  });
+
+  it("is ONE entry, so a single pop restores the whole run", async () => {
+    // Real rows: `apply()` writes through `mutate()`, which refuses a missing
+    // one by design.
+    const ids = await Promise.all([
+      createTodo({ title: "A", scheduledDate: "2026-08-14" }),
+      createTodo({ title: "B", scheduledDate: "2026-08-14" }),
+      createTodo({ title: "C", scheduledDate: "2026-08-14" }),
+    ]);
+    pushUndo(
+      "Scheduled 3 to-dos",
+      ids.map((entityId) => ({
+        kind: "todo" as const,
+        entityId,
+        patch: { scheduledDate: null },
+      })),
+    );
+
+    const entry = await undoLast();
+    expect(entry?.steps).toHaveLength(3);
+
+    // All three actually went back, not just the first.
+    const db = getDb();
+    for (const id of ids) {
+      expect((await db.todos.get(id))?.scheduledDate).toBeNull();
+    }
+
+    // And nothing is left behind for a second press to find.
+    expect(await undoLast()).toBeNull();
   });
 });

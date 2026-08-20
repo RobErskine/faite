@@ -89,6 +89,7 @@ export function PhoneBoard({
     overGroupId,
     columnDropTargetId,
     listDayDrop,
+    movingIds,
     tabDrop,
     activeTabId,
     tabsById,
@@ -106,6 +107,7 @@ export function PhoneBoard({
     columnFilters,
     setColumnFilter,
     landingTodoIds,
+    selectedIds,
     infoTabId,
     setInfoListId,
     setInfoTabId,
@@ -205,6 +207,9 @@ export function PhoneBoard({
               isDragActive={!!activeTodo}
               overTodoId={overTodoId}
               landingTodoIds={landingTodoIds}
+                  selectedIds={selectedIds}
+                  movingIds={movingIds}
+                  onSelect={actions.handleSelect}
               rejectsDrop
               footer={
                 <OverdriveButton
@@ -282,6 +287,9 @@ export function PhoneBoard({
                   isDragActive={!!activeTodo}
                   overTodoId={overTodoId}
                   landingTodoIds={landingTodoIds}
+                  selectedIds={selectedIds}
+                  movingIds={movingIds}
+                  onSelect={actions.handleSelect}
                 />
               );
             })}
@@ -356,6 +364,9 @@ export function PhoneBoard({
                   isDragActive={!!activeTodo}
                   overTodoId={overTodoId}
                   landingTodoIds={landingTodoIds}
+                  selectedIds={selectedIds}
+                  movingIds={movingIds}
+                  onSelect={actions.handleSelect}
                   recurrenceSummaries={recurrenceSummaries}
                   subtaskCounts={subtaskCounts}
                   isColumnDragActive={!!activeList}
@@ -392,6 +403,9 @@ export function PhoneBoard({
                   isDragActive={!!activeTodo}
                   overTodoId={overTodoId}
                   landingTodoIds={landingTodoIds}
+                  selectedIds={selectedIds}
+                  movingIds={movingIds}
+                  onSelect={actions.handleSelect}
                   recurrenceSummaries={recurrenceSummaries}
                   subtaskCounts={subtaskCounts}
                   reorderListId={column.list.id}

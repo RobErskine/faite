@@ -107,3 +107,35 @@ export function positionForDropOnItem<T extends { id: string; position: Position
    */
   return positionForIndex(ordered, index === -1 ? ordered.length : index);
 }
+
+/**
+ * N positions for a contiguous run dropped onto `overId`, sharing one gap
+ * (EI-194).
+ *
+ * The multi-select counterpart of `positionForDropOnItem`, and it must stay
+ * that function's exact generalisation: at `count === 1` the two are required
+ * to agree, or a one-card selection would land somewhere a plain drag would
+ * not. There is a test pinning that.
+ *
+ * `draggedIds` excludes EVERY mover from the neighbour list, not just the one
+ * under the cursor. Leaving the others in would let a mover become its own
+ * run's neighbour and interleave the result with cards that are about to move
+ * out from between them.
+ */
+export function positionsForDropOnItem<T extends { id: string; position: Position }>(
+  siblings: readonly T[],
+  draggedIds: ReadonlySet<string>,
+  overId: string | null,
+  count: number,
+): Position[] {
+  if (count <= 0) return [];
+
+  const ordered = siblings.filter((item) => !draggedIds.has(item.id));
+  const found = overId === null ? -1 : ordered.findIndex((item) => item.id === overId);
+  const index = found === -1 ? ordered.length : found;
+
+  const clamped = Math.max(0, Math.min(index, ordered.length));
+  const before = clamped > 0 ? ordered[clamped - 1].position : null;
+  const after = clamped < ordered.length ? ordered[clamped].position : null;
+  return generateNKeysBetween(before, after, count);
+}

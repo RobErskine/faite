@@ -813,6 +813,107 @@ active pill off-screen. No new auto-scroll-on-drag code was added: dnd-kit's
 own auto-scroll (§4.8) already reaches this container during a tab or list
 drag.
 
+### 4.14 Multi-select, and dragging a run (EI-194)
+
+Cmd/Ctrl+click several cards, drag any one of them, and the whole selection
+lands on the destination. Shift+click extends a range. This closed §7 item 5,
+which had read "No multi-select drag" since the board was built.
+
+**Two pieces of state, and the split is the load-bearing part.**
+`selectedIds` is what the user has picked and can change *mid-flight* — a live
+query lands, a filter effect fires, another device syncs a deletion.
+`activeSelectionIds` is the **ordered snapshot taken at lift**, and
+`handleDragEnd` reads only that. Same contract as `activeTodo` holding a
+record rather than an id: the gesture commits exactly what was picked up, not
+whatever the selection has since become.
+
+**The selection is never pruned against the board.**
+`selectedTodosInBoardOrder()` (`lib/board.ts`, pure) derives the live set on
+every render, so a to-do that is deleted, archived, filtered out by
+`visibleStatuses`, or carried to another tab leaves the selection by simply
+not appearing. An effect that pruned the set instead would race the live
+query, and a stale id reaching `mutate()` throws — that function refuses a
+missing row on purpose (the "Untitled list" incident).
+
+**One `onClickCapture` on the row is the entire interception point** — not the
+title button, not the checkbox. Each of the three things it could have broken
+is already handled by something else, and two of them by dnd-kit rather than
+by us:
+
+- **The 4px threshold is untouched.** `onMouseDown` still reaches
+  `MouseSensor` first. And if a drag *did* activate,
+  `AbstractPointerSensor.handleStart` has registered a capture-phase `click`
+  listener **on `document`** that stops propagation and stays attached 50ms
+  past `detach()` (§4.9). Document capture runs strictly before the row's, so
+  a Cmd+drag can never also toggle selection. That is a guarantee from
+  dnd-kit's source, not a timing hope.
+- **The detail sheet still opens**, because the unmodified branch
+  deliberately does *not* `stopPropagation` — the title's own `onClick` is a
+  bubble-phase handler on a descendant.
+- **The checkbox still toggles** on a plain click, and on a modified one
+  selects instead of ticking. One uniform rule for the whole row, with the
+  `after:-inset-x-1` hit-area geometry (§5.4) untouched.
+
+macOS turns Ctrl+click into `contextmenu` and suppresses the `click`, so
+`ctrlKey` is effectively the Windows/Linux path. Both are tested.
+
+**A Shift+click range is scoped to the anchor's own column**, and
+`rangeSelectionIds()` returns null when the two ends are in different ones so
+the caller re-anchors. "Everything between a card in Tuesday and a card in
+Backlog" has no answer a user would predict: the two halves are ordered by
+different rules entirely (§4.13 — the planning half is arranged by hand, the
+calendar half is computed), and the columns between them on screen are not a
+sequence you can walk. *Within* a column it is well defined even in the
+calendar half, because `DayColumn.todos` is the flat rendered order, groups
+and all — so a range sweeping across two group headers selects exactly the
+cards the eye passed over.
+
+**The run lands in board order, with N keys in one gap.**
+`positionsForDropOnItem()` (`lib/ordering.ts`) is the multi counterpart of
+`positionForDropOnItem`, and it is required to agree with it at `count === 1`
+— a one-card selection must land exactly where a plain drag of that card
+would. There is a test pinning that equality. It also excludes **every** mover
+from the neighbour list, not just the one under the cursor: leaving the others
+in lets a mover become its own run's neighbour and interleaves the result with
+cards that are about to move out from between them.
+
+The pointer decides where the *run* lands, not where within the run the
+dragged card sits. Positions are only used for the list and day-group
+branches; a day column writes none, because order there is computed (§4.13).
+
+**`handleDragEnd`'s multi branch is a separate branch, and the single-card
+path below it is byte-identical to before.** That path is the most-used code
+in the app and every bug ever found in it has been invisible to typecheck,
+lint and unit tests (§8), so ~40 duplicated lines is the cheaper trade. The
+multi branch also **materializes first, then builds the undo entry, then
+writes** — the reverse of the single path's "record before awaiting", because
+the inverse patches have to describe rows that already exist.
+
+Undo is one entry with N steps, and each step carries **its own**
+`previousDate` — reusing the dragged card's would restore the wrong dates.
+
+**N writes = N outbox entries = N sequential Dexie transactions.** There is no
+batch helper and adding one would change the single-write-path contract
+`mutate.ts` and `lib/sync/wire.ts` are built on. The practical consequence is
+that a large selection's writes can outlast the 200ms flight and its
+`FLIGHT_MS + 250` backstop, so the write loop clears `landingTodoIds` in a
+`finally` as well as from `onLand` — a row revealed before its write lands
+reads as data loss. There is no cap on selection size yet (§7).
+
+**When the selection clears:** a plain click on anything that is not a card, a
+plain click on another card, `Escape`, a completed drop, and lifting a card
+that is *not* in the selection (the gesture is no longer about the selection,
+so leaving it highlighted would look armed). A drag **cancel** deliberately
+keeps it — Escape cancelled the lift, not the picking; a second Escape clears.
+The document listener is registered only while something is selected, and its
+`Escape` is guarded by `isTextEntry`, because Escape inside a column filter
+already means "clear the filter".
+
+**The overlay grows a count badge, not a fan of stacked cards.** §4.7 measures
+the overlay wrapper with `getBoundingClientRect()`, and a chip that changed
+size mid-drag would break the flight. The badge is `shrink-0` inside the
+existing wrapper.
+
 ### 4.11 The React Compiler rejects refs read during render
 
 Worth knowing before restructuring anything in `board.tsx`. The drop animation
@@ -1397,7 +1498,9 @@ list — see §4.7 and §4.9.)
    via CDP, not an actual phone; §4.9b's numbers are a reasoned default, not
    field-tested, and remain the most likely place a real device surprises
    this app. Revisit once Capacitor (P7) makes that testable.
-5. **No multi-select drag.**
+5. ~~No multi-select drag.~~ **Done, EI-194** — see §4.14. Still open from
+   it: no cap on selection size (N writes are N sequential Dexie transactions
+   and N outbox entries), and there is no touch equivalent for Cmd+click.
 5a. **A list drag has no keyboard path**, so §4.10e ships mouse-only in
     practice — `keyboardCoordinates` falls straight through to the stock
     getter for a `listdrag:` active (see item 7 below, which this inherits).
@@ -1613,6 +1716,44 @@ rect-based collision logic cannot be meaningfully tested there.
     shows: no dashed candidate outlines, no destructive styling, and the
     tab-reorder insertion bar (§4.10b) never appears — that's gated on
     `activeTab`, not `activeList`.
+
+**Manual checklist — multi-select (§4.14, EI-194)**
+
+59. Cmd+click three cards in one list. Each highlights, **no sheet opens, and
+    nothing ticks done**.
+60. Cmd+click a fourth card's **checkbox**. It selects and does **not** tick.
+61. Shift+click a card several rows below the last one you clicked — the whole
+    run between them selects. Shift+click a card in a *different* column — it
+    re-anchors on that card instead of selecting across the gap.
+62. Shift+click across two group headers inside one day column. The range
+    covers exactly the cards the eye swept over, headers included in the
+    sweep but not selected.
+63. Plain-click one of the selected cards — the selection clears and the sheet
+    opens. Plain-click empty board space — it just clears.
+64. Escape with four selected — all clear. Then type in a column filter and
+    press Escape: the **filter** clears and the selection does not.
+65. Drag one of four selected cards onto a day. All four land, grouped under
+    their own lists. **None is left invisible, none appears twice**, and the
+    overlay chip carried a `4` badge on the way.
+66. Same onto a list column — they land contiguously at the pointer, in
+    reading order, and the cards already there keep their relative order.
+67. Same onto a day **group** header — all four take that group's list and
+    that day.
+68. Same onto Overflow — **one** toast, not four, and every ghost returns home.
+69. ⌘Z once — all four go back in a single press, each to its own previous
+    date, not to a shared one.
+70. Select four, then drag a **fifth, unselected** card. Only the fifth moves,
+    and the selection clears on lift.
+71. Select four, press Escape *mid-drag*. The drag cancels and the four stay
+    selected; a second Escape clears them.
+72. Select four, switch tabs, come back — nothing is selected. Same after
+    typing in a column filter.
+73. Select two, delete one from its sheet, then drag the other. Only one
+    moves, no crash.
+74. Arrow onto a row and press `x` twice — it selects then deselects. `Space`
+    still toggles done, `Enter` still opens the sheet.
+75. Select 20+ and drop. The flight and the writes both finish; no row is
+    stuck at zero opacity, and none is revealed before it exists.
 
 **Manual checklist — a list onto a day (§4.10e, EI-193)**
 

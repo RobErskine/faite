@@ -81,6 +81,9 @@ interface HarnessProps {
   reminderPresets?: ReminderPreset[];
   subtaskCount?: { done: number; total: number } | null;
   timezone?: string;
+  isSelected?: boolean;
+  isGhosted?: boolean;
+  onSelect?: (id: string, m: { additive: boolean; range: boolean }) => void;
 }
 
 function Harness({
@@ -95,6 +98,9 @@ function Harness({
   reminderPresets,
   subtaskCount,
   timezone,
+  isSelected,
+  isGhosted,
+  onSelect,
 }: HarnessProps) {
   return (
     <TooltipProvider>
@@ -106,6 +112,9 @@ function Harness({
             reminderPresets={reminderPresets}
             ctx={ctx}
             timezone={timezone}
+            isSelected={isSelected}
+            isGhosted={isGhosted}
+            onSelect={onSelect}
             onToggle={onToggle}
             onOpen={onOpen}
             onNavigate={onNavigate}
@@ -527,5 +536,97 @@ describe("the completion stamp", () => {
     render(<Harness todo={done()} timezone="UTC" />);
     expect(checkbox().className).toContain("absolute left-3 top-2");
     expect(checkbox().className).toContain("after:-inset-x-1");
+  });
+});
+
+/**
+ * EI-194. The three hazards a row-level click interceptor could break — the
+ * 4px drag threshold, the detail sheet, and the checkbox — plus the selection
+ * chrome. The threshold itself is dnd-kit's and cannot be exercised without
+ * layout; what IS testable here is that an unmodified click is left entirely
+ * alone, which is what preserves it.
+ */
+describe("multi-select", () => {
+  const checkbox = () => document.querySelector<HTMLElement>('[data-slot="checkbox"]')!;
+
+  it("selects on cmd+click instead of opening the sheet", () => {
+    const onSelect = vi.fn();
+    const onOpen = vi.fn();
+    render(<Harness onSelect={onSelect} onOpen={onOpen} />);
+    fireEvent.click(titleButton(), { metaKey: true });
+    expect(onSelect).toHaveBeenCalledWith("t1", { additive: true, range: false });
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  it("selects on ctrl+click too, for Windows and Linux", () => {
+    const onSelect = vi.fn();
+    render(<Harness onSelect={onSelect} />);
+    fireEvent.click(titleButton(), { ctrlKey: true });
+    expect(onSelect).toHaveBeenCalledWith("t1", { additive: true, range: false });
+  });
+
+  it("ranges on shift+click", () => {
+    const onSelect = vi.fn();
+    render(<Harness onSelect={onSelect} />);
+    fireEvent.click(titleButton(), { shiftKey: true });
+    expect(onSelect).toHaveBeenCalledWith("t1", { additive: false, range: true });
+  });
+
+  it("leaves a plain click completely alone", () => {
+    // The whole point: an unmodified click must reach the title's own
+    // handler, or the detail sheet stops opening.
+    const onSelect = vi.fn();
+    const onOpen = vi.fn();
+    render(<Harness onSelect={onSelect} onOpen={onOpen} />);
+    fireEvent.click(titleButton());
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("selects rather than ticking when the checkbox is cmd+clicked", () => {
+    const onSelect = vi.fn();
+    const onToggle = vi.fn();
+    render(<Harness onSelect={onSelect} onToggle={onToggle} />);
+    fireEvent.click(checkbox(), { metaKey: true });
+    expect(onSelect).toHaveBeenCalledWith("t1", { additive: true, range: false });
+    expect(onToggle).not.toHaveBeenCalled();
+  });
+
+  it("still ticks on a plain checkbox click", () => {
+    const onSelect = vi.fn();
+    const onToggle = vi.fn();
+    render(<Harness onSelect={onSelect} onToggle={onToggle} />);
+    fireEvent.click(checkbox());
+    expect(onToggle).toHaveBeenCalledTimes(1);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("marks the row so a click elsewhere can tell board from card", () => {
+    render(<Harness />);
+    expect(row().hasAttribute("data-todo-row")).toBe(true);
+  });
+
+  it("shows selection chrome, and lets dragging still win over it", () => {
+    render(<Harness isSelected />);
+    expect(row().className).toContain("ring-primary/30");
+  });
+
+  it("ghosts a non-dragged member of a selection in flight", () => {
+    render(<Harness isGhosted />);
+    expect(row().className).toContain("opacity-30");
+  });
+
+  it("toggles selection on `x` while Space still toggles done", () => {
+    const onSelect = vi.fn();
+    const onToggle = vi.fn();
+    render(<Harness onSelect={onSelect} onToggle={onToggle} />);
+    const el = row();
+    el.focus();
+    fireEvent.keyDown(el, { key: "x", target: el });
+    expect(onSelect).toHaveBeenCalledWith("t1", { additive: true, range: false });
+    expect(onToggle).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(el, { key: " ", target: el });
+    expect(onToggle).toHaveBeenCalledTimes(1);
   });
 });

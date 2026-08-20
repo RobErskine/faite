@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { civilDateSchema, type CivilDate, type List, type Tab, type Todo } from "@/lib/schema";
 import { LOCAL_OWNER_ID } from "@/lib/store/repositories";
 import { mutateSettings } from "@/lib/store/mutate";
-import { undoLast } from "@/lib/undo";
+import { isTextEntry, undoLast } from "@/lib/undo";
 import type { Hotkey } from "@/lib/keyboard";
 
 /**
@@ -105,6 +105,9 @@ function readDeepLinkParams(): { todoId: string | null; day: CivilDate | null } 
  * every consumer's memo/effect deps stay quiet between drags.
  */
 export const EMPTY_LANDING: ReadonlySet<string> = new Set();
+
+/** Same idea for the multi-select set (EI-194). */
+const EMPTY_SELECTION: ReadonlySet<string> = new Set();
 
 /**
  * Mirrors `openTodoId`/`openDay` back onto the URL — `history.replaceState`
@@ -309,6 +312,96 @@ export function useBoardUiState() {
   }, []);
 
   /**
+   * Cards the user has Cmd/Ctrl+clicked (EI-194). Unpersisted and unsynced,
+   * for the same reason as `collapsedGroups` and `columnFilters` above — a
+   * selection surviving a reload would arm a destructive-feeling gesture with
+   * no visible cause.
+   *
+   * Deliberately NEVER pruned against the board. `selectedTodosInBoardOrder`
+   * (`lib/board.ts`) derives the live set on every render, so a to-do that is
+   * deleted, archived, filtered out, or carried to another tab leaves the
+   * selection by simply not appearing. An effect that pruned this instead
+   * would race a live query, and a stale id reaching the write path is how
+   * `mutate()` ends up throwing on a missing row.
+   */
+  const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(EMPTY_SELECTION);
+
+  /**
+   * Where a Shift+click range measures from. Not part of the selection — it
+   * is the last card *clicked*, which is a different thing: shrinking a range
+   * back toward the anchor has to keep measuring from the same end.
+   */
+  const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(null);
+
+  /**
+   * The ORDERED SNAPSHOT of the selection at the moment of lift, or null for
+   * an ordinary one-card drag.
+   *
+   * Separate from `selectedIds` on purpose. That set can change mid-flight —
+   * a live query lands, a filter effect fires — and `handleDragEnd` must
+   * write exactly what the user picked up, not whatever the selection has
+   * since become. Same contract as `activeTodo` holding a record rather than
+   * an id.
+   */
+  const [activeSelectionIds, setActiveSelectionIds] = useState<readonly string[] | null>(null);
+
+  const clearSelection = useCallback(() => {
+    setSelectedIds((prev) => (prev.size === 0 ? prev : EMPTY_SELECTION));
+    setSelectionAnchorId(null);
+  }, []);
+
+  const toggleSelected = useCallback((todoId: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(todoId)) next.add(todoId);
+      return next.size === 0 ? EMPTY_SELECTION : next;
+    });
+    setSelectionAnchorId(todoId);
+  }, []);
+
+  /** Replaces the selection with `ids`, keeping `anchorId` to measure from. */
+  const selectRange = useCallback((ids: readonly string[], anchorId: string) => {
+    setSelectedIds(ids.length === 0 ? EMPTY_SELECTION : new Set(ids));
+    setSelectionAnchorId(anchorId);
+  }, []);
+
+  /**
+   * Clearing the selection: a plain click on anything that is not a card, or
+   * Escape.
+   *
+   * Registered only while something is selected, so an ordinary board pays
+   * nothing for this. Capture phase is deliberately NOT used — the card's own
+   * `onClickCapture` runs first and calls `stopPropagation` for a modified
+   * click, which is what keeps a Cmd+click on empty-ish card chrome from
+   * immediately clearing what it just selected.
+   *
+   * Escape is guarded by `isTextEntry`: Escape inside a column filter means
+   * "clear the filter", and stealing it would make the selection feel like it
+   * evaporates at random while typing.
+   */
+  useEffect(() => {
+    if (selectedIds.size === 0) return;
+
+    const onClick = (e: MouseEvent) => {
+      if (e.metaKey || e.ctrlKey || e.shiftKey) return;
+      const target = e.target as Element | null;
+      if (target?.closest?.("[data-todo-row]")) return;
+      clearSelection();
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || isTextEntry(e.target)) return;
+      clearSelection();
+    };
+
+    document.addEventListener("click", onClick);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("click", onClick);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [selectedIds, clearSelection]);
+
+  /**
    * In-column filter text, by droppable column id (`list:<id>`, `day:<id>`,
    * `day:overflow`). Unpersisted, like `collapsedGroups` above — a filter
    * surviving reload would hide cards with no visible cause.
@@ -428,6 +521,13 @@ export function useBoardUiState() {
     setPhoneView,
     landingTodoIds,
     setLandingTodoIds,
+    selectedIds,
+    toggleSelected,
+    selectRange,
+    clearSelection,
+    selectionAnchorId,
+    activeSelectionIds,
+    setActiveSelectionIds,
     landingRectRef,
     activeList,
     setActiveList,
