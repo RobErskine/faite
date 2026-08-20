@@ -16,7 +16,7 @@ past D1 exists yet.
 | D1 | Real window model, desktop bridge (`isDesktopShell()`), native app menu, window-state persistence | ✅ Done — §6 |
 | D1.5 | Installable, dock-resident `.app` — hide-on-close/reopen, ad-hoc signing, `desktop:build`/`desktop:dev` scripts | ✅ Done — §7 |
 | D1.6 | Developer ID + notarization | ✅ Done — §8 |
-| D2a | Desktop login + sync — `TRUSTED_ORIGINS`, Better Auth `bearer` plugin, OS-keychain token storage, WS auth | Not started |
+| D2a | Desktop login + sync — `TRUSTED_ORIGINS`, api-key bearer auth, OS-keychain token storage, WS auth | ✅ Done — §9 |
 | D2b (EI-145) | Background sync while the window is closed — Rust-driven timer into the hidden webview | Not started |
 | D3 | Feature A — menu bar popover (today/overdue to-dos, read-on-show) | Not started |
 | D4 | Feature B — global hotkey, always-on-top quick-capture window | Not started |
@@ -56,14 +56,17 @@ build, not to re-litigate them.
    baked into the `.app`. Rejected: loading `myfaite.app` directly (no offline
    boot, a web deploy could break desktop with no per-platform rollback) and
    load-remote-with-bundled-fallback (two non-deterministic code paths).
-3. **Bearer tokens, not cookies**, for the desktop shell's auth. Better Auth
-   `bearer` plugin; token in the OS keychain via the `keyring` Rust crate,
-   injected as a header from Rust, never in `localStorage`. D0 §7 below is why
-   this is closer to mandatory than merely-better. **Confirmed empirically, not
-   just by reasoning, in D1.5 (§7.4):** Tauri's HTTP plugin cannot rescue a
-   cookie-based session either — the reqwest and webview cookie jars are
-   independent stores, and the WebSocket transport never sees the cookie at
-   all.
+3. **Bearer tokens, not cookies**, for the desktop shell's auth. Token in the
+   OS keychain via the `keyring` Rust crate, never in `localStorage`. D0 §7
+   below is why this is closer to mandatory than merely-better. **Confirmed
+   empirically, not just by reasoning, in D1.5 (§7.4):** Tauri's HTTP plugin
+   cannot rescue a cookie-based session either — the reqwest and webview
+   cookie jars are independent stores, and the WebSocket transport never sees
+   the cookie at all. **Landed in D2a (§9) via Better Auth's `apiKey` plugin,
+   not the literal `bearer` plugin this line originally named** — a scaffold
+   for exactly this already existed (`src/server/auth-tokens.ts`, built ahead
+   of time for this milestone) and fit better: real revocable tokens in D1,
+   not ephemeral session-token headers.
 4. **Menu bar popover: read-on-show, not live-query.** Opened by a click,
    lives seconds — a one-shot Dexie read on `show`, not `useLiveQuery`. Reduces
    the hard requirement to "shared IndexedDB across webviews in one app",
@@ -800,3 +803,208 @@ signing, so no reason to expect this milestone changed that outcome).
   (`APPLE_SIGNING_IDENTITY` alone, no `.p12`/`APPLE_CERTIFICATE`). A future
   CI-built release would need the certificate exported and base64-encoded as
   a GitHub Actions secret — not attempted, not needed yet.
+
+---
+
+## 9. D2a — desktop login + sync
+
+Same day as D1.5/D1.6. Rob's own instinct on where to start ("open the
+browser, sign in, callback into Faite") turned out to be exactly the right
+shape, and better than this doc's own D1.5-era sketch — see §9.1.
+
+### 9.1 The design, and why it beats the original sketch
+
+The original plan (decision #3, and the D1.5 runbook's §5 sequencing)
+imagined the desktop shell somehow authenticating itself directly. That was
+never going to work: `tauri://localhost` cannot hold a session cookie at all
+(D0 §3.7), so ANY approach that tries to sign in *from* the embedded webview
+inherits that wall. D2a's actual design never tries:
+
+1. **The desktop shell opens the SYSTEM BROWSER** (`bridge.ts`'s
+   `startDesktopLogin()`, via `@tauri-apps/plugin-opener`) to
+   `https://myfaite.app/login?callbackURL=%2Fdesktop-handoff` — a real
+   `https://` origin, so email/password AND both OAuth providers work
+   completely unmodified. Every "sign in"/"sign up" affordance in the app
+   (`app-header.tsx`, `welcome-dialog.tsx`, `signed-out-banner.tsx`) opens
+   this instead of navigating the webview once `isDesktopShell()` is true.
+2. **`callbackURL`** is threaded through `login`/`signup`'s email/password
+   branch (previously hardcoded to `/board`) and `<OAuthButtons
+   callbackURL>` (already a real prop, just never used for anything but the
+   default) to land on `/desktop-handoff` instead.
+3. **`/desktop-handoff`** (new page, cookie-authenticated) calls
+   `/api/desktop/handoff`, which mints a real, named, revocable API key
+   (`auth.api.createApiKey()`, `auth-tokens.ts`'s `apiTokenPlugin` — see
+   §9.2 for why this beats a literal `bearer` plugin) and encrypts it plus a
+   60-second expiry into an opaque code (`handoff-code.ts`, AES-GCM,
+   HKDF-derived from `BETTER_AUTH_SECRET`). The raw key never reaches the
+   browser response — only the code does. A **deliberate stateless
+   simplification**, documented in `handoff-code.ts` itself: TTL-bounded,
+   not single-use-enforced (no new D1 table, no migration — this repo's
+   `.ai/lessons.md` has more hard-won D1-migration scars than any other
+   topic, and a 60-second local handoff code isn't worth one).
+4. The page renders a **"Continue to Faite" button** — not an automatic
+   redirect. Browsers can decline to honor a custom-scheme navigation that
+   didn't originate from a user gesture; the click is the gesture.
+5. Clicking it navigates to `faite://auth-callback?code=…` — macOS hands
+   this to the app via `tauri-plugin-deep-link` (registered scheme,
+   `tauri.conf.json`'s `plugins.deep-link.desktop.schemes`).
+   `bridge.ts`'s `onDesktopAuthCallback()` wires both `getCurrent()`
+   (cold start) and `onOpenUrl()` (already running — the overwhelmingly
+   common case, since D1.5 made the app dock-resident).
+6. **`DesktopAuthProvider`** (new, mounted in `board.tsx` next to
+   `SessionProvider`/`SyncProvider`, gated on `isDesktopShell()`) receives
+   the callback, POSTs the code to `/api/desktop/exchange` — called from the
+   DESKTOP APP this time, genuinely cross-origin from `tauri://localhost`,
+   no cookie involved at all — and gets back the real key. **This is the
+   only place the plaintext key crosses the wire a second time**, and it
+   never touches a URL, browser history, or any logging surface the browser
+   touches.
+7. The key goes into the OS keychain (`src-tauri/src/keychain.rs`, three
+   `#[tauri::command]`s over the `keyring` crate's default `v1` feature —
+   confirmed to pull in the macOS backend with zero extra feature flags).
+   Sign-out (`app-header.tsx`) clears it explicitly — Better Auth's own
+   `signOut()` only clears the cookie, which the desktop shell never had.
+
+### 9.2 The bigger discovery: `useSession()` had to work too, not just sync
+
+The first draft of this milestone made `/api/sync/*` accept the bearer
+token via its own route-local check and stopped there. That would have
+technically fixed sync while leaving `useSession()` — and therefore
+`SessionProvider`, the header's signed-in state, every "are we signed in"
+UI check in the app — still blind to a successful desktop login, because
+none of them ever touch `/api/sync/*` directly. Rob's original report
+("wasn't able to log in") would not actually have been fixed.
+
+The fix: `auth-tokens.ts`'s `apiTokenPlugin` flips
+**`enableSessionForAPIKeys: true`**, globally — a valid key now satisfies
+`auth.api.getSession()` at every endpoint that calls it, including Better
+Auth's own `/api/auth/get-session`. `auth-client.ts` attaches the token via
+`fetchOptions.auth: { type: "Bearer", token: async () => … }` — a genuine
+Better Auth client feature for exactly this (an async token function,
+called fresh per request, omitted entirely when it resolves to
+`undefined`) — so the SAME token that authenticates sync also makes
+`useSession()`, and therefore the whole app, recognize the desktop login.
+One mechanism, every consumer, discovered by asking "what does 'signed in'
+actually mean in this app" rather than stopping at "does the transport
+authenticate."
+
+**The documented cost of "global," not hidden:** `enableSessionForAPIKeys`
+being global means any FUTURE api-key consumer (EI-50's original vision of
+a scoped, user-generated, read-only external API token) would also become
+full-session-equivalent the instant it's created — `permissions`/
+`defaultPermissions` are declared on the plugin but enforced nowhere in
+this codebase today. `auth-tokens.ts`'s file comment flags this explicitly
+as something to revisit before that second consumer ships, not silently
+inherited.
+
+### 9.3 The WebSocket subprotocol carrier
+
+A browser `WebSocket` cannot set an `Authorization` header — the one open
+question the D1.5 runbook flagged as needing a real decision. Resolved:
+the token rides as a `Sec-WebSocket-Protocol` value
+(`WS_BEARER_PROTOCOL_PREFIX = "faite-bearer."`, `src/lib/sync/wire.ts` —
+shared between client and server so the two ends can't drift, same pattern
+as every other wire constant in that file). `auth-tokens.ts`'s
+`customAPIKeyGetter` checks it as a fallback when no `Authorization` header
+is present; `user-do.ts` echoes the offered protocol back on the 101
+response, which RFC 6455 requires for the browser to consider the
+handshake complete. Chosen over a query-param token (the other option the
+runbook posed) specifically to keep the token out of any URL, log line, or
+proxy trace that a query string would land in.
+
+### 9.4 Two real bugs found only by testing against a live Durable Object
+
+Both invisible to `npm run verify` (1816 tests, all green) — neither is a
+logic error a unit test would catch, because both are about what a
+**direct** `auth.api.X()` call receives versus what the same call receives
+through Better Auth's own HTTP router.
+
+1. **`customAPIKeyGetter` read `ctx.request?.headers`, which is `undefined`
+   for every call in this codebase.** Every `/api/*` handler here calls
+   `auth.api.getSession({ headers: request.headers })` — headers only, never
+   `request` — because none of them are Next.js Route Handlers (`output:
+   export` forbids one that reads `Request`, see `worker.ts`'s file
+   comment) and none of them go through Better Auth's own router either.
+   `ctx.request` is only populated when an endpoint is dispatched from a
+   real `Request` object; `ctx.headers` is populated whenever `headers` is
+   passed, regardless. The plugin's own default getter reads `ctx.headers`;
+   mine copied a pattern that only works from inside `auth.handler(request)`.
+   Result: every bearer-token request to `/api/sync/*` silently fell through
+   to "no session" — proven wrong only by `curl`ing a real minted token
+   against a real Durable Object and getting `unauthenticated` back instead
+   of a push ack.
+2. **A malformed bearer-shaped credential crashes instead of 401ing.**
+   Better Auth's convention is throw-on-invalid-credential (`APIError`),
+   normally caught by the HTTP router's error middleware and translated to
+   the right response. Calling `.api.getSession()` directly — as every route
+   in this file does — bypasses that translation, so `Authorization: Bearer
+   faite_garbage` 500'd `/api/sync/*`, `/api/places/*`, and
+   `/api/desktop/handoff` alike (all three call the same pattern). Fixed
+   once, centrally: `getSessionSafe()` (`auth.ts`), a wrapper that catches
+   `APIError` specifically and resolves to `null` (401), letting any other
+   exception (a real infra failure) still surface as a 500. All three
+   routes now call it instead of the raw method.
+
+Neither bug survived past the same session — both were caught by the live
+smoke test below, fixed, and re-verified against the same running Durable
+Object before this milestone was called done.
+
+### 9.5 Verified live, against a real Durable Object
+
+Isolated `wrangler dev --port 8791` (checked free first, matching every
+prior sync milestone's pattern) with real local D1 migrations applied
+(`npm run auth:migrate:local` — the local database had never had auth
+migrations run before this session; a fresh `wrangler dev --local` starts
+with none). Confirmed via `curl` (and one raw Node `WebSocket` for the
+subprotocol path) against a real signed-up account, not mocks:
+
+- **Full handoff round trip**: sign in (cookie) → `POST
+  /api/desktop/handoff` → real encrypted code → `POST
+  /api/desktop/exchange` (no cookie, `Origin: tauri://localhost`) → real
+  `faite_…` key. CORS confirmed on the exchange response
+  (`Access-Control-Allow-Origin: tauri://localhost`).
+- **`GET /api/auth/get-session` with only `Authorization: Bearer <key>`, no
+  cookie** → returns the real session, matching the signed-in user. This is
+  the concrete proof the §9.2 gap is actually closed, not just reasoned
+  about.
+- **`POST /api/sync/push` / `GET /api/sync/pull`** with the bearer token →
+  real writes and reads against the account's Durable Object, round-tripped
+  correctly.
+- **WebSocket**: `new WebSocket(url, ["faite-bearer.<token>"])` → handshake
+  succeeded, `ws.protocol` echoed the offered value back, a `pull` request
+  over the socket returned real data.
+- **Cookie-based sync still works unchanged** — the ordinary browser path
+  regression-checked against the same server.
+- **Negative cases**, all confirmed 401 (not 500, after §9.4's second fix):
+  garbage bearer token against `/api/sync/push`, `/api/places/autocomplete`
+  (short-circuited to 501 first in this environment — no
+  `GOOGLE_PLACES_API_KEY` set locally, so the auth fix itself wasn't
+  reachable there, but the identical code path is proven by the other two
+  routes), and `/api/desktop/handoff`. No auth at all on `/api/sync/push`
+  → 401, unchanged from before this milestone.
+- **The OS-level deep-link registration**: rebuilt and re-signed/notarized
+  the real `.app` (D1.6's flow, confirmed unaffected by the two new Rust
+  plugins), launched it, then `open "faite://auth-callback?code=…"` from a
+  separate shell — macOS activated Faite (`lsappinfo`'s `(in front)`), no
+  "no application can open this URL" error. This is the part that is
+  genuinely specific to this session's `tauri.conf.json`/`capabilities`
+  config (the scheme registration itself); Tauri's own plugin handling the
+  JS-side dispatch is well-trodden, official behavior this session's unit
+  tests already cover.
+
+### 9.6 What's still open
+
+- **A real end-to-end click-through needs Rob** — sign in via a real
+  browser, click "Continue to Faite," watch the app actually show
+  signed-in state and start syncing. Everything above proves the pieces
+  work; it does not prove the whole chain feels right, or that the "Continue
+  to Faite" button's browser-permission prompt (if macOS shows one for the
+  custom scheme) is not surprising.
+- **None of this is deployed.** `/api/desktop/handoff`/`/exchange` and the
+  `enableSessionForAPIKeys` cutover only exist in this branch's local
+  `wrangler dev` testing — production `myfaite.app` does not have them yet.
+  A built `.app` pointed at production (the normal `beforeBuildCommand`)
+  will still fail to complete a real login until this ships.
+- **`.dmg` bundling** — unaffected by this milestone, same open item as §8.4.
+- **D2b (background sync while the window is closed)** is now genuinely
+  next in sequence, not blocked on anything from D2a.

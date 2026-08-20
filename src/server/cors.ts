@@ -33,7 +33,11 @@ export function handleOptions(request: Request): Response {
     headers: {
       ...corsHeaders(request.headers.get("Origin")),
       "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type",
+      // Authorization (D2a): the desktop shell's bearer token on
+      // `/api/sync/push`/`/api/sync/pull`/etc. — genuinely cross-origin from
+      // `tauri://localhost`, unlike the cookie-based browser case, so it
+      // needs to clear preflight.
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
     },
   });
 }

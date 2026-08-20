@@ -30,6 +30,7 @@ import { CommandPalette } from "./command-palette";
 import { DaySheet } from "./day-sheet";
 import { OverdriveOverlay } from "./overdrive-overlay";
 import { SessionProvider } from "@/components/auth/session-provider";
+import { DesktopAuthProvider } from "@/components/desktop/desktop-auth-provider";
 import { SyncProvider } from "@/components/sync/sync-provider";
 import { WelcomeDialog } from "@/components/auth/welcome-dialog";
 import { restoreListWithUndo } from "./list-actions";
@@ -518,6 +519,7 @@ export function Board() {
       />
 
       <SessionProvider />
+      <DesktopAuthProvider />
       <SyncProvider />
       <WelcomeDialog />
     </DndContext>

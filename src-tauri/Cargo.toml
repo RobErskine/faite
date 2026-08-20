@@ -23,6 +23,16 @@ serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
 tauri = { version = "2.11.3", features = [] }
 tauri-plugin-log = "2"
+# D2a: custom URL scheme for the system-browser login callback
+# (`faite://auth-callback`) — see docs/DESKTOP.md §9.
+tauri-plugin-deep-link = "2"
+# D2a: opens the system browser for login (`bridge.ts`'s `startDesktopLogin`).
+tauri-plugin-opener = "2"
 
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
 tauri-plugin-window-state = "2"
+# D2a: OS keychain storage for the bearer token (decision #3, docs/DESKTOP.md
+# §2) — never `localStorage`. Default features (`v1`) already pull in the
+# macOS Keychain backend (`apple-native-keyring-store`); no extra feature
+# flags needed for this platform.
+keyring = "4"

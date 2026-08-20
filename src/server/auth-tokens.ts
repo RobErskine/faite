@@ -1,17 +1,42 @@
 import { apiKey } from "@better-auth/api-key";
+import { extractWsBearerToken } from "./desktop/ws-bearer";
 
 /**
- * API token scaffold for EI-50 P5 (scoped-down). NEW, ADDITIVE, INERT:
- * registering this plugin adds a D1 table and a set of `/api/auth/api-key/*`
- * endpoints, but changes the behaviour of NO existing route. Nothing in the
- * app calls these endpoints yet, and — the load-bearing detail —
- * `enableSessionForAPIKeys` stays `false` below, which means a valid API key
- * on a request NEVER causes `auth.api.getSession()` to return a session for
- * it. That is the one call `src/server/sync/routes.ts:27` and
- * `src/server/places/routes.ts:53` make, and it is untouched by this file.
- * Flipping that flag (or adding an explicit `auth.api.verifyApiKey()` call
- * to a new route) is the actual cutover, and is deliberately NOT done here —
- * see the desktop-shell milestone (D2) this is groundwork for.
+ * API token scaffold for EI-50 P5 (scoped-down), cut over for D2a
+ * (`docs/DESKTOP.md` §9): the desktop shell mints one of these keys via
+ * `/api/desktop/handoff` and presents it on every subsequent request.
+ *
+ * `enableSessionForAPIKeys: true` (flipped below) is the actual cutover, and
+ * it is deliberately GLOBAL, not scoped to `/api/sync/*`: a valid key now
+ * satisfies `auth.api.getSession()` at every endpoint that calls it,
+ * including Better Auth's own `/api/auth/get-session` — which is exactly
+ * what makes `useSession()` (and therefore the whole app's signed-in UI:
+ * `SessionProvider`, `app-header.tsx`, everywhere) recognize a desktop-shell
+ * login as signed-in, not just the sync transport underneath it. A
+ * route-local check (an earlier draft of this file had `sync/routes.ts`
+ * call `verifyApiKey()` itself) would have left `useSession()` blind to a
+ * successful desktop login — sync would authenticate while the header still
+ * offered "Sign in". One mechanism, every consumer, is the point.
+ *
+ * **The real cost of "global," stated rather than hidden:** a desktop key is
+ * meant to be full-session-equivalent — that's the correct semantic for "this
+ * is me, on my own device," matching decision #3's "bearer tokens, not
+ * cookies" framing exactly. But `permissions`/`defaultPermissions` below are
+ * NOT enforced by anything in this codebase today (no call site passes a
+ * `permissions` argument to `verifyApiKey`), so if this plugin ever grows a
+ * SECOND consumer — e.g. EI-50's original vision of a user-generated,
+ * intentionally scoped read-only external API token — that token would ALSO
+ * be full-session-equivalent the moment it's created, not the narrow "read"
+ * scope its own `defaultPermissions` implies. Revisit `enableSessionForAPIKeys`
+ * (narrow it to specific routes, or start actually checking `permissions`)
+ * before shipping that second consumer, not after.
+ *
+ * `customAPIKeyGetter` below checks both places a key can arrive: the
+ * ordinary `Authorization: Bearer` header, and — for the one request shape
+ * that cannot set headers at all — the WebSocket handshake's
+ * `Sec-WebSocket-Protocol` value (`desktop/ws-bearer.ts`). This is what lets
+ * `sync/routes.ts`'s pre-upgrade check for `/api/sync/ws` stay a single
+ * `getSession()` call too, same as every other route.
  *
  * Why Better Auth's own plugin rather than a hand-rolled table: docs/API.md
  * asked to check fit before hand-rolling, and it fits well —
@@ -49,10 +74,30 @@ export const apiTokenPlugin = apiKey({
   requireName: true,
 
   customAPIKeyGetter: (ctx) => {
-    const header = ctx.request?.headers.get("authorization");
-    if (!header?.startsWith("Bearer ")) return null;
-    const token = header.slice("Bearer ".length).trim();
-    return token.length > 0 ? token : null;
+    // `ctx.headers`, NOT `ctx.request?.headers` — the plugin's own default
+    // getter reads `ctx.headers` too (see `getApiKeyFromConfig` in
+    // `@better-auth/api-key`'s source). The two are NOT interchangeable:
+    // `ctx.request` is only set when an endpoint is dispatched from a real
+    // `Request` (Better Auth's own HTTP router). `sync/routes.ts` calls
+    // `auth.api.getSession({ headers: request.headers })` — headers only,
+    // no `request` — which is `dispatchAuthEndpoint`'s documented "canonical
+    // hook runner" path (`auth.api.*` and the router both reach it), but
+    // leaves `ctx.request` `undefined`. Reading `ctx.request?.headers` here
+    // made this getter silently find nothing for every `/api/sync/*` call,
+    // while still working for the one call site (`worker.ts`'s `/api/auth`
+    // branch) that dispatches via a real `Request` — caught by testing
+    // against a real Durable Object, not by the unit tests, which never
+    // exercise the "headers-only" call shape.
+    const header = ctx.headers?.get("authorization");
+    if (header?.startsWith("Bearer ")) {
+      const token = header.slice("Bearer ".length).trim();
+      if (token.length > 0) return token;
+    }
+    // No Authorization header — try the WebSocket-upgrade carrier. Absent on
+    // every ordinary request (browsers never send this header outside a
+    // socket handshake), so this is a no-op fallback everywhere except
+    // `/api/sync/ws`.
+    return extractWsBearerToken(ctx.headers?.get("sec-websocket-protocol") ?? null);
   },
 
   // Tokens expire by default rather than living forever the moment they're
@@ -94,8 +139,8 @@ export const apiTokenPlugin = apiKey({
     },
   },
 
-  // THE flag that keeps this whole plugin inert. See the file-level comment.
-  enableSessionForAPIKeys: false,
+  // THE cutover flag. See the file-level comment for what "global" costs.
+  enableSessionForAPIKeys: true,
 });
 
 export { API_KEY_ERROR_CODES } from "@better-auth/api-key";

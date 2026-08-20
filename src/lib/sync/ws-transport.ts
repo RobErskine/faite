@@ -1,7 +1,10 @@
+import { apiUrl } from "../api-origin";
+import { getStoredAuthToken, isDesktopShell } from "../desktop/bridge";
 import { nextAttempt, nextDelay, shouldPause } from "./backoff";
 import { createPendingRequests, SyncSocketClosedError } from "./pending-requests";
 import type { SyncTransport } from "./transport";
 import type { PullResponse, PushRequest, PushResponse } from "./wire";
+import { WS_BEARER_PROTOCOL_PREFIX } from "./wire";
 import type { ClientMessage, ServerMessage } from "./ws-protocol";
 import {
   decodeServer,
@@ -24,11 +27,20 @@ import {
  * `WebSocket` constructor has no `credentials` option the way `fetch` does —
  * the browser applies its ordinary SameSite rules to the handshake. That is
  * fine same-origin (production, `wrangler dev`, `npm run preview`) and is
- * why the URL here is built from `location` rather than configured. Under
- * `next dev` the handshake simply fails, exactly as `/api/sync/*` already
- * 404s there, and under `capacitor://localhost` at P7 the cookie will not be
- * sent cross-site. In every one of those cases the fallback transport keeps
- * polling and nothing breaks — which is why give-up has to be QUIET.
+ * why the URL for the ordinary browser case is built from `location` rather
+ * than configured. Under `next dev` the handshake simply fails, exactly as
+ * `/api/sync/*` already 404s there. In every one of those cases the fallback
+ * transport keeps polling and nothing breaks — which is why give-up has to
+ * be QUIET.
+ *
+ * **The desktop shell (D2a) has no cookie at all for `tauri://localhost`**
+ * (docs/DESKTOP.md §7.4/§9) and is a different case from all of the above,
+ * not a variant of them: `socketUrl()` resolves against the configured API
+ * origin instead of `location` there, and the bearer token rides as a
+ * `Sec-WebSocket-Protocol` subprotocol — the one thing a browser WebSocket
+ * CAN set that isn't governed by cookie/SameSite rules. `connect()` is
+ * `async` for exactly this reason: reading the token means one keychain
+ * round trip (`bridge.ts`) before the socket can even be constructed.
  *
  * **A timeout closes the socket rather than just failing the call.** See
  * `pending-requests.ts`.
@@ -72,8 +84,27 @@ export interface WsConnectionOptions {
 }
 
 function socketUrl(path: string): string {
+  if (isDesktopShell()) {
+    // `apiUrl()` resolves against `NEXT_PUBLIC_AUTH_URL` (always set for the
+    // desktop build, see docs/DESKTOP.md §7.5) rather than `window.location`,
+    // which under `tauri://localhost` would build `ws://localhost${path}` —
+    // the webview's own pseudo-origin, not the real API host.
+    return apiUrl(path).replace(/^https:/, "wss:").replace(/^http:/, "ws:");
+  }
   const { protocol, host } = window.location;
   return `${protocol === "https:" ? "wss:" : "ws:"}//${host}${path}`;
+}
+
+/**
+ * The desktop shell's bearer token, offered as a WS subprotocol — `[]` for
+ * every other case (ordinary browser session, or desktop with no token
+ * stored yet), which `WebSocket`'s constructor treats as "no protocols
+ * requested", identical to today's behaviour.
+ */
+async function wsSubprotocols(): Promise<string[]> {
+  if (!isDesktopShell()) return [];
+  const token = await getStoredAuthToken();
+  return token ? [`${WS_BEARER_PROTOCOL_PREFIX}${token}`] : [];
 }
 
 export function createWsConnection(options: WsConnectionOptions): SyncConnection {
@@ -136,7 +167,7 @@ export function createWsConnection(options: WsConnectionOptions): SyncConnection
     reconnectTimer = setTimeout(connect, delay);
   }
 
-  function connect(): void {
+  async function connect(): Promise<void> {
     clearReconnect();
     if (!started || abandoned || socket) return;
     if (typeof window === "undefined" || typeof WebSocket === "undefined") return;
@@ -152,9 +183,21 @@ export function createWsConnection(options: WsConnectionOptions): SyncConnection
       return;
     }
 
+    // The one await in this function — a keychain read on the desktop shell,
+    // a no-op everywhere else. A failed read (e.g. a denied keychain prompt)
+    // is treated the same as "no token yet", not a fatal error: the socket
+    // still attempts to connect, unauthenticated, and gets the ordinary 401
+    // close instead.
+    const protocols = await wsSubprotocols().catch(() => []);
+
+    // Re-check: `started`/`abandoned`/`socket` could all have changed while
+    // that await was in flight (stop() called, another connect() already
+    // won).
+    if (!started || abandoned || socket) return;
+
     let next: WebSocket;
     try {
-      next = new WebSocket(socketUrl(path));
+      next = protocols.length > 0 ? new WebSocket(socketUrl(path), protocols) : new WebSocket(socketUrl(path));
     } catch {
       attempt = nextAttempt(attempt, 0);
       scheduleReconnect();
@@ -265,7 +308,7 @@ export function createWsConnection(options: WsConnectionOptions): SyncConnection
       started = true;
       window.addEventListener("online", wake);
       document.addEventListener("visibilitychange", wake);
-      connect();
+      void connect();
     },
 
     stop(): void {

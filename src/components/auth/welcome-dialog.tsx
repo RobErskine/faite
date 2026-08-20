@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { useShouldShowAuthNudges } from "@/lib/auth-nudge";
+import { isDesktopShell, startDesktopLogin } from "@/lib/desktop/bridge";
 import { dismissWelcomeDialog, isWelcomeDialogDismissed } from "@/lib/onboarding";
 
 /**
@@ -28,6 +29,14 @@ export function WelcomeDialog() {
   const close = () => {
     dismissWelcomeDialog();
     setOpen(false);
+  };
+
+  // The embedded webview cannot complete a sign-up itself (D0 §3.7:
+  // `tauri://localhost` cannot hold a session cookie) — a click opens the
+  // system browser instead of navigating here. See docs/DESKTOP.md §9.
+  const handleDesktopSignUp = () => {
+    close();
+    void startDesktopLogin("signup");
   };
 
   if (!shouldShowNudges) return null;
@@ -52,9 +61,13 @@ export function WelcomeDialog() {
           <Button variant="outline" onClick={close}>
             Continue without an account
           </Button>
-          <Button nativeButton={false} render={<Link href="/signup" />} onClick={close}>
-            Sign up
-          </Button>
+          {isDesktopShell() ? (
+            <Button onClick={handleDesktopSignUp}>Sign up</Button>
+          ) : (
+            <Button nativeButton={false} render={<Link href="/signup" />} onClick={close}>
+              Sign up
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

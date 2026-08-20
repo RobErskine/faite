@@ -1,11 +1,21 @@
+import { apiUrl } from "../api-origin";
+import { getStoredAuthToken, isDesktopShell } from "../desktop/bridge";
 import type { PullResponse, PushRequest, PushResponse } from "./wire";
 
 /**
  * The one HTTP surface for sync — `/api/sync/*`, same origin in production
- * and `npm run preview`, cross-origin only in the `next dev` + separate
- * preview-instance setup and eventually Capacitor (see `auth-client.ts`'s
- * precedent). `credentials: "include"` is required either way: Better
- * Auth's session cookie is what `/api/sync/*` authenticates against.
+ * and `npm run preview`, cross-origin in the `next dev` + separate
+ * preview-instance setup and the desktop shell (D2a) alike.
+ * `credentials: "include"` covers the cookie case; the desktop shell has no
+ * cookie for `tauri://localhost` (docs/DESKTOP.md §7.4/§9) and authenticates
+ * with its bearer token instead — both can be present on the same request
+ * with no conflict, since the server tries the cookie first and only falls
+ * back to the header (`auth-tokens.ts`).
+ *
+ * `apiUrl()`, not a bare relative path: a bare `/api/sync/push` resolves
+ * against `tauri://localhost/api/sync/push` inside the desktop shell, which
+ * is wrong. Same-origin deployments (the common case) get the bare path
+ * back from `apiUrl()` unchanged.
  */
 
 export class SyncAuthError extends Error {
@@ -25,8 +35,18 @@ export class SyncHttpError extends Error {
   }
 }
 
+async function authHeaders(): Promise<HeadersInit> {
+  if (!isDesktopShell()) return {};
+  const token = await getStoredAuthToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 async function syncFetch(path: string, init?: RequestInit): Promise<Response> {
-  const response = await fetch(path, { ...init, credentials: "include" });
+  const response = await fetch(apiUrl(path), {
+    ...init,
+    credentials: "include",
+    headers: { ...(await authHeaders()), ...init?.headers },
+  });
   if (response.status === 401) throw new SyncAuthError();
   if (!response.ok) throw new SyncHttpError(response.status, `${path} responded ${response.status}`);
   return response;

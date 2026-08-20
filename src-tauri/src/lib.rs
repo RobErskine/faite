@@ -3,6 +3,8 @@ use tauri::menu::{Menu, MenuBuilder, SubmenuBuilder};
 use tauri::menu::PredefinedMenuItem;
 use tauri::{Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
 
+mod keychain;
+
 /// Window label for the main, user-visible board. The only window a user
 /// ever sees at launch.
 const MAIN_WINDOW: &str = "main";
@@ -18,7 +20,26 @@ pub fn run() {
     builder = builder.plugin(tauri_plugin_window_state::Builder::default().build());
   }
 
+  // D2a: `faite://auth-callback` (docs/DESKTOP.md §9) — the system-browser
+  // login flow's only channel back into the app. Scheme registered in
+  // tauri.conf.json's `plugins.deep-link.desktop.schemes`; the JS side
+  // (`bridge.ts`, `@tauri-apps/plugin-deep-link`'s `onOpenUrl`/`getCurrent`)
+  // does the actual handling — nothing Rust-side needs to inspect the URL.
+  builder = builder.plugin(tauri_plugin_deep_link::init());
+
+  // D2a: opens the system browser for login (`bridge.ts`'s
+  // `startDesktopLogin`). The one thing this app ever opens is its own
+  // hardcoded `/login` URL — never anything user- or server-supplied — so
+  // the plugin's default `opener:allow-open-url` capability grant is not a
+  // meaningful widening of what this app can already do.
+  builder = builder.plugin(tauri_plugin_opener::init());
+
   let app = builder
+    .invoke_handler(tauri::generate_handler![
+      keychain::get_auth_token,
+      keychain::set_auth_token,
+      keychain::clear_auth_token,
+    ])
     .setup(|app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(
