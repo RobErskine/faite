@@ -100,6 +100,13 @@ export const SITE_PAGES: readonly SitePage[] = [
     updated: "2026-08-20",
     footerGroup: "product",
   },
+  {
+    path: "/contact",
+    title: "Contact",
+    description: "How to reach the people who build Faite.",
+    updated: "2026-08-20",
+    footerGroup: "support",
+  },
 ];
 
 /**
