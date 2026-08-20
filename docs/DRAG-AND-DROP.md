@@ -670,6 +670,78 @@ position })`, not two separate undo entries — a half-undone cross-tab move
 (list back on its old tab, but at some arbitrary new position, or vice
 versa) would be a worse landing than either applied change on its own.
 
+### 4.10e Carrying a whole list onto a DAY (EI-193)
+
+The fifth thing a `listdrag:` gesture can mean. Grab a list column by its
+header, drop it on a day, and every to-do in that list **that has not already
+been assigned a day** is scheduled onto it. Reported ask: *"if I take my
+'Grocery List' header and move it to a certain day, all of the items in that
+list should move to that day. However in the grocery list, I already have a
+todo to remind me to buy honey at the farmers market in 2 weeks. This item
+should stay in the same spot."*
+
+**`scheduledDate === null` is the entire test, and it is deliberately not
+"does this render in the list column".** Those two are not the same set. A
+to-do scheduled past the day cap renders in its list column too — dimmed,
+with a date chip (§5.3) — and it has very much been assigned a day. Reading
+placement instead of the field would silently drag every one of those back
+into the visible window, which is the opposite of what the gesture promises.
+`status === "open"` is the second filter, and it matters only once `done` is
+visible in view settings: a settled, undated to-do sits in a list column
+looking exactly like an open one, and scheduling it would resurrect finished
+work into the calendar half.
+
+**The list column itself does not move, and that is structural rather than
+guarded.** The day branch `return`s before `planListDrop` is ever reached, so
+there is no path through this gesture that writes `List.position`. No
+`position` is written on the to-dos either — order in the calendar half is
+computed (§4.13), so a fractional key there would be noise.
+
+**Two gates had to open, and the second is the one that fails silently.**
+`collisionDetection`'s `listdrag:` branch (§4.2) hard-filtered to list
+columns plus tab pills, so a day column was not merely rejected — it was
+never offered. Day columns are appended **last** in that precedence, after
+the list column and the pill, so every case that resolved before still
+resolves identically; a list column and a day column live in different halves
+and can never both be under one pointer. Then `handleDragEnd`'s list branch
+had `if (target?.kind !== "list") return;` as its first act.
+
+**What `kind === "day"` excludes by omission is as load-bearing as what it
+includes**, and all three are the wanted behaviour rather than oversights:
+
+- **Overflow** parses as `{kind:"overflow"}`, never `"day"`, so it refuses a
+  list drop exactly as it refuses a card drop (§5.1) — silently, with no
+  outline and no toast.
+- **A day group** is a `daygroup:` id, outside `parseColumnId` entirely, so
+  hovering one resolves up to its containing day column. The arriving to-dos
+  then group under their own list. That is right: a group is a statement
+  about a list, and a list is what is in flight — but it looks like it should
+  mean something else, so it has its own manual check.
+- **A collapsed weekend strip** is a `weekend:` id, also outside
+  `parseColumnId`. Nothing highlights, nothing writes. The hover-to-expand
+  dwell is gated on `activeTodo`; extending it to list drags is a known gap
+  (§7), not a decision.
+
+**A day where nothing would move shows no outline at all**, and toasts on
+release. `use-board-data.ts`'s `listDayDrop` memo gates the highlight on
+`count > 0`, which honours §5.1's "the refusal is visible *before* release"
+without inventing a fourth column state. The toast exists because this
+refusal is otherwise unexplainable: the column is visibly full of cards, and
+every one of them already has a day.
+
+**`landingTodoId` became `landingTodoIds: ReadonlySet<string>` here**, and it
+had to. One gesture now commits many to-dos, and with only the dragged id
+held back every other mover pops into its destination while the overlay is
+still travelling — precisely the failure the landing state exists to prevent
+(§4.7). One overlay still flies; the rest wait for it. The write loop clears
+the set in a `finally` as well as from `onLand`, because N sequential Dexie
+transactions can outlast the `FLIGHT_MS + 250` backstop, and a row revealed
+before its write lands reads as data loss.
+
+Undo is one entry with N steps — `UndoEntry.steps` was already `UndoStep[]`,
+so no new machinery. Each step carries **its own** `previousDate`; reusing
+the list's or another mover's would restore the wrong dates on ⌘Z.
+
 ### 4.10d Tab strip legibility cleanup (EI-117 – EI-120)
 
 Four small changes to `tab-strip.tsx` and `board-column.tsx`, none of which
@@ -1326,6 +1398,12 @@ list — see §4.7 and §4.9.)
    field-tested, and remain the most likely place a real device surprises
    this app. Revisit once Capacitor (P7) makes that testable.
 5. **No multi-select drag.**
+5a. **A list drag has no keyboard path**, so §4.10e ships mouse-only in
+    practice — `keyboardCoordinates` falls straight through to the stock
+    getter for a `listdrag:` active (see item 7 below, which this inherits).
+5b. **A collapsed weekend strip does not expand for a list drag** the way it
+    does for a card drag; the dwell effect is gated on `activeTodo`. Symmetry
+    says it should, blast radius said not in the same change.
 6. **Overlay width vs. cursor.** The overlay is `max-w-xs`; on a narrow column
    it visually overhangs neighbours while only the cursor's column highlights.
    Correct, but arguably reads oddly — worth a look.
@@ -1535,6 +1613,42 @@ rect-based collision logic cannot be meaningfully tested there.
     shows: no dashed candidate outlines, no destructive styling, and the
     tab-reorder insertion bar (§4.10b) never appears — that's gated on
     `activeTab`, not `activeList`.
+
+**Manual checklist — a list onto a day (§4.10e, EI-193)**
+
+46. Grab a list header, cross the tab strip, hold over a day. **Only that day
+    outlines**, solid. No dashed candidate outlines on any other column, no
+    destructive styling, no end-of-column card dot, and the tab-reorder
+    insertion bar never appears.
+47. Release. Every unscheduled to-do from that list appears under that day,
+    grouped under the list's own name and colour. **The list column is still
+    in the planning half, in the same slot** — check its neighbours did not
+    shuffle.
+48. A to-do in that list that already had a different day is still on that
+    day, untouched.
+49. A to-do in that list scheduled past the day cap — dimmed, with a date
+    chip — is untouched. *(This is the case that separates "has a date" from
+    "renders in the list column"; they are not the same set.)*
+50. With "Completed" on in view settings, put a finished undated to-do in the
+    list and repeat. It stays put.
+51. Drop the list on a day where **every** one of its to-dos already has a
+    date. No outline while hovering, one toast on release, no write.
+52. Drop the list onto a *different* list's group header inside a day column.
+    It schedules onto **that day**, and the arriving to-dos group under their
+    own list's name, not the group you dropped on.
+53. Drag the list over Overflow — nothing highlights, nothing happens, no
+    toast, the chip flies home.
+54. Drag it over a collapsed weekend strip — nothing highlights, and the
+    strip does **not** expand (the dwell is card-only; §7).
+55. Watch the flight on a list with several movers: exactly one chip flies,
+    and **no row appears in the day column before it lands**. None is left
+    invisible afterwards either.
+56. ⌘Z once — every moved to-do returns to the list unscheduled, in one
+    press, with its original dates restored.
+57. Reload — the moves persist, and the list's own position is unchanged.
+58. Confirm the existing gestures still work: reorder a list within its
+    track, and carry one to another tab (§4.10c). Neither should have
+    changed.
 
 **Manual checklist — tab strip legibility (§4.10d, EI-117 – EI-120)**
 

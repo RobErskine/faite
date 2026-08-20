@@ -9,6 +9,7 @@ import {
   parseColumnId,
   parseDayGroupId,
   parseTabDropId,
+  planListDayDrop,
   planListDrop,
   planTabDrop,
   tabCountsFrom,
@@ -760,6 +761,27 @@ export function useBoardData(params: UseBoardDataParams) {
     return columnDrop.listId;
   }, [columnDrop, backlogColumn, otherListColumns]);
 
+  /**
+   * The day a dragged LIST would schedule its to-dos onto (EI-193, §4.10e).
+   *
+   * Same contract as `columnDrop`: derived, never stored, because
+   * `handleDragEnd` calls the same `planListDayDrop` with the same inputs and
+   * the outline must not be able to promise something the write will not do.
+   *
+   * `count` is what gates the outline. A day where every one of the list's
+   * to-dos already has a date would move nothing, so it stays unhighlighted
+   * and explains itself with a toast on release — honouring §5.1's "the
+   * refusal is visible before release" without inventing a fourth column
+   * state.
+   */
+  const listDayDrop = useMemo(() => {
+    if (!activeList || !overId || !board) return null;
+    const target = parseColumnId(overId);
+    if (target?.kind !== "day") return null;
+    const plan = planListDayDrop(board.lists, activeList.id, target.day);
+    return plan ? { day: plan.day, count: plan.todos.length } : null;
+  }, [activeList, overId, board]);
+
   /** Same contract as `columnDrop`, one level up: derived from the same plan. */
   const tabDrop = useMemo(() => {
     if (!activeTab || !overId) return null;
@@ -825,6 +847,7 @@ export function useBoardData(params: UseBoardDataParams) {
     overGroupId,
     columnDrop,
     columnDropTargetId,
+    listDayDrop,
     tabDrop,
     overflowCollapsed,
     backlogCollapsed,

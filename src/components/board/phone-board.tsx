@@ -88,6 +88,7 @@ export function PhoneBoard({
     overTodoId,
     overGroupId,
     columnDropTargetId,
+    listDayDrop,
     tabDrop,
     activeTabId,
     tabsById,
@@ -104,7 +105,7 @@ export function PhoneBoard({
     toggleGroup,
     columnFilters,
     setColumnFilter,
-    landingTodoId,
+    landingTodoIds,
     infoTabId,
     setInfoListId,
     setInfoTabId,
@@ -203,7 +204,7 @@ export function PhoneBoard({
               emphasis
               isDragActive={!!activeTodo}
               overTodoId={overTodoId}
-              landingTodoId={landingTodoId}
+              landingTodoIds={landingTodoIds}
               rejectsDrop
               footer={
                 <OverdriveButton
@@ -230,6 +231,15 @@ export function PhoneBoard({
                   className="pager-column"
                   id={column.id}
                   dayTrackColumn
+                  // EI-193: a list dragged over this day will schedule its
+                  // unscheduled to-dos onto it. Reuses the column-drag chrome
+                  // the planning half already has; `count > 0` keeps a day
+                  // where nothing would move unhighlighted, so the outline
+                  // never promises a write that will not happen.
+                  isColumnDragActive={!!activeList}
+                  isColumnDropTarget={
+                    listDayDrop?.day === column.day && listDayDrop.count > 0
+                  }
                   title={weekday}
                   subtitle={
                     <span className="num">
@@ -271,7 +281,7 @@ export function PhoneBoard({
                   totalCount={board.days.find((d) => d.id === column.id)?.todos.length}
                   isDragActive={!!activeTodo}
                   overTodoId={overTodoId}
-                  landingTodoId={landingTodoId}
+                  landingTodoIds={landingTodoIds}
                 />
               );
             })}
@@ -345,7 +355,7 @@ export function PhoneBoard({
                   totalCount={backlogColumn?.todos.length}
                   isDragActive={!!activeTodo}
                   overTodoId={overTodoId}
-                  landingTodoId={landingTodoId}
+                  landingTodoIds={landingTodoIds}
                   recurrenceSummaries={recurrenceSummaries}
                   subtaskCounts={subtaskCounts}
                   isColumnDragActive={!!activeList}
@@ -381,7 +391,7 @@ export function PhoneBoard({
                   totalCount={otherListColumns[i]?.todos.length}
                   isDragActive={!!activeTodo}
                   overTodoId={overTodoId}
-                  landingTodoId={landingTodoId}
+                  landingTodoIds={landingTodoIds}
                   recurrenceSummaries={recurrenceSummaries}
                   subtaskCounts={subtaskCounts}
                   reorderListId={column.list.id}

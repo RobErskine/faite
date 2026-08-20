@@ -101,6 +101,12 @@ function readDeepLinkParams(): { todoId: string | null; day: CivilDate | null } 
 }
 
 /**
+ * One frozen empty set, so "nothing is landing" is referentially stable and
+ * every consumer's memo/effect deps stay quiet between drags.
+ */
+export const EMPTY_LANDING: ReadonlySet<string> = new Set();
+
+/**
  * Mirrors `openTodoId`/`openDay` back onto the URL — `history.replaceState`
  * only, never `pushState`, so opening a sheet never adds a back-button stop
  * (every card click would otherwise pollute history). Every other query
@@ -176,16 +182,22 @@ export function useBoardUiState() {
   }, []);
 
   /**
-   * The todo currently in flight from the cursor to its new slot.
+   * The todos currently in flight from the cursor to their new slots.
    *
-   * One id covers two different DOM nodes. Between release and the write
+   * Each id covers two different DOM nodes. Between release and the write
    * landing, it hides the *source* row — `isDragging` has already cleared, so
    * without this the ghost row would flick back to full opacity and then
    * vanish. After the write it hides the *destination* row, which now exists
    * but must not appear until the flying overlay has arrived. Rendering it at
    * zero opacity rather than removing it keeps column heights settled.
+   *
+   * A SET rather than a single id since EI-193: dropping a list on a day
+   * commits many to-dos from one gesture, and with only the dragged id held
+   * back every other mover pops into its destination while the overlay is
+   * still travelling — the precise failure the landing state exists to
+   * prevent (§4.7). One overlay still flies; the rest simply wait for it.
    */
-  const [landingTodoId, setLandingTodoId] = useState<string | null>(null);
+  const [landingTodoIds, setLandingTodoIds] = useState<ReadonlySet<string>>(EMPTY_LANDING);
   const landingRectRef = useRef<DOMRect | null>(null);
 
   /** The list column being dragged to reorder, if any. Never set with `activeTodo`. */
@@ -198,7 +210,7 @@ export function useBoardUiState() {
     // A card may still be flying to the slot it was just dropped in. Clearing
     // this reveals it in its restored position immediately, rather than
     // leaving it at zero opacity until the landing backstop times out.
-    setLandingTodoId(null);
+    setLandingTodoIds(EMPTY_LANDING);
     const entry = await undoLast();
     if (entry) toast.success("Undone", { description: entry.label, duration: 2500 });
   }, []);
@@ -414,8 +426,8 @@ export function useBoardUiState() {
     setHelpSheetOpen,
     phoneView,
     setPhoneView,
-    landingTodoId,
-    setLandingTodoId,
+    landingTodoIds,
+    setLandingTodoIds,
     landingRectRef,
     activeList,
     setActiveList,
