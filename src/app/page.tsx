@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { MarketingFooter } from "@/components/marketing/marketing-footer";
 import { MarketingHeader } from "@/components/marketing/marketing-header";
 import { buttonVariants } from "@/components/ui/button";
 import { pageMetadata } from "@/lib/metadata";
@@ -76,10 +77,7 @@ export default function Home() {
           </Link>
         </main>
 
-        <footer className="flex items-center justify-center gap-4 px-4 py-6 text-sm text-muted-foreground">
-          {/* Docs and support links land here later. */}
-          <span>© {new Date().getFullYear()} Faite</span>
-        </footer>
+        <MarketingFooter />
       </div>
     </>
   );
