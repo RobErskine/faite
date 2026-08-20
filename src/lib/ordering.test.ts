@@ -4,6 +4,7 @@ import {
   positionAtEnd,
   positionAtStart,
   positionBetween,
+  positionForDropOnItem,
   positionForIndex,
   positionsBetween,
 } from "./ordering";
@@ -75,6 +76,65 @@ describe("positionForIndex", () => {
 
   it("handles an empty column", () => {
     expect(typeof positionForIndex([], 0)).toBe("string");
+  });
+});
+
+describe("positionForDropOnItem", () => {
+  /**
+   * A, B, C, D in a column. These tests are the regression for EI-191: the
+   * insertion line renders ABOVE the hovered card, so a drop must land
+   * strictly before it, whichever direction the card came from.
+   */
+  const column = () =>
+    ["a", "b", "c", "d"].map((id, i) => ({ id, position: positionsBetween(null, null, 4)[i] }));
+
+  const landsBetween = (position: string, before: string | null, after: string | null) =>
+    (before === null || before < position) && (after === null || position < after);
+
+  it("lands a card dragged DOWNWARD immediately above its target", () => {
+    // The bug: dragging A onto C used to land it between C and D.
+    const items = column();
+    const position = positionForDropOnItem(items, "a", "c");
+    expect(landsBetween(position, items[1].position, items[2].position)).toBe(true);
+  });
+
+  it("lands a card dragged UPWARD immediately above its target", () => {
+    const items = column();
+    const position = positionForDropOnItem(items, "d", "b");
+    expect(landsBetween(position, items[0].position, items[1].position)).toBe(true);
+  });
+
+  it("matches positionForIndex when the dragged card is not a sibling", () => {
+    // A cross-column drop: the filter is a no-op, so nothing about the
+    // existing behaviour may change.
+    const items = column();
+    const position = positionForDropOnItem(items, "elsewhere", "c");
+    expect(position).toBe(positionForIndex(items, 2));
+  });
+
+  it("appends to the end when no card was hovered", () => {
+    const items = column();
+    const position = positionForDropOnItem(items, "elsewhere", null);
+    expect(position > items[3].position).toBe(true);
+  });
+
+  it("appends when the dragged card is hovering itself", () => {
+    // Unreachable via collision detection, which filters the active id out.
+    // Asserted so the fallback can never silently become "index 0".
+    const items = column();
+    const position = positionForDropOnItem(items, "a", "a");
+    expect(position > items[3].position).toBe(true);
+  });
+
+  it("drops into the first slot of a column it is leaving the top of", () => {
+    const items = column();
+    const position = positionForDropOnItem(items, "c", "a");
+    expect(position < items[0].position).toBe(true);
+  });
+
+  it("handles a column holding only the dragged card", () => {
+    const items = column().slice(0, 1);
+    expect(typeof positionForDropOnItem(items, "a", null)).toBe("string");
   });
 });
 

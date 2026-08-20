@@ -223,15 +223,33 @@ over is a card    -> that card's column, insert AT that card's index
 over is a column  -> that column, append at the end
 ```
 
-Then:
+Then, via `positionForDropOnItem()` (`lib/ordering.ts`, pure and unit-tested):
 
 ```ts
-const ordered = siblings.filter((t) => t.id !== todo.id);   // ← critical
-const position = positionForIndex(ordered, index);
+const ordered = siblings.filter((item) => item.id !== draggedId);   // ← critical
+const index = ordered.findIndex((item) => item.id === overId);      // ← also critical
+return positionForIndex(ordered, index);
 ```
 
 **The dragged item must be excluded from its own sibling list**, or it becomes
 one of its own neighbours and the new key can land on the wrong side of it.
+
+**And the target's index must be read from that SAME filtered list.** This was
+one function for a reason (EI-191): the two lines above used to live apart, with
+`index` read from the unfiltered `siblings` in `handleDragEnd` and applied to
+`ordered` — so removing the dragged card shifted every element after it up by
+one, and a card dragged *downward* past its target landed one slot too low. The
+insertion line is drawn **above** the hovered card (§6), so that was a visible
+broken promise rather than an internal detail: hover C in an A/B/C/D column with
+A in hand, watch the line render between B and C, release, and the card lands
+between C and D.
+
+It hid for so long because the other three cases are all genuinely unaffected —
+a cross-column drop (the dragged card is not in `siblings`, so the filter is a
+no-op), a same-column *upward* drag (the target sits above the dragged card, so
+its index does not move), and an append-to-column drop (no target card at all).
+Only the down-and-in-the-same-column quadrant was wrong, and fractional indexing
+absorbs a one-slot error without ever looking corrupt.
 
 Writes, by target kind:
 
