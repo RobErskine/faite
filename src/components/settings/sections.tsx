@@ -1,5 +1,6 @@
-import { Bell, CornerDownRight, Mail, MapPin, Palette, User, UserCog, Wrench } from "lucide-react";
+import { Bell, CornerDownRight, Info, Mail, MapPin, Palette, User, UserCog, Wrench } from "lucide-react";
 import type { SettingsSection } from "./types";
+import { AboutSection } from "./about-section";
 import { AccountSection } from "./account-section";
 import { ProfileSection } from "./profile-section";
 import { DesignSection } from "./design-section";
@@ -63,6 +64,13 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     description: "A private address that turns forwarded email into to-dos.",
     icon: Mail,
     Component: EmailSection,
+  },
+  {
+    id: "about",
+    label: "About",
+    description: "Help, support, and the legal pages.",
+    icon: Info,
+    Component: AboutSection,
   },
   {
     id: "developer",
