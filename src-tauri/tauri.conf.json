@@ -6,6 +6,7 @@
   "build": {
     "frontendDist": "../.next-static",
     "devUrl": "http://localhost:3000",
+    "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "NEXT_PUBLIC_AUTH_URL=https://myfaite.app npm run build:static"
   },
   "app": {
@@ -25,6 +26,9 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "macOS": {
+      "signingIdentity": "-"
+    },
     "android": {
       "debugApplicationIdSuffix": ".debug"
     }

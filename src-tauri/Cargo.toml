@@ -1,10 +1,10 @@
 [package]
 name = "app"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
-license = ""
-repository = ""
+description = "Faite — a calendar-and-lists to-do board"
+authors = ["Rob Erskine"]
+license = "UNLICENSED"
+repository = "https://github.com/RobErskine/faite"
 edition = "2021"
 rust-version = "1.77.2"
 

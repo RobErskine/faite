@@ -10,6 +10,19 @@ past D1 exists yet.
 > (`docs/ARCHITECTURE.md` §7, `docs/MOBILE.md`). They do not line up. A bare
 > "P<n>"/"M<n>" anywhere in this file means those other axes.
 
+| Milestone | Scope | Status |
+|---|---|---|
+| D0 | Architecture spike — stress-test the locked decisions (§2) against a real build | ✅ Done — §3 |
+| D1 | Real window model, desktop bridge (`isDesktopShell()`), native app menu, window-state persistence | ✅ Done — §6 |
+| D1.5 | Installable, dock-resident `.app` — hide-on-close/reopen, ad-hoc signing, `desktop:build`/`desktop:dev` scripts | ✅ Done — §7 |
+| D1.6 | Developer ID + notarization | Not started |
+| D2a | Desktop login + sync — `TRUSTED_ORIGINS`, Better Auth `bearer` plugin, OS-keychain token storage, WS auth | Not started |
+| D2b (EI-145) | Background sync while the window is closed — Rust-driven timer into the hidden webview | Not started |
+| D3 | Feature A — menu bar popover (today/overdue to-dos, read-on-show) | Not started |
+| D4 | Feature B — global hotkey, always-on-top quick-capture window | Not started |
+| D5 | Swift sidecar — Accessibility-API context capture (decision #5), wired as an `externalBin` | Standalone prototype only — §3.5, not integrated |
+| D6 | Not yet scoped beyond decision #1's "then Windows" | — |
+
 ---
 
 ## 1. Why, and what
@@ -46,7 +59,11 @@ build, not to re-litigate them.
 3. **Bearer tokens, not cookies**, for the desktop shell's auth. Better Auth
    `bearer` plugin; token in the OS keychain via the `keyring` Rust crate,
    injected as a header from Rust, never in `localStorage`. D0 §7 below is why
-   this is closer to mandatory than merely-better.
+   this is closer to mandatory than merely-better. **Confirmed empirically, not
+   just by reasoning, in D1.5 (§7.4):** Tauri's HTTP plugin cannot rescue a
+   cookie-based session either — the reqwest and webview cookie jars are
+   independent stores, and the WebSocket transport never sees the cookie at
+   all.
 4. **Menu bar popover: read-on-show, not live-query.** Opened by a click,
    lives seconds — a one-shot Dexie read on `show`, not `useLiveQuery`. Reduces
    the hard requirement to "shared IndexedDB across webviews in one app",
@@ -493,3 +510,188 @@ clean. `cargo build` / `cargo build --features tauri/custom-protocol` /
 Nothing in this milestone was interactively exercised in a running app —
 windows, menu, and window-state restoration are compile-verified only, per
 §6.2/§6.4 above.
+
+---
+
+## 7. D1.5 — installable, dock-resident app
+
+Self-contained handoff doc this milestone worked from:
+`.ai/desktop-d1.5-runbook.md`. Goal: `cp` a real `.app` into `/Applications`,
+Cmd-Tab to it, and use Faite as a daily driver without a browser — close the
+window and the app stays in the dock; click the dock icon and the window
+returns. D1's `.app` had never actually been launched (§6.2/§6.4's
+"compile-verified only" caveats) — D1.5 is the first milestone that runs it.
+
+### 7.1 Hide-on-close, show-on-reopen — reverses D1's window model
+
+D1 (§6.2) kept the process alive with a second, hidden `core` window carrying
+no job — a comment, not a mechanism — and left `main`'s own close behavior as
+Tauri's default (destroy the window; nothing reopens it). Two bugs followed
+from that: closing the board left the process alive with no reachable
+window and no way back but Cmd-Q, and `core` doubled RSS and ran a second
+Dexie bootstrap against the same IndexedDB for no reason yet.
+
+`src-tauri/src/lib.rs` now does the standard macOS dock-app pattern instead:
+
+- `main`'s `WindowEvent::CloseRequested` calls `api.prevent_close()` then
+  `window.hide()` (macOS only) — hide, not destroy, so a later reopen is
+  instant and doesn't re-run the board's Dexie bootstrap or lose in-memory
+  state.
+- `RunEvent::ExitRequested` still calls `api.prevent_exit()` — now doing real
+  work, since nothing else keeps the app alive with `core` gone.
+- `RunEvent::Reopen` (the documented v2 hook for AppKit's dock-icon-click
+  event, [tauri#3084](https://github.com/tauri-apps/tauri/issues/3084)) looks
+  up `main` and calls `show()` + `set_focus()`.
+- The `core` window and its `CORE_WINDOW` const are deleted outright —
+  `prevent_exit` alone is what keeps the app resident, `core` was never doing
+  that job. `capabilities/default.json`'s `windows` list is back down to
+  `["main"]`. D2b re-adds a hidden window when it actually has one (sync
+  ownership); nothing here blocks that.
+
+**Consequence to carry forward, not a regression:** a hidden window's JS
+timers are suspended (D0 §3.4), so the sync engine's poll loop stops while
+the window is closed. That's D2b's problem to solve (a Rust-driven timer
+calling into the hidden webview, per EI-178's spike — see
+`docs/DESKTOP-SYNC-TIMER-SPIKE.md`), not D1.5's.
+
+### 7.2 `build.rs` staleness check downgraded from panic to warning
+
+D1 (§6.1) made a stale `.next-static/` (source newer than the last export) a
+hard `panic!` on every `cargo build`, including the `devUrl` dev loop, which
+never even reads `.next-static/`. `tauri build`'s `beforeBuildCommand` and
+(new this milestone) `tauri dev`'s `beforeDevCommand` both re-run
+`build:static` ahead of cargo, so the shipping and dev-loop paths can't
+actually produce a stale bundle — the panic only ever fired somewhere it was
+wrong. The **missing-or-empty** checks stay hard panics; only the staleness
+branch became `cargo:warning=`.
+
+### 7.3 Ad-hoc signing, and `tauri dev` gets a real dev loop
+
+- `tauri.conf.json`'s `bundle.macOS.signingIdentity` is now `"-"` (ad-hoc). A
+  locally built `.app` with no Apple Developer ID still needs ad-hoc signing
+  or Gatekeeper treats it as damaged on Apple Silicon — no quarantine xattr
+  from a `cp`, but the missing signature alone is enough
+  ([Tauri macOS signing docs](https://v2.tauri.app/distribute/sign/macos/)).
+  D1.6 replaces this with a real Developer ID once Rob's enrollment is wired
+  in.
+- `build.beforeDevCommand: "npm run dev"` — `tauri dev`'s `devUrl` already
+  pointed at `http://localhost:3000`, but nothing booted a server there.
+  Useful side effect, not just plumbing: `http://localhost:3000` **is** in
+  `TRUSTED_ORIGINS` already, so `tauri dev` has working auth and sync today —
+  it previews what D2a's `tauri://localhost` origin work is aiming to make
+  true for a production build too.
+- `package.json` gains `desktop:dev` (`tauri dev`) and `desktop:build`
+  (`tauri build`). Install is documented here, not scripted — a script that
+  `rm -rf`s a path under `/Applications` isn't worth the keystrokes:
+  ```
+  npm run desktop:build
+  cp -R src-tauri/target/release/bundle/macos/Faite.app /Applications/
+  ```
+- `src-tauri/Cargo.toml`'s `tauri init` placeholders (`description = "A Tauri
+  App"`, `authors = ["you"]`, empty `license`/`repository`) are filled in.
+
+### 7.4 HTTP plugin investigated and rejected as a cookie-auth workaround
+
+Before committing to D2a's bearer-token design (decision #3), checked
+whether Tauri's HTTP plugin could let a cookie-based Better Auth session work
+from `tauri://localhost` without it. Rejected with evidence, not just
+reasoning:
+
+- The plugin's `reqwest`-backed cookie jar and the webview's own cookie store
+  are independent — a cookie set by one is invisible to the other
+  ([tauri#13045](https://github.com/tauri-apps/tauri/issues/13045)).
+- Even within the plugin's own jar, http-only cookies aren't persisted across
+  app launches ([tauri#11518](https://github.com/tauri-apps/tauri/issues/11518)).
+- Faite's sync v1 transport is WebSocket push
+  (`src/server/sync/ws-server.ts`), and a socket connection never receives a
+  cookie from either jar regardless. The plugin would at best buy a working
+  `/api/auth` call and leave sync permanently dead.
+
+This confirms decision #3 empirically rather than by reasoning alone — see
+the note added there.
+
+### 7.5 Running it on your own Mac
+
+```
+npm run desktop:build
+cp -R src-tauri/target/release/bundle/macos/Faite.app /Applications/
+```
+
+Requires `NEXT_PUBLIC_AUTH_URL` to be set at export time — already baked into
+`beforeBuildCommand` (`NEXT_PUBLIC_AUTH_URL=https://myfaite.app npm run
+build:static`), **not** something `npm run build:static` alone provides. D0
+§3.2 is why: with no override, Better Auth's client falls back to
+`window.location.origin`, which is `tauri://localhost` — a scheme its own URL
+validation rejects, crashing the whole render tree before the board mounts.
+A bundle built by hand-running `cargo build`/`cargo tauri build` without that
+env var set will show a blank window, not the board.
+
+Signed-out is fully functional today (§2.1) — creating, editing, and
+scheduling to-dos all work with no account, no network call, and no error
+spam, since `getCurrentOwnerId()` returns `LOCAL_OWNER_ID` and both the sync
+engine and `ws-transport` early-return on `isActive()`. Signing in from the
+desktop shell itself is blocked until D2a (§2.2) — that's expected, not a
+bug, for this milestone.
+
+For iterating on the shell itself, `npm run desktop:dev` (`tauri dev`) boots
+`next dev` on `:3000` via the new `beforeDevCommand` and points the webview
+at it — auth and sync both work in that loop, unlike a production bundle
+today.
+
+### 7.6 Verification summary
+
+Automated: `npm run verify` (typecheck ×2, lint, test suite, `build`,
+`build:static`) and `cargo clippy --all-targets` (zero warnings) both green.
+`npm run e2e:ci` unaffected by anything in this milestone — none of it
+touches `/board`'s own code, only the shell around it.
+
+Manual — the part D1 never did, and D1.5's actual point. `npm run
+desktop:build` produced a real, ad-hoc-signed `Faite.app`
+(`target/release/bundle/macos/`); `.dmg` bundling failed/hung separately (see
+below) but the `.app` itself built and signed cleanly. Launched directly
+(`open Faite.app`, no quarantine xattr since it was never downloaded) and
+confirmed, without a screenshot (this session has no Screen Recording TCC
+grant — see below), via `lsappinfo list`: registered as `"Faite"`,
+`bundleID=app.myfaite.desktop`, **`type="Foreground"`, `(in front)`**, with
+real `WebKit.Networking`/`WebKit.GPU`/`WebKit.WebContent` XPC children
+spawned — i.e. a real window with a real, loaded webview, not a crash-on-
+launch. `log show` over the launch window found no `BetterAuthError`/"Invalid
+base URL" (the D0 §3.2 regression this milestone depends on staying fixed)
+and no crash/fault/exception entries for the process. RSS via `ps`:
+**73–87 MB, single window** — comfortably under D0 §3.8's 82–106 MB estimate,
+which was for three concurrent windows; this is the genuine single-window D1.5
+number that section flagged as worth re-measuring. Quit cleanly via `pkill`.
+
+**Not verified, and needs Rob specifically:** the interactive parts —
+Cmd-W-hides / dock-icon-click-reopens / Cmd-Q-quits behavior, window-geometry
+restore across relaunch, Cmd-C/V inside the todo input, and a real visual
+check that the board (not a blank or error page) is what's actually on
+screen. Two things blocked automating further from here, both worth knowing
+about rather than silently working around:
+
+- `screencapture` failed with "could not create image from display" — this
+  session's process has no Screen Recording TCC grant. The app almost
+  certainly rendered on the real display (the WebContent process evidence
+  above), just not something this session could photograph.
+- `osascript ... tell application "System Events" to keystroke "w" using
+  command down` **hung and had to be killed after timing out** — reads as a
+  blocked macOS Automation/Accessibility permission prompt for whatever host
+  process runs this session's shell. **If a "would like to control this
+  computer" or similar system permission dialog is sitting on screen, it's
+  from this session — safe to dismiss (Don't Allow is fine; nothing further
+  was attempted after the timeout).** No orphaned `osascript` process was
+  left running; a stale read/write `.dmg` shadow volume the failed bundling
+  step left mounted (`rw.39399.Faite_0.1.0_aarch64.dmg` on `/dev/disk7`) was
+  found and `hdiutil detach`ed.
+
+**`.dmg` bundling (`bundle.targets: "all"`, pre-existing, not changed this
+milestone) fails or hangs in this environment** — first attempt errored fast
+inside `bundle_dmg.sh`, a retry (`tauri build --bundles dmg` alone) hung for
+the full 2-minute timeout with zero output, consistent with the same blocked-
+Automation-permission cause as the `osascript` case (`create-dmg` also drives
+Finder via AppleScript to lay out the disk-image window). **Not required by
+this milestone** — the install path is `cp -R Faite.app /Applications/`, no
+`.dmg` involved — so left as-is rather than changing `bundle.targets` to drop
+`dmg` unilaterally; Rob's own interactive session (which has real Automation
+permissions granted to Terminal/Finder already, unlike this one) should just
+work. Worth a two-minute check next time this doc is touched, not a blocker.

@@ -1,25 +1,11 @@
 use tauri::menu::{Menu, MenuBuilder, SubmenuBuilder};
 #[cfg(not(target_os = "macos"))]
 use tauri::menu::PredefinedMenuItem;
-use tauri::{RunEvent, WebviewUrl, WebviewWindowBuilder};
+use tauri::{Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
 
 /// Window label for the main, user-visible board. The only window a user
 /// ever sees at launch.
 const MAIN_WINDOW: &str = "main";
-
-/// Window label for the hidden background webview — D1 only establishes its
-/// existence and lifecycle. It shares the same `tauri://localhost` origin
-/// (and therefore the same IndexedDB/localStorage, per the D0 spike's §3.3
-/// finding) as `main`, which is what makes it viable as the future home for
-/// sync ownership (D2) and the menu-bar popover (D3) once those land — this
-/// milestone does not wire either of those in yet.
-///
-/// Known caveat carried over from the D0 spike (docs/DESKTOP.md §3.4): a
-/// hidden `WebviewWindow`'s JS timers stop firing after their first tick.
-/// Nothing in this window relies on a JS timer today; D2 will need to drive
-/// any future sync loop from Rust (or find another workaround) rather than
-/// assuming `setInterval` survives here.
-const CORE_WINDOW: &str = "core";
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -42,22 +28,33 @@ pub fn run() {
         )?;
       }
 
-      WebviewWindowBuilder::new(app, MAIN_WINDOW, WebviewUrl::App("board.html".into()))
-        .title("Faite")
-        .inner_size(1200.0, 800.0)
-        .build()?;
+      let main_window =
+        WebviewWindowBuilder::new(app, MAIN_WINDOW, WebviewUrl::App("board.html".into()))
+          .title("Faite")
+          .inner_size(1200.0, 800.0)
+          .build()?;
 
-      // Hidden background webview. Not shown, not closable by the user
-      // (there's no chrome for it to close from) — it lives for the
-      // lifetime of the app and, combined with the `ExitRequested` handler
-      // in `run` below, is what keeps the process (and NSApplication) alive
-      // on macOS after the user closes the main board window, matching
-      // standard menu-bar-app behavior.
-      WebviewWindowBuilder::new(app, CORE_WINDOW, WebviewUrl::App("board.html".into()))
-        .title("Faite (background)")
-        .visible(false)
-        .skip_taskbar(true)
-        .build()?;
+      // Hide-on-close, dock-resident (D1.5). Cmd-W / the red traffic light
+      // triggers `CloseRequested`; prevent the default destroy and hide the
+      // window instead, so the process (and NSApplication) stays alive with
+      // no visible window — standard dock-app behavior. Hiding rather than
+      // destroying also means a later `RunEvent::Reopen` doesn't have to
+      // rebuild the window or re-run the board's Dexie bootstrap.
+      //
+      // Consequence, not a bug: a hidden window's JS timers stop firing
+      // (D0 spike §3.4), so sync stops while the window is closed. D2b
+      // moves sync ownership to a Rust-driven timer to fix that; D1.5 does
+      // not attempt it.
+      #[cfg(target_os = "macos")]
+      {
+        let window_for_close = main_window.clone();
+        main_window.on_window_event(move |event| {
+          if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+            api.prevent_close();
+            let _ = window_for_close.hide();
+          }
+        });
+      }
 
       // Native app menu. Tauri v2 already auto-installs
       // `menu::Menu::default()` on macOS when no custom menu is set
@@ -75,15 +72,26 @@ pub fn run() {
     .build(tauri::generate_context!())
     .expect("error while building tauri application");
 
-  app.run(|_app_handle, event| {
-    // macOS: don't quit when the main board window closes. The hidden
-    // `core` window (built above) keeps at least one window alive, but
-    // this is the documented, explicit belt-and-suspenders mechanism Tauri
-    // provides for "stay running with no visible windows" — see
-    // docs/DESKTOP.md's window/sync-ownership section.
+  app.run(|app_handle, event| {
     #[cfg(target_os = "macos")]
-    if let RunEvent::ExitRequested { api, .. } = event {
-      api.prevent_exit();
+    match event {
+      // Don't quit when the main window closes (it's hidden, not
+      // destroyed, by the `CloseRequested` handler above) — this is the
+      // documented mechanism Tauri provides for "stay running with no
+      // visible windows".
+      RunEvent::ExitRequested { api, .. } => {
+        api.prevent_exit();
+      }
+      // Dock icon clicked while the app has no visible window. The
+      // documented v2 hook for macOS's "reopen" AppKit event
+      // (https://github.com/tauri-apps/tauri/issues/3084).
+      RunEvent::Reopen { .. } => {
+        if let Some(window) = app_handle.get_webview_window(MAIN_WINDOW) {
+          let _ = window.show();
+          let _ = window.set_focus();
+        }
+      }
+      _ => {}
     }
   });
 }
