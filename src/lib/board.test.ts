@@ -20,6 +20,8 @@ import {
   planListDrop,
   tabCountsFrom,
   planListDayDrop,
+  rangeSelectionIds,
+  selectedTodosInBoardOrder,
   planListTabDrop,
   planTabDrop,
   preferPreciseTarget,
@@ -1338,5 +1340,88 @@ describe("planListDayDrop", () => {
 
   it("returns null for a list that is not on the board", () => {
     expect(planListDayDrop(column([milk]), "nope", "2026-08-14")).toBeNull();
+  });
+});
+
+describe("selectedTodosInBoardOrder", () => {
+  /**
+   * EI-194. A multi-drag writes in this order, so it is the order the run
+   * lands in — a run that arrives scrambled relative to how it was picked
+   * reads as a bug even though every write succeeded.
+   */
+  const t = (id: string) => todo({ id });
+  const board = {
+    days: [
+      { day: "2026-08-14", todos: [t("mon-a"), t("mon-b")] },
+      { day: "2026-08-15", todos: [t("tue-a")] },
+    ],
+    overflow: { todos: [t("over")] },
+    lists: [
+      { todos: [t("backlog-a"), t("backlog-b")] },
+      { todos: [t("grocery-a")] },
+    ],
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any;
+
+  it("reads days, then overflow, then lists", () => {
+    const ids = new Set(["grocery-a", "over", "tue-a", "mon-b", "backlog-a"]);
+    expect(selectedTodosInBoardOrder(board, ids).map((x) => x.id)).toEqual([
+      "mon-b",
+      "tue-a",
+      "over",
+      "backlog-a",
+      "grocery-a",
+    ]);
+  });
+
+  it("ignores ids that no longer render", () => {
+    // A deleted, archived or filtered-out to-do leaves the selection by
+    // simply not appearing — no pruning effect, no race, no stale id
+    // reaching mutate().
+    const ids = new Set(["mon-a", "ghost"]);
+    expect(selectedTodosInBoardOrder(board, ids).map((x) => x.id)).toEqual(["mon-a"]);
+  });
+
+  it("returns nothing for an empty selection", () => {
+    expect(selectedTodosInBoardOrder(board, new Set())).toEqual([]);
+  });
+});
+
+describe("rangeSelectionIds", () => {
+  const t = (id: string) => todo({ id });
+  const board = {
+    days: [{ day: "2026-08-14", todos: [t("d1"), t("d2"), t("d3")] }],
+    overflow: { todos: [] },
+    lists: [{ todos: [t("l1"), t("l2"), t("l3"), t("l4")] }],
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any;
+
+  it("covers the run between two cards in a list column", () => {
+    expect(rangeSelectionIds(board, "l2", "l4")).toEqual(["l2", "l3", "l4"]);
+  });
+
+  it("works upward as well as downward", () => {
+    expect(rangeSelectionIds(board, "l4", "l2")).toEqual(["l2", "l3", "l4"]);
+  });
+
+  it("covers a run inside a day column too", () => {
+    // `DayColumn.todos` is the flat rendered order, groups and all, so a
+    // range across two group headers is exactly what the eye swept over.
+    expect(rangeSelectionIds(board, "d1", "d3")).toEqual(["d1", "d2", "d3"]);
+  });
+
+  it("is a single card when both ends are the same", () => {
+    expect(rangeSelectionIds(board, "l2", "l2")).toEqual(["l2"]);
+  });
+
+  it("refuses a range that crosses columns", () => {
+    // The two halves are ordered by different rules entirely, so there is no
+    // answer here a user would predict. Null tells the caller to re-anchor.
+    expect(rangeSelectionIds(board, "d1", "l3")).toBeNull();
+    expect(rangeSelectionIds(board, "l3", "d1")).toBeNull();
+  });
+
+  it("refuses when the anchor no longer renders", () => {
+    expect(rangeSelectionIds(board, "ghost", "l1")).toBeNull();
   });
 });

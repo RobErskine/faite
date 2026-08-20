@@ -27,6 +27,7 @@ import {
   parseTabDropId,
   parseWeekendColumnId,
   planListDayDrop,
+  rangeSelectionIds,
   planListDrop,
   planListTabDrop,
   planTabDrop,
@@ -37,7 +38,11 @@ import {
   readLandingRect,
   runLandingDropAnimation,
 } from "@/lib/drop-animation";
-import { positionForDropOnItem, positionForIndex } from "@/lib/ordering";
+import {
+  positionForDropOnItem,
+  positionForIndex,
+  positionsForDropOnItem,
+} from "@/lib/ordering";
 import { OVERFLOW, addDays, formatShortDate } from "@/lib/scheduling";
 import { parseQuickAdd } from "@/lib/quick-add";
 import {
@@ -517,6 +522,13 @@ export function useBoardActions(
     setActiveTab,
     landingTodoIds,
     setLandingTodoIds,
+    selectedIds,
+    selectionAnchorId,
+    toggleSelected,
+    selectRange,
+    clearSelection,
+    activeSelectionIds,
+    setActiveSelectionIds,
     landingRectRef,
     setInfoListId,
     setInfoTabId,
@@ -537,6 +549,7 @@ export function useBoardActions(
     openTodo,
     recurrenceExpansion,
     reminderPresets,
+    selectedTodos,
   } = data;
 
   /**
@@ -586,8 +599,41 @@ export function useBoardActions(
       // `todosById`, not `todos.find`: a virtual or force-overflowed
       // recurrence occurrence must still show a drag overlay.
       setActiveTodo(todosById.get(id) ?? null);
+
+      /*
+       * Snapshot the multi-selection at lift (EI-194), in board order.
+       *
+       * Taken from `selectedTodos` — the DERIVED list, so an id whose to-do
+       * has since been deleted or filtered out can never enter the write
+       * path — and frozen here rather than re-read in `handleDragEnd`,
+       * because `selectedIds` can change mid-flight and the gesture must
+       * commit exactly what was picked up.
+       *
+       * Lifting a card that is NOT in the selection means the selection is no
+       * longer what this gesture is about, so it is cleared rather than
+       * silently ignored — otherwise the highlighted cards would sit there
+       * looking armed while a different card moved.
+       */
+      if (selectedIds.has(id) && selectedIds.size > 1) {
+        setActiveSelectionIds(selectedTodos.map((t) => t.id));
+      } else {
+        setActiveSelectionIds(null);
+        if (selectedIds.size > 0) clearSelection();
+      }
     },
-    [todosById, lists, tabs, coarse, setActiveTab, setActiveList, setActiveTodo],
+    [
+      todosById,
+      lists,
+      tabs,
+      coarse,
+      setActiveTab,
+      setActiveList,
+      setActiveTodo,
+      selectedIds,
+      selectedTodos,
+      setActiveSelectionIds,
+      clearSelection,
+    ],
   );
 
   const handleDragOver = useCallback(
@@ -602,8 +648,19 @@ export function useBoardActions(
     setActiveList(null);
     setActiveTab(null);
     setOverId(null);
+    // The snapshot goes; the SELECTION deliberately stays. Escape cancelled
+    // the lift, not the picking — a second Escape clears the selection via
+    // the document listener in `use-board-ui-state.ts`.
+    setActiveSelectionIds(null);
     landingRectRef.current = null;
-  }, [setActiveTodo, setActiveList, setActiveTab, setOverId, landingRectRef]);
+  }, [
+    setActiveTodo,
+    setActiveList,
+    setActiveTab,
+    setOverId,
+    setActiveSelectionIds,
+    landingRectRef,
+  ]);
 
   /**
    * Hovering a tab with a card OR a list column in hand focuses that tab.
@@ -692,6 +749,30 @@ export function useBoardActions(
     return () => window.clearTimeout(timer);
   }, [landingTodoIds, setLandingTodoIds]);
 
+  /**
+   * Cmd/Ctrl+click and Shift+click on a card (EI-194).
+   *
+   * A range that crosses columns re-anchors instead of selecting: the two
+   * halves of the board are ordered by different rules entirely (§4.13), so
+   * "everything between a card in Tuesday and a card in Backlog" has no answer
+   * a user would predict. `rangeSelectionIds` returns null for that, and
+   * falling through to a plain toggle is the behaviour that needs no
+   * explaining.
+   */
+  const handleSelect = useCallback(
+    (todoId: string, modifiers: { additive: boolean; range: boolean }) => {
+      if (modifiers.range && selectionAnchorId && board) {
+        const ids = rangeSelectionIds(board, selectionAnchorId, todoId);
+        if (ids) {
+          selectRange(ids, selectionAnchorId);
+          return;
+        }
+      }
+      toggleSelected(todoId);
+    },
+    [board, selectionAnchorId, selectRange, toggleSelected],
+  );
+
   const handleDragEnd = useCallback(
     async (event: DragEndEvent) => {
       const { active, over } = event;
@@ -707,11 +788,16 @@ export function useBoardActions(
 
       const draggedListId = parseListDragId(String(active.id));
       const draggedTabId = parseTabDragId(String(active.id));
+      // Captured before the state below is cleared — same pattern as the two
+      // ids above, and for the same reason: this handler needs it after the
+      // reset.
+      const draggedSelectionIds = activeSelectionIds;
 
       setActiveTodo(null);
       setActiveList(null);
       setActiveTab(null);
       setOverId(null);
+      setActiveSelectionIds(null);
       if (!over) return;
 
       // Reordering a tab. Writes one tab's position and touches nothing else.
@@ -899,6 +985,143 @@ export function useBoardActions(
       const todo = await materializeIfNeeded(draggedCard);
 
       /**
+       * A MULTI-SELECTION was lifted (EI-194): every selected card lands, not
+       * just the one under the cursor.
+       *
+       * Deliberately a separate branch rather than a generalisation of the
+       * single-card path below, which is left byte-identical. That path is the
+       * most-used code in the app and every bug in it has been invisible to
+       * typecheck, lint and unit tests (§8) — duplicating ~40 lines is the
+       * cheaper trade.
+       *
+       * `movers` resolves through `todosById` and drops anything missing, so a
+       * row deleted between lift and release cannot reach `mutate()` (which
+       * throws on a missing key, by design).
+       */
+      if (draggedSelectionIds && draggedSelectionIds.length > 1) {
+        const picked = draggedSelectionIds
+          .map((id) => todosById.get(id))
+          .filter((t): t is Todo => Boolean(t));
+        if (picked.length === 0) return;
+
+        // Overflow refuses the whole selection at once — one toast, not N
+        // (§5.1). Checked before materializing, so a refused drop writes
+        // nothing at all.
+        const overflowTarget = parseColumnId(String(over.id))?.kind === "overflow";
+        const overflowGroup = parseDayGroupId(String(over.id))?.day === OVERFLOW;
+        if (overflowTarget || overflowGroup) {
+          toast(`Can’t put ${picked.length} to-dos off any longer`, {
+            description: "Reschedule, complete, or move them to a list.",
+          });
+          return;
+        }
+
+        /*
+         * Materialize FIRST, then build the undo entry, then write. The single
+         * path can push undo before its one await; here the inverse patches
+         * have to describe rows that already exist, so the ordering differs.
+         */
+        const movers: Todo[] = [];
+        for (const t of picked) movers.push(await materializeIfNeeded(t));
+        const moverIds = new Set(movers.map((t) => t.id));
+
+        // Resolve the target the same way the single path does, one line down.
+        let multiTarget = parseColumnId(String(over.id));
+        let multiSiblings: Todo[] = [];
+        let multiOverCardId: string | null = null;
+        const droppedGroup = parseDayGroupId(String(over.id));
+
+        if (droppedGroup) {
+          const column = board.days.find((d) => d.day === droppedGroup.day);
+          const group = column?.groups.find((g) => g.key === droppedGroup.key);
+          if (!group) return;
+          multiSiblings = group.todos;
+        } else if (!multiTarget) {
+          const overTodo = todosById.get(String(over.id));
+          if (!overTodo) return;
+          const column = findColumn(board, overTodo.id);
+          if (!column) return;
+          multiTarget = column.target;
+          multiSiblings = column.todos;
+          multiOverCardId = overTodo.id;
+        } else {
+          multiSiblings = columnByTarget(board, multiTarget) ?? [];
+        }
+
+        /*
+         * One key per mover, all inside the same gap, ascending in board
+         * order — so the run lands in the order it was picked in. A single
+         * `positionForIndex` reused N times would give N identical keys.
+         *
+         * Only the list and day-group branches use them: a day column writes
+         * no position at all, because order there is computed (§4.13).
+         */
+        const positions = positionsForDropOnItem(
+          multiSiblings,
+          moverIds,
+          multiOverCardId,
+          movers.length,
+        );
+
+        /*
+         * One pair of closures per target kind, chosen once. Narrowing the
+         * target into locals up front is what keeps the day case from having
+         * to assert past `{kind: "overflow"}` — which is unreachable here
+         * (refused above) but not provably so to the type checker.
+         *
+         * `label` differs too: moving into a list and scheduling onto a day
+         * are different verbs, and undo's toast says which happened.
+         */
+        let forwardFor: (t: Todo, i: number) => Record<string, unknown>;
+        let write: (t: Todo, i: number) => Promise<void>;
+        let label: string;
+
+        if (droppedGroup) {
+          const { key, day } = droppedGroup;
+          forwardFor = (t, i) => dayGroupPatch(key, day, t.scheduledDate, positions[i]);
+          write = (t, i) => moveTodoToDayGroup(t.id, key, day, t.scheduledDate, positions[i]);
+          label = `Moved ${movers.length} to-dos`;
+        } else if (multiTarget?.kind === "list") {
+          const { listId } = multiTarget;
+          forwardFor = (_t, i) => listPatch(listId, positions[i]);
+          write = (t, i) => moveTodoToList(t.id, listId, positions[i]);
+          label = `Moved ${movers.length} to-dos`;
+        } else if (multiTarget?.kind === "day") {
+          const { day } = multiTarget;
+          // Each mover's OWN previous date. Reusing the dragged card's would
+          // restore the wrong dates on undo. No position: order in the
+          // calendar half is computed (§4.13).
+          forwardFor = (t) => schedulePatch(day, t.scheduledDate);
+          write = (t) => scheduleTodo(t.id, day, t.scheduledDate);
+          label = `Scheduled ${movers.length} to-dos`;
+        } else {
+          return; // released over something with no meaning for a selection
+        }
+
+        const steps = movers.map((t, i) => ({
+          kind: "todo" as const,
+          entityId: t.id,
+          patch: inversePatch(t, forwardFor(t, i)),
+        }));
+
+        landingRectRef.current = landingRect;
+        setLandingTodoIds(moverIds);
+
+        pushUndo(label, steps);
+
+        try {
+          for (let i = 0; i < movers.length; i++) await write(movers[i], i);
+        } finally {
+          // N sequential Dexie transactions can outlast the flight's backstop;
+          // clearing here as well as in `onLand` keeps a row from being
+          // revealed before its write has landed.
+          setLandingTodoIds(EMPTY_LANDING);
+          clearSelection();
+        }
+        return;
+      }
+
+      /**
        * DROPPED ON A GROUP: "this belongs to list X, still scheduled for D."
        *
        * Resolved before `parseColumnId` because a group is not a column. Falling
@@ -1043,6 +1266,9 @@ export function useBoardActions(
       setActiveTab,
       setOverId,
       setLandingTodoIds,
+      activeSelectionIds,
+      setActiveSelectionIds,
+      clearSelection,
     ],
   );
 
@@ -1442,6 +1668,7 @@ export function useBoardActions(
     collisionDetection,
     autoScroll,
     handleDragStart,
+    handleSelect,
     handleDragOver,
     handleDragEnd,
     handleDragCancel,

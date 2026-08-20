@@ -122,6 +122,15 @@ export const LOCAL_SHORTCUTS: ShortcutEntry[] = [
     scope: "To-do card",
     source: "todo-card.tsx",
   },
+  {
+    id: "toggle-selected",
+    combo: "x",
+    // A letter, not Space: Space is already "toggle done" on a focused row.
+    // `x` is the mail-client convention for "select this one".
+    label: "Add or remove the focused to-do from the multi-selection",
+    scope: "To-do card",
+    source: "todo-card.tsx",
+  },
 
   // --- To-do sheet ------------------------------------------------------
   {

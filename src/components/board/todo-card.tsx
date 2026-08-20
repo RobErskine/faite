@@ -36,6 +36,15 @@ interface TodoCardProps {
    * (`scheduling.ts`'s header); a zone-aware instant has no business in there.
    */
   timezone?: string;
+  /** Part of the Cmd/Ctrl+click multi-selection (EI-194). */
+  isSelected?: boolean;
+  /**
+   * Being carried by a multi-drag, but is not the card under the cursor.
+   * Ghosted like the lifted row so the whole run visibly leaves together.
+   */
+  isGhosted?: boolean;
+  /** `additive` is Cmd/Ctrl; `range` is Shift. Both false means a plain click. */
+  onSelect?: (todoId: string, modifiers: { additive: boolean; range: boolean }) => void;
   /** Scheduled outside the visible window — shown dimmed in its list column. */
   isAway?: boolean;
   /** Draw the drop indicator immediately above this card. */
@@ -93,6 +102,9 @@ export function TodoCard({
   reminderPresets,
   ctx,
   timezone = "UTC",
+  isSelected,
+  isGhosted,
+  onSelect,
   isAway,
   showInsertionLine,
   isLanding,
@@ -204,6 +216,42 @@ export function TodoCard({
       onMouseDown={startMouseDrag}
       onTouchStart={startTouchDrag}
       /*
+        Multi-select (EI-194). Capture phase on the ROW is the only place this
+        can go, and each of the three things it has to not break is already
+        handled by something else:
+
+        - The 4px drag threshold is untouched — `onMouseDown` still reaches
+          `MouseSensor` first. If a drag DID activate, dnd-kit has registered
+          a capture-phase `click` listener on `document` that stops
+          propagation and stays attached 50ms past `detach()`, and document
+          capture runs before this. So a Cmd+drag can never also toggle
+          selection.
+        - The detail sheet still opens on a plain click: the title's own
+          `onClick` is a bubble-phase handler on a descendant, and the
+          unmodified branch below deliberately does NOT stop propagation.
+        - The checkbox still toggles on a plain click, and on a modified one
+          selects instead of ticking — one uniform rule for the whole row,
+          with the `after:-inset-x-1` hit-area geometry left alone.
+
+        macOS turns Ctrl+click into `contextmenu` and suppresses the `click`
+        entirely, so `ctrlKey` is effectively the Windows/Linux path.
+      */
+      onClickCapture={(e) => {
+        const additive = e.metaKey || e.ctrlKey;
+        const range = e.shiftKey;
+        if (!additive && !range) {
+          // Let the click through to whatever it landed on; the document
+          // listener in `use-board-ui-state.ts` handles collapsing.
+          return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        onSelect?.(todo.id, { additive, range });
+      }}
+      // What the document-level "clear on click elsewhere" listener uses to
+      // tell a click on a card from a click on the board behind it.
+      data-todo-row=""
+      /*
         A nav stop for the arrow keys (docs/KEYBOARD.md §11). `tabIndex={-1}`
         makes the row focusable programmatically WITHOUT joining the tab order,
         so Tab still walks the grip, checkbox and title exactly as before and
@@ -228,6 +276,13 @@ export function TodoCard({
         } else if (e.key === " ") {
           e.preventDefault();
           onToggle(todo);
+        } else if (e.key === "x" || e.key === "X") {
+          // The keyboard route into a multi-selection (EI-194). Space is
+          // already spoken for by "toggle done", so selection needs a letter;
+          // `x` is the mail-client convention and is registered in
+          // `lib/shortcuts.ts` as a local shortcut.
+          e.preventDefault();
+          onSelect?.(todo.id, { additive: true, range: false });
         }
       }}
       className={cn(
@@ -253,7 +308,15 @@ export function TodoCard({
         "hover:bg-accent/50 focus-within:bg-accent/50",
         // The dragged row stays in place as a faint ghost so the list does not
         // visibly collapse out from under the cursor.
+        /*
+          Selected, but placed BEFORE the drag/landing states so those still
+          win — a selected card being dragged must read as dragging.
+        */
+        isSelected && "bg-primary/10 ring-1 ring-inset ring-primary/30",
         isDragging && "opacity-30",
+        // A non-dragged member of a multi-selection in flight: ghosted like
+        // the lifted row so the whole run visibly leaves together.
+        isGhosted && "opacity-30",
         // Held invisible while the overlay is still flying towards this slot.
         // Last, so it wins over the dragging and away states.
         isLanding && "opacity-0",

@@ -119,6 +119,7 @@ export function DesktopBoard({
     overGroupId,
     columnDropTargetId,
     listDayDrop,
+    movingIds,
     tabDrop,
     activeTabId,
     tabsById,
@@ -139,6 +140,7 @@ export function DesktopBoard({
     columnFilters,
     setColumnFilter,
     landingTodoIds,
+    selectedIds,
     infoTabId,
     setInfoListId,
     setInfoTabId,
@@ -276,6 +278,9 @@ export function DesktopBoard({
             isDragActive={!!activeTodo}
             overTodoId={overTodoId}
             landingTodoIds={landingTodoIds}
+                  selectedIds={selectedIds}
+                  movingIds={movingIds}
+                  onSelect={actions.handleSelect}
             rejectsDrop
             pinned
             collapsed={overflowCollapsed}
@@ -393,6 +398,9 @@ export function DesktopBoard({
                   isDragActive={!!activeTodo}
                   overTodoId={overTodoId}
                   landingTodoIds={landingTodoIds}
+                  selectedIds={selectedIds}
+                  movingIds={movingIds}
+                  onSelect={actions.handleSelect}
                 />
               );
             })}
@@ -495,6 +503,9 @@ export function DesktopBoard({
               isDragActive={!!activeTodo}
               overTodoId={overTodoId}
               landingTodoIds={landingTodoIds}
+                  selectedIds={selectedIds}
+                  movingIds={movingIds}
+                  onSelect={actions.handleSelect}
               recurrenceSummaries={recurrenceSummaries}
               subtaskCounts={subtaskCounts}
               // Backlog cannot be renamed, archived, or deleted, so its one
@@ -586,6 +597,9 @@ export function DesktopBoard({
                   isDragActive={!!activeTodo}
                   overTodoId={overTodoId}
                   landingTodoIds={landingTodoIds}
+                  selectedIds={selectedIds}
+                  movingIds={movingIds}
+                  onSelect={actions.handleSelect}
                   recurrenceSummaries={recurrenceSummaries}
                   subtaskCounts={subtaskCounts}
                   reorderListId={column.list.id}

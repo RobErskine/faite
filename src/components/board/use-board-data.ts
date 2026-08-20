@@ -10,6 +10,7 @@ import {
   parseDayGroupId,
   parseTabDropId,
   planListDayDrop,
+  selectedTodosInBoardOrder,
   planListDrop,
   planTabDrop,
   tabCountsFrom,
@@ -82,6 +83,10 @@ export interface UseBoardDataParams {
   expandedWeekends: ReadonlySet<string>;
   /** In-column filter text, by droppable column id — see `use-board-ui-state.ts`. */
   columnFilters: ReadonlyMap<string, string>;
+  /** Cmd/Ctrl+click multi-selection (EI-194). */
+  selectedIds: ReadonlySet<string>;
+  /** The ordered snapshot a multi-drag is carrying, or null. */
+  activeSelectionIds: readonly string[] | null;
   horizon: number;
   cap: number;
   /**
@@ -109,6 +114,8 @@ export function useBoardData(params: UseBoardDataParams) {
     collapsedGroups,
     expandedWeekends,
     columnFilters,
+    selectedIds,
+    activeSelectionIds,
     horizon,
     cap,
     layout,
@@ -762,6 +769,31 @@ export function useBoardData(params: UseBoardDataParams) {
   }, [columnDrop, backlogColumn, otherListColumns]);
 
   /**
+   * The live selection, in board order (EI-194).
+   *
+   * Derived rather than pruned: an id whose to-do has been deleted, archived,
+   * filtered out or carried to another tab simply stops appearing, with no
+   * effect racing a live query. This is also the array `handleDragStart`
+   * snapshots, so what the UI highlights and what a drag carries are the same
+   * list by construction.
+   */
+  const selectedTodos = useMemo(
+    () => (board ? selectedTodosInBoardOrder(board, selectedIds) : []),
+    [board, selectedIds],
+  );
+
+  /**
+   * Rows to ghost during a multi-drag. The card under the cursor gets
+   * `isDragging` from `useSortable` on its own; this is what makes the REST of
+   * the run visibly leave with it rather than sitting still until the write
+   * lands.
+   */
+  const movingIds = useMemo(
+    () => (activeSelectionIds ? new Set(activeSelectionIds) : undefined),
+    [activeSelectionIds],
+  );
+
+  /**
    * The day a dragged LIST would schedule its to-dos onto (EI-193, §4.10e).
    *
    * Same contract as `columnDrop`: derived, never stored, because
@@ -848,6 +880,8 @@ export function useBoardData(params: UseBoardDataParams) {
     columnDrop,
     columnDropTargetId,
     listDayDrop,
+    selectedTodos,
+    movingIds,
     tabDrop,
     overflowCollapsed,
     backlogCollapsed,
