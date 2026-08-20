@@ -67,3 +67,43 @@ export function positionForIndex(
   const after = clamped < ordered.length ? ordered[clamped].position : null;
   return generateKeyBetween(before, after);
 }
+
+/**
+ * Resolve the position for a card dropped onto another card in the same column.
+ *
+ * This exists because the two arrays involved are NOT the same length, and
+ * using an index from one against the other is an off-by-one that fractional
+ * indexing hides almost everywhere (EI-191):
+ *
+ * - the target's index must be read from the list WITHOUT the dragged item,
+ * - because `positionForIndex` also resolves against that list.
+ *
+ * Read the index from the full sibling list instead and a card dragged
+ * DOWNWARD past its target lands one slot too low — every element after the
+ * dragged one shifts up by one when it is removed. The insertion line
+ * (`todo-card.tsx`) is drawn ABOVE the hovered card, so that mismatch is a
+ * visible broken promise, not just an internal detail.
+ *
+ * `siblings` may or may not contain the dragged item — a cross-column drop is
+ * the case where it does not, and there the filter is a no-op and this behaves
+ * exactly like `positionForIndex`.
+ *
+ * `overId` of null means "no specific card was hovered", i.e. append to the end.
+ */
+export function positionForDropOnItem<T extends { id: string; position: Position }>(
+  siblings: readonly T[],
+  draggedId: string,
+  overId: string | null,
+): Position {
+  const ordered = siblings.filter((item) => item.id !== draggedId);
+  if (overId === null) return positionForIndex(ordered, ordered.length);
+
+  const index = ordered.findIndex((item) => item.id === overId);
+  /*
+   * -1 means the hovered card is the dragged card itself. Collision detection
+   * already excludes the active id (`use-board-actions.ts`), so this is
+   * unreachable in practice — but appending is the safe read, since landing at
+   * index 0 would silently teleport the card to the top of its column.
+   */
+  return positionForIndex(ordered, index === -1 ? ordered.length : index);
+}

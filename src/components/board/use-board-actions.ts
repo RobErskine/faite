@@ -36,7 +36,7 @@ import {
   readLandingRect,
   runLandingDropAnimation,
 } from "@/lib/drop-animation";
-import { positionForIndex } from "@/lib/ordering";
+import { positionForDropOnItem, positionForIndex } from "@/lib/ordering";
 import { OVERFLOW, addDays, formatShortDate } from "@/lib/scheduling";
 import { parseQuickAdd } from "@/lib/quick-add";
 import {
@@ -866,7 +866,8 @@ export function useBoardActions(
       // `over` may be a column or another todo. Resolve the owning column.
       let target = parseColumnId(String(over.id));
       let siblings: Todo[] = [];
-      let index = 0;
+      // null means "no specific card was hovered" — append to the end.
+      let overCardId: string | null = null;
 
       if (!target) {
         const overTodo = todosById.get(String(over.id));
@@ -875,16 +876,19 @@ export function useBoardActions(
         if (!column) return;
         target = column.target;
         siblings = column.todos;
-        index = siblings.findIndex((t) => t.id === overTodo.id);
+        overCardId = overTodo.id;
       } else {
         const column = columnByTarget(board, target);
         siblings = column ?? [];
-        index = siblings.length;
       }
 
-      // Exclude the dragged item so it cannot become its own neighbour.
-      const ordered = siblings.filter((t) => t.id !== todo.id);
-      const position = positionForIndex(ordered, index);
+      /*
+       * Excludes the dragged item so it cannot become its own neighbour, and
+       * reads the target's index from that same filtered list — the two must
+       * agree or a card dragged downward past its target lands one slot below
+       * the insertion line that was just drawn above it (EI-191).
+       */
+      const position = positionForDropOnItem(siblings, todo.id, overCardId);
 
       if (target.kind === "list" || target.kind === "day") {
         // Only a committed move gets a landing. Everything else — a refusal, a
