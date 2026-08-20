@@ -241,18 +241,20 @@ source of truth; there are no project guards inside specs any more (§7).
 | `foundations` (2) | ● | | | | |
 | `desktop-layout` (5) | ● | | | | |
 | `keyboard-drag` (7) | ● | | | | |
+| `multi-drag` (5) | ● | | | | |
+| `completion-tooltip` (6) | ● | | | | |
 | `core-flows` (5) | ● | ● | ● | ● | ● |
 | `reminders` (4) | ● | | ● | | |
 | `overdrive` (8) | ● | | ● | ● | |
 | `touch-affordances` (3) | | ● | ● | ● | ● |
 | `touch-smoke` (2) | | | ● | ● | ● |
 
-**89 tests.** Before, every project ran every spec — 36 x 5 = **180 runs**,
+**100 tests.** Before, every project ran every spec — 36 x 5 = **180 runs**,
 of which 56 immediately hit a skip guard and exited.
 
 This table is what `npm run e2e` runs, and it is the *full* matrix. A pull
 request runs a subset of it: the **`desktop` and `phone-iphone` columns
-only** (53 tests, `npm run e2e:ci`). The other three columns are deferred to
+only** (64 tests, `npm run e2e:ci`). The other three columns are deferred to
 a local run or a `workflow_dispatch` — see §8.5 for why those two, and what
 deferring the rest gives up.
 
@@ -265,6 +267,16 @@ deferring the rest gives up.
 - **`desktop-layout`, `keyboard-drag` on `desktop` only.** Unchanged from
   before — these were already guarded to `desktop`. They are just declared
   in the config now instead of skipped at runtime.
+- **`multi-drag` on `desktop` only** (EI-194). Cmd+click has no touch
+  equivalent, and the gesture is desktop-scoped by design. Nothing is traded:
+  there is no behaviour here for another viewport to have.
+- **`completion-tooltip` on `desktop` only** (EI-196). It needs CDP mouse
+  input, which is Chromium-only, and a hover has no meaning on a touch
+  project. Note this spec leads with a deliberate **CONTROL** test that hovers
+  a known-good tooltip — without it, "the tooltip did not open" is ambiguous
+  between a broken app and a harness that cannot open any tooltip, and that
+  ambiguity has already cost a debugging session once. If the control ever
+  fails, every other assertion in that file is meaningless.
 - **`touch-affordances` off `desktop`, `touch-smoke` off desktop/tablet.**
   Also unchanged: `pointer: coarse` doesn't exist on desktop, and CDP touch
   dispatch is only wired for the `phone-*` projects (§3).
