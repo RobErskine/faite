@@ -1,5 +1,6 @@
-import { Bell, CornerDownRight, Mail, MapPin, Palette, User, Wrench } from "lucide-react";
+import { Bell, CornerDownRight, Mail, MapPin, Palette, User, UserCog, Wrench } from "lucide-react";
 import type { SettingsSection } from "./types";
+import { AccountSection } from "./account-section";
 import { ProfileSection } from "./profile-section";
 import { DesignSection } from "./design-section";
 import { LoopSection } from "./loop-section";
@@ -19,6 +20,13 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     description: "Your name and how your avatar appears.",
     icon: User,
     Component: ProfileSection,
+  },
+  {
+    id: "account",
+    label: "Account",
+    description: "Sign-in details, and deleting your account.",
+    icon: UserCog,
+    Component: AccountSection,
   },
   {
     id: "loop",
