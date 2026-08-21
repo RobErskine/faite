@@ -3,6 +3,7 @@ use tauri::menu::{Menu, MenuBuilder, SubmenuBuilder};
 use tauri::menu::PredefinedMenuItem;
 use tauri::{Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
 
+mod background_sync;
 mod keychain;
 
 /// Window label for the main, user-visible board. The only window a user
@@ -40,6 +41,7 @@ pub fn run() {
       keychain::set_auth_token,
       keychain::clear_auth_token,
     ])
+    .manage(background_sync::BackgroundSyncState::default())
     .setup(|app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(
@@ -62,17 +64,20 @@ pub fn run() {
       // destroying also means a later `RunEvent::Reopen` doesn't have to
       // rebuild the window or re-run the board's Dexie bootstrap.
       //
-      // Consequence, not a bug: a hidden window's JS timers stop firing
-      // (D0 spike §3.4), so sync stops while the window is closed. D2b
-      // moves sync ownership to a Rust-driven timer to fix that; D1.5 does
-      // not attempt it.
+      // A hidden window's JS timers stop firing on their own (D0 spike
+      // §3.4), which would silently stop sync the moment this fires — D2b
+      // (background_sync.rs, called just below) is what keeps it running.
       #[cfg(target_os = "macos")]
       {
         let window_for_close = main_window.clone();
+        let app_handle_for_close = app.handle().clone();
         main_window.on_window_event(move |event| {
           if let tauri::WindowEvent::CloseRequested { api, .. } = event {
             api.prevent_close();
             let _ = window_for_close.hide();
+            // D2b: sync doesn't get to just stop because nobody's looking
+            // at the window — see background_sync.rs.
+            background_sync::start_background_sync(&app_handle_for_close);
           }
         });
       }
@@ -107,6 +112,10 @@ pub fn run() {
       // documented v2 hook for macOS's "reopen" AppKit event
       // (https://github.com/tauri-apps/tauri/issues/3084).
       RunEvent::Reopen { .. } => {
+        // Before showing main again: the board window is about to own sync
+        // itself again (its own SyncProvider never stopped running), so the
+        // background tick loop and its hidden window are done for now.
+        background_sync::stop_background_sync(app_handle);
         if let Some(window) = app_handle.get_webview_window(MAIN_WINDOW) {
           let _ = window.show();
           let _ = window.set_focus();

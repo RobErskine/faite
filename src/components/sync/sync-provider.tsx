@@ -18,6 +18,7 @@ import { createFallbackTransport } from "@/lib/sync/fallback-transport";
 import { getNodeId } from "@/lib/sync/hlc";
 import { httpTransport } from "@/lib/sync/transport";
 import { createWsConnection } from "@/lib/sync/ws-transport";
+import { isDesktopShell } from "@/lib/desktop/bridge";
 
 /**
  * Mounts the P3 sync engine (EI-46/EI-48). Renders nothing. Mounted from
@@ -25,7 +26,24 @@ import { createWsConnection } from "@/lib/sync/ws-transport";
  * sync, like auth, must never become a render dependency (ARCHITECTURE
  * §2.4/§2.12). The board renders from IndexedDB identically whether this
  * component's engine is running, idle, or has never run at all.
+ *
+ * Also mounted alone by `background-sync/page.tsx` (D2b) — the hidden
+ * webview Rust keeps alive while the board window is closed. That window's
+ * own JS timers die after one tick (docs/DESKTOP-SYNC-TIMER-SPIKE.md), so
+ * `window.__faiteBackgroundSyncTick` below is what a Rust-driven
+ * `tokio::time::interval` calls via `eval()` instead. Registered whenever
+ * `isDesktopShell()` is true, not just inside the hidden window specifically
+ * — harmless in the main window (nothing ever calls it there; Rust only
+ * `eval()`s into the background window by label) and keeping one code path
+ * simpler than branching on which window this is.
  */
+declare global {
+  interface Window {
+    /** D2b — see this file's doc comment. */
+    __faiteBackgroundSyncTick?: () => void;
+  }
+}
+
 export function SyncProvider() {
   const { data: session } = useSession();
   const engineRef = useRef<SyncEngine | null>(null);
@@ -99,6 +117,13 @@ export function SyncProvider() {
     engineRef.current = engine;
     engine.start();
     connection.start();
+
+    if (isDesktopShell()) {
+      window.__faiteBackgroundSyncTick = () => {
+        engineRef.current?.notifyRemoteChange();
+      };
+    }
+
     return () => {
       // Socket first: closing it rejects everything in flight, and those
       // rejections should land while the engine is still able to handle
@@ -107,6 +132,7 @@ export function SyncProvider() {
       connection.stop();
       engine.stop();
       engineRef.current = null;
+      if (isDesktopShell()) delete window.__faiteBackgroundSyncTick;
     };
   }, [session?.user?.id]);
 

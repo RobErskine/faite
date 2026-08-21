@@ -17,7 +17,7 @@ past D1 exists yet.
 | D1.5 | Installable, dock-resident `.app` — hide-on-close/reopen, ad-hoc signing, `desktop:build`/`desktop:dev` scripts | ✅ Done — §7 |
 | D1.6 | Developer ID + notarization | ✅ Done — §8 |
 | D2a | Desktop login + sync — `TRUSTED_ORIGINS`, api-key bearer auth, OS-keychain token storage, WS auth | ✅ Done — §9 |
-| D2b (EI-145) | Background sync while the window is closed — Rust-driven timer into the hidden webview | Not started |
+| D2b (EI-145) | Background sync while the window is closed — Rust-driven timer into the hidden webview | ✅ Done — §10 |
 | D3 | Feature A — menu bar popover (today/overdue to-dos, read-on-show) | Not started |
 | D4 | Feature B — global hotkey, always-on-top quick-capture window | Not started |
 | D5 | Swift sidecar — Accessibility-API context capture (decision #5), wired as an `externalBin` | Standalone prototype only — §3.5, not integrated |
@@ -1059,7 +1059,121 @@ it.
   a SECOND api-key consumer (EI-50's scoped external API token), since
   `permissions` are declared but enforced nowhere today.
 - **CI signing** (§8.4) — local-keychain flow only.
-- **D2b (background sync while the window is closed)** — not blocked on
-  anything from D2a, and now the most user-visible remaining gap: closing
-  the window suspends the webview's JS timers (D0 §3.4), so sync and
-  foreground reminders both stop until the window is reopened.
+
+---
+
+## 10. D2b — background sync while the window is closed
+
+Executes EI-178's spike (`docs/DESKTOP-SYNC-TIMER-SPIKE.md`) recommendation
+directly — that document did the hard research; this section is the
+landing, not a redesign.
+
+### 10.1 The mechanism
+
+D1.5 removed the hidden `core` window because it had no job yet (§7.1). D2b
+gives it one back, under a new name and a real reason to exist:
+
+1. `main`'s `CloseRequested` handler (`lib.rs`) — already hiding the window
+   per D1.5 — now also calls `background_sync::start_background_sync()`.
+2. That creates a hidden (`visible: false`) webview, labeled
+   `background-sync`, loading a **new, dedicated, minimal page**
+   (`src/app/background-sync/page.tsx`) — not `board.html` reused hidden.
+   The page mounts only `<SyncProvider />`, nothing else. Deliberately not
+   the full board: a hidden window doesn't need `DndContext` or keyboard
+   shortcuts, and specifically must NOT mount `DesktopAuthProvider` — Tauri's
+   deep-link `onOpenUrl` is an app-wide event, not scoped to one webview, so
+   a second listener would race the main window to handle the same
+   `faite://auth-callback` URL.
+3. A `tokio::time::interval` (30s, matching `DEFAULT_INTERVAL_MS` in
+   `engine.ts` — not literally shared across the Rust/TS boundary) calls
+   `window.eval("window.__faiteBackgroundSyncTick && …()")` into that hidden
+   webview every tick. **This works specifically because it's Rust-driven,
+   not self-scheduled**: EI-178 measured a hidden window's own JS
+   `setInterval` at 1 tick out of an expected 24, and Rust-driven `eval()`
+   into that same hidden window at 24/24 — `evaluateJavaScript:` wakes a
+   throttled `WKWebView` for the call, per the spike's research (§3 there).
+4. `sync-provider.tsx` registers `window.__faiteBackgroundSyncTick` whenever
+   `isDesktopShell()` is true (harmless no-op in the main window — nothing
+   ever calls it there, since Rust only `eval()`s into `background-sync` by
+   label) — calling it invokes `engine.notifyRemoteChange()`, the exact same
+   undebounced, `isActive()`-gated, Web-Lock-respecting trigger the socket's
+   `onRemoteChange`/`onOpen` handlers already use. **The existing JS
+   sync/HLC/outbox logic is completely unchanged** — Rust only calls the
+   doorbell, per the spike's explicit recommendation against reimplementing
+   any of it natively.
+5. `RunEvent::Reopen` (the dock-icon-click handler, D1.5) calls
+   `background_sync::stop_background_sync()` before showing `main` again —
+   aborts the tick task and closes the hidden window. The board window's own
+   `SyncProvider` never stopped running while hidden (React/Dexie state
+   persists; only JS *timers* are what die), so it just resumes owning sync
+   the moment it's visible again — no handoff ceremony needed on this side.
+
+### 10.2 Why a dedicated page, and why explicitly not `DesktopAuthProvider`
+
+Reusing `board.html` for the hidden window (D1's original design, before
+D1.5 found it had no job) would have been the smaller diff. Rejected anyway:
+the hidden window has no user to show a keyboard shortcut sheet or a drag
+target to, and mounting `DesktopAuthProvider` there specifically would be a
+correctness bug, not just waste — see §10.1 point 2. A ~10-line page beats
+carrying that risk for the sake of reusing a bundle that was never sized for
+this job.
+
+### 10.3 Verified
+
+- `cargo check --all-targets` / `cargo clippy --all-targets` — clean, zero
+  warnings, first attempt (`background_sync.rs` compiled correctly against
+  `tauri::async_runtime::spawn` + `tokio::time::interval` composing on the
+  same runtime with no explicit runtime wiring needed).
+- `npm run verify` — typecheck, lint, **1817 tests**, both Next builds,
+  green. `background-sync.html` confirmed present in the `build:static`
+  output route list.
+- Built, signed, and notarized the real `.app` with this milestone included
+  — `spctl`/`codesign` unaffected (same signing pipeline as D1.6/D2a),
+  launched cleanly.
+- **Traced, not click-tested, for the close→hide→tick→reopen→teardown
+  sequence itself.** This session has no Accessibility automation access
+  (confirmed again this session: `osascript`'s window-suite `close` isn't
+  implemented by a Tauri window, and `System Events` keystroke automation
+  returned a clean "not allowed" — not a hang, but still no path to
+  simulating Cmd-W without a human). The design was traced by hand instead:
+  idempotent start (checked via the `Mutex<Option<JoinHandle>>` guard),
+  teardown ordering on `Reopen`, and the `TICK_JS` snippet's `&&`-guard
+  against calling into a not-yet-booted or already-torn-down window. Needs
+  Rob at the machine for the real thing — see §10.4.
+- One adjacent question resolved while investigating, not touched: does
+  `prevent_exit()`'s unconditional call on `RunEvent::ExitRequested` (D1.5)
+  mean Cmd-Q is broken? No — the app menu's `SubmenuBuilder::quit()` exits
+  directly, bypassing `ExitRequested` entirely; that handler only ever gates
+  the "last window closed → auto-exit" path. Confirmed by reading
+  `lib.rs:150`, not by testing Cmd-Q itself. Pre-existing D1.5 behavior,
+  unrelated to and unaffected by D2b — noted here because it came up while
+  reasoning about this milestone's process-exit edge cases, not because
+  anything about it changed.
+
+### 10.4 What's still open
+
+- **The real click-through, at the machine**: close the board (Cmd-W or the
+  red traffic light), wait past 30s, confirm a to-do created elsewhere
+  appears without reopening the window (or, more visibly: create one
+  elsewhere, wait, reopen, confirm it's already there rather than arriving
+  only after reopen triggers its own sync). `ps`/Activity Monitor should
+  show a second, brief `WebContent` process appear while closed and
+  disappear on reopen.
+- **Foreground reminders while closed** — not touched by this milestone.
+  D2b only restores *sync*; whether a reminder notification should also
+  fire from the hidden window (and how, since `Notification` API behavior in
+  a non-frontmost, hidden webview is untested) is a separate question this
+  section deliberately didn't scope in.
+- **Windows/WebView2** — EI-178's research (§3 there) found the same class
+  of hidden-window timer-suspension problem is documented on Windows too,
+  but nothing here has been run there. A D6 concern, not a D2b gap.
+- **The mild redundancy this design accepts**: while `main` is hidden (not
+  yet reopened), its own `SyncProvider`/WebSocket connection is still
+  technically alive in memory (hiding a window doesn't unmount React) even
+  though its JS timers are dead — so there are briefly two live sync
+  contexts for the same account (main's dormant one, background's active
+  one) rather than a clean handoff. Not a correctness risk (this app's sync
+  design already tolerates N simultaneous connections for the same account
+  by construction — multi-tab support has always assumed this), just a
+  small, deliberately-unoptimized inefficiency: one extra idle WebSocket and
+  occasional redundant polling for as long as the window stays closed.

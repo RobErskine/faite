@@ -28,6 +28,11 @@ tauri-plugin-log = "2"
 tauri-plugin-deep-link = "2"
 # D2a: opens the system browser for login (`bridge.ts`'s `startDesktopLogin`).
 tauri-plugin-opener = "2"
+# D2b: the background-sync tick timer (`background_sync.rs`). Tauri's own
+# `tauri::async_runtime::spawn` schedules onto this exact runtime already
+# (Tauri depends on tokio internally) — adding it directly only exposes
+# `tokio::time::interval`, which `async_runtime` does not re-export.
+tokio = { version = "1", features = ["time"] }
 
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
 tauri-plugin-window-state = "2"
