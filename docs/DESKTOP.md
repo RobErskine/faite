@@ -1038,19 +1038,28 @@ runtime environment, not its logic.
    path to it**: entry points multiply, and the fourth one added later
    won't remember to check.
 
-### 9.7 What's still open
+### 9.7 Confirmed working end to end
 
-- **A real end-to-end click-through needs Rob** — sign in via a real
-  browser, click "Continue to Faite," watch the app actually show
-  signed-in state and start syncing. Everything above proves the pieces
-  work; it does not prove the whole chain feels right, or that the "Continue
-  to Faite" button's browser-permission prompt (if macOS shows one for the
-  custom scheme) is not surprising.
-- **None of this is deployed.** `/api/desktop/handoff`/`/exchange` and the
-  `enableSessionForAPIKeys` cutover only exist in this branch's local
-  `wrangler dev` testing — production `myfaite.app` does not have them yet.
-  A built `.app` pointed at production (the normal `beforeBuildCommand`)
-  will still fail to complete a real login until this ships.
+**Rob signed in on the desktop app with his real production credentials
+and reached his real board — 2026-08-21, after the §9.6 fixes.** The full
+chain is live: system browser → production `myfaite.app` login → handoff
+code → `faite://` deep link → keychain token → authenticated
+`useSession()` and sync. Deployed to production (worker version
+`e293b3e0-0466-42df-9a52-166632e18ec2`), including the
+`enableSessionForAPIKeys` cutover and both `/api/desktop/*` routes.
+
+Not a milestone blocker, but true and worth stating: this is a genuine
+daily-driver state, and D2b's absence (below) is now the sharpest edge on
+it.
+
+### 9.8 What's still open
+
 - **`.dmg` bundling** — unaffected by this milestone, same open item as §8.4.
-- **D2b (background sync while the window is closed)** is now genuinely
-  next in sequence, not blocked on anything from D2a.
+- **The `enableSessionForAPIKeys` caveat** (§9.2) — revisit before shipping
+  a SECOND api-key consumer (EI-50's scoped external API token), since
+  `permissions` are declared but enforced nowhere today.
+- **CI signing** (§8.4) — local-keychain flow only.
+- **D2b (background sync while the window is closed)** — not blocked on
+  anything from D2a, and now the most user-visible remaining gap: closing
+  the window suspends the webview's JS timers (D0 §3.4), so sync and
+  foreground reminders both stop until the window is reopened.
