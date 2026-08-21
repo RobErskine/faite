@@ -129,6 +129,14 @@ export const PRIVATE_ROUTES: readonly string[] = [
   "/forgot-password",
   "/reset-password",
   "/verify-email",
+  // Desktop shell only (D2a/D2b, docs/DESKTOP.md §9/§10) — neither is ever
+  // navigated to in a real browser tab. `/desktop-handoff` is a step in the
+  // system-browser login handoff; `/background-sync` is the hidden webview
+  // Rust drives while the board window is closed. Both would be actively
+  // wrong to index: a crawler landing on either sees a bare loading state
+  // or nothing at all, same reasoning as `/board`.
+  "/desktop-handoff",
+  "/background-sync",
 ];
 
 /** Throws on an unknown path — a missing table row is a build failure, not a silent gap. */
