@@ -51,7 +51,7 @@ to keep them honest anyway.
 | `tab-strip.tsx` / `tab-info-dialog.tsx` | `Enter` commits a new tab name or saves the tab name, `Escape` cancels a new tab name |
 | `location-field.tsx` | `Enter` saves a place nickname |
 | `todo-sheet.tsx` | `Enter` blurs the title (commit-on-blur does the write); on `SheetContent`, `⌘Enter`/`Ctrl+Enter` marks done, `⌘⌫`/`Ctrl+Backspace` marks won't-do, `⇧⌘⌫`/`Ctrl+Shift+Backspace` deletes — local rather than global because these are meaningless with no sheet open, and the registry's `GuardContext` has no per-surface discriminator (§4.3) to scope a global entry to just this sheet; the Sub-tasks section's "Add a sub-task" input (EI-55) is the same commit-on-`Enter`-or-blur pattern as the title field, scoped to that one input |
-| `todo-card.tsx` | `←→↑↓` navigate (§11), `Enter` opens the sheet, `Space` toggles done; dnd-kit's keyboard drag activator, on the grip |
+| `todo-card.tsx` | `←→↑↓` navigate (§11), `Enter` opens the sheet, `Space` toggles done, `x` adds/removes the row from the multi-selection (EI-194 — a letter, because `Space` is already spoken for); dnd-kit's keyboard drag activator, on the grip |
 | `board-column.tsx` group header | `Enter`/`Space` collapses or expands the group, `←→↑↓` navigate (§11) |
 | `desktop-board.tsx` / `phone-board.tsx` load-more tile | `←→↑↓` navigate (§11) — two files, not `board.tsx`, since the desktop track and the phone pager each render their own end tile |
 | `split-strip.tsx` | `Enter`/`Space` expands a collapsed calendar/planning half |

@@ -89,6 +89,8 @@ interface HarnessProps {
   totalCount?: number;
   onQuickAdd?: (title: string, listId?: string, labelIds?: string[]) => void;
   footer?: React.ReactNode;
+  isColumnDragActive?: boolean;
+  isColumnDropTarget?: boolean;
 }
 
 function Harness({ groups, todos, ...rest }: HarnessProps) {
@@ -186,6 +188,34 @@ describe("drop indicators", () => {
     // `readLandingRect()` depends on this: with two, the dragged card flies to
     // whichever one `querySelector` finds first.
     render(<Harness groups={[ADMIN, BUY]} overGroupId={ADMIN.id} />);
+    expect(document.querySelectorAll("[data-drop-indicator]")).toHaveLength(1);
+  });
+
+  /**
+   * EI-193. A DAY column can now be a column-drag drop target — dropping a
+   * list on it schedules that list's unscheduled to-dos. Before this, only
+   * the planning half ever received this chrome.
+   */
+  it("outlines a day column that a dragged list would schedule onto", () => {
+    render(<Harness isColumnDragActive isColumnDropTarget />);
+    const section = document.querySelector<HTMLElement>("section")!;
+    expect(section.className).toContain("outline-primary");
+    expect(section.hasAttribute("data-drop-indicator")).toBe(true);
+  });
+
+  it("draws no chrome on a day column a list is merely passing over", () => {
+    render(<Harness isColumnDragActive />);
+    const section = document.querySelector<HTMLElement>("section")!;
+    expect(section.hasAttribute("data-drop-indicator")).toBe(false);
+    // Candidate outlines are card-drag only, so a list drag must not raise
+    // the dashed border on every column it flies past.
+    expect(section.className).not.toContain("border-dashed");
+  });
+
+  it("still draws exactly one indicator during a list-onto-day drag", () => {
+    // The flight target. A group indicator co-existing here would send the
+    // chip to the wrong place, and nothing would report it.
+    render(<Harness groups={[ADMIN, BUY]} isColumnDragActive isColumnDropTarget />);
     expect(document.querySelectorAll("[data-drop-indicator]")).toHaveLength(1);
   });
 });

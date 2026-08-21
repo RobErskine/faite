@@ -28,4 +28,6 @@ export const auth = createAuth({
   // added here too, or `npm run auth:schema` stops compiling.
   GOOGLE_PLACES_API_KEY: "",
   EMAIL_INGEST_DOMAIN: "in.myfaite.app",
+  TURNSTILE_SECRET_KEY: "",
+  CONTACT_RATE_LIMITER: {} as unknown as CloudflareEnv["CONTACT_RATE_LIMITER"],
 });

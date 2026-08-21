@@ -92,6 +92,8 @@ export function Board() {
     collapsedGroups: ui.collapsedGroups,
     expandedWeekends: ui.expandedWeekends,
     columnFilters: ui.columnFilters,
+    selectedIds: ui.selectedIds,
+    activeSelectionIds: ui.activeSelectionIds,
     horizon: ui.horizon,
     cap: ui.cap,
     layout,
@@ -402,6 +404,17 @@ export function Board() {
               flight (§4.7), and a chip that changed height mid-drag would.
             */}
             <span className="truncate">{ui.activeTodo.title}</span>
+            {/*
+              How many are coming with it (EI-194). A badge INSIDE the existing
+              wrapper, `shrink-0` so the box stays the size the drop animation
+              measured — a fan of stacked ghost cards would grow the wrapper's
+              rect mid-drag and break the flight (§4.7).
+            */}
+            {(ui.activeSelectionIds?.length ?? 0) > 1 && (
+              <span className="num shrink-0 rounded-full bg-primary px-1.5 text-2xs font-medium text-primary-foreground">
+                {ui.activeSelectionIds!.length}
+              </span>
+            )}
           </div>
         )}
         {ui.activeList && (

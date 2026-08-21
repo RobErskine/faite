@@ -41,12 +41,15 @@ handle mid-drag.
 
 | File | Role |
 |---|---|
-| `src/components/board/board.tsx` | `DndContext`, sensors, collision detection, all drag handlers, `DragOverlay` |
+| `src/components/board/board.tsx` | The shell: mounts the one `DndContext` and the one `DragOverlay`. The handlers themselves moved out — see the next row |
+| `src/components/board/use-board-actions.ts` | Sensors, `collisionDetection`, `keyboardCoordinates`, and every drag handler (`handleDragStart`/`Over`/`End`/`Cancel`). **The file to open first** |
+| `src/components/board/use-board-data.ts` | The derived drag values — `overTodoId`, `overGroupId`, `columnDrop`, `listDayDrop`, `selectedTodos`. Each mirrors a write in `handleDragEnd` and must not disagree with it (§4.4) |
+| `src/components/board/use-board-ui-state.ts` | Owns all drag state (`activeTodo`/`activeList`/`activeTab`, `overId`, `landingTodoIds`) plus the multi-selection (§4.14) |
 | `src/components/board/board-column.tsx` | `useDroppable` + `SortableContext`; `useDraggable` for column reorder; whole-header drag; drop-target visual states |
 | `src/components/board/todo-card.tsx` | `useSortable`; whole-row drag, out-of-flow grip, priority rail, inline location pin, insertion line |
 | `src/components/board/drag-grip.tsx` | The one grip affordance, shared by rows, columns and tabs |
 | `src/lib/priority.ts` | `PRIORITY_RAILS` — the width and colour of a card's priority rail, shared with the drag overlay chip; `byPriorityThenPosition`, which orders a group |
-| `src/lib/board.ts` | …plus `TodoGroup`, `listSortKey`, `byListGroup`, `dayGroupId` — the calendar half's computed grouping (§4.13) |
+| `src/lib/board.ts` | Id codecs, `preferPreciseTarget()`, and every pure drop planner — `planListDrop`, `planTabDrop`, `planListTabDrop`, `planListDayDrop` (§4.10e), `selectedTodosInBoardOrder`/`rangeSelectionIds` (§4.14). Plus `TodoGroup`, `listSortKey`, `byListGroup`, `dayGroupId` — the calendar half's computed grouping (§4.13) |
 | `src/components/board/create-list-column.tsx` | End-of-track "Create list" slot. Column-sized, deliberately **not** a droppable (§5.6) |
 | `src/components/board/use-day-track.ts` | Pure scroll-position/jump math for the day track (anchor index, jump clamping) — not itself drag-and-drop, but shares the track dnd-kit measures |
 | `src/components/board/date-nav.tsx` | Week/Month/Quarter jump buttons + calendar date picker above the day track |
@@ -54,11 +57,12 @@ handle mid-drag.
 | `src/components/board/rail-handle.tsx` | The draggable seam on a pinned panel's right edge — one per rail, resizing independently (§4.12) |
 | `src/lib/rail.ts` | `RAIL_MIN`/`RAIL_MAX`/`RAIL_COLLAPSE_THRESHOLD`/etc. — shared so `schema.ts` can bound the stored width without importing a component |
 | `src/app/globals.css` | `--column-min` / `--column-max` / `--list-column-min`, and the `column-track` utility (§4.12) |
-| `src/lib/board.ts` | Column grouping, id codecs, `preferPreciseTarget()`, `planListDrop()` |
 | `src/lib/drop-animation.ts` | Drop animation: `readLandingRect()`, `landingTransform()`, `runLandingDropAnimation()` |
-| `src/lib/ordering.ts` | Fractional index helpers (`positionForIndex`) |
+| `src/lib/ordering.ts` | Fractional index helpers. `positionForDropOnItem()` is the one a card drop uses — it keeps the exclude-the-dragged-item filter and the target lookup together (§4.5); `positionsForDropOnItem()` is its N-card counterpart (§4.14) |
 | `src/lib/board.test.ts` | Tests for id codecs, target selection, column reordering |
 | `src/lib/drop-animation.test.ts` | Tests for the landing rect math |
+| `e2e/multi-drag.spec.ts` | Real-browser cmd+click and multi-card drag — the click/threshold interference happy-dom cannot reach (§4.14) |
+| `e2e/support/hover.ts` | Real pointer input via CDP. `locator.hover()` cannot open a Base UI tooltip; see the caution at the end of §6 |
 
 **Two gestures share one `DndContext`**: dragging a todo card, and dragging a
 list column to reorder it. `active.id` is the only thing that tells them apart —
@@ -223,15 +227,33 @@ over is a card    -> that card's column, insert AT that card's index
 over is a column  -> that column, append at the end
 ```
 
-Then:
+Then, via `positionForDropOnItem()` (`lib/ordering.ts`, pure and unit-tested):
 
 ```ts
-const ordered = siblings.filter((t) => t.id !== todo.id);   // ← critical
-const position = positionForIndex(ordered, index);
+const ordered = siblings.filter((item) => item.id !== draggedId);   // ← critical
+const index = ordered.findIndex((item) => item.id === overId);      // ← also critical
+return positionForIndex(ordered, index);
 ```
 
 **The dragged item must be excluded from its own sibling list**, or it becomes
 one of its own neighbours and the new key can land on the wrong side of it.
+
+**And the target's index must be read from that SAME filtered list.** This was
+one function for a reason (EI-191): the two lines above used to live apart, with
+`index` read from the unfiltered `siblings` in `handleDragEnd` and applied to
+`ordered` — so removing the dragged card shifted every element after it up by
+one, and a card dragged *downward* past its target landed one slot too low. The
+insertion line is drawn **above** the hovered card (§6), so that was a visible
+broken promise rather than an internal detail: hover C in an A/B/C/D column with
+A in hand, watch the line render between B and C, release, and the card lands
+between C and D.
+
+It hid for so long because the other three cases are all genuinely unaffected —
+a cross-column drop (the dragged card is not in `siblings`, so the filter is a
+no-op), a same-column *upward* drag (the target sits above the dragged card, so
+its index does not move), and an append-to-column drop (no target card at all).
+Only the down-and-in-the-same-column quadrant was wrong, and fractional indexing
+absorbs a one-slot error without ever looking corrupt.
 
 Writes, by target kind:
 
@@ -652,6 +674,78 @@ position })`, not two separate undo entries — a half-undone cross-tab move
 (list back on its old tab, but at some arbitrary new position, or vice
 versa) would be a worse landing than either applied change on its own.
 
+### 4.10e Carrying a whole list onto a DAY (EI-193)
+
+The fifth thing a `listdrag:` gesture can mean. Grab a list column by its
+header, drop it on a day, and every to-do in that list **that has not already
+been assigned a day** is scheduled onto it. Reported ask: *"if I take my
+'Grocery List' header and move it to a certain day, all of the items in that
+list should move to that day. However in the grocery list, I already have a
+todo to remind me to buy honey at the farmers market in 2 weeks. This item
+should stay in the same spot."*
+
+**`scheduledDate === null` is the entire test, and it is deliberately not
+"does this render in the list column".** Those two are not the same set. A
+to-do scheduled past the day cap renders in its list column too — dimmed,
+with a date chip (§5.3) — and it has very much been assigned a day. Reading
+placement instead of the field would silently drag every one of those back
+into the visible window, which is the opposite of what the gesture promises.
+`status === "open"` is the second filter, and it matters only once `done` is
+visible in view settings: a settled, undated to-do sits in a list column
+looking exactly like an open one, and scheduling it would resurrect finished
+work into the calendar half.
+
+**The list column itself does not move, and that is structural rather than
+guarded.** The day branch `return`s before `planListDrop` is ever reached, so
+there is no path through this gesture that writes `List.position`. No
+`position` is written on the to-dos either — order in the calendar half is
+computed (§4.13), so a fractional key there would be noise.
+
+**Two gates had to open, and the second is the one that fails silently.**
+`collisionDetection`'s `listdrag:` branch (§4.2) hard-filtered to list
+columns plus tab pills, so a day column was not merely rejected — it was
+never offered. Day columns are appended **last** in that precedence, after
+the list column and the pill, so every case that resolved before still
+resolves identically; a list column and a day column live in different halves
+and can never both be under one pointer. Then `handleDragEnd`'s list branch
+had `if (target?.kind !== "list") return;` as its first act.
+
+**What `kind === "day"` excludes by omission is as load-bearing as what it
+includes**, and all three are the wanted behaviour rather than oversights:
+
+- **Overflow** parses as `{kind:"overflow"}`, never `"day"`, so it refuses a
+  list drop exactly as it refuses a card drop (§5.1) — silently, with no
+  outline and no toast.
+- **A day group** is a `daygroup:` id, outside `parseColumnId` entirely, so
+  hovering one resolves up to its containing day column. The arriving to-dos
+  then group under their own list. That is right: a group is a statement
+  about a list, and a list is what is in flight — but it looks like it should
+  mean something else, so it has its own manual check.
+- **A collapsed weekend strip** is a `weekend:` id, also outside
+  `parseColumnId`. Nothing highlights, nothing writes. The hover-to-expand
+  dwell is gated on `activeTodo`; extending it to list drags is a known gap
+  (§7), not a decision.
+
+**A day where nothing would move shows no outline at all**, and toasts on
+release. `use-board-data.ts`'s `listDayDrop` memo gates the highlight on
+`count > 0`, which honours §5.1's "the refusal is visible *before* release"
+without inventing a fourth column state. The toast exists because this
+refusal is otherwise unexplainable: the column is visibly full of cards, and
+every one of them already has a day.
+
+**`landingTodoId` became `landingTodoIds: ReadonlySet<string>` here**, and it
+had to. One gesture now commits many to-dos, and with only the dragged id
+held back every other mover pops into its destination while the overlay is
+still travelling — precisely the failure the landing state exists to prevent
+(§4.7). One overlay still flies; the rest wait for it. The write loop clears
+the set in a `finally` as well as from `onLand`, because N sequential Dexie
+transactions can outlast the `FLIGHT_MS + 250` backstop, and a row revealed
+before its write lands reads as data loss.
+
+Undo is one entry with N steps — `UndoEntry.steps` was already `UndoStep[]`,
+so no new machinery. Each step carries **its own** `previousDate`; reusing
+the list's or another mover's would restore the wrong dates on ⌘Z.
+
 ### 4.10d Tab strip legibility cleanup (EI-117 – EI-120)
 
 Four small changes to `tab-strip.tsx` and `board-column.tsx`, none of which
@@ -722,6 +816,107 @@ change, so switching tabs from `⌘K` or the keyboard can't leave the newly
 active pill off-screen. No new auto-scroll-on-drag code was added: dnd-kit's
 own auto-scroll (§4.8) already reaches this container during a tab or list
 drag.
+
+### 4.14 Multi-select, and dragging a run (EI-194)
+
+Cmd/Ctrl+click several cards, drag any one of them, and the whole selection
+lands on the destination. Shift+click extends a range. This closed §7 item 5,
+which had read "No multi-select drag" since the board was built.
+
+**Two pieces of state, and the split is the load-bearing part.**
+`selectedIds` is what the user has picked and can change *mid-flight* — a live
+query lands, a filter effect fires, another device syncs a deletion.
+`activeSelectionIds` is the **ordered snapshot taken at lift**, and
+`handleDragEnd` reads only that. Same contract as `activeTodo` holding a
+record rather than an id: the gesture commits exactly what was picked up, not
+whatever the selection has since become.
+
+**The selection is never pruned against the board.**
+`selectedTodosInBoardOrder()` (`lib/board.ts`, pure) derives the live set on
+every render, so a to-do that is deleted, archived, filtered out by
+`visibleStatuses`, or carried to another tab leaves the selection by simply
+not appearing. An effect that pruned the set instead would race the live
+query, and a stale id reaching `mutate()` throws — that function refuses a
+missing row on purpose (the "Untitled list" incident).
+
+**One `onClickCapture` on the row is the entire interception point** — not the
+title button, not the checkbox. Each of the three things it could have broken
+is already handled by something else, and two of them by dnd-kit rather than
+by us:
+
+- **The 4px threshold is untouched.** `onMouseDown` still reaches
+  `MouseSensor` first. And if a drag *did* activate,
+  `AbstractPointerSensor.handleStart` has registered a capture-phase `click`
+  listener **on `document`** that stops propagation and stays attached 50ms
+  past `detach()` (§4.9). Document capture runs strictly before the row's, so
+  a Cmd+drag can never also toggle selection. That is a guarantee from
+  dnd-kit's source, not a timing hope.
+- **The detail sheet still opens**, because the unmodified branch
+  deliberately does *not* `stopPropagation` — the title's own `onClick` is a
+  bubble-phase handler on a descendant.
+- **The checkbox still toggles** on a plain click, and on a modified one
+  selects instead of ticking. One uniform rule for the whole row, with the
+  `after:-inset-x-1` hit-area geometry (§5.4) untouched.
+
+macOS turns Ctrl+click into `contextmenu` and suppresses the `click`, so
+`ctrlKey` is effectively the Windows/Linux path. Both are tested.
+
+**A Shift+click range is scoped to the anchor's own column**, and
+`rangeSelectionIds()` returns null when the two ends are in different ones so
+the caller re-anchors. "Everything between a card in Tuesday and a card in
+Backlog" has no answer a user would predict: the two halves are ordered by
+different rules entirely (§4.13 — the planning half is arranged by hand, the
+calendar half is computed), and the columns between them on screen are not a
+sequence you can walk. *Within* a column it is well defined even in the
+calendar half, because `DayColumn.todos` is the flat rendered order, groups
+and all — so a range sweeping across two group headers selects exactly the
+cards the eye passed over.
+
+**The run lands in board order, with N keys in one gap.**
+`positionsForDropOnItem()` (`lib/ordering.ts`) is the multi counterpart of
+`positionForDropOnItem`, and it is required to agree with it at `count === 1`
+— a one-card selection must land exactly where a plain drag of that card
+would. There is a test pinning that equality. It also excludes **every** mover
+from the neighbour list, not just the one under the cursor: leaving the others
+in lets a mover become its own run's neighbour and interleaves the result with
+cards that are about to move out from between them.
+
+The pointer decides where the *run* lands, not where within the run the
+dragged card sits. Positions are only used for the list and day-group
+branches; a day column writes none, because order there is computed (§4.13).
+
+**`handleDragEnd`'s multi branch is a separate branch, and the single-card
+path below it is byte-identical to before.** That path is the most-used code
+in the app and every bug ever found in it has been invisible to typecheck,
+lint and unit tests (§8), so ~40 duplicated lines is the cheaper trade. The
+multi branch also **materializes first, then builds the undo entry, then
+writes** — the reverse of the single path's "record before awaiting", because
+the inverse patches have to describe rows that already exist.
+
+Undo is one entry with N steps, and each step carries **its own**
+`previousDate` — reusing the dragged card's would restore the wrong dates.
+
+**N writes = N outbox entries = N sequential Dexie transactions.** There is no
+batch helper and adding one would change the single-write-path contract
+`mutate.ts` and `lib/sync/wire.ts` are built on. The practical consequence is
+that a large selection's writes can outlast the 200ms flight and its
+`FLIGHT_MS + 250` backstop, so the write loop clears `landingTodoIds` in a
+`finally` as well as from `onLand` — a row revealed before its write lands
+reads as data loss. There is no cap on selection size yet (§7).
+
+**When the selection clears:** a plain click on anything that is not a card, a
+plain click on another card, `Escape`, a completed drop, and lifting a card
+that is *not* in the selection (the gesture is no longer about the selection,
+so leaving it highlighted would look armed). A drag **cancel** deliberately
+keeps it — Escape cancelled the lift, not the picking; a second Escape clears.
+The document listener is registered only while something is selected, and its
+`Escape` is guarded by `isTextEntry`, because Escape inside a column filter
+already means "clear the filter".
+
+**The overlay grows a count badge, not a fan of stacked cards.** §4.7 measures
+the overlay wrapper with `getBoundingClientRect()`, and a chip that changed
+size mid-drag would break the flight. The badge is `shrink-0` inside the
+existing wrapper.
 
 ### 4.11 The React Compiler rejects refs read during render
 
@@ -1223,6 +1418,17 @@ sliding along it. On release it flies to the drop indicator over 200 ms while
 settling flat and morphing to the destination column's width, then crossfades
 into the real row over the final 90 ms. See §4.7.
 
+> **A Base UI `render` prop will not compose two Base UI components** (EI-196).
+> `<TooltipTrigger render={<Checkbox/>}/>` type-checks, renders, keeps every
+> prop, and silently drops the trigger's pointer handlers — the tooltip simply
+> never opens. Every working tooltip here triggers off a plain `span` or a
+> shadcn `Button` (a bare `<button>`); wrap the primitive instead of rendering
+> through it. Nothing catches this: happy-dom cannot open a Base UI tooltip,
+> and neither can Playwright's `locator.hover()` — see the note in
+> `e2e/support/hover.ts` about needing real CDP pointer input, and always
+> include a CONTROL case, or "the tooltip did not open" is ambiguous between a
+> broken app and a blind harness.
+
 > Tailwind silently drops classes it does not recognize, so a typo leaves an
 > outline as an invisible no-op with everything still "passing". Verify new
 > utilities actually emit CSS:
@@ -1307,7 +1513,15 @@ list — see §4.7 and §4.9.)
    via CDP, not an actual phone; §4.9b's numbers are a reasoned default, not
    field-tested, and remain the most likely place a real device surprises
    this app. Revisit once Capacitor (P7) makes that testable.
-5. **No multi-select drag.**
+5. ~~No multi-select drag.~~ **Done, EI-194** — see §4.14. Still open from
+   it: no cap on selection size (N writes are N sequential Dexie transactions
+   and N outbox entries), and there is no touch equivalent for Cmd+click.
+5a. **A list drag has no keyboard path**, so §4.10e ships mouse-only in
+    practice — `keyboardCoordinates` falls straight through to the stock
+    getter for a `listdrag:` active (see item 7 below, which this inherits).
+5b. **A collapsed weekend strip does not expand for a list drag** the way it
+    does for a card drag; the dwell effect is gated on `activeTodo`. Symmetry
+    says it should, blast radius said not in the same change.
 6. **Overlay width vs. cursor.** The overlay is `max-w-xs`; on a narrow column
    it visually overhangs neighbours while only the cursor's column highlights.
    Correct, but arguably reads oddly — worth a look.
@@ -1336,7 +1550,7 @@ list — see §4.7 and §4.9.)
 
 ```bash
 npm run dev        # http://localhost:3000 (or the next free port if taken)
-npm test           # vitest run — 692 tests (see ARCHITECTURE.md §8)
+npm test           # vitest run — 1868 tests (see ARCHITECTURE.md §8)
 npm run verify     # typecheck + lint + tests + BOTH builds; run before commit
 ```
 
@@ -1517,6 +1731,80 @@ rect-based collision logic cannot be meaningfully tested there.
     shows: no dashed candidate outlines, no destructive styling, and the
     tab-reorder insertion bar (§4.10b) never appears — that's gated on
     `activeTab`, not `activeList`.
+
+**Manual checklist — a list onto a day (§4.10e, EI-193)**
+
+46. Grab a list header, cross the tab strip, hold over a day. **Only that day
+    outlines**, solid. No dashed candidate outlines on any other column, no
+    destructive styling, no end-of-column card dot, and the tab-reorder
+    insertion bar never appears.
+47. Release. Every unscheduled to-do from that list appears under that day,
+    grouped under the list's own name and colour. **The list column is still
+    in the planning half, in the same slot** — check its neighbours did not
+    shuffle.
+48. A to-do in that list that already had a different day is still on that
+    day, untouched.
+49. A to-do in that list scheduled past the day cap — dimmed, with a date
+    chip — is untouched. *(This is the case that separates "has a date" from
+    "renders in the list column"; they are not the same set.)*
+50. With "Completed" on in view settings, put a finished undated to-do in the
+    list and repeat. It stays put.
+51. Drop the list on a day where **every** one of its to-dos already has a
+    date. No outline while hovering, one toast on release, no write.
+52. Drop the list onto a *different* list's group header inside a day column.
+    It schedules onto **that day**, and the arriving to-dos group under their
+    own list's name, not the group you dropped on.
+53. Drag the list over Overflow — nothing highlights, nothing happens, no
+    toast, the chip flies home.
+54. Drag it over a collapsed weekend strip — nothing highlights, and the
+    strip does **not** expand (the dwell is card-only; §7).
+55. Watch the flight on a list with several movers: exactly one chip flies,
+    and **no row appears in the day column before it lands**. None is left
+    invisible afterwards either.
+56. ⌘Z once — every moved to-do returns to the list unscheduled, in one
+    press, with its original dates restored.
+57. Reload — the moves persist, and the list's own position is unchanged.
+58. Confirm the existing gestures still work: reorder a list within its
+    track, and carry one to another tab (§4.10c). Neither should have
+    changed.
+
+**Manual checklist — multi-select (§4.14, EI-194)**
+
+59. Cmd+click three cards in one list. Each highlights, **no sheet opens, and
+    nothing ticks done**.
+60. Cmd+click a fourth card's **checkbox**. It selects and does **not** tick.
+61. Shift+click a card several rows below the last one you clicked — the whole
+    run between them selects. Shift+click a card in a *different* column — it
+    re-anchors on that card instead of selecting across the gap.
+62. Shift+click across two group headers inside one day column. The range
+    covers exactly the cards the eye swept over, headers included in the
+    sweep but not selected.
+63. Plain-click one of the selected cards — the selection clears and the sheet
+    opens. Plain-click empty board space — it just clears.
+64. Escape with four selected — all clear. Then type in a column filter and
+    press Escape: the **filter** clears and the selection does not.
+65. Drag one of four selected cards onto a day. All four land, grouped under
+    their own lists. **None is left invisible, none appears twice**, and the
+    overlay chip carried a `4` badge on the way.
+66. Same onto a list column — they land contiguously at the pointer, in
+    reading order, and the cards already there keep their relative order.
+67. Same onto a day **group** header — all four take that group's list and
+    that day.
+68. Same onto Overflow — **one** toast, not four, and every ghost returns home.
+69. ⌘Z once — all four go back in a single press, each to its own previous
+    date, not to a shared one.
+70. Select four, then drag a **fifth, unselected** card. Only the fifth moves,
+    and the selection clears on lift.
+71. Select four, press Escape *mid-drag*. The drag cancels and the four stay
+    selected; a second Escape clears them.
+72. Select four, switch tabs, come back — nothing is selected. Same after
+    typing in a column filter.
+73. Select two, delete one from its sheet, then drag the other. Only one
+    moves, no crash.
+74. Arrow onto a row and press `x` twice — it selects then deselects. `Space`
+    still toggles done, `Enter` still opens the sheet.
+75. Select 20+ and drop. The flight and the writes both finish; no row is
+    stuck at zero opacity, and none is revealed before it exists.
 
 **Manual checklist — tab strip legibility (§4.10d, EI-117 – EI-120)**
 

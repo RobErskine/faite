@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { civilDateSchema, type CivilDate, type List, type Tab, type Todo } from "@/lib/schema";
 import { LOCAL_OWNER_ID } from "@/lib/store/repositories";
 import { mutateSettings } from "@/lib/store/mutate";
-import { undoLast } from "@/lib/undo";
+import { isTextEntry, undoLast } from "@/lib/undo";
 import type { Hotkey } from "@/lib/keyboard";
 
 /**
@@ -101,6 +101,15 @@ function readDeepLinkParams(): { todoId: string | null; day: CivilDate | null } 
 }
 
 /**
+ * One frozen empty set, so "nothing is landing" is referentially stable and
+ * every consumer's memo/effect deps stay quiet between drags.
+ */
+export const EMPTY_LANDING: ReadonlySet<string> = new Set();
+
+/** Same idea for the multi-select set (EI-194). */
+const EMPTY_SELECTION: ReadonlySet<string> = new Set();
+
+/**
  * Mirrors `openTodoId`/`openDay` back onto the URL — `history.replaceState`
  * only, never `pushState`, so opening a sheet never adds a back-button stop
  * (every card click would otherwise pollute history). Every other query
@@ -176,16 +185,22 @@ export function useBoardUiState() {
   }, []);
 
   /**
-   * The todo currently in flight from the cursor to its new slot.
+   * The todos currently in flight from the cursor to their new slots.
    *
-   * One id covers two different DOM nodes. Between release and the write
+   * Each id covers two different DOM nodes. Between release and the write
    * landing, it hides the *source* row — `isDragging` has already cleared, so
    * without this the ghost row would flick back to full opacity and then
    * vanish. After the write it hides the *destination* row, which now exists
    * but must not appear until the flying overlay has arrived. Rendering it at
    * zero opacity rather than removing it keeps column heights settled.
+   *
+   * A SET rather than a single id since EI-193: dropping a list on a day
+   * commits many to-dos from one gesture, and with only the dragged id held
+   * back every other mover pops into its destination while the overlay is
+   * still travelling — the precise failure the landing state exists to
+   * prevent (§4.7). One overlay still flies; the rest simply wait for it.
    */
-  const [landingTodoId, setLandingTodoId] = useState<string | null>(null);
+  const [landingTodoIds, setLandingTodoIds] = useState<ReadonlySet<string>>(EMPTY_LANDING);
   const landingRectRef = useRef<DOMRect | null>(null);
 
   /** The list column being dragged to reorder, if any. Never set with `activeTodo`. */
@@ -198,7 +213,7 @@ export function useBoardUiState() {
     // A card may still be flying to the slot it was just dropped in. Clearing
     // this reveals it in its restored position immediately, rather than
     // leaving it at zero opacity until the landing backstop times out.
-    setLandingTodoId(null);
+    setLandingTodoIds(EMPTY_LANDING);
     const entry = await undoLast();
     if (entry) toast.success("Undone", { description: entry.label, duration: 2500 });
   }, []);
@@ -295,6 +310,96 @@ export function useBoardUiState() {
   const expandWeekend = useCallback((id: string) => {
     setExpandedWeekends((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
   }, []);
+
+  /**
+   * Cards the user has Cmd/Ctrl+clicked (EI-194). Unpersisted and unsynced,
+   * for the same reason as `collapsedGroups` and `columnFilters` above — a
+   * selection surviving a reload would arm a destructive-feeling gesture with
+   * no visible cause.
+   *
+   * Deliberately NEVER pruned against the board. `selectedTodosInBoardOrder`
+   * (`lib/board.ts`) derives the live set on every render, so a to-do that is
+   * deleted, archived, filtered out, or carried to another tab leaves the
+   * selection by simply not appearing. An effect that pruned this instead
+   * would race a live query, and a stale id reaching the write path is how
+   * `mutate()` ends up throwing on a missing row.
+   */
+  const [selectedIds, setSelectedIds] = useState<ReadonlySet<string>>(EMPTY_SELECTION);
+
+  /**
+   * Where a Shift+click range measures from. Not part of the selection — it
+   * is the last card *clicked*, which is a different thing: shrinking a range
+   * back toward the anchor has to keep measuring from the same end.
+   */
+  const [selectionAnchorId, setSelectionAnchorId] = useState<string | null>(null);
+
+  /**
+   * The ORDERED SNAPSHOT of the selection at the moment of lift, or null for
+   * an ordinary one-card drag.
+   *
+   * Separate from `selectedIds` on purpose. That set can change mid-flight —
+   * a live query lands, a filter effect fires — and `handleDragEnd` must
+   * write exactly what the user picked up, not whatever the selection has
+   * since become. Same contract as `activeTodo` holding a record rather than
+   * an id.
+   */
+  const [activeSelectionIds, setActiveSelectionIds] = useState<readonly string[] | null>(null);
+
+  const clearSelection = useCallback(() => {
+    setSelectedIds((prev) => (prev.size === 0 ? prev : EMPTY_SELECTION));
+    setSelectionAnchorId(null);
+  }, []);
+
+  const toggleSelected = useCallback((todoId: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(todoId)) next.add(todoId);
+      return next.size === 0 ? EMPTY_SELECTION : next;
+    });
+    setSelectionAnchorId(todoId);
+  }, []);
+
+  /** Replaces the selection with `ids`, keeping `anchorId` to measure from. */
+  const selectRange = useCallback((ids: readonly string[], anchorId: string) => {
+    setSelectedIds(ids.length === 0 ? EMPTY_SELECTION : new Set(ids));
+    setSelectionAnchorId(anchorId);
+  }, []);
+
+  /**
+   * Clearing the selection: a plain click on anything that is not a card, or
+   * Escape.
+   *
+   * Registered only while something is selected, so an ordinary board pays
+   * nothing for this. Capture phase is deliberately NOT used — the card's own
+   * `onClickCapture` runs first and calls `stopPropagation` for a modified
+   * click, which is what keeps a Cmd+click on empty-ish card chrome from
+   * immediately clearing what it just selected.
+   *
+   * Escape is guarded by `isTextEntry`: Escape inside a column filter means
+   * "clear the filter", and stealing it would make the selection feel like it
+   * evaporates at random while typing.
+   */
+  useEffect(() => {
+    if (selectedIds.size === 0) return;
+
+    const onClick = (e: MouseEvent) => {
+      if (e.metaKey || e.ctrlKey || e.shiftKey) return;
+      const target = e.target as Element | null;
+      if (target?.closest?.("[data-todo-row]")) return;
+      clearSelection();
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || isTextEntry(e.target)) return;
+      clearSelection();
+    };
+
+    document.addEventListener("click", onClick);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("click", onClick);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [selectedIds, clearSelection]);
 
   /**
    * In-column filter text, by droppable column id (`list:<id>`, `day:<id>`,
@@ -414,8 +519,15 @@ export function useBoardUiState() {
     setHelpSheetOpen,
     phoneView,
     setPhoneView,
-    landingTodoId,
-    setLandingTodoId,
+    landingTodoIds,
+    setLandingTodoIds,
+    selectedIds,
+    toggleSelected,
+    selectRange,
+    clearSelection,
+    selectionAnchorId,
+    activeSelectionIds,
+    setActiveSelectionIds,
     landingRectRef,
     activeList,
     setActiveList,

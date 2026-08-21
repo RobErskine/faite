@@ -80,6 +80,10 @@ interface HarnessProps {
   recurrenceSummary?: string;
   reminderPresets?: ReminderPreset[];
   subtaskCount?: { done: number; total: number } | null;
+  timezone?: string;
+  isSelected?: boolean;
+  isGhosted?: boolean;
+  onSelect?: (id: string, m: { additive: boolean; range: boolean }) => void;
 }
 
 function Harness({
@@ -93,6 +97,10 @@ function Harness({
   recurrenceSummary,
   reminderPresets,
   subtaskCount,
+  timezone,
+  isSelected,
+  isGhosted,
+  onSelect,
 }: HarnessProps) {
   return (
     <TooltipProvider>
@@ -103,6 +111,10 @@ function Harness({
             labels={[]}
             reminderPresets={reminderPresets}
             ctx={ctx}
+            timezone={timezone}
+            isSelected={isSelected}
+            isGhosted={isGhosted}
+            onSelect={onSelect}
             onToggle={onToggle}
             onOpen={onOpen}
             onNavigate={onNavigate}
@@ -466,5 +478,226 @@ describe("the Faite Loop", () => {
     expect(row().querySelector("[data-rollover-marker]")).toBeNull();
     // The repeat marker still shows; the badge row exists only for it.
     expect(badgeRow()).toBeNull();
+  });
+});
+
+/**
+ * EI-192. The tooltip popup itself is portalled and hover-gated, so — as with
+ * the location pin and the clamped title — these assert the trigger's state
+ * and the `sr-only` channel rather than the rendered popup.
+ */
+describe("the completion stamp", () => {
+  const checkbox = () => document.querySelector<HTMLElement>('[data-slot="checkbox"]')!;
+  const done = (overrides: Partial<Todo> = {}) =>
+    todo({ status: "done", completedAt: "2026-08-14T21:41:00.000Z", ...overrides });
+
+  it("says nothing on an open to-do", () => {
+    render(<Harness />);
+    expect(checkbox().hasAttribute("data-completed-at")).toBe(false);
+    expect(title().textContent).not.toContain("Completed");
+  });
+
+  it("carries the completion time for a done to-do", () => {
+    render(<Harness todo={done()} timezone="UTC" />);
+    expect(checkbox().getAttribute("data-completed-at")).toBe("2026-08-14T21:41:00.000Z");
+    expect(title().textContent).toContain("Completed Aug 14 · 9:41 PM");
+  });
+
+  it("says dropped, not completed, for a won't-do", () => {
+    render(<Harness todo={done({ status: "dropped" })} timezone="UTC" />);
+    expect(title().textContent).toContain("Dropped Aug 14 · 9:41 PM");
+    expect(title().textContent).not.toContain("Completed");
+  });
+
+  it("renders the stamp in the given timezone", () => {
+    render(<Harness todo={done()} timezone="America/Los_Angeles" />);
+    expect(title().textContent).toContain("Completed Aug 14 · 2:41 PM");
+  });
+
+  it("leaves the accessible name alone", () => {
+    // A tooltip is a description. Folding it into the name would make the
+    // control announce itself as "Mark Buy milk not done Completed Aug 14…".
+    render(<Harness todo={done()} timezone="UTC" />);
+    expect(checkbox().getAttribute("aria-label")).toBe("Mark Buy milk not done");
+  });
+
+  it("still toggles while a tooltip is attached", () => {
+    // Base UI's `render` merges the trigger's props onto the Checkbox. If that
+    // merge ever swallowed `onCheckedChange`, completed cards would silently
+    // stop being reopenable — and nothing else here would catch it.
+    const onToggle = vi.fn();
+    render(<Harness todo={done()} timezone="UTC" onToggle={onToggle} />);
+    fireEvent.click(checkbox());
+    expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the checkbox out of the grip's hit area when it has a tooltip", () => {
+    /*
+     * The hit-area expansion stays on the CHECKBOX (it is measured from the
+     * checkbox's own box, and 4px is what stops it clear of the grip's
+     * glyph), while the positioning lives on the tooltip trigger wrapping
+     * it. Both halves asserted, because moving either one alone silently
+     * breaks the geometry §5.4 depends on.
+     */
+    render(<Harness todo={done()} timezone="UTC" />);
+    expect(checkbox().className).toContain("after:-inset-x-1");
+    // `after:absolute` is in the shadcn base and stays; what must be gone is
+    // the positioning the wrapper now owns.
+    expect(checkbox().className).not.toContain("absolute left-3");
+
+    const wrapper = checkbox().parentElement!;
+    expect(wrapper.tagName).toBe("SPAN");
+    expect(wrapper.className).toContain("absolute left-3 top-2");
+  });
+
+  it("triggers the tooltip from a plain span, never from the Checkbox itself", () => {
+    /*
+     * The regression this file exists to prevent (EI-196): `TooltipTrigger
+     * render={<Checkbox/>}` composes two Base UI `useRender` components, and
+     * the trigger's pointer handlers are dropped on the floor. Everything
+     * rendered, every prop survived, and the tooltip simply never opened —
+     * invisible to typecheck, lint, and every assertion in this file at the
+     * time.
+     *
+     * happy-dom cannot open a Base UI tooltip (that needs real pointer
+     * input — see e2e/completion-tooltip.spec.ts), so what is pinned here is
+     * the SHAPE: the checkbox must not be the trigger.
+     */
+    render(<Harness todo={done()} timezone="UTC" />);
+    expect(checkbox().getAttribute("data-slot")).toBe("checkbox");
+    const wrapper = checkbox().parentElement!;
+    expect(wrapper.getAttribute("data-slot")).toBe("tooltip-trigger");
+  });
+});
+
+/**
+ * EI-194. The three hazards a row-level click interceptor could break — the
+ * 4px drag threshold, the detail sheet, and the checkbox — plus the selection
+ * chrome. The threshold itself is dnd-kit's and cannot be exercised without
+ * layout; what IS testable here is that an unmodified click is left entirely
+ * alone, which is what preserves it.
+ */
+describe("multi-select", () => {
+  const checkbox = () => document.querySelector<HTMLElement>('[data-slot="checkbox"]')!;
+
+  it("selects on cmd+click instead of opening the sheet", () => {
+    const onSelect = vi.fn();
+    const onOpen = vi.fn();
+    render(<Harness onSelect={onSelect} onOpen={onOpen} />);
+    fireEvent.click(titleButton(), { metaKey: true });
+    expect(onSelect).toHaveBeenCalledWith("t1", { additive: true, range: false });
+    expect(onOpen).not.toHaveBeenCalled();
+  });
+
+  it("selects on ctrl+click too, for Windows and Linux", () => {
+    const onSelect = vi.fn();
+    render(<Harness onSelect={onSelect} />);
+    fireEvent.click(titleButton(), { ctrlKey: true });
+    expect(onSelect).toHaveBeenCalledWith("t1", { additive: true, range: false });
+  });
+
+  it("ranges on shift+click", () => {
+    const onSelect = vi.fn();
+    render(<Harness onSelect={onSelect} />);
+    fireEvent.click(titleButton(), { shiftKey: true });
+    expect(onSelect).toHaveBeenCalledWith("t1", { additive: false, range: true });
+  });
+
+  it("leaves a plain click completely alone", () => {
+    // The whole point: an unmodified click must reach the title's own
+    // handler, or the detail sheet stops opening.
+    const onSelect = vi.fn();
+    const onOpen = vi.fn();
+    render(<Harness onSelect={onSelect} onOpen={onOpen} />);
+    fireEvent.click(titleButton());
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("selects rather than ticking when the checkbox is cmd+clicked", () => {
+    const onSelect = vi.fn();
+    const onToggle = vi.fn();
+    render(<Harness onSelect={onSelect} onToggle={onToggle} />);
+    fireEvent.click(checkbox(), { metaKey: true });
+    expect(onSelect).toHaveBeenCalledWith("t1", { additive: true, range: false });
+    expect(onToggle).not.toHaveBeenCalled();
+  });
+
+  it("still ticks on a plain checkbox click", () => {
+    const onSelect = vi.fn();
+    const onToggle = vi.fn();
+    render(<Harness onSelect={onSelect} onToggle={onToggle} />);
+    fireEvent.click(checkbox());
+    expect(onToggle).toHaveBeenCalledTimes(1);
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("marks the row so a click elsewhere can tell board from card", () => {
+    render(<Harness />);
+    expect(row().hasAttribute("data-todo-row")).toBe(true);
+  });
+
+  it("shows selection chrome, and lets dragging still win over it", () => {
+    render(<Harness isSelected />);
+    expect(row().className).toContain("ring-primary/30");
+  });
+
+  it("ghosts a non-dragged member of a selection in flight", () => {
+    render(<Harness isGhosted />);
+    expect(row().className).toContain("opacity-30");
+  });
+
+  it("toggles selection on `x` while Space still toggles done", () => {
+    const onSelect = vi.fn();
+    const onToggle = vi.fn();
+    render(<Harness onSelect={onSelect} onToggle={onToggle} />);
+    const el = row();
+    el.focus();
+    fireEvent.keyDown(el, { key: "x", target: el });
+    expect(onSelect).toHaveBeenCalledWith("t1", { additive: true, range: false });
+    expect(onToggle).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(el, { key: " ", target: el });
+    expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * EI-197. The card's checkbox was a Complete button, not a toggle — it wrote
+ * `done` over `done` and the card sat there while its own `aria-label`
+ * promised otherwise. The handler lives in `use-board-actions.ts`, so what is
+ * pinned here is the CARD's half of the contract: the label has to state the
+ * action, because that label is the only thing telling a user (or a screen
+ * reader) which way a click will go.
+ */
+describe("the checkbox's promise", () => {
+  const box = () => document.querySelector<HTMLElement>('[data-slot="checkbox"]')!;
+
+  it("offers to complete an open to-do", () => {
+    render(<Harness />);
+    expect(box().getAttribute("aria-label")).toBe("Mark Buy milk done");
+    expect(box().getAttribute("data-checked")).toBeNull();
+  });
+
+  it("offers to REOPEN a completed one", () => {
+    render(<Harness todo={todo({ status: "done", completedAt: "2026-08-14T21:41:00.000Z" })} />);
+    expect(box().getAttribute("aria-label")).toBe("Mark Buy milk not done");
+  });
+
+  it("shows a won't-do to-do as unticked, so the checkbox reads as available", () => {
+    // `dropped` is settled but not done; ticking it means "actually, it's
+    // back on", which only makes sense if the box looks empty.
+    render(<Harness todo={todo({ status: "dropped", completedAt: "2026-08-14T21:41:00.000Z" })} />);
+    expect(box().getAttribute("aria-label")).toBe("Mark Buy milk done");
+  });
+
+  it("hands the whole todo to onToggle, so the handler can read its status", () => {
+    // The bug was the handler ignoring this. Passing the record rather than
+    // an id is what makes reading it possible at all.
+    const onToggle = vi.fn();
+    const done = todo({ status: "done", completedAt: "2026-08-14T21:41:00.000Z" });
+    render(<Harness todo={done} onToggle={onToggle} />);
+    fireEvent.click(box());
+    expect(onToggle).toHaveBeenCalledWith(done);
   });
 });

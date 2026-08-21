@@ -118,6 +118,8 @@ export function DesktopBoard({
     overTodoId,
     overGroupId,
     columnDropTargetId,
+    listDayDrop,
+    movingIds,
     tabDrop,
     activeTabId,
     tabsById,
@@ -137,7 +139,8 @@ export function DesktopBoard({
     expandWeekend,
     columnFilters,
     setColumnFilter,
-    landingTodoId,
+    landingTodoIds,
+    selectedIds,
     infoTabId,
     setInfoListId,
     setInfoTabId,
@@ -253,6 +256,7 @@ export function DesktopBoard({
             labels={labels}
             reminderPresets={data.reminderPresets}
             ctx={ctx}
+            timezone={settings?.timezone ?? "UTC"}
             // Grouped like a day column — the origin of a stale to-do is as
             // useful as anything here. `rejectsDrop` below means its groups
             // register no droppable, so they read but do not receive.
@@ -273,7 +277,10 @@ export function DesktopBoard({
             emphasis
             isDragActive={!!activeTodo}
             overTodoId={overTodoId}
-            landingTodoId={landingTodoId}
+            landingTodoIds={landingTodoIds}
+                  selectedIds={selectedIds}
+                  movingIds={movingIds}
+                  onSelect={actions.handleSelect}
             rejectsDrop
             pinned
             collapsed={overflowCollapsed}
@@ -333,6 +340,15 @@ export function DesktopBoard({
                   // in use-day-track.ts, which must not measure a 40px
                   // weekend strip that happens to sort first.
                   dayTrackColumn
+                  // EI-193: a list dragged over this day will schedule its
+                  // unscheduled to-dos onto it. Reuses the column-drag chrome
+                  // the planning half already has; `count > 0` keeps a day
+                  // where nothing would move unhighlighted, so the outline
+                  // never promises a write that will not happen.
+                  isColumnDragActive={!!activeList}
+                  isColumnDropTarget={
+                    listDayDrop?.day === column.day && listDayDrop.count > 0
+                  }
                   title={weekday}
                   // `subtitle` also carries prose on other columns, so the
                   // numeral face is applied here rather than in BoardColumn.
@@ -359,6 +375,7 @@ export function DesktopBoard({
                   todos={column.todos}
                   labels={labels}
                   ctx={ctx}
+                  timezone={settings?.timezone ?? "UTC"}
                   dueCount={deadlineCounts.get(column.day)}
                   recurrenceSummaries={recurrenceSummaries}
                   subtaskCounts={subtaskCounts}
@@ -380,7 +397,10 @@ export function DesktopBoard({
                   totalCount={board.days.find((d) => d.id === column.id)?.todos.length}
                   isDragActive={!!activeTodo}
                   overTodoId={overTodoId}
-                  landingTodoId={landingTodoId}
+                  landingTodoIds={landingTodoIds}
+                  selectedIds={selectedIds}
+                  movingIds={movingIds}
+                  onSelect={actions.handleSelect}
                 />
               );
             })}
@@ -461,6 +481,7 @@ export function DesktopBoard({
               todos={filteredBacklogColumn.todos}
               labels={labels}
               ctx={ctx}
+              timezone={settings?.timezone ?? "UTC"}
               awayTodoIds={board.awayTodoIds}
               onToggle={handleToggle}
               onOpen={(todo) => openTodoSheet(todo.id)}
@@ -481,7 +502,10 @@ export function DesktopBoard({
               minRows={5}
               isDragActive={!!activeTodo}
               overTodoId={overTodoId}
-              landingTodoId={landingTodoId}
+              landingTodoIds={landingTodoIds}
+                  selectedIds={selectedIds}
+                  movingIds={movingIds}
+                  onSelect={actions.handleSelect}
               recurrenceSummaries={recurrenceSummaries}
               subtaskCounts={subtaskCounts}
               // Backlog cannot be renamed, archived, or deleted, so its one
@@ -556,6 +580,7 @@ export function DesktopBoard({
                   todos={column.todos}
                   labels={labels}
                   ctx={ctx}
+                  timezone={settings?.timezone ?? "UTC"}
                   awayTodoIds={board.awayTodoIds}
                   onToggle={handleToggle}
                   onOpen={(todo) => openTodoSheet(todo.id)}
@@ -571,7 +596,10 @@ export function DesktopBoard({
                   minRows={5}
                   isDragActive={!!activeTodo}
                   overTodoId={overTodoId}
-                  landingTodoId={landingTodoId}
+                  landingTodoIds={landingTodoIds}
+                  selectedIds={selectedIds}
+                  movingIds={movingIds}
+                  onSelect={actions.handleSelect}
                   recurrenceSummaries={recurrenceSummaries}
                   subtaskCounts={subtaskCounts}
                   reorderListId={column.list.id}

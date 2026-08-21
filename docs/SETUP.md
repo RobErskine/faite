@@ -405,6 +405,20 @@ Production-as-staging is a reasonable call while Faite has one user, but:
    writes the real auth tables and, once P3 lands, real synced todo data.
    Treat previews as "the real app on a different URL", not a sandbox. This is
    the first thing to fix when environments get split.
+
+   **Consciously accepted, not fixed, when `/privacy` published (EI-203, the S
+   milestone).** Splitting this properly means a second D1 database, a second
+   Durable Object namespace, and a separate Workers Builds environment —
+   real infra work with its own risk of breaking the one deploy pipeline that
+   works today, not something to rush through inside a documentation-audit
+   ticket. Two things keep the residual risk low in the meantime: preview URLs
+   are per-branch `*.workers.dev` addresses, not linked from anywhere public,
+   and every page's `alternates.canonical` resolves absolute against
+   `metadataBase` (`https://myfaite.app`, set in `src/app/layout.tsx`)
+   regardless of which origin actually served it, so a preview page tells a
+   crawler it's a duplicate of the real one rather than a distinct result.
+   A real environment split is filed as its own follow-up rather than gating
+   publication on it.
 2. **Deploys do not run D1 migrations.** New ones need
    `npm run auth:migrate:remote` (`wrangler d1 migrations apply AUTH_DB
    --remote`) applied by hand. Schema-dependent code deployed without it
@@ -520,7 +534,7 @@ several docs told you to expect and not fix. **It is fixed** — the queued jump
 a monotonic request now rather than state the layout effect cleared on its way
 out, so nothing calls `setState` from inside an effect. See DRAG-AND-DROP §4.11.
 
-Typecheck, lint and all 692 tests are green as of 2026-08-09. So a red `verify`
+Typecheck, lint and all 1868 tests are green as of 2026-08-20. So a red `verify`
 here now really does mean something just broke — there is no baseline to discount
 any more.
 

@@ -19,6 +19,9 @@ import {
   parseWeekendColumnId,
   planListDrop,
   tabCountsFrom,
+  planListDayDrop,
+  rangeSelectionIds,
+  selectedTodosInBoardOrder,
   planListTabDrop,
   planTabDrop,
   preferPreciseTarget,
@@ -1272,5 +1275,153 @@ describe("tabCountsFrom", () => {
     );
 
     expect(counts.get("t1")).toEqual({ lists: 1, items: 0, assigned: 0 });
+  });
+});
+
+describe("planListDayDrop", () => {
+  /**
+   * EI-193. Rob's example verbatim: a grocery list where one to-do — buy
+   * honey at the farmers market — is already scheduled two weeks out and must
+   * not move when the rest of the list is dropped on a day.
+   */
+  const column = (todos: Todo[]) => [
+    { id: listColumnId("grocery"), list: list("grocery", "Grocery List", false, positions[1]), todos },
+  ];
+
+  const milk = todo({ id: "milk", listId: "grocery" });
+  const eggs = todo({ id: "eggs", listId: "grocery" });
+  const honey = todo({ id: "honey", listId: "grocery", scheduledDate: "2026-08-28" });
+
+  it("schedules the undated to-dos and leaves the dated one alone", () => {
+    const plan = planListDayDrop(column([milk, eggs, honey]), "grocery", "2026-08-14")!;
+    expect(plan.day).toBe("2026-08-14");
+    expect(plan.todos.map((t) => t.id)).toEqual(["milk", "eggs"]);
+    expect(plan.skipped).toBe(1);
+  });
+
+  it("keeps board order", () => {
+    const plan = planListDayDrop(column([eggs, milk]), "grocery", "2026-08-14")!;
+    expect(plan.todos.map((t) => t.id)).toEqual(["eggs", "milk"]);
+  });
+
+  it("leaves an AWAY to-do alone — it has a day, it just renders in the list", () => {
+    // Scheduled past the day cap, so it renders in its list column dimmed
+    // with a date chip (§5.3). Reading placement instead of `scheduledDate`
+    // would silently drag these back into the visible window.
+    const away = todo({ id: "away", listId: "grocery", scheduledDate: "2027-06-01" });
+    const plan = planListDayDrop(column([milk, away]), "grocery", "2026-08-14")!;
+    expect(plan.todos.map((t) => t.id)).toEqual(["milk"]);
+    expect(plan.skipped).toBe(1);
+  });
+
+  it("leaves settled to-dos alone", () => {
+    // With `done` visible, an undated finished to-do sits in the column
+    // looking like any other. Scheduling it would resurrect finished work.
+    const done = todo({ id: "done", listId: "grocery", status: "done" });
+    const dropped = todo({ id: "dropped", listId: "grocery", status: "dropped" });
+    const plan = planListDayDrop(column([milk, done, dropped]), "grocery", "2026-08-14")!;
+    expect(plan.todos.map((t) => t.id)).toEqual(["milk"]);
+    expect(plan.skipped).toBe(2);
+  });
+
+  it("reports the nothing-to-schedule case rather than failing", () => {
+    // Empty `todos` with a non-zero `skipped` is a real answer — the caller
+    // has to explain it, because the column visibly has cards in it.
+    const plan = planListDayDrop(column([honey]), "grocery", "2026-08-14")!;
+    expect(plan.todos).toEqual([]);
+    expect(plan.skipped).toBe(1);
+  });
+
+  it("handles an empty list", () => {
+    const plan = planListDayDrop(column([]), "grocery", "2026-08-14")!;
+    expect(plan.todos).toEqual([]);
+    expect(plan.skipped).toBe(0);
+  });
+
+  it("returns null for a list that is not on the board", () => {
+    expect(planListDayDrop(column([milk]), "nope", "2026-08-14")).toBeNull();
+  });
+});
+
+describe("selectedTodosInBoardOrder", () => {
+  /**
+   * EI-194. A multi-drag writes in this order, so it is the order the run
+   * lands in — a run that arrives scrambled relative to how it was picked
+   * reads as a bug even though every write succeeded.
+   */
+  const t = (id: string) => todo({ id });
+  const board = {
+    days: [
+      { day: "2026-08-14", todos: [t("mon-a"), t("mon-b")] },
+      { day: "2026-08-15", todos: [t("tue-a")] },
+    ],
+    overflow: { todos: [t("over")] },
+    lists: [
+      { todos: [t("backlog-a"), t("backlog-b")] },
+      { todos: [t("grocery-a")] },
+    ],
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any;
+
+  it("reads days, then overflow, then lists", () => {
+    const ids = new Set(["grocery-a", "over", "tue-a", "mon-b", "backlog-a"]);
+    expect(selectedTodosInBoardOrder(board, ids).map((x) => x.id)).toEqual([
+      "mon-b",
+      "tue-a",
+      "over",
+      "backlog-a",
+      "grocery-a",
+    ]);
+  });
+
+  it("ignores ids that no longer render", () => {
+    // A deleted, archived or filtered-out to-do leaves the selection by
+    // simply not appearing — no pruning effect, no race, no stale id
+    // reaching mutate().
+    const ids = new Set(["mon-a", "ghost"]);
+    expect(selectedTodosInBoardOrder(board, ids).map((x) => x.id)).toEqual(["mon-a"]);
+  });
+
+  it("returns nothing for an empty selection", () => {
+    expect(selectedTodosInBoardOrder(board, new Set())).toEqual([]);
+  });
+});
+
+describe("rangeSelectionIds", () => {
+  const t = (id: string) => todo({ id });
+  const board = {
+    days: [{ day: "2026-08-14", todos: [t("d1"), t("d2"), t("d3")] }],
+    overflow: { todos: [] },
+    lists: [{ todos: [t("l1"), t("l2"), t("l3"), t("l4")] }],
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any;
+
+  it("covers the run between two cards in a list column", () => {
+    expect(rangeSelectionIds(board, "l2", "l4")).toEqual(["l2", "l3", "l4"]);
+  });
+
+  it("works upward as well as downward", () => {
+    expect(rangeSelectionIds(board, "l4", "l2")).toEqual(["l2", "l3", "l4"]);
+  });
+
+  it("covers a run inside a day column too", () => {
+    // `DayColumn.todos` is the flat rendered order, groups and all, so a
+    // range across two group headers is exactly what the eye swept over.
+    expect(rangeSelectionIds(board, "d1", "d3")).toEqual(["d1", "d2", "d3"]);
+  });
+
+  it("is a single card when both ends are the same", () => {
+    expect(rangeSelectionIds(board, "l2", "l2")).toEqual(["l2"]);
+  });
+
+  it("refuses a range that crosses columns", () => {
+    // The two halves are ordered by different rules entirely, so there is no
+    // answer here a user would predict. Null tells the caller to re-anchor.
+    expect(rangeSelectionIds(board, "d1", "l3")).toBeNull();
+    expect(rangeSelectionIds(board, "l3", "d1")).toBeNull();
+  });
+
+  it("refuses when the anchor no longer renders", () => {
+    expect(rangeSelectionIds(board, "ghost", "l1")).toBeNull();
   });
 });

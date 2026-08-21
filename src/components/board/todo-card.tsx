@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { DragGrip } from "./drag-grip";
 import { PriorityRail, TitleMarkers, TodoMetaBadges } from "./todo-row-parts";
 import { cardStop, navKeyOf, type NavKey } from "@/lib/column-nav";
+import { formatCompletionStamp } from "@/lib/event-time";
 import { priorityRail } from "@/lib/priority";
 import { TITLE_CLAMP_CLASS } from "@/lib/title";
 import { rollEventsFor } from "@/lib/rollover-events";
@@ -26,6 +27,24 @@ interface TodoCardProps {
   /** Named reminder times (EI-106 P5) — see `TodoMetaBadges`. */
   reminderPresets?: ReminderPreset[];
   ctx: PlacementContext;
+  /**
+   * IANA zone for the completion stamp on the checkbox (EI-192).
+   *
+   * A prop rather than a field on `ctx`, matching how `TodoSheet` and
+   * `DaySheet` already receive it. `PlacementContext` carries civil dates and
+   * every formatter that reads it is pinned to UTC on purpose
+   * (`scheduling.ts`'s header); a zone-aware instant has no business in there.
+   */
+  timezone?: string;
+  /** Part of the Cmd/Ctrl+click multi-selection (EI-194). */
+  isSelected?: boolean;
+  /**
+   * Being carried by a multi-drag, but is not the card under the cursor.
+   * Ghosted like the lifted row so the whole run visibly leaves together.
+   */
+  isGhosted?: boolean;
+  /** `additive` is Cmd/Ctrl; `range` is Shift. Both false means a plain click. */
+  onSelect?: (todoId: string, modifiers: { additive: boolean; range: boolean }) => void;
   /** Scheduled outside the visible window — shown dimmed in its list column. */
   isAway?: boolean;
   /** Draw the drop indicator immediately above this card. */
@@ -82,6 +101,10 @@ export function TodoCard({
   labels,
   reminderPresets,
   ctx,
+  timezone = "UTC",
+  isSelected,
+  isGhosted,
+  onSelect,
   isAway,
   showInsertionLine,
   isLanding,
@@ -117,6 +140,14 @@ export function TodoCard({
   /** Kept locally only for the sr-only priority label below — the visual
    * rail itself is rendered by `<PriorityRail>`. */
   const rail = priorityRail(todo.priority);
+
+  /*
+   * Null for an open to-do, which is what keeps the tooltip off every card on
+   * an ordinary board. `completedAt` is stamped for `dropped` as well as
+   * `done` — the field really means "settled at" — so the wording branches
+   * rather than claiming everything was completed.
+   */
+  const completionStamp = formatCompletionStamp(todo.status, todo.completedAt, timezone);
 
   /**
    * The Faite Loop, made visible: the last roll event tells us whether this
@@ -185,6 +216,42 @@ export function TodoCard({
       onMouseDown={startMouseDrag}
       onTouchStart={startTouchDrag}
       /*
+        Multi-select (EI-194). Capture phase on the ROW is the only place this
+        can go, and each of the three things it has to not break is already
+        handled by something else:
+
+        - The 4px drag threshold is untouched — `onMouseDown` still reaches
+          `MouseSensor` first. If a drag DID activate, dnd-kit has registered
+          a capture-phase `click` listener on `document` that stops
+          propagation and stays attached 50ms past `detach()`, and document
+          capture runs before this. So a Cmd+drag can never also toggle
+          selection.
+        - The detail sheet still opens on a plain click: the title's own
+          `onClick` is a bubble-phase handler on a descendant, and the
+          unmodified branch below deliberately does NOT stop propagation.
+        - The checkbox still toggles on a plain click, and on a modified one
+          selects instead of ticking — one uniform rule for the whole row,
+          with the `after:-inset-x-1` hit-area geometry left alone.
+
+        macOS turns Ctrl+click into `contextmenu` and suppresses the `click`
+        entirely, so `ctrlKey` is effectively the Windows/Linux path.
+      */
+      onClickCapture={(e) => {
+        const additive = e.metaKey || e.ctrlKey;
+        const range = e.shiftKey;
+        if (!additive && !range) {
+          // Let the click through to whatever it landed on; the document
+          // listener in `use-board-ui-state.ts` handles collapsing.
+          return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        onSelect?.(todo.id, { additive, range });
+      }}
+      // What the document-level "clear on click elsewhere" listener uses to
+      // tell a click on a card from a click on the board behind it.
+      data-todo-row=""
+      /*
         A nav stop for the arrow keys (docs/KEYBOARD.md §11). `tabIndex={-1}`
         makes the row focusable programmatically WITHOUT joining the tab order,
         so Tab still walks the grip, checkbox and title exactly as before and
@@ -209,6 +276,13 @@ export function TodoCard({
         } else if (e.key === " ") {
           e.preventDefault();
           onToggle(todo);
+        } else if (e.key === "x" || e.key === "X") {
+          // The keyboard route into a multi-selection (EI-194). Space is
+          // already spoken for by "toggle done", so selection needs a letter;
+          // `x` is the mail-client convention and is registered in
+          // `lib/shortcuts.ts` as a local shortcut.
+          e.preventDefault();
+          onSelect?.(todo.id, { additive: true, range: false });
         }
       }}
       className={cn(
@@ -234,7 +308,15 @@ export function TodoCard({
         "hover:bg-accent/50 focus-within:bg-accent/50",
         // The dragged row stays in place as a faint ghost so the list does not
         // visibly collapse out from under the cursor.
+        /*
+          Selected, but placed BEFORE the drag/landing states so those still
+          win — a selected card being dragged must read as dragging.
+        */
+        isSelected && "bg-primary/10 ring-1 ring-inset ring-primary/30",
         isDragging && "opacity-30",
+        // A non-dragged member of a multi-selection in flight: ghosted like
+        // the lifted row so the whole run visibly leaves together.
+        isGhosted && "opacity-30",
         // Held invisible while the overlay is still flying towards this slot.
         // Last, so it wins over the dragging and away states.
         isLanding && "opacity-0",
@@ -346,15 +428,47 @@ export function TodoCard({
         widen the tap target back into the grip on exactly the devices where
         a stray tap is most likely.
       */}
-      <Checkbox
-        checked={todo.status === "done"}
-        onCheckedChange={() => onToggle(todo)}
-        aria-label={`Mark ${todo.title} ${todo.status === "done" ? "not done" : "done"}`}
-        // Cursor is inherited, so without this the checkbox would read as a
-        // drag surface. It still drags if you pull from it; it just should not
-        // advertise that over being a checkbox.
-        className="absolute left-3 top-2 cursor-pointer after:-inset-x-1 pointer-coarse:after:-inset-x-1"
-      />
+      <Tooltip>
+        {/*
+          The trigger is a plain `span` WRAPPING the checkbox, not the checkbox
+          itself.
+
+          `render={<Checkbox/>}` was the obvious spelling and it does not work:
+          `Checkbox` is Base UI's own `useRender` component, and composing two
+          of those drops the trigger's pointer handlers on the floor. The
+          checkbox rendered fine, kept every prop, and simply never opened a
+          tooltip — `aria-describedby` stayed null through a full hover. Every
+          working tooltip in this codebase triggers off a plain element (the
+          location pin's span, the title's span) or a shadcn `Button`, which is
+          a bare `<button>`; none of them nests a second Base UI primitive.
+
+          Base UI adds no role and no tabIndex to a span trigger, so the
+          checkbox remains the only control here — same reasoning as the
+          location pin inside the title button.
+
+          The positioning moves to this wrapper, but the HIT AREA does not:
+          `after:-inset-x-1` stays on the checkbox and is measured from the
+          checkbox's own box, so the 4px expansion still stops clear of the
+          grip's glyph. That boundary is what its regression test protects,
+          and it is unchanged.
+        */}
+        <TooltipTrigger
+          disabled={!completionStamp}
+          render={<span className="absolute left-3 top-2 inline-flex" />}
+        >
+          <Checkbox
+            checked={todo.status === "done"}
+            onCheckedChange={() => onToggle(todo)}
+            aria-label={`Mark ${todo.title} ${todo.status === "done" ? "not done" : "done"}`}
+            data-completed-at={todo.completedAt ?? undefined}
+            // Cursor is inherited, so without this the checkbox would read as a
+            // drag surface. It still drags if you pull from it; it just should not
+            // advertise that over being a checkbox.
+            className="cursor-pointer after:-inset-x-1 pointer-coarse:after:-inset-x-1"
+          />
+        </TooltipTrigger>
+        {completionStamp && <TooltipContent>{completionStamp}</TooltipContent>}
+      </Tooltip>
 
       <button
         type="button"
@@ -426,6 +540,14 @@ export function TodoCard({
                 />
                 {todo.title}
                 {rail && <span className="sr-only"> — {rail.label}</span>}
+                {/*
+                  The tooltip is a pointer nicety; this is the real channel.
+                  Base UI's `aria-describedby` only exists while the tooltip is
+                  OPEN, so a screen-reader user who never hovers would never
+                  hear it — and the checkbox's own `aria-label` is a name, not
+                  a place to put a description.
+                */}
+                {completionStamp && <span className="sr-only"> — {completionStamp}</span>}
               </span>
             }
           />

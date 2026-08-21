@@ -100,6 +100,8 @@ interface BoardColumnProps {
   todos: Todo[];
   labels: LabelRecord[];
   ctx: PlacementContext;
+  /** IANA zone, forwarded to each card's completion stamp (EI-192). */
+  timezone?: string;
   awayTodoIds?: Set<string>;
   /**
    * How many to-dos anywhere on the board carry a deadline on this column's
@@ -182,7 +184,12 @@ interface BoardColumnProps {
   /** Id of the todo the pointer is currently over, for the insertion line. */
   overTodoId?: string | null;
   /** Id of the todo flying to its new slot — hidden until the ghost arrives. */
-  landingTodoId?: string | null;
+  landingTodoIds?: ReadonlySet<string>;
+  /** Cmd/Ctrl+click multi-selection (EI-194). */
+  selectedIds?: ReadonlySet<string>;
+  /** Non-dragged members of a multi-selection currently in flight. */
+  movingIds?: ReadonlySet<string>;
+  onSelect?: (todoId: string, modifiers: { additive: boolean; range: boolean }) => void;
   /**
    * Dropping here will be refused (Overflow). Styled as a rejecting target so
    * the outcome is obvious before the pointer is released.
@@ -294,6 +301,7 @@ export function BoardColumn({
   todos,
   labels,
   ctx,
+  timezone,
   awayTodoIds,
   dueCount,
   groups,
@@ -315,7 +323,10 @@ export function BoardColumn({
   onOpenInfo,
   isDragActive,
   overTodoId,
-  landingTodoId,
+  landingTodoIds,
+  selectedIds,
+  movingIds,
+  onSelect,
   rejectsDrop,
   reorderListId,
   reservesGripSlot,
@@ -562,12 +573,16 @@ export function BoardColumn({
         labels={labels}
         reminderPresets={reminderPresets}
         ctx={ctx}
+        timezone={timezone}
         isAway={awayTodoIds?.has(todo.id)}
         // A grouped column has no per-card insertion line: its cards are not
         // droppables, so `overTodoId` can never name one of them anyway (see
         // CARDS_NOT_DROPPABLE). The group highlight is the indicator there.
         showInsertionLine={!rejectsDrop && overTodoId === todo.id}
-        isLanding={landingTodoId === todo.id}
+        isLanding={landingTodoIds?.has(todo.id)}
+        isSelected={selectedIds?.has(todo.id)}
+        isGhosted={movingIds?.has(todo.id)}
+        onSelect={onSelect}
         onToggle={onToggle}
         onOpen={onOpen}
         onNavigate={onNavigate}

@@ -26,6 +26,8 @@ import {
   parseTabDragId,
   parseTabDropId,
   parseWeekendColumnId,
+  planListDayDrop,
+  rangeSelectionIds,
   planListDrop,
   planListTabDrop,
   planTabDrop,
@@ -36,7 +38,11 @@ import {
   readLandingRect,
   runLandingDropAnimation,
 } from "@/lib/drop-animation";
-import { positionForIndex } from "@/lib/ordering";
+import {
+  positionForDropOnItem,
+  positionForIndex,
+  positionsForDropOnItem,
+} from "@/lib/ordering";
 import { OVERFLOW, addDays, formatShortDate } from "@/lib/scheduling";
 import { parseQuickAdd } from "@/lib/quick-add";
 import {
@@ -91,7 +97,7 @@ import {
   updateTabWithUndo,
 } from "./tab-actions";
 import type { BoardData } from "./use-board-data";
-import type { BoardUiState } from "./use-board-ui-state";
+import { EMPTY_LANDING, type BoardUiState } from "./use-board-ui-state";
 
 /**
  * How long a card must hover a tab before it focuses.
@@ -184,7 +190,29 @@ export const collisionDetection: CollisionDetection = (args) => {
     const column = collisions.find((c) => parseColumnId(String(c.id))?.kind === "list");
     if (column) return [column];
     const pill = collisions.find((c) => parseTabDropId(String(c.id)));
-    return pill ? [pill] : [];
+    if (pill) return [pill];
+    /*
+     * A day column schedules the list's unscheduled to-dos onto it (EI-193,
+     * §4.10e). Appended LAST on purpose: a list column and a day column live
+     * in different halves and can never both be under the pointer, so every
+     * case that resolved before this shipped still resolves identically.
+     *
+     * `kind === "day"` also decides three things by omission, and each is the
+     * behaviour we want rather than an oversight:
+     *   - Overflow parses as `{kind:"overflow"}`, so it refuses a list drop
+     *     exactly as it refuses a card drop (§5.1).
+     *   - A day GROUP is a `daygroup:` id, outside `parseColumnId` entirely,
+     *     so hovering one resolves to the day column containing it. The
+     *     arriving to-dos then group under their own list, which is right —
+     *     a group is a statement about a list, and the list is what is in
+     *     flight.
+     *   - A collapsed weekend strip is a `weekend:` id, also outside
+     *     `parseColumnId`, so nothing highlights and nothing writes. The
+     *     hover-to-expand dwell is gated on `activeTodo`; extending it to
+     *     list drags is deliberately left for later (§7).
+     */
+    const day = collisions.find((c) => parseColumnId(String(c.id))?.kind === "day");
+    return day ? [day] : [];
   }
 
   /**
@@ -492,8 +520,15 @@ export function useBoardActions(
     setOverId,
     setActiveList,
     setActiveTab,
-    landingTodoId,
-    setLandingTodoId,
+    landingTodoIds,
+    setLandingTodoIds,
+    selectedIds,
+    selectionAnchorId,
+    toggleSelected,
+    selectRange,
+    clearSelection,
+    activeSelectionIds,
+    setActiveSelectionIds,
     landingRectRef,
     setInfoListId,
     setInfoTabId,
@@ -514,6 +549,7 @@ export function useBoardActions(
     openTodo,
     recurrenceExpansion,
     reminderPresets,
+    selectedTodos,
   } = data;
 
   /**
@@ -563,8 +599,41 @@ export function useBoardActions(
       // `todosById`, not `todos.find`: a virtual or force-overflowed
       // recurrence occurrence must still show a drag overlay.
       setActiveTodo(todosById.get(id) ?? null);
+
+      /*
+       * Snapshot the multi-selection at lift (EI-194), in board order.
+       *
+       * Taken from `selectedTodos` — the DERIVED list, so an id whose to-do
+       * has since been deleted or filtered out can never enter the write
+       * path — and frozen here rather than re-read in `handleDragEnd`,
+       * because `selectedIds` can change mid-flight and the gesture must
+       * commit exactly what was picked up.
+       *
+       * Lifting a card that is NOT in the selection means the selection is no
+       * longer what this gesture is about, so it is cleared rather than
+       * silently ignored — otherwise the highlighted cards would sit there
+       * looking armed while a different card moved.
+       */
+      if (selectedIds.has(id) && selectedIds.size > 1) {
+        setActiveSelectionIds(selectedTodos.map((t) => t.id));
+      } else {
+        setActiveSelectionIds(null);
+        if (selectedIds.size > 0) clearSelection();
+      }
     },
-    [todosById, lists, tabs, coarse, setActiveTab, setActiveList, setActiveTodo],
+    [
+      todosById,
+      lists,
+      tabs,
+      coarse,
+      setActiveTab,
+      setActiveList,
+      setActiveTodo,
+      selectedIds,
+      selectedTodos,
+      setActiveSelectionIds,
+      clearSelection,
+    ],
   );
 
   const handleDragOver = useCallback(
@@ -579,8 +648,19 @@ export function useBoardActions(
     setActiveList(null);
     setActiveTab(null);
     setOverId(null);
+    // The snapshot goes; the SELECTION deliberately stays. Escape cancelled
+    // the lift, not the picking — a second Escape clears the selection via
+    // the document listener in `use-board-ui-state.ts`.
+    setActiveSelectionIds(null);
     landingRectRef.current = null;
-  }, [setActiveTodo, setActiveList, setActiveTab, setOverId, landingRectRef]);
+  }, [
+    setActiveTodo,
+    setActiveList,
+    setActiveTab,
+    setOverId,
+    setActiveSelectionIds,
+    landingRectRef,
+  ]);
 
   /**
    * Hovering a tab with a card OR a list column in hand focuses that tab.
@@ -637,10 +717,18 @@ export function useBoardActions(
       // the React Compiler warns about, and it is right to.
       return runLandingDropAnimation(args, {
         landingRect: landingRectRef.current,
-        onLand: (id) => setLandingTodoId((current) => (current === id ? null : current)),
+        // Only the flown card is cleared here; the rest of a multi-row
+        // landing is released by the write loop's `finally`.
+        onLand: (id) =>
+          setLandingTodoIds((current) => {
+            if (!current.has(id)) return current;
+            const next = new Set(current);
+            next.delete(id);
+            return next.size === 0 ? EMPTY_LANDING : next;
+          }),
       });
     },
-    [landingRectRef, setLandingTodoId],
+    [landingRectRef, setLandingTodoIds],
   );
 
   /**
@@ -650,13 +738,40 @@ export function useBoardActions(
    * data loss, so time out well past the flight and reveal it regardless.
    */
   useEffect(() => {
-    if (!landingTodoId) return;
+    if (landingTodoIds.size === 0) return;
     const timer = window.setTimeout(
-      () => setLandingTodoId((current) => (current === landingTodoId ? null : current)),
+      // Clears whatever set is current rather than diffing against the one
+      // this effect closed over: a second drag landing mid-flight replaces the
+      // set, and reviving the old one would strand its rows invisible.
+      () => setLandingTodoIds(EMPTY_LANDING),
       FLIGHT_MS + 250,
     );
     return () => window.clearTimeout(timer);
-  }, [landingTodoId, setLandingTodoId]);
+  }, [landingTodoIds, setLandingTodoIds]);
+
+  /**
+   * Cmd/Ctrl+click and Shift+click on a card (EI-194).
+   *
+   * A range that crosses columns re-anchors instead of selecting: the two
+   * halves of the board are ordered by different rules entirely (§4.13), so
+   * "everything between a card in Tuesday and a card in Backlog" has no answer
+   * a user would predict. `rangeSelectionIds` returns null for that, and
+   * falling through to a plain toggle is the behaviour that needs no
+   * explaining.
+   */
+  const handleSelect = useCallback(
+    (todoId: string, modifiers: { additive: boolean; range: boolean }) => {
+      if (modifiers.range && selectionAnchorId && board) {
+        const ids = rangeSelectionIds(board, selectionAnchorId, todoId);
+        if (ids) {
+          selectRange(ids, selectionAnchorId);
+          return;
+        }
+      }
+      toggleSelected(todoId);
+    },
+    [board, selectionAnchorId, selectRange, toggleSelected],
+  );
 
   const handleDragEnd = useCallback(
     async (event: DragEndEvent) => {
@@ -673,11 +788,16 @@ export function useBoardActions(
 
       const draggedListId = parseListDragId(String(active.id));
       const draggedTabId = parseTabDragId(String(active.id));
+      // Captured before the state below is cleared — same pattern as the two
+      // ids above, and for the same reason: this handler needs it after the
+      // reset.
+      const draggedSelectionIds = activeSelectionIds;
 
       setActiveTodo(null);
       setActiveList(null);
       setActiveTab(null);
       setOverId(null);
+      setActiveSelectionIds(null);
       if (!over) return;
 
       // Reordering a tab. Writes one tab's position and touches nothing else.
@@ -735,6 +855,66 @@ export function useBoardActions(
         }
 
         const target = parseColumnId(String(over.id));
+
+        /*
+         * Dropped on a DAY (EI-193, §4.10e): schedule every to-do in the list
+         * that has not already been assigned a day, and leave the list column
+         * itself exactly where it is. Note what is NOT here — no `updateList`
+         * call is reachable past this branch's `return`, so "the column does
+         * not move" is structural rather than a guard someone can simplify
+         * away, and no `position` is written because order in the calendar
+         * half is computed, not hand-arranged (§4.13).
+         */
+        if (target?.kind === "day" && board) {
+          const plan = planListDayDrop(board.lists, draggedListId, target.day);
+          if (!plan) return;
+
+          if (plan.todos.length === 0) {
+            /*
+             * Nothing to move, and the user cannot see why: the column is
+             * visibly full of cards that all already have a day. Leaving the
+             * landing rect null flies the chip home, so the toast explains a
+             * refusal they already watched rather than arriving from nowhere.
+             */
+            toast("Nothing to schedule", {
+              description: `Every to-do in “${short(dragged.name)}” already has a day.`,
+            });
+            return;
+          }
+
+          // A virtual recurrence occurrence has to become a real row before it
+          // can be scheduled. Awaits, so it happens before the undo entry is
+          // built — the inverse patches must describe the rows we actually write.
+          const movers: Todo[] = [];
+          for (const t of plan.todos) movers.push(await materializeIfNeeded(t));
+
+          landingRectRef.current = landingRect;
+          setLandingTodoIds(new Set(movers.map((t) => t.id)));
+
+          pushUndo(
+            movers.length === 1
+              ? `Scheduled “${short(movers[0].title)}”`
+              : `Scheduled ${movers.length} from “${short(dragged.name)}”`,
+            movers.map((t) => ({
+              kind: "todo" as const,
+              entityId: t.id,
+              // Each mover's own previous date — never the list's, and never
+              // another mover's.
+              patch: inversePatch(t, schedulePatch(target.day, t.scheduledDate)),
+            })),
+          );
+
+          try {
+            for (const t of movers) await scheduleTodo(t.id, target.day, t.scheduledDate);
+          } finally {
+            // N sequential Dexie transactions can outlast the flight's
+            // backstop. Clearing here as well as in `onLand` keeps a row from
+            // being revealed before its write has landed.
+            setLandingTodoIds(EMPTY_LANDING);
+          }
+          return;
+        }
+
         if (target?.kind !== "list") return; // dropped outside the planning half
 
         /**
@@ -805,6 +985,143 @@ export function useBoardActions(
       const todo = await materializeIfNeeded(draggedCard);
 
       /**
+       * A MULTI-SELECTION was lifted (EI-194): every selected card lands, not
+       * just the one under the cursor.
+       *
+       * Deliberately a separate branch rather than a generalisation of the
+       * single-card path below, which is left byte-identical. That path is the
+       * most-used code in the app and every bug in it has been invisible to
+       * typecheck, lint and unit tests (§8) — duplicating ~40 lines is the
+       * cheaper trade.
+       *
+       * `movers` resolves through `todosById` and drops anything missing, so a
+       * row deleted between lift and release cannot reach `mutate()` (which
+       * throws on a missing key, by design).
+       */
+      if (draggedSelectionIds && draggedSelectionIds.length > 1) {
+        const picked = draggedSelectionIds
+          .map((id) => todosById.get(id))
+          .filter((t): t is Todo => Boolean(t));
+        if (picked.length === 0) return;
+
+        // Overflow refuses the whole selection at once — one toast, not N
+        // (§5.1). Checked before materializing, so a refused drop writes
+        // nothing at all.
+        const overflowTarget = parseColumnId(String(over.id))?.kind === "overflow";
+        const overflowGroup = parseDayGroupId(String(over.id))?.day === OVERFLOW;
+        if (overflowTarget || overflowGroup) {
+          toast(`Can’t put ${picked.length} to-dos off any longer`, {
+            description: "Reschedule, complete, or move them to a list.",
+          });
+          return;
+        }
+
+        /*
+         * Materialize FIRST, then build the undo entry, then write. The single
+         * path can push undo before its one await; here the inverse patches
+         * have to describe rows that already exist, so the ordering differs.
+         */
+        const movers: Todo[] = [];
+        for (const t of picked) movers.push(await materializeIfNeeded(t));
+        const moverIds = new Set(movers.map((t) => t.id));
+
+        // Resolve the target the same way the single path does, one line down.
+        let multiTarget = parseColumnId(String(over.id));
+        let multiSiblings: Todo[] = [];
+        let multiOverCardId: string | null = null;
+        const droppedGroup = parseDayGroupId(String(over.id));
+
+        if (droppedGroup) {
+          const column = board.days.find((d) => d.day === droppedGroup.day);
+          const group = column?.groups.find((g) => g.key === droppedGroup.key);
+          if (!group) return;
+          multiSiblings = group.todos;
+        } else if (!multiTarget) {
+          const overTodo = todosById.get(String(over.id));
+          if (!overTodo) return;
+          const column = findColumn(board, overTodo.id);
+          if (!column) return;
+          multiTarget = column.target;
+          multiSiblings = column.todos;
+          multiOverCardId = overTodo.id;
+        } else {
+          multiSiblings = columnByTarget(board, multiTarget) ?? [];
+        }
+
+        /*
+         * One key per mover, all inside the same gap, ascending in board
+         * order — so the run lands in the order it was picked in. A single
+         * `positionForIndex` reused N times would give N identical keys.
+         *
+         * Only the list and day-group branches use them: a day column writes
+         * no position at all, because order there is computed (§4.13).
+         */
+        const positions = positionsForDropOnItem(
+          multiSiblings,
+          moverIds,
+          multiOverCardId,
+          movers.length,
+        );
+
+        /*
+         * One pair of closures per target kind, chosen once. Narrowing the
+         * target into locals up front is what keeps the day case from having
+         * to assert past `{kind: "overflow"}` — which is unreachable here
+         * (refused above) but not provably so to the type checker.
+         *
+         * `label` differs too: moving into a list and scheduling onto a day
+         * are different verbs, and undo's toast says which happened.
+         */
+        let forwardFor: (t: Todo, i: number) => Record<string, unknown>;
+        let write: (t: Todo, i: number) => Promise<void>;
+        let label: string;
+
+        if (droppedGroup) {
+          const { key, day } = droppedGroup;
+          forwardFor = (t, i) => dayGroupPatch(key, day, t.scheduledDate, positions[i]);
+          write = (t, i) => moveTodoToDayGroup(t.id, key, day, t.scheduledDate, positions[i]);
+          label = `Moved ${movers.length} to-dos`;
+        } else if (multiTarget?.kind === "list") {
+          const { listId } = multiTarget;
+          forwardFor = (_t, i) => listPatch(listId, positions[i]);
+          write = (t, i) => moveTodoToList(t.id, listId, positions[i]);
+          label = `Moved ${movers.length} to-dos`;
+        } else if (multiTarget?.kind === "day") {
+          const { day } = multiTarget;
+          // Each mover's OWN previous date. Reusing the dragged card's would
+          // restore the wrong dates on undo. No position: order in the
+          // calendar half is computed (§4.13).
+          forwardFor = (t) => schedulePatch(day, t.scheduledDate);
+          write = (t) => scheduleTodo(t.id, day, t.scheduledDate);
+          label = `Scheduled ${movers.length} to-dos`;
+        } else {
+          return; // released over something with no meaning for a selection
+        }
+
+        const steps = movers.map((t, i) => ({
+          kind: "todo" as const,
+          entityId: t.id,
+          patch: inversePatch(t, forwardFor(t, i)),
+        }));
+
+        landingRectRef.current = landingRect;
+        setLandingTodoIds(moverIds);
+
+        pushUndo(label, steps);
+
+        try {
+          for (let i = 0; i < movers.length; i++) await write(movers[i], i);
+        } finally {
+          // N sequential Dexie transactions can outlast the flight's backstop;
+          // clearing here as well as in `onLand` keeps a row from being
+          // revealed before its write has landed.
+          setLandingTodoIds(EMPTY_LANDING);
+          clearSelection();
+        }
+        return;
+      }
+
+      /**
        * DROPPED ON A GROUP: "this belongs to list X, still scheduled for D."
        *
        * Resolved before `parseColumnId` because a group is not a column. Falling
@@ -853,7 +1170,7 @@ export function useBoardActions(
         const groupPosition = positionForIndex(ordered, ordered.length);
 
         landingRectRef.current = landingRect;
-        setLandingTodoId(todo.id);
+        setLandingTodoIds(new Set([todo.id]));
 
         const forward = dayGroupPatch(dropped.key, dropped.day, todo.scheduledDate, groupPosition);
         pushUndo(`Moved “${short(todo.title)}”`, [
@@ -866,7 +1183,8 @@ export function useBoardActions(
       // `over` may be a column or another todo. Resolve the owning column.
       let target = parseColumnId(String(over.id));
       let siblings: Todo[] = [];
-      let index = 0;
+      // null means "no specific card was hovered" — append to the end.
+      let overCardId: string | null = null;
 
       if (!target) {
         const overTodo = todosById.get(String(over.id));
@@ -875,16 +1193,19 @@ export function useBoardActions(
         if (!column) return;
         target = column.target;
         siblings = column.todos;
-        index = siblings.findIndex((t) => t.id === overTodo.id);
+        overCardId = overTodo.id;
       } else {
         const column = columnByTarget(board, target);
         siblings = column ?? [];
-        index = siblings.length;
       }
 
-      // Exclude the dragged item so it cannot become its own neighbour.
-      const ordered = siblings.filter((t) => t.id !== todo.id);
-      const position = positionForIndex(ordered, index);
+      /*
+       * Excludes the dragged item so it cannot become its own neighbour, and
+       * reads the target's index from that same filtered list — the two must
+       * agree or a card dragged downward past its target lands one slot below
+       * the insertion line that was just drawn above it (EI-191).
+       */
+      const position = positionForDropOnItem(siblings, todo.id, overCardId);
 
       if (target.kind === "list" || target.kind === "day") {
         // Only a committed move gets a landing. Everything else — a refusal, a
@@ -892,7 +1213,7 @@ export function useBoardActions(
         // return-to-source animation stands. For a refusal that is the right
         // read: the item visibly goes back where it came from.
         landingRectRef.current = landingRect;
-        setLandingTodoId(todo.id);
+        setLandingTodoIds(new Set([todo.id]));
       }
 
       /**
@@ -944,7 +1265,10 @@ export function useBoardActions(
       setActiveList,
       setActiveTab,
       setOverId,
-      setLandingTodoId,
+      setLandingTodoIds,
+      activeSelectionIds,
+      setActiveSelectionIds,
+      clearSelection,
     ],
   );
 
@@ -1005,24 +1329,51 @@ export function useBoardActions(
    */
   const handleToggle = useCallback(
     (todo: Todo) => {
-      const forward = statusPatch("done");
-      const entryId = pushUndo(`Completed “${short(todo.title)}”`, [
+      /*
+       * A real toggle, reading the current status (EI-197).
+       *
+       * This was hardcoded to `"done"` — a Complete handler wearing a
+       * Toggle's name. Clicking a finished to-do's checkbox wrote `done` over
+       * `done`, `setTodoStatus` correctly reported "nothing changed" and
+       * returned null, and the card sat there unmoved while its own
+       * `aria-label` promised "Mark X not done".
+       *
+       * It was invisible for as long as it was unreachable: with the default
+       * `visibleStatuses` of `["open"]`, completing a to-do removes it from
+       * the board, so there was no done checkbox left to click. The completed
+       * view (EI-90) and then the completion stamp (EI-192) put one back.
+       *
+       * `dropped` reopens too — the checkbox is binary, and the only sensible
+       * meaning of ticking a won't-do item is "actually, it's back on".
+       */
+      const next: Todo["status"] = todo.status === "open" ? "done" : "open";
+      const forward = statusPatch(next);
+      const entryId = pushUndo(`${STATUS_VERB[next]} “${short(todo.title)}”`, [
         { kind: "todo", entityId: todo.id, patch: inversePatch(todo, forward) },
       ]);
       // `todo` may be a virtual recurrence occurrence with no row yet —
       // materialize before writing. A no-op when it already has one.
       void (async () => {
         await materializeIfNeeded(todo);
-        const eventId = await setTodoStatus(todo.id, "done");
+        const eventId = await setTodoStatus(todo.id, next);
         // EI-94 Phase 3: an instant undo tombstones the `done` event too, so
         // history doesn't show "Completed" for something un-done a second
         // later.
         if (eventId) attachEventIds(entryId, [eventId]);
       })();
-      toast.success(`Completed “${short(todo.title)}”`, {
-        duration: 6000,
-        action: { label: "Undo", onClick: () => void undoById(entryId) },
-      });
+      /*
+       * Only a departure needs a toast. Completing drops the to-do off the
+       * board under the default view, so there is nothing left on screen to
+       * confirm it — but REOPENING puts a card back where you can see it, and
+       * announcing something already visible is noise. Same rule
+       * `handleSheetStatus` applies just below.
+       */
+      if (next !== "open") {
+        toast.success(`${STATUS_VERB[next]} “${short(todo.title)}”`, {
+          duration: 6000,
+          action: { label: "Undo", onClick: () => void undoById(entryId) },
+        });
+      }
     },
     [materializeIfNeeded],
   );
@@ -1344,6 +1695,7 @@ export function useBoardActions(
     collisionDetection,
     autoScroll,
     handleDragStart,
+    handleSelect,
     handleDragOver,
     handleDragEnd,
     handleDragCancel,

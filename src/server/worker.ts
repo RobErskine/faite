@@ -22,6 +22,7 @@
  */
 import openNextHandler from "open-next/worker";
 import { createAuth } from "./auth";
+import { handleContactRequest } from "./contact/routes";
 import { handleOptions, withCors } from "./cors";
 import { handleDesktopRequest } from "./desktop/routes";
 import { handleEmail } from "./email/ingest";
@@ -72,6 +73,11 @@ export default {
       // the whole point of proxying Google rather than calling it from the
       // browser is that the key never reaches client JS. See ./places/routes.ts.
       return handlePlacesRequest(request, env);
+    }
+    if (pathname.startsWith("/api/contact")) {
+      // Same reasoning again (EI-206): TURNSTILE_SECRET_KEY is a Worker
+      // secret and must never reach client JS. See ./contact/routes.ts.
+      return handleContactRequest(request, env);
     }
     // OpenNext always exports a fetch handler; the optional type is generic
     // ExportedHandler boilerplate, not a real possibility here.

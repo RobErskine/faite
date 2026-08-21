@@ -50,8 +50,11 @@ const BASE_URL = `http://localhost:${PORT}`;
  */
 const SPECS = {
   foundations: "**/foundations.spec.ts",
+  marketingPages: "**/marketing-pages.spec.ts",
   desktopLayout: "**/desktop-layout.spec.ts",
   keyboardDrag: "**/keyboard-drag.spec.ts",
+  multiDrag: "**/multi-drag.spec.ts",
+  completionTooltip: "**/completion-tooltip.spec.ts",
   coreFlows: "**/core-flows.spec.ts",
   reminders: "**/reminders.spec.ts",
   overdrive: "**/overdrive.spec.ts",
@@ -139,8 +142,11 @@ export default defineConfig({
       // check of it and five were four redundant copies.
       testMatch: [
         SPECS.foundations,
+        SPECS.marketingPages,
         SPECS.desktopLayout,
         SPECS.keyboardDrag,
+        SPECS.multiDrag,
+        SPECS.completionTooltip,
         SPECS.coreFlows,
         SPECS.reminders,
         SPECS.overdrive,

@@ -364,7 +364,9 @@ adding it is not a change in behaviour.
 
 > For the file map, request flow, and operational recipes, see
 > `docs/AUTH.md`. This section and §2.13 carry the reasoning; AUTH.md
-> deliberately does not repeat it.
+> deliberately does not repeat it. For the marketing/legal/support static
+> pages (the S milestone) built on the same static-export constraint, see
+> `docs/SITE.md`.
 
 The obvious place for Better Auth is `app/api/auth/[...all]/route.ts` — that is
 what its own docs show. It does not work here: `output: export` (§6, the
@@ -380,7 +382,7 @@ factory called fresh per request, for the same reason recorded in §7: the D1
 and Email bindings only exist inside `fetch()`.
 
 The same constraint has since claimed every other server route, so the worker
-entry now owns four seams. All four read `Request`; none could be a Route
+entry now owns five seams. All five read `Request`; none could be a Route
 Handler:
 
 | Prefix | Handler | Purpose |
@@ -389,6 +391,7 @@ Handler:
 | `/api/sync/*` | `sync/routes.ts` | push/pull/ws/schema/reset (EI-46/48) |
 | `/api/places/*` | `places/routes.ts` | Google Places proxy (EI-83) |
 | `/api/email/*` | `email/routes.ts` | reveal/rotate the ingest address (EI-186) |
+| `/api/contact` | `contact/routes.ts` | contact-form Turnstile verify + send (EI-206, the S milestone) |
 
 **And one seam that is not HTTP at all.** `worker.ts` also exports `email()`
 beside `fetch()` (EI-186): an inbound Cloudflare Email Routing message is
@@ -607,17 +610,41 @@ multi-assign, already synced, already has UI. EI-53 ("Projects +
 cross-cutting project views") is cancelled; EI-62 does the retirement.
 Revivable later if the need reappears, but not before a real use case does.
 
-### 2.15 The data model is resettable, for now
+### 2.15 Locked mode, retired from tinker mode (EI-203, the S milestone)
 
-Faite has one user, so a schema change that would be awkward to migrate can
-instead be resolved by throwing the data away — `npm run schema:reset`.
+Faite spent P0–P6 in **tinker mode**: a schema change that would be awkward to
+migrate could instead be resolved by throwing the data away —
+`npm run schema:reset`. `docs/SCHEMA-OPS.md` ties that to a single trigger
+event, "a second real account exists," on the reasoning that you cannot reset
+data that isn't yours.
 
-This is a deliberate, bounded position, not a lack of rigour. It buys freedom
-to keep changing the model while the right shape is still being found, and it
-expires on a single event: **a second real account.** You cannot reset data
-that isn't yours.
+**Retired here, ahead of that literal trigger.** The S milestone
+(`/privacy`, EI-205) makes retention and deletion promises to anyone who
+signs up — "kept until you delete your account," a working self-serve delete
+flow (EI-202/EI-80), no silent data loss. Those promises have to hold from
+the moment the page is live, not from whenever a second account happens to
+show up; publishing them and keeping `schema:reset` on the table at the same
+time would make the policy false by construction the first time it was
+convenient to use. So: **locked mode as of this milestone**, not staged
+behind an account count.
 
-Two things make it safe rather than reckless:
+What that changes going forward, per the tinker/locked table in
+`docs/SCHEMA-OPS.md`:
+
+| | Tinker mode (retired) | Locked mode (now) |
+|---|---|---|
+| Adding a column | migration, or edit bootstrap + reset | migration, always |
+| Renaming a field | rename it and reset | three-deploy ladder |
+| Removing a kind | delete it and reset | ladder, gated on telemetry |
+| Backfilling data | reset and reseed | a real backfill |
+| `bootstrap.ts` | editable | frozen |
+
+Locked mode's machinery — a client backfill ledger, the three-deploy
+retirement ladder, bundle telemetry — was specified but deliberately unbuilt
+while tinker mode covered every real need. See "Not built yet, and why" in
+`docs/SCHEMA-CHANGES.md`: that's now the build list, not background reading.
+
+Two things that predate this and still hold, unchanged:
 
 1. **`schema-parity.test.ts`** makes "I forgot a file" a red test instead of a
    permanently broken account (§2.8c).
@@ -626,12 +653,14 @@ Two things make it safe rather than reckless:
    believe it was caught up forever — silently, on every device at once. Since
    every row's `version` is allocated below `sync_meta.next_version`, a cursor
    at or above it is provably only reachable after a wipe, so the server
-   returns `reset: true` and the ordinary pull loop re-reads from 0.
+   returns `reset: true` and the ordinary pull loop re-reads from 0. Kept as
+   defense in depth, not as a licence to keep resetting production accounts —
+   it isn't one.
 
-Everything locked mode needs — a client backfill ledger, the three-deploy
-retirement ladder, bundle telemetry — is specified and deliberately unbuilt.
-See "Not built yet, and why" in `docs/SCHEMA-CHANGES.md`, and
-`docs/SCHEMA-OPS.md` for the procedure in both modes.
+`npm run schema:reset` itself stays in the repo — it is still correct and
+useful against a *local* dev database (`.dev.vars`, no bindings to the real
+D1/DO). What ends here is running it, or reasoning as if it were available,
+against anything a real signed-up account depends on.
 
 ---
 
@@ -650,7 +679,7 @@ See "Not built yet, and why" in `docs/SCHEMA-CHANGES.md`, and
 | Auth storage | D1 + Drizzle (`@better-auth/drizzle-adapter`) | auth tables only; todo data stays in the DO |
 | Email | Cloudflare Email Service (`send_email` binding) | password reset + verification, see §2.12 |
 | Validation | Zod | source of truth for Drizzle, OpenAPI, MCP |
-| Tests | Vitest (+ fake-indexeddb, Testing Library) | 692 tests |
+| Tests | Vitest (+ fake-indexeddb, Testing Library) | 1868 tests; plus 100 Playwright e2e (docs/E2E.md §8) |
 
 ---
 
@@ -1001,9 +1030,10 @@ npm run verify   # typecheck (app + worker), lint, tests, both builds
 npm test         # vitest run
 ```
 
-692 tests (52 files), verified 2026-08-09 via `npm test` with `npm run lint`
-clean, including the board card redesign and the day-column list grouping
-(DRAG-AND-DROP §4.13). The load-bearing ones:
+1868 tests (111 files), verified 2026-08-20 via `npm run verify`, including the
+board card redesign, the day-column list grouping (DRAG-AND-DROP §4.13), and
+the multi-select / list-onto-day drag work (§4.14, §4.10e). The load-bearing
+ones:
 
 - **`scheduling.test.ts`** — timezone boundaries, DST, roll thresholds,
   workday rollover, deadline independence. The most heavily tested file, for

@@ -1,8 +1,12 @@
 import Link from "next/link";
+import { MarketingFooter } from "@/components/marketing/marketing-footer";
 import { MarketingHeader } from "@/components/marketing/marketing-header";
 import { buttonVariants } from "@/components/ui/button";
+import { pageMetadata } from "@/lib/metadata";
 import { BOUND_OWNER_KEY } from "@/lib/store/owner";
 import { cn } from "@/lib/utils";
+
+export const metadata = pageMetadata("/");
 
 /**
  * Redirects a returning, already-adopted visitor straight to /board before
@@ -73,10 +77,7 @@ export default function Home() {
           </Link>
         </main>
 
-        <footer className="flex items-center justify-center gap-4 px-4 py-6 text-sm text-muted-foreground">
-          {/* Docs and support links land here later. */}
-          <span>© {new Date().getFullYear()} Faite</span>
-        </footer>
+        <MarketingFooter />
       </div>
     </>
   );

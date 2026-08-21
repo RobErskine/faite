@@ -287,6 +287,57 @@ export interface ListTabMovePlan {
 }
 
 /**
+ * Which of a list's to-dos a "drop the whole list onto a day" gesture moves
+ * (EI-193).
+ *
+ * The rule Rob asked for: everything in the list that has not already been
+ * assigned a day moves; anything that has one stays exactly where it is. So a
+ * "buy honey at the farmers market" to-do sitting in the grocery list with a
+ * date two weeks out is untouched, while the undated rest of the list lands on
+ * the hovered day.
+ *
+ * `scheduledDate === null` is the entire test for that, and it is deliberately
+ * NOT "does it render in the list column". A to-do scheduled past the day cap
+ * renders in its list column too — dimmed, with a date chip (§5.3) — and it
+ * has very much been assigned a day. Reading placement instead of the field
+ * would silently drag those back into the visible window.
+ *
+ * `status === "open"` is the second filter. With `done` visible in view
+ * settings a settled, undated to-do sits in the list column looking exactly
+ * like an open one; scheduling it would quietly resurrect finished work into
+ * the calendar half.
+ *
+ * Takes `board.lists` — the UNFILTERED board, never `filterListColumn`'s
+ * output. Same rule as a card drop: an in-column filter is a render-time view
+ * and must never change what a drop writes. Reading the built column rather
+ * than the raw todo array also inherits the active tab's scoping, the
+ * `visibleStatuses` filter, and the Backlog fallback for a dangling `listId`
+ * for free.
+ *
+ * Returns null only for a list that does not exist. An EMPTY `todos` with a
+ * non-zero `skipped` is the real "nothing to schedule" case, and it is the
+ * caller's job to explain it — the user cannot see why nothing happened,
+ * because the column is visibly full of cards that all already have a day.
+ */
+export function planListDayDrop(
+  columns: readonly ListColumn[],
+  listId: string,
+  day: CivilDate,
+): ListDayDropPlan | null {
+  const column = columns.find((c) => c.list.id === listId);
+  if (!column) return null;
+
+  const todos: Todo[] = [];
+  let skipped = 0;
+  for (const todo of column.todos) {
+    if (todo.scheduledDate === null && todo.status === "open") todos.push(todo);
+    else skipped += 1;
+  }
+
+  return { day, todos, skipped };
+}
+
+/**
  * Resolve where a list column lands when it is moved to a DIFFERENT tab —
  * dragged onto a tab pill (EI-115's dwell, mirroring §4.10b's card version),
  * or dropped among a destination tab's columns after that dwell has already
@@ -443,6 +494,107 @@ export interface OverflowColumn {
   id: string;
   todos: Todo[];
   groups: TodoGroup[];
+}
+
+/**
+ * The ids a Shift+click range covers, or null if the two ends are not in the
+ * same column (EI-194).
+ *
+ * **Scoped to one column on purpose.** "Everything between a card in Tuesday
+ * and a card in Backlog" has no answer a user would predict — the two halves
+ * are ordered by different rules entirely (§4.13: the planning half is
+ * arranged by hand, the calendar half is computed), and the columns between
+ * them on screen are not a sequence you can walk. Returning null lets the
+ * caller re-anchor on the clicked card instead, which is the behaviour that
+ * needs no explaining.
+ *
+ * Within a column it IS well defined, including a day column: `column.todos`
+ * is the flat rendered order, groups and all, so a range across two group
+ * headers selects exactly the cards the eye sweeps over.
+ *
+ * Returns ids rather than records because the caller folds them into a Set.
+ */
+export function rangeSelectionIds(
+  board: Pick<BoardModel, "days" | "overflow" | "lists">,
+  anchorId: string,
+  targetId: string,
+): string[] | null {
+  const columns: readonly (readonly Todo[])[] = [
+    ...board.days.map((d) => d.todos),
+    board.overflow.todos,
+    ...board.lists.map((c) => c.todos),
+  ];
+
+  for (const todos of columns) {
+    const from = todos.findIndex((t) => t.id === anchorId);
+    if (from === -1) continue;
+    const to = todos.findIndex((t) => t.id === targetId);
+    if (to === -1) return null; // same anchor, different column — re-anchor
+
+    const [lo, hi] = from <= to ? [from, to] : [to, from];
+    return todos.slice(lo, hi + 1).map((t) => t.id);
+  }
+
+  return null; // the anchor no longer renders
+}
+
+/**
+ * The selected to-dos that still render, in the order the eye reads them
+ * (EI-194).
+ *
+ * Derived on every render rather than pruned into the selection state, and
+ * that is the whole point: a to-do that is deleted, archived, filtered out by
+ * `visibleStatuses`, or carried to another tab simply stops appearing here.
+ * Pruning `selectedIds` instead would mean an effect racing a live query, and
+ * a stale id reaching the write path is exactly the class of bug that ends in
+ * `mutate()` throwing on a missing row.
+ *
+ * Order is board order — days left to right, then Overflow, then the list
+ * columns — because that is what a multi-drag writes in, and a run that lands
+ * in a different order than it was picked in reads as scrambled.
+ * `DayColumn.todos` is already the grouped flat order and must never be
+ * re-sorted here (§4.13).
+ */
+export function selectedTodosInBoardOrder(
+  board: Pick<BoardModel, "days" | "overflow" | "lists">,
+  selectedIds: ReadonlySet<string>,
+): Todo[] {
+  if (selectedIds.size === 0) return [];
+
+  const found: Todo[] = [];
+  // A to-do renders in one half or the other, never both (§5.2), so `seen`
+  // guards against a future board shape rather than today's — cheap insurance
+  // against the same row being written twice in one gesture.
+  const seen = new Set<string>();
+
+  const take = (todos: readonly Todo[]) => {
+    for (const todo of todos) {
+      if (!selectedIds.has(todo.id) || seen.has(todo.id)) continue;
+      seen.add(todo.id);
+      found.push(todo);
+    }
+  };
+
+  for (const day of board.days) take(day.todos);
+  take(board.overflow.todos);
+  for (const column of board.lists) take(column.todos);
+
+  return found;
+}
+
+/**
+ * The result of dropping a list column onto a day (EI-193).
+ *
+ * `todos` may be empty while `skipped` is not — every to-do in the list
+ * already has a day. That is a legitimate answer, not a failure, which is why
+ * it is not folded into a null return.
+ */
+export interface ListDayDropPlan {
+  day: CivilDate;
+  /** Scheduled onto `day`, in board order. May be empty. */
+  todos: Todo[];
+  /** Left alone because they already have a day, or are already settled. */
+  skipped: number;
 }
 
 export interface ListColumn {

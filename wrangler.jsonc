@@ -73,6 +73,21 @@
     "EMAIL_INGEST_DOMAIN": "in.myfaite.app"
   },
 
+  // Per-IP abuse guard for POST /api/contact (EI-206). Turnstile stops bots,
+  // not a determined human retrying by hand. `namespace_id` is an arbitrary
+  // string unique within this Worker, not something to provision elsewhere —
+  // the binding itself is what creates the rate limiter. `period` is capped
+  // at 10 or 60 seconds by the platform; 60s/3 requests is a real ceiling for
+  // a contact form without being so tight a legitimate retry after a typo
+  // trips it.
+  "ratelimits": [
+    {
+      "name": "CONTACT_RATE_LIMITER",
+      "namespace_id": "1001",
+      "simple": { "limit": 3, "period": 60 }
+    }
+  ],
+
   // Per-user Durable Object: authoritative user data + sync coordinator (plan P3).
   // Declared at P0 so the custom worker entry and migrations exist before sync lands.
   "durable_objects": {
