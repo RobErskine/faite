@@ -26,7 +26,7 @@ use tauri::{async_runtime::JoinHandle, AppHandle, Manager, WebviewUrl, WebviewWi
 /// a dedicated minimal page (`src/app/background-sync/page.tsx`), not the
 /// real board — see that page's own doc comment for why reusing
 /// `board.html` here would be the wrong call, not just a bigger one.
-const BACKGROUND_WINDOW: &str = "background-sync";
+pub(crate) const BACKGROUND_WINDOW: &str = "background-sync";
 
 /// Matches `DEFAULT_INTERVAL_MS` in `src/lib/sync/engine.ts` — not
 /// literally shared across the Rust/TS boundary, so keep the two in sync by

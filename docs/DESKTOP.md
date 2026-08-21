@@ -1130,16 +1130,18 @@ this job.
 - Built, signed, and notarized the real `.app` with this milestone included
   — `spctl`/`codesign` unaffected (same signing pipeline as D1.6/D2a),
   launched cleanly.
-- **Traced, not click-tested, for the close→hide→tick→reopen→teardown
-  sequence itself.** This session has no Accessibility automation access
-  (confirmed again this session: `osascript`'s window-suite `close` isn't
-  implemented by a Tauri window, and `System Events` keystroke automation
-  returned a clean "not allowed" — not a hang, but still no path to
-  simulating Cmd-W without a human). The design was traced by hand instead:
-  idempotent start (checked via the `Mutex<Option<JoinHandle>>` guard),
-  teardown ordering on `Reopen`, and the `TICK_JS` snippet's `&&`-guard
-  against calling into a not-yet-booted or already-torn-down window. Needs
-  Rob at the machine for the real thing — see §10.4.
+- **Rob confirmed the real close→sync→reopen sequence works** — created a
+  to-do on another device while the board was closed, and it was already
+  there on reopen, no manual refresh needed. This session itself had no
+  Accessibility automation access to test the close/reopen click-through
+  directly (`osascript`'s window-suite `close` isn't implemented by a Tauri
+  window; `System Events` keystroke automation returned a clean "not
+  allowed", not a hang) and traced the design by hand instead — idempotent
+  start via the `Mutex<Option<JoinHandle>>` guard, teardown ordering on
+  `Reopen`, the `TICK_JS` snippet's `&&`-guard against a not-yet-booted or
+  already-torn-down window. The trace was right about sync working; it had
+  no way to catch what visual inspection alone caught immediately — see
+  §10.4.
 - One adjacent question resolved while investigating, not touched: does
   `prevent_exit()`'s unconditional call on `RunEvent::ExitRequested` (D1.5)
   mean Cmd-Q is broken? No — the app menu's `SubmenuBuilder::quit()` exits
@@ -1150,15 +1152,47 @@ this job.
   reasoning about this milestone's process-exit edge cases, not because
   anything about it changed.
 
-### 10.4 What's still open
+### 10.4 A real bug, found by Rob's first real close-the-board test
 
-- **The real click-through, at the machine**: close the board (Cmd-W or the
-  red traffic light), wait past 30s, confirm a to-do created elsewhere
-  appears without reopening the window (or, more visibly: create one
-  elsewhere, wait, reopen, confirm it's already there rather than arriving
-  only after reopen triggers its own sync). `ps`/Activity Monitor should
-  show a second, brief `WebContent` process appear while closed and
-  disappear on reopen.
+**The hidden window wasn't hidden.** Rob closed the board and saw a real,
+visible, empty black `Faite (background sync)` window with a title bar.
+`.visible(false)` on the builder was right; something downstream was
+overriding it.
+
+Root cause: `tauri_plugin_window_state::Builder::default()` (D1.5/EI-132,
+registered globally, untouched by D2b's own diff) runs `restore_state()` on
+**every** window it isn't explicitly told to skip. For a label it has never
+seen before — true the very first time this new hidden window is ever
+created — its "no saved state" branch leaves `should_show` at
+`WindowState::default()`'s `visible: true` and unconditionally calls
+`.show()` before this module's own code gets a chance to matter. Nothing
+about D2b's own window-visibility code was wrong; a global plugin
+registered for a completely different reason (persisting `main`'s geometry
+across relaunches) was reaching into a window it was never meant to manage.
+
+Fixed with `.with_denylist(&[background_sync::BACKGROUND_WINDOW])` on the
+plugin registration — not `skip_initial_state`, which only skips the
+restore call but still lets the plugin track and persist this window's
+state on every close; a denylist excludes it entirely; the very first
+check in the plugin's window-creation hook. Correct independent of the bug,
+too: this window's geometry is meaningless and was never something worth
+persisting.
+
+**The general shape, worth carrying forward**: a plugin registered
+globally for one window's benefit (`main`'s geometry) applies to every
+window by default unless each new window is explicitly told to opt out.
+Adding a new window anywhere in this app needs to ask "which of the
+globally-registered plugins does this window need to be excluded from?",
+not just "what does this window need to opt into?" — the failure mode is
+silent and only shows up as behavior, not a compile error or a log line.
+
+### 10.5 What's still open
+
+- **Reconfirm after the §10.4 fix.** Sync itself was already confirmed
+  working before the denylist fix landed — the visibility bug didn't break
+  sync, it only meant the mechanism doing so was visible when it should not
+  have been. Worth one more close/reopen pass to confirm the window is now
+  actually hidden, not just that sync still works.
 - **Foreground reminders while closed** — not touched by this milestone.
   D2b only restores *sync*; whether a reminder notification should also
   fire from the hidden window (and how, since `Notification` API behavior in

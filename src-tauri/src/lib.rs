@@ -16,9 +16,27 @@ pub fn run() {
 
   // Window size/position persistence (EI-132). Desktop-only crate — not a
   // dependency at all on mobile targets, see Cargo.toml.
+  //
+  // `with_denylist` excludes the D2b background-sync window entirely — NOT
+  // decoration. This plugin's `restore_state` runs on every window it
+  // isn't told to skip, and for a label it has never seen before (true the
+  // very first time this hidden window is ever created), its "no saved
+  // state" branch leaves `should_show` at `WindowState::default()`'s
+  // `visible: true` and calls `.show()` unconditionally — silently
+  // overriding the `.visible(false)` this window is built with
+  // (background_sync.rs). Found live: the hidden window rendered as a real,
+  // visible, empty black window on Rob's first close-the-board test. A
+  // denylist (not `skip_initial_state`, which only skips the RESTORE call
+  // but still lets the plugin manage/save this window's state) is correct
+  // here regardless of the bug — this window's geometry is meaningless and
+  // shouldn't be persisted at all.
   #[cfg(desktop)]
   {
-    builder = builder.plugin(tauri_plugin_window_state::Builder::default().build());
+    builder = builder.plugin(
+      tauri_plugin_window_state::Builder::default()
+        .with_denylist(&[background_sync::BACKGROUND_WINDOW])
+        .build(),
+    );
   }
 
   // D2a: `faite://auth-callback` (docs/DESKTOP.md §9) — the system-browser
