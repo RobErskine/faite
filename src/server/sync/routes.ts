@@ -1,4 +1,4 @@
-import { createAuth } from "../auth";
+import { createAuth, getSessionSafe } from "../auth";
 import { corsHeaders, handleOptions } from "../cors";
 import { clampPullArgs, parsePushRequest } from "./validate";
 import { isAllowedWsOrigin, isWebSocketUpgrade, USER_ID_HEADER } from "./ws-server";
@@ -12,6 +12,18 @@ import { isAllowedWsOrigin, isWebSocketUpgrade, USER_ID_HEADER } from "./ws-serv
  * No session is a normal, permanent state for this app (§2.13) — but that's
  * true of the BOARD, which never calls this. A request that reaches this
  * file without a session is unauthenticated, full stop: 401, never a nag.
+ *
+ * `getSessionSafe()` is the ONLY auth check here, deliberately — it looks
+ * like cookie-only, but isn't: `auth-tokens.ts`'s `apiTokenPlugin` (D2a)
+ * hooks every Better Auth endpoint including this one and transparently
+ * resolves a valid `Authorization: Bearer <key>` (or, for `/api/sync/ws`'s
+ * upgrade, `Sec-WebSocket-Protocol`) into the same session shape a cookie
+ * would produce — see `getSessionSafe`'s own doc comment (`auth.ts`) for why
+ * the "safe" wrapper is load-bearing, not decoration. Do not add a second,
+ * route-local bearer check here — it would be exactly the kind of
+ * duplicated decision `auth-tokens.ts`'s own comment warns against, and this
+ * file would drift from `/api/desktop/*` and Better Auth's own routes,
+ * which all go through the identical hook.
  */
 
 function json(body: unknown, status: number, headers: HeadersInit): Response {
@@ -24,7 +36,7 @@ export async function handleSyncRequest(request: Request, env: CloudflareEnv): P
   const headers = corsHeaders(request.headers.get("Origin"));
   const url = new URL(request.url);
 
-  const session = await createAuth(env, request).api.getSession({ headers: request.headers });
+  const session = await getSessionSafe(createAuth(env, request), request);
   if (!session) return json({ error: "unauthenticated" }, 401, headers);
   const userId = session.user.id;
 

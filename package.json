@@ -30,7 +30,9 @@
     "schema:info": "node scripts/schema/info.mjs",
     "schema:reset": "node scripts/schema/reset.mjs",
     "openapi:generate": "vite-node -c vitest.config.ts scripts/openapi/generate.ts",
-    "icons": "node scripts/icons/generate.mjs"
+    "icons": "node scripts/icons/generate.mjs",
+    "desktop:dev": "tauri dev",
+    "desktop:build": "tauri build"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
@@ -45,6 +47,8 @@
     "@floating-ui/react": "^0.27.20",
     "@opennextjs/cloudflare": "^1.20.2",
     "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/plugin-deep-link": "^2.4.9",
+    "@tauri-apps/plugin-opener": "^2.5.4",
     "better-auth": "^1.6.29",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",

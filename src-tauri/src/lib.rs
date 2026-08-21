@@ -1,25 +1,14 @@
 use tauri::menu::{Menu, MenuBuilder, SubmenuBuilder};
 #[cfg(not(target_os = "macos"))]
 use tauri::menu::PredefinedMenuItem;
-use tauri::{RunEvent, WebviewUrl, WebviewWindowBuilder};
+use tauri::{Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
+
+mod background_sync;
+mod keychain;
 
 /// Window label for the main, user-visible board. The only window a user
 /// ever sees at launch.
 const MAIN_WINDOW: &str = "main";
-
-/// Window label for the hidden background webview — D1 only establishes its
-/// existence and lifecycle. It shares the same `tauri://localhost` origin
-/// (and therefore the same IndexedDB/localStorage, per the D0 spike's §3.3
-/// finding) as `main`, which is what makes it viable as the future home for
-/// sync ownership (D2) and the menu-bar popover (D3) once those land — this
-/// milestone does not wire either of those in yet.
-///
-/// Known caveat carried over from the D0 spike (docs/DESKTOP.md §3.4): a
-/// hidden `WebviewWindow`'s JS timers stop firing after their first tick.
-/// Nothing in this window relies on a JS timer today; D2 will need to drive
-/// any future sync loop from Rust (or find another workaround) rather than
-/// assuming `setInterval` survives here.
-const CORE_WINDOW: &str = "core";
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -27,12 +16,50 @@ pub fn run() {
 
   // Window size/position persistence (EI-132). Desktop-only crate — not a
   // dependency at all on mobile targets, see Cargo.toml.
+  //
+  // `with_denylist` excludes the D2b background-sync window entirely — NOT
+  // decoration. This plugin's `restore_state` runs on every window it
+  // isn't told to skip, and for a label it has never seen before (true the
+  // very first time this hidden window is ever created), its "no saved
+  // state" branch leaves `should_show` at `WindowState::default()`'s
+  // `visible: true` and calls `.show()` unconditionally — silently
+  // overriding the `.visible(false)` this window is built with
+  // (background_sync.rs). Found live: the hidden window rendered as a real,
+  // visible, empty black window on Rob's first close-the-board test. A
+  // denylist (not `skip_initial_state`, which only skips the RESTORE call
+  // but still lets the plugin manage/save this window's state) is correct
+  // here regardless of the bug — this window's geometry is meaningless and
+  // shouldn't be persisted at all.
   #[cfg(desktop)]
   {
-    builder = builder.plugin(tauri_plugin_window_state::Builder::default().build());
+    builder = builder.plugin(
+      tauri_plugin_window_state::Builder::default()
+        .with_denylist(&[background_sync::BACKGROUND_WINDOW])
+        .build(),
+    );
   }
 
+  // D2a: `faite://auth-callback` (docs/DESKTOP.md §9) — the system-browser
+  // login flow's only channel back into the app. Scheme registered in
+  // tauri.conf.json's `plugins.deep-link.desktop.schemes`; the JS side
+  // (`bridge.ts`, `@tauri-apps/plugin-deep-link`'s `onOpenUrl`/`getCurrent`)
+  // does the actual handling — nothing Rust-side needs to inspect the URL.
+  builder = builder.plugin(tauri_plugin_deep_link::init());
+
+  // D2a: opens the system browser for login (`bridge.ts`'s
+  // `startDesktopLogin`). The one thing this app ever opens is its own
+  // hardcoded `/login` URL — never anything user- or server-supplied — so
+  // the plugin's default `opener:allow-open-url` capability grant is not a
+  // meaningful widening of what this app can already do.
+  builder = builder.plugin(tauri_plugin_opener::init());
+
   let app = builder
+    .invoke_handler(tauri::generate_handler![
+      keychain::get_auth_token,
+      keychain::set_auth_token,
+      keychain::clear_auth_token,
+    ])
+    .manage(background_sync::BackgroundSyncState::default())
     .setup(|app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(
@@ -42,22 +69,36 @@ pub fn run() {
         )?;
       }
 
-      WebviewWindowBuilder::new(app, MAIN_WINDOW, WebviewUrl::App("board.html".into()))
-        .title("Faite")
-        .inner_size(1200.0, 800.0)
-        .build()?;
+      let main_window =
+        WebviewWindowBuilder::new(app, MAIN_WINDOW, WebviewUrl::App("board.html".into()))
+          .title("Faite")
+          .inner_size(1200.0, 800.0)
+          .build()?;
 
-      // Hidden background webview. Not shown, not closable by the user
-      // (there's no chrome for it to close from) — it lives for the
-      // lifetime of the app and, combined with the `ExitRequested` handler
-      // in `run` below, is what keeps the process (and NSApplication) alive
-      // on macOS after the user closes the main board window, matching
-      // standard menu-bar-app behavior.
-      WebviewWindowBuilder::new(app, CORE_WINDOW, WebviewUrl::App("board.html".into()))
-        .title("Faite (background)")
-        .visible(false)
-        .skip_taskbar(true)
-        .build()?;
+      // Hide-on-close, dock-resident (D1.5). Cmd-W / the red traffic light
+      // triggers `CloseRequested`; prevent the default destroy and hide the
+      // window instead, so the process (and NSApplication) stays alive with
+      // no visible window — standard dock-app behavior. Hiding rather than
+      // destroying also means a later `RunEvent::Reopen` doesn't have to
+      // rebuild the window or re-run the board's Dexie bootstrap.
+      //
+      // A hidden window's JS timers stop firing on their own (D0 spike
+      // §3.4), which would silently stop sync the moment this fires — D2b
+      // (background_sync.rs, called just below) is what keeps it running.
+      #[cfg(target_os = "macos")]
+      {
+        let window_for_close = main_window.clone();
+        let app_handle_for_close = app.handle().clone();
+        main_window.on_window_event(move |event| {
+          if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+            api.prevent_close();
+            let _ = window_for_close.hide();
+            // D2b: sync doesn't get to just stop because nobody's looking
+            // at the window — see background_sync.rs.
+            background_sync::start_background_sync(&app_handle_for_close);
+          }
+        });
+      }
 
       // Native app menu. Tauri v2 already auto-installs
       // `menu::Menu::default()` on macOS when no custom menu is set
@@ -75,15 +116,30 @@ pub fn run() {
     .build(tauri::generate_context!())
     .expect("error while building tauri application");
 
-  app.run(|_app_handle, event| {
-    // macOS: don't quit when the main board window closes. The hidden
-    // `core` window (built above) keeps at least one window alive, but
-    // this is the documented, explicit belt-and-suspenders mechanism Tauri
-    // provides for "stay running with no visible windows" — see
-    // docs/DESKTOP.md's window/sync-ownership section.
+  app.run(|app_handle, event| {
     #[cfg(target_os = "macos")]
-    if let RunEvent::ExitRequested { api, .. } = event {
-      api.prevent_exit();
+    match event {
+      // Don't quit when the main window closes (it's hidden, not
+      // destroyed, by the `CloseRequested` handler above) — this is the
+      // documented mechanism Tauri provides for "stay running with no
+      // visible windows".
+      RunEvent::ExitRequested { api, .. } => {
+        api.prevent_exit();
+      }
+      // Dock icon clicked while the app has no visible window. The
+      // documented v2 hook for macOS's "reopen" AppKit event
+      // (https://github.com/tauri-apps/tauri/issues/3084).
+      RunEvent::Reopen { .. } => {
+        // Before showing main again: the board window is about to own sync
+        // itself again (its own SyncProvider never stopped running), so the
+        // background tick loop and its hidden window are done for now.
+        background_sync::stop_background_sync(app_handle);
+        if let Some(window) = app_handle.get_webview_window(MAIN_WINDOW) {
+          let _ = window.show();
+          let _ = window.set_focus();
+        }
+      }
+      _ => {}
     }
   });
 }

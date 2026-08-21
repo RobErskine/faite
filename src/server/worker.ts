@@ -24,6 +24,7 @@ import openNextHandler from "open-next/worker";
 import { createAuth } from "./auth";
 import { handleContactRequest } from "./contact/routes";
 import { handleOptions, withCors } from "./cors";
+import { handleDesktopRequest } from "./desktop/routes";
 import { handleEmail } from "./email/ingest";
 import { handleEmailRequest } from "./email/routes";
 import { handlePlacesRequest } from "./places/routes";
@@ -49,6 +50,12 @@ export default {
       return createAuth(env, request)
         .handler(request)
         .then((response) => withCors(response, origin));
+    }
+    if (pathname.startsWith("/api/desktop")) {
+      // D2a's login handoff — deliberately its own prefix, not under
+      // `/api/auth`, since that prefix goes straight to Better Auth's own
+      // handler above and these two routes are ours. See ./desktop/routes.ts.
+      return handleDesktopRequest(request, env);
     }
     if (pathname.startsWith("/api/sync")) {
       // Same reasoning as /api/auth above: EI-46's push/pull routes read

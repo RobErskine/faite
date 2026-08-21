@@ -1,4 +1,4 @@
-import { betterAuth } from "better-auth";
+import { APIError, betterAuth } from "better-auth";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { drizzle } from "drizzle-orm/d1";
 import * as schema from "./auth-schema";
@@ -15,6 +15,13 @@ export const TRUSTED_ORIGINS = [
   // Capacitor's WebView origin (P7, EI-51). Free to declare now, not a code
   // change later.
   "capacitor://localhost",
+  // The Tauri desktop shell's webview origin (D2a). The actual SIGN-IN flow
+  // never touches this origin — it runs in the system browser, since Better
+  // Auth's client rejects `tauri://localhost` as a base URL outright (D0
+  // §3.7) — but once the shell holds a bearer token (`docs/DESKTOP.md` §9),
+  // `useSession()`, `/api/sync/*`, and `/api/desktop/exchange` all call back
+  // to `https://myfaite.app` FROM here, genuinely cross-origin every time.
+  "tauri://localhost",
 ];
 
 /** Used only for schema generation, where no request exists — see auth-cli.ts. */
@@ -146,3 +153,33 @@ export function createAuth(env: CloudflareEnv, request?: Request) {
 }
 
 export type Auth = ReturnType<typeof createAuth>;
+
+/**
+ * Every route that calls `auth.api.getSession()` directly (i.e. every
+ * `/api/*` handler in `src/server` — none of them go through Better Auth's
+ * own HTTP router, see `worker.ts`'s file comment) needs this instead of
+ * the raw call. Found live, not in review: `auth-tokens.ts`'s
+ * `apiTokenPlugin` (`enableSessionForAPIKeys: true`, D2a) recognizes
+ * anything shaped like a bearer-style credential and, if it fails
+ * validation, THROWS `APIError` rather than resolving to `null` the way an
+ * unmatched cookie does. Better Auth's own router normally catches that and
+ * translates it into the right HTTP response — a direct `.api.getSession()`
+ * call bypasses that translation entirely, so an ordinary garbage
+ * `Authorization: Bearer …` header 500'd every route that called it
+ * un-wrapped, `/api/sync/*` included, against a real Durable Object.
+ *
+ * Only swallows `APIError` — a bad credential is "not authenticated" (the
+ * caller returns 401), not a crash. Anything else (a real infra failure)
+ * still propagates, same as before this existed.
+ */
+export async function getSessionSafe(
+  auth: Auth,
+  request: Request,
+): Promise<Awaited<ReturnType<Auth["api"]["getSession"]>>> {
+  try {
+    return await auth.api.getSession({ headers: request.headers });
+  } catch (error) {
+    if (error instanceof APIError) return null;
+    throw error;
+  }
+}

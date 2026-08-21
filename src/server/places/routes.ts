@@ -1,4 +1,4 @@
-import { createAuth } from "../auth";
+import { createAuth, getSessionSafe } from "../auth";
 import { corsHeaders, handleOptions } from "../cors";
 import { fetchAutocomplete, fetchDetails } from "./google";
 import { parseAutocompleteRequest, parseDetailsRequest } from "./validate";
@@ -50,7 +50,11 @@ export async function handlePlacesRequest(
   // manual address, we just don't match it against the Places API. So 401 is
   // never a nag — the client degrades to a plain text input, which is exactly
   // what the field was before this feature existed.
-  const session = await createAuth(env, request).api.getSession({ headers: request.headers });
+  // `getSessionSafe`, not `auth.api.getSession()` directly — see its own doc
+  // comment (`auth.ts`): a malformed bearer-shaped `Authorization` header
+  // now throws (`auth-tokens.ts`'s D2a cutover), and this route never went
+  // through Better Auth's own router, which is what normally catches that.
+  const session = await getSessionSafe(createAuth(env, request), request);
   if (!session) return json({ error: "unauthenticated" }, 401, headers);
 
   try {

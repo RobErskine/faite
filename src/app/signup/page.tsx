@@ -1,18 +1,28 @@
 "use client";
 
-import { type FormEvent, useState } from "react";
+import { Suspense, type FormEvent, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AuthShell } from "@/components/auth/auth-shell";
+import { DesktopAuthNotice } from "@/components/auth/desktop-auth-notice";
 import { OAuthButtons } from "@/components/auth/oauth-buttons";
+import { isDesktopShell } from "@/lib/desktop/bridge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { signUp } from "@/lib/auth-client";
 
-export default function SignupPage() {
+function SignupForm() {
   const router = useRouter();
+  // useSearchParams needs a Suspense boundary under `output: export` — see
+  // the wrapper below. Same D2a purpose as login/page.tsx.
+  const callbackURL = useSearchParams().get("callbackURL") ?? "/board";
+
+  // Reached inside the Tauri webview: render the browser handoff, never
+  // the form — a sign-in attempted here cannot hold a session cookie and
+  // silently returns to a signed-out board. See DesktopAuthNotice.
+  const desktop = isDesktopShell();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -36,7 +46,7 @@ export default function SignupPage() {
       return;
     }
     if (data?.token) {
-      router.push("/board");
+      router.push(callbackURL);
       return;
     }
     setAwaitingVerification(true);
@@ -56,6 +66,8 @@ export default function SignupPage() {
     );
   }
 
+  if (desktop) return <DesktopAuthNotice page="signup" />;
+
   return (
     <AuthShell
       title="Create an account"
@@ -71,7 +83,7 @@ export default function SignupPage() {
         </>
       }
     >
-      <OAuthButtons />
+      <OAuthButtons callbackURL={callbackURL} />
 
       <div className="flex items-center gap-2">
         <Separator className="flex-1" />
@@ -123,5 +135,13 @@ export default function SignupPage() {
         </Button>
       </form>
     </AuthShell>
+  );
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense fallback={null}>
+      <SignupForm />
+    </Suspense>
   );
 }

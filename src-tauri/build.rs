@@ -42,16 +42,22 @@ fn check_frontend_dist() {
 
   // Freshness: a stale export (source edited after the last export) is a
   // "why isn't my change showing up" trap for anyone iterating with `cargo
-  // build`/`cargo run` directly instead of `tauri dev`/`tauri build`,
-  // neither of which re-runs `next build` for you.
+  // build`/`cargo run` directly instead of `tauri dev`/`tauri build`. A
+  // warning, not a panic — `tauri build`'s `beforeBuildCommand` (and
+  // `tauri dev`'s `beforeDevCommand`) already re-run `build:static` ahead of
+  // cargo on the paths that actually ship, so this branch only ever fired on
+  // a legitimately stale checkout there, never a genuinely broken one. It
+  // used to also fire on every `tauri dev` boot, since `devUrl` serves the
+  // Next dev server directly and never touches `.next-static/` at all.
   let dist_mtime = newest_mtime(&dist);
   let src_mtime = newest_mtime(&repo_root.join("src"));
   if let (Some(dist_mtime), Some(src_mtime)) = (dist_mtime, src_mtime) {
     if src_mtime > dist_mtime {
-      panic!(
-        "frontendDist `{}` is stale — `src/` has files newer than the \
-         static export. Re-run `npm run build:static` before building the \
-         Tauri shell.",
+      println!(
+        "cargo:warning=frontendDist `{}` is stale — `src/` has files newer \
+         than the static export. Re-run `npm run build:static` if you're \
+         building with `cargo build`/`cargo run` directly; `tauri \
+         build`/`tauri dev` already do this for you.",
         dist.display()
       );
     }

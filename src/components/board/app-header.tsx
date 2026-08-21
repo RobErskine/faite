@@ -18,6 +18,7 @@ import { resolveAvatar } from "@/lib/profile";
 import { useIdentity } from "@/lib/use-identity";
 import { signOut, useSession } from "@/lib/auth-client";
 import { useShouldShowAuthNudges } from "@/lib/auth-nudge";
+import { clearStoredAuthToken, isDesktopShell, startDesktopLogin } from "@/lib/desktop/bridge";
 import type { Settings as SettingsRow } from "@/lib/schema";
 
 interface AppHeaderProps {
@@ -62,8 +63,23 @@ export function AppHeader({
   const shouldShowAuthNudges = useShouldShowAuthNudges();
 
   const handleSignOut = async () => {
+    // The desktop shell's bearer token lives in the OS keychain, entirely
+    // outside Better Auth's cookie-based session `signOut()` clears (D2a —
+    // see docs/DESKTOP.md §9). Without this, "Log out" would clear the
+    // cookie-shaped session state everywhere else but leave the stored
+    // token still authenticating every subsequent request.
+    if (isDesktopShell()) await clearStoredAuthToken();
     await signOut();
     toast.success("Signed out");
+  };
+
+  const handleDesktopSignIn = async (page: "login" | "signup" = "login") => {
+    try {
+      await startDesktopLogin(page);
+    } catch (error) {
+      console.error("[faite] couldn't open the system browser for sign-in", error);
+      toast.error("Couldn't open your browser to sign in.");
+    }
   };
 
   return (
@@ -104,9 +120,19 @@ export function AppHeader({
       )}
 
       {shouldShowAuthNudges ? (
-        <Button size="sm" nativeButton={false} render={<Link href="/signup" />}>
-          Sign up
-        </Button>
+        isDesktopShell() ? (
+          // Same reason as the account menu's Sign in below: the embedded
+          // webview cannot complete a sign-up itself (D0 §3.7), so this
+          // opens the system browser rather than navigating to a form that
+          // can never succeed. See docs/DESKTOP.md §9.
+          <Button size="sm" onClick={() => void handleDesktopSignIn("signup")}>
+            Sign up
+          </Button>
+        ) : (
+          <Button size="sm" nativeButton={false} render={<Link href="/signup" />}>
+            Sign up
+          </Button>
+        )
       ) : null}
 
       {/* Mouse-discoverable route to the same sheet `?` opens (EI-75) — a
@@ -166,6 +192,15 @@ export function AppHeader({
               >
                 <LogOut aria-hidden />
                 Log out
+              </DropdownMenuItem>
+            ) : isDesktopShell() ? (
+              // The embedded webview cannot complete a sign-in itself (D0
+              // §3.7: `tauri://localhost` cannot hold a session cookie) — a
+              // click opens the system browser instead of navigating here.
+              // See docs/DESKTOP.md §9.
+              <DropdownMenuItem onClick={() => void handleDesktopSignIn()}>
+                <LogIn aria-hidden />
+                Sign in
               </DropdownMenuItem>
             ) : (
               <DropdownMenuItem render={<Link href="/login" />}>

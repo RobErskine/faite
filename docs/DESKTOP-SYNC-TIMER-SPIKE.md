@@ -1,5 +1,12 @@
 # Desktop background-sync timer mitigation spike (D2, EI-178)
 
+> **This spike's §4 recommendation shipped as D2b, 2026-08-21** —
+> `docs/DESKTOP.md` §10, `src-tauri/src/background_sync.rs`. Read this
+> document for the research and the measurements; read §10 for what
+> actually landed and how it was verified. "Nothing here ships" (below)
+> refers to the throwaway probe harness itself (§6) — the *recommendation*
+> it produced is now real, shipped code.
+
 **Status: research + working prototype, both real.** This spike reproduces
 D0's finding, tests three candidate mitigations against an actual compiled
 Tauri v2 binary on this machine (not simulated), and gives EI-145

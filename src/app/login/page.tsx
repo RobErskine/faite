@@ -1,18 +1,31 @@
 "use client";
 
-import { type FormEvent, useState } from "react";
+import { Suspense, type FormEvent, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AuthShell } from "@/components/auth/auth-shell";
+import { DesktopAuthNotice } from "@/components/auth/desktop-auth-notice";
 import { OAuthButtons } from "@/components/auth/oauth-buttons";
+import { isDesktopShell } from "@/lib/desktop/bridge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { signIn } from "@/lib/auth-client";
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
+  // useSearchParams needs a Suspense boundary under `output: export` — see
+  // the wrapper below. D2a: the desktop shell's system-browser login opens
+  // this page with `?callbackURL=/desktop-handoff` so BOTH sign-in paths
+  // (this form and <OAuthButtons>) land there instead of /board — see
+  // desktop-handoff/page.tsx.
+  const callbackURL = useSearchParams().get("callbackURL") ?? "/board";
+
+  // Reached inside the Tauri webview: render the browser handoff, never
+  // the form — a sign-in attempted here cannot hold a session cookie and
+  // silently returns to a signed-out board. See DesktopAuthNotice.
+  const desktop = isDesktopShell();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -30,8 +43,10 @@ export default function LoginPage() {
       setError(signInError.message ?? "Couldn't sign in with those details.");
       return;
     }
-    router.push("/board");
+    router.push(callbackURL);
   };
+
+  if (desktop) return <DesktopAuthNotice page="login" />;
 
   return (
     <AuthShell
@@ -49,7 +64,7 @@ export default function LoginPage() {
         </>
       }
     >
-      <OAuthButtons />
+      <OAuthButtons callbackURL={callbackURL} />
 
       <div className="flex items-center gap-2">
         <Separator className="flex-1" />
@@ -97,5 +112,13 @@ export default function LoginPage() {
         </Button>
       </form>
     </AuthShell>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
   );
 }

@@ -127,7 +127,20 @@ export class UserDurableObject extends DurableObject {
     // whose socket this is after waking up, and when it was authenticated.
     server.serializeAttachment({ userId, connectedAt: Date.now() } satisfies SocketAttachment);
 
-    return new Response(null, { status: 101, webSocket: client });
+    // D2a: the desktop shell offers its bearer token as a
+    // `Sec-WebSocket-Protocol` value (`ws-server.ts`'s `extractWsBearerToken`
+    // — `routes.ts` already used it to authenticate above). RFC 6455
+    // requires the server to echo back exactly one of the client's offered
+    // subprotocols or the browser rejects the handshake as failed, even
+    // though the connection itself opened fine. An ordinary cookie-based
+    // browser session never offers a subprotocol, so this stays absent for
+    // every request that isn't the desktop shell.
+    const offeredProtocol = request.headers.get("Sec-WebSocket-Protocol");
+    return new Response(null, {
+      status: 101,
+      webSocket: client,
+      headers: offeredProtocol ? { "Sec-WebSocket-Protocol": offeredProtocol } : undefined,
+    });
   }
 
   /**

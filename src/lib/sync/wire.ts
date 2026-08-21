@@ -100,6 +100,18 @@ export const SETTINGS_SYNCED_FIELDS: ReadonlySet<string> = new Set([
 export const SYNC_PROTOCOL_VERSION = 1 as const;
 
 /**
+ * D2a: how the desktop shell's bearer token rides a WebSocket handshake,
+ * where there is no `Authorization` header to set. Shared between
+ * `src/lib/sync/ws-transport.ts` (offers it as a subprotocol) and
+ * `src/server/desktop/ws-bearer.ts` (reads it back) — one constant, so the
+ * two ends cannot drift, same reasoning as every other constant in this
+ * file. Lives here rather than duplicated in `ws-bearer.ts` because THIS
+ * file is the one already proven DOM-free and safe to import from both
+ * `src/lib` and `src/server` (see the file header above).
+ */
+export const WS_BEARER_PROTOCOL_PREFIX = "faite-bearer.";
+
+/**
  * Shared between `routes.ts` (enforces it via `z.array().max()`) and
  * `engine.ts` (chunks a push into batches no larger than this). One constant
  * so the two ends can't drift — they used to each declare their own copy of

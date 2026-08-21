@@ -10,6 +10,19 @@ past D1 exists yet.
 > (`docs/ARCHITECTURE.md` §7, `docs/MOBILE.md`). They do not line up. A bare
 > "P<n>"/"M<n>" anywhere in this file means those other axes.
 
+| Milestone | Scope | Status |
+|---|---|---|
+| D0 | Architecture spike — stress-test the locked decisions (§2) against a real build | ✅ Done — §3 |
+| D1 | Real window model, desktop bridge (`isDesktopShell()`), native app menu, window-state persistence | ✅ Done — §6 |
+| D1.5 | Installable, dock-resident `.app` — hide-on-close/reopen, ad-hoc signing, `desktop:build`/`desktop:dev` scripts | ✅ Done — §7 |
+| D1.6 | Developer ID + notarization | ✅ Done — §8 |
+| D2a | Desktop login + sync — `TRUSTED_ORIGINS`, api-key bearer auth, OS-keychain token storage, WS auth | ✅ Done — §9 |
+| D2b (EI-145) | Background sync while the window is closed — Rust-driven timer into the hidden webview | ✅ Done — §10 |
+| D3 | Feature A — menu bar popover (today/overdue to-dos, read-on-show) | Not started |
+| D4 | Feature B — global hotkey, always-on-top quick-capture window | Not started |
+| D5 | Swift sidecar — Accessibility-API context capture (decision #5), wired as an `externalBin` | Standalone prototype only — §3.5, not integrated |
+| D6 | Not yet scoped beyond decision #1's "then Windows" | — |
+
 ---
 
 ## 1. Why, and what
@@ -43,10 +56,17 @@ build, not to re-litigate them.
    baked into the `.app`. Rejected: loading `myfaite.app` directly (no offline
    boot, a web deploy could break desktop with no per-platform rollback) and
    load-remote-with-bundled-fallback (two non-deterministic code paths).
-3. **Bearer tokens, not cookies**, for the desktop shell's auth. Better Auth
-   `bearer` plugin; token in the OS keychain via the `keyring` Rust crate,
-   injected as a header from Rust, never in `localStorage`. D0 §7 below is why
-   this is closer to mandatory than merely-better.
+3. **Bearer tokens, not cookies**, for the desktop shell's auth. Token in the
+   OS keychain via the `keyring` Rust crate, never in `localStorage`. D0 §7
+   below is why this is closer to mandatory than merely-better. **Confirmed
+   empirically, not just by reasoning, in D1.5 (§7.4):** Tauri's HTTP plugin
+   cannot rescue a cookie-based session either — the reqwest and webview
+   cookie jars are independent stores, and the WebSocket transport never sees
+   the cookie at all. **Landed in D2a (§9) via Better Auth's `apiKey` plugin,
+   not the literal `bearer` plugin this line originally named** — a scaffold
+   for exactly this already existed (`src/server/auth-tokens.ts`, built ahead
+   of time for this milestone) and fit better: real revocable tokens in D1,
+   not ephemeral session-token headers.
 4. **Menu bar popover: read-on-show, not live-query.** Opened by a click,
    lives seconds — a one-shot Dexie read on `show`, not `useLiveQuery`. Reduces
    the hard requirement to "shared IndexedDB across webviews in one app",
@@ -493,3 +513,701 @@ clean. `cargo build` / `cargo build --features tauri/custom-protocol` /
 Nothing in this milestone was interactively exercised in a running app —
 windows, menu, and window-state restoration are compile-verified only, per
 §6.2/§6.4 above.
+
+---
+
+## 7. D1.5 — installable, dock-resident app
+
+Self-contained handoff doc this milestone worked from:
+`.ai/desktop-d1.5-runbook.md`. Goal: `cp` a real `.app` into `/Applications`,
+Cmd-Tab to it, and use Faite as a daily driver without a browser — close the
+window and the app stays in the dock; click the dock icon and the window
+returns. D1's `.app` had never actually been launched (§6.2/§6.4's
+"compile-verified only" caveats) — D1.5 is the first milestone that runs it.
+
+### 7.1 Hide-on-close, show-on-reopen — reverses D1's window model
+
+D1 (§6.2) kept the process alive with a second, hidden `core` window carrying
+no job — a comment, not a mechanism — and left `main`'s own close behavior as
+Tauri's default (destroy the window; nothing reopens it). Two bugs followed
+from that: closing the board left the process alive with no reachable
+window and no way back but Cmd-Q, and `core` doubled RSS and ran a second
+Dexie bootstrap against the same IndexedDB for no reason yet.
+
+`src-tauri/src/lib.rs` now does the standard macOS dock-app pattern instead:
+
+- `main`'s `WindowEvent::CloseRequested` calls `api.prevent_close()` then
+  `window.hide()` (macOS only) — hide, not destroy, so a later reopen is
+  instant and doesn't re-run the board's Dexie bootstrap or lose in-memory
+  state.
+- `RunEvent::ExitRequested` still calls `api.prevent_exit()` — now doing real
+  work, since nothing else keeps the app alive with `core` gone.
+- `RunEvent::Reopen` (the documented v2 hook for AppKit's dock-icon-click
+  event, [tauri#3084](https://github.com/tauri-apps/tauri/issues/3084)) looks
+  up `main` and calls `show()` + `set_focus()`.
+- The `core` window and its `CORE_WINDOW` const are deleted outright —
+  `prevent_exit` alone is what keeps the app resident, `core` was never doing
+  that job. `capabilities/default.json`'s `windows` list is back down to
+  `["main"]`. D2b re-adds a hidden window when it actually has one (sync
+  ownership); nothing here blocks that.
+
+**Consequence to carry forward, not a regression:** a hidden window's JS
+timers are suspended (D0 §3.4), so the sync engine's poll loop stops while
+the window is closed. That's D2b's problem to solve (a Rust-driven timer
+calling into the hidden webview, per EI-178's spike — see
+`docs/DESKTOP-SYNC-TIMER-SPIKE.md`), not D1.5's.
+
+### 7.2 `build.rs` staleness check downgraded from panic to warning
+
+D1 (§6.1) made a stale `.next-static/` (source newer than the last export) a
+hard `panic!` on every `cargo build`, including the `devUrl` dev loop, which
+never even reads `.next-static/`. `tauri build`'s `beforeBuildCommand` and
+(new this milestone) `tauri dev`'s `beforeDevCommand` both re-run
+`build:static` ahead of cargo, so the shipping and dev-loop paths can't
+actually produce a stale bundle — the panic only ever fired somewhere it was
+wrong. The **missing-or-empty** checks stay hard panics; only the staleness
+branch became `cargo:warning=`.
+
+### 7.3 Ad-hoc signing, and `tauri dev` gets a real dev loop
+
+- `tauri.conf.json`'s `bundle.macOS.signingIdentity` is now `"-"` (ad-hoc). A
+  locally built `.app` with no Apple Developer ID still needs ad-hoc signing
+  or Gatekeeper treats it as damaged on Apple Silicon — no quarantine xattr
+  from a `cp`, but the missing signature alone is enough
+  ([Tauri macOS signing docs](https://v2.tauri.app/distribute/sign/macos/)).
+  D1.6 replaces this with a real Developer ID once Rob's enrollment is wired
+  in.
+- `build.beforeDevCommand: "npm run dev"` — `tauri dev`'s `devUrl` already
+  pointed at `http://localhost:3000`, but nothing booted a server there.
+  Useful side effect, not just plumbing: `http://localhost:3000` **is** in
+  `TRUSTED_ORIGINS` already, so `tauri dev` has working auth and sync today —
+  it previews what D2a's `tauri://localhost` origin work is aiming to make
+  true for a production build too.
+- `package.json` gains `desktop:dev` (`tauri dev`) and `desktop:build`
+  (`tauri build`). Install is documented here, not scripted — a script that
+  `rm -rf`s a path under `/Applications` isn't worth the keystrokes:
+  ```
+  npm run desktop:build
+  cp -R src-tauri/target/release/bundle/macos/Faite.app /Applications/
+  ```
+- `src-tauri/Cargo.toml`'s `tauri init` placeholders (`description = "A Tauri
+  App"`, `authors = ["you"]`, empty `license`/`repository`) are filled in.
+
+### 7.4 HTTP plugin investigated and rejected as a cookie-auth workaround
+
+Before committing to D2a's bearer-token design (decision #3), checked
+whether Tauri's HTTP plugin could let a cookie-based Better Auth session work
+from `tauri://localhost` without it. Rejected with evidence, not just
+reasoning:
+
+- The plugin's `reqwest`-backed cookie jar and the webview's own cookie store
+  are independent — a cookie set by one is invisible to the other
+  ([tauri#13045](https://github.com/tauri-apps/tauri/issues/13045)).
+- Even within the plugin's own jar, http-only cookies aren't persisted across
+  app launches ([tauri#11518](https://github.com/tauri-apps/tauri/issues/11518)).
+- Faite's sync v1 transport is WebSocket push
+  (`src/server/sync/ws-server.ts`), and a socket connection never receives a
+  cookie from either jar regardless. The plugin would at best buy a working
+  `/api/auth` call and leave sync permanently dead.
+
+This confirms decision #3 empirically rather than by reasoning alone — see
+the note added there.
+
+### 7.5 Running it on your own Mac
+
+```
+npm run desktop:build
+cp -R src-tauri/target/release/bundle/macos/Faite.app /Applications/
+```
+
+Requires `NEXT_PUBLIC_AUTH_URL` to be set at export time — already baked into
+`beforeBuildCommand` (`NEXT_PUBLIC_AUTH_URL=https://myfaite.app npm run
+build:static`), **not** something `npm run build:static` alone provides. D0
+§3.2 is why: with no override, Better Auth's client falls back to
+`window.location.origin`, which is `tauri://localhost` — a scheme its own URL
+validation rejects, crashing the whole render tree before the board mounts.
+A bundle built by hand-running `cargo build`/`cargo tauri build` without that
+env var set will show a blank window, not the board.
+
+Signed-out is fully functional today (§2.1) — creating, editing, and
+scheduling to-dos all work with no account, no network call, and no error
+spam, since `getCurrentOwnerId()` returns `LOCAL_OWNER_ID` and both the sync
+engine and `ws-transport` early-return on `isActive()`. Signing in from the
+desktop shell itself is blocked until D2a (§2.2) — that's expected, not a
+bug, for this milestone.
+
+For iterating on the shell itself, `npm run desktop:dev` (`tauri dev`) boots
+`next dev` on `:3000` via the new `beforeDevCommand` and points the webview
+at it — auth and sync both work in that loop, unlike a production bundle
+today.
+
+### 7.6 Verification summary
+
+Automated: `npm run verify` (typecheck ×2, lint, test suite, `build`,
+`build:static`) and `cargo clippy --all-targets` (zero warnings) both green.
+`npm run e2e:ci` unaffected by anything in this milestone — none of it
+touches `/board`'s own code, only the shell around it.
+
+Manual — the part D1 never did, and D1.5's actual point. `npm run
+desktop:build` produced a real, ad-hoc-signed `Faite.app`
+(`target/release/bundle/macos/`); `.dmg` bundling failed/hung separately (see
+below) but the `.app` itself built and signed cleanly. Launched directly
+(`open Faite.app`, no quarantine xattr since it was never downloaded) and
+confirmed, without a screenshot (this session has no Screen Recording TCC
+grant — see below), via `lsappinfo list`: registered as `"Faite"`,
+`bundleID=app.myfaite.desktop`, **`type="Foreground"`, `(in front)`**, with
+real `WebKit.Networking`/`WebKit.GPU`/`WebKit.WebContent` XPC children
+spawned — i.e. a real window with a real, loaded webview, not a crash-on-
+launch. `log show` over the launch window found no `BetterAuthError`/"Invalid
+base URL" (the D0 §3.2 regression this milestone depends on staying fixed)
+and no crash/fault/exception entries for the process. RSS via `ps`:
+**73–87 MB, single window** — comfortably under D0 §3.8's 82–106 MB estimate,
+which was for three concurrent windows; this is the genuine single-window D1.5
+number that section flagged as worth re-measuring. Quit cleanly via `pkill`.
+
+**Not verified, and needs Rob specifically:** the interactive parts —
+Cmd-W-hides / dock-icon-click-reopens / Cmd-Q-quits behavior, window-geometry
+restore across relaunch, Cmd-C/V inside the todo input, and a real visual
+check that the board (not a blank or error page) is what's actually on
+screen. Two things blocked automating further from here, both worth knowing
+about rather than silently working around:
+
+- `screencapture` failed with "could not create image from display" — this
+  session's process has no Screen Recording TCC grant. The app almost
+  certainly rendered on the real display (the WebContent process evidence
+  above), just not something this session could photograph.
+- `osascript ... tell application "System Events" to keystroke "w" using
+  command down` **hung and had to be killed after timing out** — reads as a
+  blocked macOS Automation/Accessibility permission prompt for whatever host
+  process runs this session's shell. **If a "would like to control this
+  computer" or similar system permission dialog is sitting on screen, it's
+  from this session — safe to dismiss (Don't Allow is fine; nothing further
+  was attempted after the timeout).** No orphaned `osascript` process was
+  left running; a stale read/write `.dmg` shadow volume the failed bundling
+  step left mounted (`rw.39399.Faite_0.1.0_aarch64.dmg` on `/dev/disk7`) was
+  found and `hdiutil detach`ed.
+
+**`.dmg` bundling (`bundle.targets: "all"`, pre-existing, not changed this
+milestone) fails or hangs in this environment** — first attempt errored fast
+inside `bundle_dmg.sh`, a retry (`tauri build --bundles dmg` alone) hung for
+the full 2-minute timeout with zero output, consistent with the same blocked-
+Automation-permission cause as the `osascript` case (`create-dmg` also drives
+Finder via AppleScript to lay out the disk-image window). **Not required by
+this milestone** — the install path is `cp -R Faite.app /Applications/`, no
+`.dmg` involved — so left as-is rather than changing `bundle.targets` to drop
+`dmg` unilaterally; Rob's own interactive session (which has real Automation
+permissions granted to Terminal/Finder already, unlike this one) should just
+work. Worth a two-minute check next time this doc is touched, not a blocker.
+
+---
+
+## 8. D1.6 — Developer ID + notarization
+
+Real signing and notarization, verified end to end the same session, same
+day as D1.5 — Rob enrolled in the Apple Developer Program and walked through
+certificate creation live.
+
+### 8.1 What Rob did (not scriptable — Apple's portal + Keychain Access are GUI-only)
+
+1. Confirmed Apple Developer Program enrollment.
+2. Generated a CSR via **Keychain Access → Certificate Assistant → Request a
+   Certificate From a Certificate Authority**, saved to disk (this is also
+   what creates the paired private key in the login keychain — the step that
+   makes everything downstream work).
+3. Created a **Developer ID Application** certificate on
+   developer.apple.com's Certificates page using that CSR, downloaded the
+   `.cer`, double-clicked to install it into the login keychain (pairs it
+   with the CSR's private key).
+4. Confirmed via `security find-identity -v -p codesigning`:
+   `"Developer ID Application: rob erskine (48XAK39593)"`.
+5. Generated an **App Store Connect API key** (Users and Access →
+   Integrations, "Developer" role) — the modern notarization auth method,
+   preferred over Apple ID + app-specific password because it doesn't hit 2FA
+   prompts and doesn't expire the same way. Saved the `.p8` outside any git
+   working directory (`~/.config/apple/`, `chmod 600`) — **never shared, and
+   never should be**; only its file path is a build input.
+6. Set four env vars in `~/.zshrc`: `APPLE_SIGNING_IDENTITY`,
+   `APPLE_API_ISSUER`, `APPLE_API_KEY`, `APPLE_API_KEY_PATH`.
+
+### 8.2 What changed in the repo — nothing
+
+**Deliberately no `tauri.conf.json` change.** `signingIdentity` stays `"-"`
+(ad-hoc, D1.5's default). `APPLE_SIGNING_IDENTITY` overrides it at build time
+per Tauri's own env-var precedence
+([reference](https://v2.tauri.app/reference/environment-variables/)), so a
+real signed+notarized build happens exactly when those four vars are present
+in the environment and not otherwise. Two reasons this beats hardcoding the
+identity into the committed config: it doesn't bake a personal name/Team ID
+into git history, and it doesn't go stale if the certificate is ever rotated
+or revoked — the file needs no edit either way. Anyone building without the
+vars set (a fresh contributor, CI with no secrets configured) silently falls
+back to ad-hoc, matching D1.5's existing safe default — never a hard failure.
+
+`hardenedRuntime` needed no config either — it **defaults to `true`** in
+Tauri v2's schema, and notarization requires it; confirmed active in the
+signed binary's own code signature (`flags=0x10000(runtime)`, §8.3).
+`providerShortName` (relevant to the older Apple-ID/app-specific-password
+notarization path, for disambiguating which team when an Apple ID belongs to
+several) wasn't needed — the API-key method identifies the team via
+`APPLE_API_ISSUER` unambiguously.
+
+### 8.3 Verified — real signing, real notarization, real Gatekeeper acceptance
+
+`npm run desktop:build -- --bundles app` (scoped to skip the still-unresolved
+`.dmg`/Automation-permission issue from §7.6) with all four env vars live:
+
+```
+Signing with identity "Developer ID Application: rob erskine (48XAK39593)"
+Notarizing Finished with status Accepted for id f71f1c65-1097-48ae-9097-89662e40cad6
+Stapling app...
+    Finished 1 bundle
+```
+
+Confirmed independently, not just trusting the build log:
+
+- `spctl -a -vv Faite.app` → **`accepted`**, `source=Notarized Developer ID`
+  — this is the same check macOS itself runs before allowing a downloaded
+  app to launch, and it now passes (§7.6's ad-hoc build was, correctly,
+  `rejected` by this same check — ad-hoc signing only avoids the "damaged"
+  false-positive for an *unquarantined*, locally-built copy; it was never
+  going to pass Gatekeeper's real assessment, which is what this milestone
+  actually fixes).
+- `codesign -dv --verbose=4` → full valid chain (`Developer ID Application:
+  rob erskine (48XAK39593)` → `Developer ID Certification Authority` →
+  `Apple Root CA`), `TeamIdentifier=48XAK39593`, `flags=0x10000(runtime)`.
+- `xcrun stapler validate Faite.app` → **"The validate action worked!"** —
+  the notarization ticket is stapled into the bundle itself, so Gatekeeper
+  can verify it offline; a user doesn't need network access at first launch.
+- Launched the real signed bundle directly (`open Faite.app`) and confirmed
+  via `lsappinfo list` it registered as `"Faite"`, `(in front)` — same
+  non-visual verification method as §7.6, same caveat about no Screen
+  Recording grant in this session to actually photograph it.
+
+**This is a materially stronger result than §7.6's ad-hoc build**: this
+`.app` would install and launch cleanly on *any* Mac, downloaded from
+anywhere, with zero Gatekeeper friction — not just on the machine that built
+it. `.dmg` bundling was not re-attempted here (already demonstrated to hang
+on this session's missing Automation permission in §7.6; unrelated to
+signing, so no reason to expect this milestone changed that outcome).
+
+### 8.4 What's still open
+
+- **Rob's own interactive-session checklist from §7.6 is unchanged and still
+  outstanding** — dock-icon reopen, Cmd-W hide, window-geometry restore,
+  Cmd-C/V, and an actual look at the rendered board all still need a human
+  at a real display session. Signing/notarization doesn't touch any of that
+  behavior.
+- **`.dmg` bundling** — still blocked in this environment; untested whether
+  Rob's own interactive session resolves it (§7.6).
+- **CI signing** — everything above is a local-keychain flow
+  (`APPLE_SIGNING_IDENTITY` alone, no `.p12`/`APPLE_CERTIFICATE`). A future
+  CI-built release would need the certificate exported and base64-encoded as
+  a GitHub Actions secret — not attempted, not needed yet.
+
+---
+
+## 9. D2a — desktop login + sync
+
+Same day as D1.5/D1.6. Rob's own instinct on where to start ("open the
+browser, sign in, callback into Faite") turned out to be exactly the right
+shape, and better than this doc's own D1.5-era sketch — see §9.1.
+
+### 9.1 The design, and why it beats the original sketch
+
+The original plan (decision #3, and the D1.5 runbook's §5 sequencing)
+imagined the desktop shell somehow authenticating itself directly. That was
+never going to work: `tauri://localhost` cannot hold a session cookie at all
+(D0 §3.7), so ANY approach that tries to sign in *from* the embedded webview
+inherits that wall. D2a's actual design never tries:
+
+1. **The desktop shell opens the SYSTEM BROWSER** (`bridge.ts`'s
+   `startDesktopLogin()`, via `@tauri-apps/plugin-opener`) to
+   `https://myfaite.app/login?callbackURL=%2Fdesktop-handoff` — a real
+   `https://` origin, so email/password AND both OAuth providers work
+   completely unmodified. Every "sign in"/"sign up" affordance in the app
+   (`app-header.tsx`, `welcome-dialog.tsx`, `signed-out-banner.tsx`) opens
+   this instead of navigating the webview once `isDesktopShell()` is true.
+2. **`callbackURL`** is threaded through `login`/`signup`'s email/password
+   branch (previously hardcoded to `/board`) and `<OAuthButtons
+   callbackURL>` (already a real prop, just never used for anything but the
+   default) to land on `/desktop-handoff` instead.
+3. **`/desktop-handoff`** (new page, cookie-authenticated) calls
+   `/api/desktop/handoff`, which mints a real, named, revocable API key
+   (`auth.api.createApiKey()`, `auth-tokens.ts`'s `apiTokenPlugin` — see
+   §9.2 for why this beats a literal `bearer` plugin) and encrypts it plus a
+   60-second expiry into an opaque code (`handoff-code.ts`, AES-GCM,
+   HKDF-derived from `BETTER_AUTH_SECRET`). The raw key never reaches the
+   browser response — only the code does. A **deliberate stateless
+   simplification**, documented in `handoff-code.ts` itself: TTL-bounded,
+   not single-use-enforced (no new D1 table, no migration — this repo's
+   `.ai/lessons.md` has more hard-won D1-migration scars than any other
+   topic, and a 60-second local handoff code isn't worth one).
+4. The page renders a **"Continue to Faite" button** — not an automatic
+   redirect. Browsers can decline to honor a custom-scheme navigation that
+   didn't originate from a user gesture; the click is the gesture.
+5. Clicking it navigates to `faite://auth-callback?code=…` — macOS hands
+   this to the app via `tauri-plugin-deep-link` (registered scheme,
+   `tauri.conf.json`'s `plugins.deep-link.desktop.schemes`).
+   `bridge.ts`'s `onDesktopAuthCallback()` wires both `getCurrent()`
+   (cold start) and `onOpenUrl()` (already running — the overwhelmingly
+   common case, since D1.5 made the app dock-resident).
+6. **`DesktopAuthProvider`** (new, mounted in `board.tsx` next to
+   `SessionProvider`/`SyncProvider`, gated on `isDesktopShell()`) receives
+   the callback, POSTs the code to `/api/desktop/exchange` — called from the
+   DESKTOP APP this time, genuinely cross-origin from `tauri://localhost`,
+   no cookie involved at all — and gets back the real key. **This is the
+   only place the plaintext key crosses the wire a second time**, and it
+   never touches a URL, browser history, or any logging surface the browser
+   touches.
+7. The key goes into the OS keychain (`src-tauri/src/keychain.rs`, three
+   `#[tauri::command]`s over the `keyring` crate's default `v1` feature —
+   confirmed to pull in the macOS backend with zero extra feature flags).
+   Sign-out (`app-header.tsx`) clears it explicitly — Better Auth's own
+   `signOut()` only clears the cookie, which the desktop shell never had.
+
+### 9.2 The bigger discovery: `useSession()` had to work too, not just sync
+
+The first draft of this milestone made `/api/sync/*` accept the bearer
+token via its own route-local check and stopped there. That would have
+technically fixed sync while leaving `useSession()` — and therefore
+`SessionProvider`, the header's signed-in state, every "are we signed in"
+UI check in the app — still blind to a successful desktop login, because
+none of them ever touch `/api/sync/*` directly. Rob's original report
+("wasn't able to log in") would not actually have been fixed.
+
+The fix: `auth-tokens.ts`'s `apiTokenPlugin` flips
+**`enableSessionForAPIKeys: true`**, globally — a valid key now satisfies
+`auth.api.getSession()` at every endpoint that calls it, including Better
+Auth's own `/api/auth/get-session`. `auth-client.ts` attaches the token via
+`fetchOptions.auth: { type: "Bearer", token: async () => … }` — a genuine
+Better Auth client feature for exactly this (an async token function,
+called fresh per request, omitted entirely when it resolves to
+`undefined`) — so the SAME token that authenticates sync also makes
+`useSession()`, and therefore the whole app, recognize the desktop login.
+One mechanism, every consumer, discovered by asking "what does 'signed in'
+actually mean in this app" rather than stopping at "does the transport
+authenticate."
+
+**The documented cost of "global," not hidden:** `enableSessionForAPIKeys`
+being global means any FUTURE api-key consumer (EI-50's original vision of
+a scoped, user-generated, read-only external API token) would also become
+full-session-equivalent the instant it's created — `permissions`/
+`defaultPermissions` are declared on the plugin but enforced nowhere in
+this codebase today. `auth-tokens.ts`'s file comment flags this explicitly
+as something to revisit before that second consumer ships, not silently
+inherited.
+
+### 9.3 The WebSocket subprotocol carrier
+
+A browser `WebSocket` cannot set an `Authorization` header — the one open
+question the D1.5 runbook flagged as needing a real decision. Resolved:
+the token rides as a `Sec-WebSocket-Protocol` value
+(`WS_BEARER_PROTOCOL_PREFIX = "faite-bearer."`, `src/lib/sync/wire.ts` —
+shared between client and server so the two ends can't drift, same pattern
+as every other wire constant in that file). `auth-tokens.ts`'s
+`customAPIKeyGetter` checks it as a fallback when no `Authorization` header
+is present; `user-do.ts` echoes the offered protocol back on the 101
+response, which RFC 6455 requires for the browser to consider the
+handshake complete. Chosen over a query-param token (the other option the
+runbook posed) specifically to keep the token out of any URL, log line, or
+proxy trace that a query string would land in.
+
+### 9.4 Two real bugs found only by testing against a live Durable Object
+
+Both invisible to `npm run verify` (1816 tests, all green) — neither is a
+logic error a unit test would catch, because both are about what a
+**direct** `auth.api.X()` call receives versus what the same call receives
+through Better Auth's own HTTP router.
+
+1. **`customAPIKeyGetter` read `ctx.request?.headers`, which is `undefined`
+   for every call in this codebase.** Every `/api/*` handler here calls
+   `auth.api.getSession({ headers: request.headers })` — headers only, never
+   `request` — because none of them are Next.js Route Handlers (`output:
+   export` forbids one that reads `Request`, see `worker.ts`'s file
+   comment) and none of them go through Better Auth's own router either.
+   `ctx.request` is only populated when an endpoint is dispatched from a
+   real `Request` object; `ctx.headers` is populated whenever `headers` is
+   passed, regardless. The plugin's own default getter reads `ctx.headers`;
+   mine copied a pattern that only works from inside `auth.handler(request)`.
+   Result: every bearer-token request to `/api/sync/*` silently fell through
+   to "no session" — proven wrong only by `curl`ing a real minted token
+   against a real Durable Object and getting `unauthenticated` back instead
+   of a push ack.
+2. **A malformed bearer-shaped credential crashes instead of 401ing.**
+   Better Auth's convention is throw-on-invalid-credential (`APIError`),
+   normally caught by the HTTP router's error middleware and translated to
+   the right response. Calling `.api.getSession()` directly — as every route
+   in this file does — bypasses that translation, so `Authorization: Bearer
+   faite_garbage` 500'd `/api/sync/*`, `/api/places/*`, and
+   `/api/desktop/handoff` alike (all three call the same pattern). Fixed
+   once, centrally: `getSessionSafe()` (`auth.ts`), a wrapper that catches
+   `APIError` specifically and resolves to `null` (401), letting any other
+   exception (a real infra failure) still surface as a 500. All three
+   routes now call it instead of the raw method.
+
+Neither bug survived past the same session — both were caught by the live
+smoke test below, fixed, and re-verified against the same running Durable
+Object before this milestone was called done.
+
+### 9.5 Verified live, against a real Durable Object
+
+Isolated `wrangler dev --port 8791` (checked free first, matching every
+prior sync milestone's pattern) with real local D1 migrations applied
+(`npm run auth:migrate:local` — the local database had never had auth
+migrations run before this session; a fresh `wrangler dev --local` starts
+with none). Confirmed via `curl` (and one raw Node `WebSocket` for the
+subprotocol path) against a real signed-up account, not mocks:
+
+- **Full handoff round trip**: sign in (cookie) → `POST
+  /api/desktop/handoff` → real encrypted code → `POST
+  /api/desktop/exchange` (no cookie, `Origin: tauri://localhost`) → real
+  `faite_…` key. CORS confirmed on the exchange response
+  (`Access-Control-Allow-Origin: tauri://localhost`).
+- **`GET /api/auth/get-session` with only `Authorization: Bearer <key>`, no
+  cookie** → returns the real session, matching the signed-in user. This is
+  the concrete proof the §9.2 gap is actually closed, not just reasoned
+  about.
+- **`POST /api/sync/push` / `GET /api/sync/pull`** with the bearer token →
+  real writes and reads against the account's Durable Object, round-tripped
+  correctly.
+- **WebSocket**: `new WebSocket(url, ["faite-bearer.<token>"])` → handshake
+  succeeded, `ws.protocol` echoed the offered value back, a `pull` request
+  over the socket returned real data.
+- **Cookie-based sync still works unchanged** — the ordinary browser path
+  regression-checked against the same server.
+- **Negative cases**, all confirmed 401 (not 500, after §9.4's second fix):
+  garbage bearer token against `/api/sync/push`, `/api/places/autocomplete`
+  (short-circuited to 501 first in this environment — no
+  `GOOGLE_PLACES_API_KEY` set locally, so the auth fix itself wasn't
+  reachable there, but the identical code path is proven by the other two
+  routes), and `/api/desktop/handoff`. No auth at all on `/api/sync/push`
+  → 401, unchanged from before this milestone.
+- **The OS-level deep-link registration**: rebuilt and re-signed/notarized
+  the real `.app` (D1.6's flow, confirmed unaffected by the two new Rust
+  plugins), launched it, then `open "faite://auth-callback?code=…"` from a
+  separate shell — macOS activated Faite (`lsappinfo`'s `(in front)`), no
+  "no application can open this URL" error. This is the part that is
+  genuinely specific to this session's `tauri.conf.json`/`capabilities`
+  config (the scheme registration itself); Tauri's own plugin handling the
+  JS-side dispatch is well-trodden, official behavior this session's unit
+  tests already cover.
+
+### 9.6 Two more bugs, found by Rob's first real click-through
+
+Both invisible to every automated check (1817 tests, clippy, a live
+Durable Object smoke test) because both are about the packaged app's
+runtime environment, not its logic.
+
+1. **"Couldn't open your browser to sign in."** The opener plugin needs TWO
+   grants, not one: `opener:allow-open-url` enables the *command*, and a
+   *scope* separately decides which URLs it may open. I granted only the
+   first, so the command was callable and every URL was denied. The plugin's
+   own `opener:default` set bundles `allow-default-urls` (all `https`,
+   `http`, `mailto`, `tel`) to cover this. Took the narrower option instead —
+   a scoped grant listing exactly `https://myfaite.app/*` and
+   `http://localhost:*/*` (the `tauri dev` loop, §7.3) — since this app only
+   ever opens its own hardcoded login URL. Verified the scope string is
+   embedded in the shipped binary, not just the config.
+
+   Generalizable, and the same shape as this repo's `tailwind-merge` and
+   dnd-kit-sensor lessons: **a permission that names a command is not the
+   same as a permission that names the command's arguments.** When a plugin
+   ships a `default` permission SET, read what's in it before hand-picking
+   one entry out of it — the set exists because one entry usually isn't
+   enough.
+
+2. **The in-webview `/login` and `/signup` pages were reachable, and failed
+   in the worst possible way.** Every entry point had been made
+   desktop-aware — except `app-header.tsx`'s "Sign up" CTA (line 123), a
+   second, separate button from the account menu's "Sign in" that I'd
+   already fixed. From there the webview rendered a real form that posts to
+   the real API: a wrong password reports "wrong password" correctly, and a
+   CORRECT password silently returns to a signed-out board, because
+   `tauri://localhost` cannot hold the session cookie that comes back (D0
+   §3.7). **A failure that looks like success is worse than an error**, and
+   the same dead end was still reachable via "Forgot password?", the
+   signup↔login footer links, and `reset-password`'s redirect — so fixing
+   the one missed button was not sufficient.
+
+   Fixed at the destination rather than the entry points:
+   `DesktopAuthNotice` (`src/components/auth/desktop-auth-notice.tsx`) is
+   what `/login` and `/signup` render instead of their form whenever
+   `isDesktopShell()` is true. The form is not rendered at all there, so
+   there is no longer any route — current or future — that lands a desktop
+   user on a sign-in that cannot work. **Guard the destination, not each
+   path to it**: entry points multiply, and the fourth one added later
+   won't remember to check.
+
+### 9.7 Confirmed working end to end
+
+**Rob signed in on the desktop app with his real production credentials
+and reached his real board — 2026-08-21, after the §9.6 fixes.** The full
+chain is live: system browser → production `myfaite.app` login → handoff
+code → `faite://` deep link → keychain token → authenticated
+`useSession()` and sync. Deployed to production (worker version
+`e293b3e0-0466-42df-9a52-166632e18ec2`), including the
+`enableSessionForAPIKeys` cutover and both `/api/desktop/*` routes.
+
+Not a milestone blocker, but true and worth stating: this is a genuine
+daily-driver state, and D2b's absence (below) is now the sharpest edge on
+it.
+
+### 9.8 What's still open
+
+- **`.dmg` bundling** — unaffected by this milestone, same open item as §8.4.
+- **The `enableSessionForAPIKeys` caveat** (§9.2) — revisit before shipping
+  a SECOND api-key consumer (EI-50's scoped external API token), since
+  `permissions` are declared but enforced nowhere today.
+- **CI signing** (§8.4) — local-keychain flow only.
+
+---
+
+## 10. D2b — background sync while the window is closed
+
+Executes EI-178's spike (`docs/DESKTOP-SYNC-TIMER-SPIKE.md`) recommendation
+directly — that document did the hard research; this section is the
+landing, not a redesign.
+
+### 10.1 The mechanism
+
+D1.5 removed the hidden `core` window because it had no job yet (§7.1). D2b
+gives it one back, under a new name and a real reason to exist:
+
+1. `main`'s `CloseRequested` handler (`lib.rs`) — already hiding the window
+   per D1.5 — now also calls `background_sync::start_background_sync()`.
+2. That creates a hidden (`visible: false`) webview, labeled
+   `background-sync`, loading a **new, dedicated, minimal page**
+   (`src/app/background-sync/page.tsx`) — not `board.html` reused hidden.
+   The page mounts only `<SyncProvider />`, nothing else. Deliberately not
+   the full board: a hidden window doesn't need `DndContext` or keyboard
+   shortcuts, and specifically must NOT mount `DesktopAuthProvider` — Tauri's
+   deep-link `onOpenUrl` is an app-wide event, not scoped to one webview, so
+   a second listener would race the main window to handle the same
+   `faite://auth-callback` URL.
+3. A `tokio::time::interval` (30s, matching `DEFAULT_INTERVAL_MS` in
+   `engine.ts` — not literally shared across the Rust/TS boundary) calls
+   `window.eval("window.__faiteBackgroundSyncTick && …()")` into that hidden
+   webview every tick. **This works specifically because it's Rust-driven,
+   not self-scheduled**: EI-178 measured a hidden window's own JS
+   `setInterval` at 1 tick out of an expected 24, and Rust-driven `eval()`
+   into that same hidden window at 24/24 — `evaluateJavaScript:` wakes a
+   throttled `WKWebView` for the call, per the spike's research (§3 there).
+4. `sync-provider.tsx` registers `window.__faiteBackgroundSyncTick` whenever
+   `isDesktopShell()` is true (harmless no-op in the main window — nothing
+   ever calls it there, since Rust only `eval()`s into `background-sync` by
+   label) — calling it invokes `engine.notifyRemoteChange()`, the exact same
+   undebounced, `isActive()`-gated, Web-Lock-respecting trigger the socket's
+   `onRemoteChange`/`onOpen` handlers already use. **The existing JS
+   sync/HLC/outbox logic is completely unchanged** — Rust only calls the
+   doorbell, per the spike's explicit recommendation against reimplementing
+   any of it natively.
+5. `RunEvent::Reopen` (the dock-icon-click handler, D1.5) calls
+   `background_sync::stop_background_sync()` before showing `main` again —
+   aborts the tick task and closes the hidden window. The board window's own
+   `SyncProvider` never stopped running while hidden (React/Dexie state
+   persists; only JS *timers* are what die), so it just resumes owning sync
+   the moment it's visible again — no handoff ceremony needed on this side.
+
+### 10.2 Why a dedicated page, and why explicitly not `DesktopAuthProvider`
+
+Reusing `board.html` for the hidden window (D1's original design, before
+D1.5 found it had no job) would have been the smaller diff. Rejected anyway:
+the hidden window has no user to show a keyboard shortcut sheet or a drag
+target to, and mounting `DesktopAuthProvider` there specifically would be a
+correctness bug, not just waste — see §10.1 point 2. A ~10-line page beats
+carrying that risk for the sake of reusing a bundle that was never sized for
+this job.
+
+### 10.3 Verified
+
+- `cargo check --all-targets` / `cargo clippy --all-targets` — clean, zero
+  warnings, first attempt (`background_sync.rs` compiled correctly against
+  `tauri::async_runtime::spawn` + `tokio::time::interval` composing on the
+  same runtime with no explicit runtime wiring needed).
+- `npm run verify` — typecheck, lint, **1817 tests**, both Next builds,
+  green. `background-sync.html` confirmed present in the `build:static`
+  output route list.
+- Built, signed, and notarized the real `.app` with this milestone included
+  — `spctl`/`codesign` unaffected (same signing pipeline as D1.6/D2a),
+  launched cleanly.
+- **Rob confirmed the real close→sync→reopen sequence works** — created a
+  to-do on another device while the board was closed, and it was already
+  there on reopen, no manual refresh needed. This session itself had no
+  Accessibility automation access to test the close/reopen click-through
+  directly (`osascript`'s window-suite `close` isn't implemented by a Tauri
+  window; `System Events` keystroke automation returned a clean "not
+  allowed", not a hang) and traced the design by hand instead — idempotent
+  start via the `Mutex<Option<JoinHandle>>` guard, teardown ordering on
+  `Reopen`, the `TICK_JS` snippet's `&&`-guard against a not-yet-booted or
+  already-torn-down window. The trace was right about sync working; it had
+  no way to catch what visual inspection alone caught immediately — see
+  §10.4.
+- One adjacent question resolved while investigating, not touched: does
+  `prevent_exit()`'s unconditional call on `RunEvent::ExitRequested` (D1.5)
+  mean Cmd-Q is broken? No — the app menu's `SubmenuBuilder::quit()` exits
+  directly, bypassing `ExitRequested` entirely; that handler only ever gates
+  the "last window closed → auto-exit" path. Confirmed by reading
+  `lib.rs:150`, not by testing Cmd-Q itself. Pre-existing D1.5 behavior,
+  unrelated to and unaffected by D2b — noted here because it came up while
+  reasoning about this milestone's process-exit edge cases, not because
+  anything about it changed.
+
+### 10.4 A real bug, found by Rob's first real close-the-board test
+
+**The hidden window wasn't hidden.** Rob closed the board and saw a real,
+visible, empty black `Faite (background sync)` window with a title bar.
+`.visible(false)` on the builder was right; something downstream was
+overriding it.
+
+Root cause: `tauri_plugin_window_state::Builder::default()` (D1.5/EI-132,
+registered globally, untouched by D2b's own diff) runs `restore_state()` on
+**every** window it isn't explicitly told to skip. For a label it has never
+seen before — true the very first time this new hidden window is ever
+created — its "no saved state" branch leaves `should_show` at
+`WindowState::default()`'s `visible: true` and unconditionally calls
+`.show()` before this module's own code gets a chance to matter. Nothing
+about D2b's own window-visibility code was wrong; a global plugin
+registered for a completely different reason (persisting `main`'s geometry
+across relaunches) was reaching into a window it was never meant to manage.
+
+Fixed with `.with_denylist(&[background_sync::BACKGROUND_WINDOW])` on the
+plugin registration — not `skip_initial_state`, which only skips the
+restore call but still lets the plugin track and persist this window's
+state on every close; a denylist excludes it entirely; the very first
+check in the plugin's window-creation hook. Correct independent of the bug,
+too: this window's geometry is meaningless and was never something worth
+persisting.
+
+**The general shape, worth carrying forward**: a plugin registered
+globally for one window's benefit (`main`'s geometry) applies to every
+window by default unless each new window is explicitly told to opt out.
+Adding a new window anywhere in this app needs to ask "which of the
+globally-registered plugins does this window need to be excluded from?",
+not just "what does this window need to opt into?" — the failure mode is
+silent and only shows up as behavior, not a compile error or a log line.
+
+### 10.5 What's still open
+
+- **Reconfirm after the §10.4 fix.** Sync itself was already confirmed
+  working before the denylist fix landed — the visibility bug didn't break
+  sync, it only meant the mechanism doing so was visible when it should not
+  have been. Worth one more close/reopen pass to confirm the window is now
+  actually hidden, not just that sync still works.
+- **Foreground reminders while closed** — not touched by this milestone.
+  D2b only restores *sync*; whether a reminder notification should also
+  fire from the hidden window (and how, since `Notification` API behavior in
+  a non-frontmost, hidden webview is untested) is a separate question this
+  section deliberately didn't scope in.
+- **Windows/WebView2** — EI-178's research (§3 there) found the same class
+  of hidden-window timer-suspension problem is documented on Windows too,
+  but nothing here has been run there. A D6 concern, not a D2b gap.
+- **The mild redundancy this design accepts**: while `main` is hidden (not
+  yet reopened), its own `SyncProvider`/WebSocket connection is still
+  technically alive in memory (hiding a window doesn't unmount React) even
+  though its JS timers are dead — so there are briefly two live sync
+  contexts for the same account (main's dormant one, background's active
+  one) rather than a clean handoff. Not a correctness risk (this app's sync
+  design already tolerates N simultaneous connections for the same account
+  by construction — multi-tab support has always assumed this), just a
+  small, deliberately-unoptimized inefficiency: one extra idle WebSocket and
+  occasional redundant polling for as long as the window stays closed.
