@@ -4,7 +4,9 @@ import { Suspense, type FormEvent, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AuthShell } from "@/components/auth/auth-shell";
+import { DesktopAuthNotice } from "@/components/auth/desktop-auth-notice";
 import { OAuthButtons } from "@/components/auth/oauth-buttons";
+import { isDesktopShell } from "@/lib/desktop/bridge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,6 +18,11 @@ function SignupForm() {
   // useSearchParams needs a Suspense boundary under `output: export` — see
   // the wrapper below. Same D2a purpose as login/page.tsx.
   const callbackURL = useSearchParams().get("callbackURL") ?? "/board";
+
+  // Reached inside the Tauri webview: render the browser handoff, never
+  // the form — a sign-in attempted here cannot hold a session cookie and
+  // silently returns to a signed-out board. See DesktopAuthNotice.
+  const desktop = isDesktopShell();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -58,6 +65,8 @@ function SignupForm() {
       </AuthShell>
     );
   }
+
+  if (desktop) return <DesktopAuthNotice page="signup" />;
 
   return (
     <AuthShell

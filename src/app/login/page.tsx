@@ -4,7 +4,9 @@ import { Suspense, type FormEvent, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AuthShell } from "@/components/auth/auth-shell";
+import { DesktopAuthNotice } from "@/components/auth/desktop-auth-notice";
 import { OAuthButtons } from "@/components/auth/oauth-buttons";
+import { isDesktopShell } from "@/lib/desktop/bridge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,6 +21,11 @@ function LoginForm() {
   // (this form and <OAuthButtons>) land there instead of /board — see
   // desktop-handoff/page.tsx.
   const callbackURL = useSearchParams().get("callbackURL") ?? "/board";
+
+  // Reached inside the Tauri webview: render the browser handoff, never
+  // the form — a sign-in attempted here cannot hold a session cookie and
+  // silently returns to a signed-out board. See DesktopAuthNotice.
+  const desktop = isDesktopShell();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -38,6 +45,8 @@ function LoginForm() {
     }
     router.push(callbackURL);
   };
+
+  if (desktop) return <DesktopAuthNotice page="login" />;
 
   return (
     <AuthShell

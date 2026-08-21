@@ -992,7 +992,53 @@ subprotocol path) against a real signed-up account, not mocks:
   JS-side dispatch is well-trodden, official behavior this session's unit
   tests already cover.
 
-### 9.6 What's still open
+### 9.6 Two more bugs, found by Rob's first real click-through
+
+Both invisible to every automated check (1817 tests, clippy, a live
+Durable Object smoke test) because both are about the packaged app's
+runtime environment, not its logic.
+
+1. **"Couldn't open your browser to sign in."** The opener plugin needs TWO
+   grants, not one: `opener:allow-open-url` enables the *command*, and a
+   *scope* separately decides which URLs it may open. I granted only the
+   first, so the command was callable and every URL was denied. The plugin's
+   own `opener:default` set bundles `allow-default-urls` (all `https`,
+   `http`, `mailto`, `tel`) to cover this. Took the narrower option instead —
+   a scoped grant listing exactly `https://myfaite.app/*` and
+   `http://localhost:*/*` (the `tauri dev` loop, §7.3) — since this app only
+   ever opens its own hardcoded login URL. Verified the scope string is
+   embedded in the shipped binary, not just the config.
+
+   Generalizable, and the same shape as this repo's `tailwind-merge` and
+   dnd-kit-sensor lessons: **a permission that names a command is not the
+   same as a permission that names the command's arguments.** When a plugin
+   ships a `default` permission SET, read what's in it before hand-picking
+   one entry out of it — the set exists because one entry usually isn't
+   enough.
+
+2. **The in-webview `/login` and `/signup` pages were reachable, and failed
+   in the worst possible way.** Every entry point had been made
+   desktop-aware — except `app-header.tsx`'s "Sign up" CTA (line 123), a
+   second, separate button from the account menu's "Sign in" that I'd
+   already fixed. From there the webview rendered a real form that posts to
+   the real API: a wrong password reports "wrong password" correctly, and a
+   CORRECT password silently returns to a signed-out board, because
+   `tauri://localhost` cannot hold the session cookie that comes back (D0
+   §3.7). **A failure that looks like success is worse than an error**, and
+   the same dead end was still reachable via "Forgot password?", the
+   signup↔login footer links, and `reset-password`'s redirect — so fixing
+   the one missed button was not sufficient.
+
+   Fixed at the destination rather than the entry points:
+   `DesktopAuthNotice` (`src/components/auth/desktop-auth-notice.tsx`) is
+   what `/login` and `/signup` render instead of their form whenever
+   `isDesktopShell()` is true. The form is not rendered at all there, so
+   there is no longer any route — current or future — that lands a desktop
+   user on a sign-in that cannot work. **Guard the destination, not each
+   path to it**: entry points multiply, and the fourth one added later
+   won't remember to check.
+
+### 9.7 What's still open
 
 - **A real end-to-end click-through needs Rob** — sign in via a real
   browser, click "Continue to Faite," watch the app actually show

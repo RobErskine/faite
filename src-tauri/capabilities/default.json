@@ -9,6 +9,12 @@
     "core:default",
     "window-state:default",
     "deep-link:default",
-    "opener:allow-open-url"
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        { "url": "https://myfaite.app/*" },
+        { "url": "http://localhost:*/*" }
+      ]
+    }
   ]
 }

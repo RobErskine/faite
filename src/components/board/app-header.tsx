@@ -73,9 +73,9 @@ export function AppHeader({
     toast.success("Signed out");
   };
 
-  const handleDesktopSignIn = async () => {
+  const handleDesktopSignIn = async (page: "login" | "signup" = "login") => {
     try {
-      await startDesktopLogin();
+      await startDesktopLogin(page);
     } catch (error) {
       console.error("[faite] couldn't open the system browser for sign-in", error);
       toast.error("Couldn't open your browser to sign in.");
@@ -120,9 +120,19 @@ export function AppHeader({
       )}
 
       {shouldShowAuthNudges ? (
-        <Button size="sm" nativeButton={false} render={<Link href="/signup" />}>
-          Sign up
-        </Button>
+        isDesktopShell() ? (
+          // Same reason as the account menu's Sign in below: the embedded
+          // webview cannot complete a sign-up itself (D0 §3.7), so this
+          // opens the system browser rather than navigating to a form that
+          // can never succeed. See docs/DESKTOP.md §9.
+          <Button size="sm" onClick={() => void handleDesktopSignIn("signup")}>
+            Sign up
+          </Button>
+        ) : (
+          <Button size="sm" nativeButton={false} render={<Link href="/signup" />}>
+            Sign up
+          </Button>
+        )
       ) : null}
 
       {/* Mouse-discoverable route to the same sheet `?` opens (EI-75) — a
