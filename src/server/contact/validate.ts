@@ -6,7 +6,9 @@ import { z } from "zod";
  * to a 400, never throw.
  */
 
-const contactRequestSchema = z.object({
+// Exported for `src/server/openapi/routes.ts` (A1, EI-226) — reused rather
+// than hand-mirrored a second time.
+export const contactRequestSchema = z.object({
   // `.trim()` before the length checks so whitespace-only input is rejected
   // as empty rather than delivered as a blank report.
   name: z.string().trim().min(1).max(200),
