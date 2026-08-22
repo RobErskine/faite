@@ -71,6 +71,13 @@
       "when": 1787002249793,
       "tag": "0009_heavy_professor_monster",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1787376126904,
+      "tag": "0010_brown_skin",
+      "breakpoints": true
     }
   ]
 }

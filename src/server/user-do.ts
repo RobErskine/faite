@@ -13,6 +13,7 @@ import {
 } from "@/lib/sync/ws-protocol";
 import { runUserDbMigrations } from "./db/migrations";
 import * as schema from "./db/user-schema";
+import { serverHlcClock } from "./service/hlc";
 import type { FieldClockMap } from "./sync/apply-patch";
 import { COLUMNS_BY_KIND, rowFromSqlRow, TABLE_NAME_BY_KIND, toColumnValue } from "./sync/columns";
 import { type KindPage, mergePages } from "./sync/pull";
@@ -391,6 +392,33 @@ export class UserDurableObject extends DurableObject {
       .exec<{ position: string }>("SELECT position FROM todos ORDER BY position DESC LIMIT 1")
       .toArray();
     return positionAtEnd(row?.position ?? null);
+  }
+
+  /**
+   * A durable, collision-free HLC for a server-originated UPDATE (A4,
+   * EI-229) — `serverHlcClock`'s in-memory mode is only safe for creates
+   * (see that file's header). This is the other mode: `server_last_hlc` in
+   * `sync_meta` is this DO's own persisted "last", read and written with
+   * plain synchronous `exec` calls exactly like `allocateVersion()` below —
+   * no `transactionSync` needed for the same reason that method has none:
+   * there is no `await` between the read and the write, and the DO's JS
+   * only ever yields at an `await`, so nothing can interleave.
+   *
+   * Read-only in the sense `nextTodoPosition()` is not: this DOES persist a
+   * new value on every call, so a caller that never uses the result still
+   * advances the clock. Fine — a wasted allocation costs nothing here, the
+   * way a wasted `version` from a lost-response retry would (see `push()`).
+   */
+  async nextServerHlc(): Promise<string> {
+    return serverHlcClock("server", {
+      load: () =>
+        this.ctx.storage.sql
+          .exec<{ server_last_hlc: string | null }>("SELECT server_last_hlc FROM sync_meta WHERE id = 1")
+          .one().server_last_hlc,
+      save: (hlc) => {
+        this.ctx.storage.sql.exec("UPDATE sync_meta SET server_last_hlc = ? WHERE id = 1", hlc);
+      },
+    })();
   }
 
   /**

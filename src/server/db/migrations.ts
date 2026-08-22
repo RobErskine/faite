@@ -255,6 +255,18 @@ export const USER_DB_MIGRATIONS: readonly UserDbMigration[] = [
       "ALTER TABLE lists ADD COLUMN default_reminder_preset_id text",
     ],
   },
+  {
+    id: 15,
+    name: "sync-meta-add-server-hlc",
+    statements: [
+      // Nullable: no server-originated write has happened yet for any
+      // existing account, and `serverHlcClock`'s persistence adapter treats
+      // NULL as "no prior stamp" exactly like a brand-new DO would (see
+      // `hlc.ts`'s `localEvent(null, ...)` case). A4, EI-229 —
+      // `UserDurableObject.nextServerHlc()` is the only writer.
+      "ALTER TABLE sync_meta ADD COLUMN server_last_hlc text",
+    ],
+  },
   // Add new migrations here. Never edit one above this line.
   //
   // Example — adding a nullable column (the safe, ordinary case):
