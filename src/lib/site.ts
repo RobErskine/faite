@@ -108,8 +108,11 @@ export const SITE_PAGES: readonly SitePage[] = [
     footerGroup: "support",
   },
   {
+    // `title` is "Faite API", not "API Reference", because it has to match
+    // the single real `<h1>` on this page verbatim — see the doc comment
+    // on `DocsPage` for why that h1 belongs to Scalar, not to this table.
     path: "/docs",
-    title: "API Reference",
+    title: "Faite API",
     description: "The public, versioned Faite API — read and write todos from your own client.",
     updated: "2026-08-22",
     footerGroup: "product",
