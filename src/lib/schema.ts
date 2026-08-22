@@ -140,6 +140,16 @@ export const listSchema = z.object({
    * applying with no visible cause.
    */
   defaultReminderPresetId: idSchema.nullable().default(null),
+  /**
+   * Plain text, same convention as `tabSchema.description`. Free-form context
+   * for what this list is for — e.g. "Dreamworks tickets, look for WTT- or
+   * SPLLAT- prefixes" — meant to be read by a human via the list's info
+   * dialog, and by future automation: smart/automatic todo routing, and MCP
+   * clients deciding which list a new todo belongs in. Nothing reads it for
+   * either yet; it exists so the context isn't lost by the time something
+   * does.
+   */
+  description: z.string().nullable().default(null),
 });
 export type List = z.infer<typeof listSchema>;
 

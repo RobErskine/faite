@@ -9611,6 +9611,17 @@
                 "type": "null"
               }
             ]
+          },
+          "description": {
+            "default": null,
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -9628,7 +9639,8 @@
           "archivedWithTabId",
           "position",
           "tabId",
-          "defaultReminderPresetId"
+          "defaultReminderPresetId",
+          "description"
         ],
         "additionalProperties": false
       },

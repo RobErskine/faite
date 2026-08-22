@@ -1564,7 +1564,9 @@ export function useBoardActions(
         ? `Renamed “${list.name}”`
         : patch.defaultReminderPresetId !== undefined
           ? `Changed default reminder for “${list.name}”`
-          : `Recolored “${list.name}”`;
+          : patch.description !== undefined
+            ? `Edited “${list.name}”`
+            : `Recolored “${list.name}”`;
     updateListWithUndo(list, patch, label);
   }, []);
 

@@ -267,6 +267,16 @@ export const USER_DB_MIGRATIONS: readonly UserDbMigration[] = [
       "ALTER TABLE sync_meta ADD COLUMN server_last_hlc text",
     ],
   },
+  {
+    id: 16,
+    name: "lists-add-description",
+    statements: [
+      // Nullable, same convention as tabs.description (migration 1) — no
+      // existing row needs a value, and there is no natural FIELD_DEFAULTS
+      // fallback for freeform prose.
+      "ALTER TABLE lists ADD COLUMN description text",
+    ],
+  },
   // Add new migrations here. Never edit one above this line.
   //
   // Example — adding a nullable column (the safe, ordinary case):

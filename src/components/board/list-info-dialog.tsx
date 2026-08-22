@@ -21,9 +21,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import type { List, ReminderPreset, Tab } from "@/lib/schema";
 
-export type ListPatch = Partial<Pick<List, "name" | "color" | "defaultReminderPresetId">>;
+export type ListPatch = Partial<
+  Pick<List, "name" | "description" | "color" | "defaultReminderPresetId">
+>;
 
 const NONE = "__none__";
 
@@ -69,6 +72,7 @@ function ListInfoDialogContent({
   onDelete,
 }: ListInfoDialogProps & { list: List }) {
   const [name, setName] = useState(list.name);
+  const [description, setDescription] = useState(list.description ?? "");
   const [color, setColor] = useState<string | null>(list.color);
   const [defaultReminderPresetId, setDefaultReminderPresetId] = useState<string | null>(
     list.defaultReminderPresetId,
@@ -76,11 +80,15 @@ function ListInfoDialogContent({
   const inheritedColor = list.tabId ? (tabsById.get(list.tabId)?.color ?? null) : null;
 
   const trimmed = name.trim();
+  // Empty prose is absence, not an empty string — the schema is nullable,
+  // same convention as TabInfoDialog's description field.
+  const nextDescription = description.trim() || null;
 
   // Diffed rather than sent wholesale, the same shape TabInfoDialog uses: an
   // undo entry for a field that did not change is an entry ⌘Z spends itself on.
   const patch: ListPatch = {};
   if (trimmed && trimmed !== list.name) patch.name = trimmed;
+  if (nextDescription !== (list.description ?? null)) patch.description = nextDescription;
   if (color !== list.color) patch.color = color;
   if (defaultReminderPresetId !== list.defaultReminderPresetId) {
     patch.defaultReminderPresetId = defaultReminderPresetId;
@@ -116,6 +124,22 @@ function ListInfoDialogContent({
               save();
             }}
           />
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="list-description">Description</Label>
+          <Textarea
+            id="list-description"
+            rows={2}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="What this list is for"
+          />
+          <p className="text-xs text-muted-foreground">
+            Used for smart routing and MCP access — give enough context (a
+            project name, ticket prefixes) that a to-do can be routed here
+            automatically later.
+          </p>
         </div>
 
         <div className="space-y-1.5">

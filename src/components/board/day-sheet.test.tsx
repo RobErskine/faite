@@ -98,6 +98,7 @@ const list = (id: string, color: string | null): List => ({
   position: "a0",
   tabId: null,
   defaultReminderPresetId: null,
+  description: null,
   color,
   emoji: null,
   iconUrl: null,
