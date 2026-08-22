@@ -63,3 +63,37 @@ export function serverHlcClock(
     return next;
   };
 }
+
+/**
+ * Bridges `UserDurableObject.nextServerHlc()`'s async RPC round trip with
+ * `ServiceContext.nextHlc`'s SYNCHRONOUS contract (A5, EI-230) —
+ * `buildCreateTodoEntry`/`buildUpdateTodoEntry` call `ctx.nextHlc()` inline,
+ * once per `PushEntry`, and cannot `await` there.
+ *
+ * Pre-fetches exactly `count` durable stamps up front, then hands them out
+ * one at a time from a plain closure. A caller that ends up needing fewer
+ * than `count` (e.g. an update whose patch touches no `JOURNALLED_FIELDS`,
+ * so no companion `todoEvent` fires) simply leaves the rest unused — a
+ * wasted `sync_meta.server_last_hlc` tick costs nothing, the same reasoning
+ * `nextServerHlc()`'s own doc comment gives for a wasted allocation. Request
+ * one more than you're sure you need rather than compute the exact count.
+ *
+ * Throws if a builder calls `nextHlc()` more times than were pre-fetched —
+ * a caller bug (undercounted `count`), not a runtime condition to recover
+ * from silently.
+ */
+export async function durableHlcQueue(
+  stub: { nextServerHlc(): Promise<string> },
+  count: number,
+): Promise<() => string> {
+  const stamps: string[] = [];
+  for (let i = 0; i < count; i++) stamps.push(await stub.nextServerHlc());
+
+  let cursor = 0;
+  return () => {
+    if (cursor >= stamps.length) {
+      throw new Error(`durableHlcQueue: exhausted ${stamps.length} pre-fetched stamp(s)`);
+    }
+    return stamps[cursor++];
+  };
+}
