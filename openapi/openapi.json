@@ -47,7 +47,7 @@
             }
           },
           "403": {
-            "description": "Origin not on the CORS allow-list.",
+            "description": "Origin not on the CORS allow-list (`forbidden-origin`), OR a valid API key without the `sync` scope (`insufficient-scope`, A2, EI-227).",
             "content": {
               "application/json": {
                 "schema": {
@@ -217,6 +217,26 @@
               }
             }
           },
+          "403": {
+            "description": "A valid API key without the required scope (A2, EI-227). A cookie session or a full desktop-handoff key never sees this.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"insufficient-scope\" }`."
+                }
+              }
+            }
+          },
           "500": {
             "description": "Unhandled server error.",
             "content": {
@@ -321,6 +341,26 @@
                 }
               }
             }
+          },
+          "403": {
+            "description": "A valid API key without the required scope (A2, EI-227). A cookie session or a full desktop-handoff key never sees this.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"insufficient-scope\" }`."
+                }
+              }
+            }
           }
         }
       }
@@ -359,6 +399,26 @@
                   ],
                   "additionalProperties": false,
                   "description": "Error envelope. Example: `{ \"error\": \"unauthenticated\" }`."
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A valid API key without the required scope (A2, EI-227). A cookie session or a full desktop-handoff key never sees this.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"insufficient-scope\" }`."
                 }
               }
             }
@@ -411,6 +471,26 @@
                   ],
                   "additionalProperties": false,
                   "description": "Error envelope. Example: `{ \"error\": \"unauthenticated\" }`."
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A valid API key without the required scope (A2, EI-227). A cookie session or a full desktop-handoff key never sees this.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"insufficient-scope\" }`."
                 }
               }
             }
@@ -508,6 +588,26 @@
                   ],
                   "additionalProperties": false,
                   "description": "Error envelope. Example: `{ \"error\": \"unauthenticated\" }`."
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A valid API key without the required scope (A2, EI-227). A cookie session or a full desktop-handoff key never sees this.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"insufficient-scope\" }`."
                 }
               }
             }
@@ -653,6 +753,26 @@
                   ],
                   "additionalProperties": false,
                   "description": "Error envelope. Example: `{ \"error\": \"unauthenticated\" }`."
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A valid API key without the required scope (A2, EI-227). A cookie session or a full desktop-handoff key never sees this.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"insufficient-scope\" }`."
                 }
               }
             }
@@ -1147,6 +1267,346 @@
                   ],
                   "additionalProperties": false,
                   "description": "Error envelope. Example: `{ \"error\": \"contact-not-configured\" }`."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/todos": {
+      "get": {
+        "tags": [
+          "v1"
+        ],
+        "summary": "List the caller's todos.",
+        "description": "Requires the `read` scope — every cookie session and every API key has it by default. Soft-deleted rows are never included.",
+        "operationId": "listV1Todos",
+        "responses": {
+          "200": {
+            "description": "todos, in board order.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Todo"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session and no valid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"unauthenticated\" }`."
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A valid API key without the required scope (A2, EI-227). A cookie session or a full desktop-handoff key never sees this.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"insufficient-scope\" }`."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unhandled server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"internal-error\" }`."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/lists": {
+      "get": {
+        "tags": [
+          "v1"
+        ],
+        "summary": "List the caller's lists.",
+        "description": "Requires the `read` scope — every cookie session and every API key has it by default. Soft-deleted rows are never included.",
+        "operationId": "listV1Lists",
+        "responses": {
+          "200": {
+            "description": "lists, in board order.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/List"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session and no valid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"unauthenticated\" }`."
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A valid API key without the required scope (A2, EI-227). A cookie session or a full desktop-handoff key never sees this.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"insufficient-scope\" }`."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unhandled server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"internal-error\" }`."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/labels": {
+      "get": {
+        "tags": [
+          "v1"
+        ],
+        "summary": "List the caller's labels.",
+        "description": "Requires the `read` scope — every cookie session and every API key has it by default. Soft-deleted rows are never included.",
+        "operationId": "listV1Labels",
+        "responses": {
+          "200": {
+            "description": "labels, in board order.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Label"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session and no valid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"unauthenticated\" }`."
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A valid API key without the required scope (A2, EI-227). A cookie session or a full desktop-handoff key never sees this.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"insufficient-scope\" }`."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unhandled server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"internal-error\" }`."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tabs": {
+      "get": {
+        "tags": [
+          "v1"
+        ],
+        "summary": "List the caller's tabs.",
+        "description": "Requires the `read` scope — every cookie session and every API key has it by default. Soft-deleted rows are never included.",
+        "operationId": "listV1Tabs",
+        "responses": {
+          "200": {
+            "description": "tabs, in board order.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Tab"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session and no valid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"unauthenticated\" }`."
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A valid API key without the required scope (A2, EI-227). A cookie session or a full desktop-handoff key never sees this.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"insufficient-scope\" }`."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unhandled server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"internal-error\" }`."
                 }
               }
             }
@@ -8665,89 +9125,6 @@
         ],
         "additionalProperties": false
       },
-      "Project": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "minLength": 1
-          },
-          "ownerId": {
-            "type": "string",
-            "minLength": 1
-          },
-          "createdAt": {
-            "type": "string"
-          },
-          "updatedAt": {
-            "type": "string"
-          },
-          "deletedAt": {
-            "default": null,
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "color": {
-            "default": null,
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "emoji": {
-            "default": null,
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "iconUrl": {
-            "default": null,
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "name": {
-            "type": "string",
-            "minLength": 1
-          },
-          "position": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "ownerId",
-          "createdAt",
-          "updatedAt",
-          "deletedAt",
-          "color",
-          "emoji",
-          "iconUrl",
-          "name",
-          "position"
-        ],
-        "additionalProperties": false
-      },
       "Tab": {
         "type": "object",
         "properties": {
@@ -8856,6 +9233,89 @@
           "description",
           "isDefault",
           "archivedAt",
+          "position"
+        ],
+        "additionalProperties": false
+      },
+      "Project": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "ownerId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "deletedAt": {
+            "default": null,
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "color": {
+            "default": null,
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "emoji": {
+            "default": null,
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "iconUrl": {
+            "default": null,
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "position": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "ownerId",
+          "createdAt",
+          "updatedAt",
+          "deletedAt",
+          "color",
+          "emoji",
+          "iconUrl",
+          "name",
           "position"
         ],
         "additionalProperties": false

@@ -1,4 +1,5 @@
 import { createAuth, getSessionSafe } from "../auth";
+import { DESKTOP_KEY_NAME, DESKTOP_KEY_PERMISSIONS } from "../auth-scopes";
 import { corsHeaders, handleOptions } from "../cors";
 import { decodeHandoffCode, encodeHandoffCode } from "./handoff-code";
 
@@ -50,13 +51,22 @@ export async function handleDesktopRequest(request: Request, env: CloudflareEnv)
 
     // Named for the eventual revocation UI (EI-50/auth-tokens.ts's own
     // "requireName" comment: an unnamed key is one nobody can identify six
-    // months from now). No explicit `userId` — passing one here is not just
-    // unnecessary but rejected outright when a session is present (see
-    // `@better-auth/api-key`'s own guard), since the point is to bind the
-    // key to whoever this cookie actually belongs to.
+    // months from now).
+    //
+    // Deliberately NO `headers` on this call, and an EXPLICIT `userId` —
+    // the opposite of what an earlier version of this comment said, and for
+    // a reason worth recording: `permissions` (A2, EI-227) is a
+    // server-only property, and `@better-auth/api-key` decides "is this a
+    // server call" by checking `ctx.request || ctx.headers` — ANY headers
+    // at all, not specifically a session cookie. Passing `request.headers`
+    // (needed, before this ticket, only so the plugin could resolve the
+    // caller's own session internally) made this call look identical to a
+    // public client request, and silently threw `SERVER_ONLY_PROPERTY` the
+    // moment `permissions` was added. `session` is already resolved above
+    // via `getSessionSafe`, so this call supplies its id directly instead
+    // and needs nothing from the request itself.
     const created = await auth.api.createApiKey({
-      body: { name: "Faite desktop" },
-      headers: request.headers,
+      body: { name: DESKTOP_KEY_NAME, permissions: DESKTOP_KEY_PERMISSIONS, userId: session.user.id },
     });
 
     const code = await encodeHandoffCode(created.key, env.BETTER_AUTH_SECRET);

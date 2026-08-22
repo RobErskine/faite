@@ -1,4 +1,5 @@
-import { createAuth, getSessionSafe } from "../auth";
+import { authorizeScope } from "../auth-scopes";
+import { createAuth } from "../auth";
 import { corsHeaders, handleOptions } from "../cors";
 import { clampPullArgs, parsePushRequest } from "./validate";
 import { isAllowedWsOrigin, isWebSocketUpgrade, USER_ID_HEADER } from "./ws-server";
@@ -13,17 +14,18 @@ import { isAllowedWsOrigin, isWebSocketUpgrade, USER_ID_HEADER } from "./ws-serv
  * true of the BOARD, which never calls this. A request that reaches this
  * file without a session is unauthenticated, full stop: 401, never a nag.
  *
- * `getSessionSafe()` is the ONLY auth check here, deliberately — it looks
- * like cookie-only, but isn't: `auth-tokens.ts`'s `apiTokenPlugin` (D2a)
- * hooks every Better Auth endpoint including this one and transparently
- * resolves a valid `Authorization: Bearer <key>` (or, for `/api/sync/ws`'s
- * upgrade, `Sec-WebSocket-Protocol`) into the same session shape a cookie
- * would produce — see `getSessionSafe`'s own doc comment (`auth.ts`) for why
- * the "safe" wrapper is load-bearing, not decoration. Do not add a second,
- * route-local bearer check here — it would be exactly the kind of
- * duplicated decision `auth-tokens.ts`'s own comment warns against, and this
- * file would drift from `/api/desktop/*` and Better Auth's own routes,
- * which all go through the identical hook.
+ * `authorizeScope(auth, request, "sync")` (A2, EI-227) is the ONLY auth
+ * check here. It is NOT a route-local reimplementation of session
+ * resolution — a cookie-carrying request still goes through the exact same
+ * `getSessionSafe()` this file used before, full access, unchanged. It ADDS
+ * one thing on top: when the credential is an API key (`Authorization:
+ * Bearer <key>`, or `/api/sync/ws`'s `Sec-WebSocket-Protocol`), the key must
+ * carry the `sync` permission. A desktop-handoff key always does
+ * (`auth-scopes.ts`'s `DESKTOP_KEY_PERMISSIONS`) — no regression. A narrow,
+ * user-generated key (A3) does not, by default, and gets 403 here rather
+ * than reaching `POST /api/sync/reset` with the same reach as a real login.
+ * See `auth-scopes.ts` for why this is a single verification, not a second
+ * one layered on top of `getSessionSafe`.
  */
 
 function json(body: unknown, status: number, headers: HeadersInit): Response {
@@ -36,9 +38,9 @@ export async function handleSyncRequest(request: Request, env: CloudflareEnv): P
   const headers = corsHeaders(request.headers.get("Origin"));
   const url = new URL(request.url);
 
-  const session = await getSessionSafe(createAuth(env, request), request);
-  if (!session) return json({ error: "unauthenticated" }, 401, headers);
-  const userId = session.user.id;
+  const auth = await authorizeScope(createAuth(env, request), request, "sync");
+  if (!auth.ok) return json({ error: auth.error }, auth.status, headers);
+  const userId = auth.userId;
 
   try {
     const stub = env.USER_DO.get(env.USER_DO.idFromName(userId));

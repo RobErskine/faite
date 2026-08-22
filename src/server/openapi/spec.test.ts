@@ -39,6 +39,10 @@ const EXPECTED_INTERNAL_PATHS = [
   "/api/email/address",
   "/api/email/address/rotate",
   "/api/contact",
+  "/api/v1/todos",
+  "/api/v1/lists",
+  "/api/v1/labels",
+  "/api/v1/tabs",
 ];
 
 describe("buildInternalDocument", () => {
@@ -87,8 +91,10 @@ describe("buildInternalDocument", () => {
 });
 
 describe("buildPublicDocument", () => {
-  it("has no paths yet — real ones land in A2 (EI-227)", () => {
-    expect(buildPublicDocument().paths).toEqual({});
+  it("documents the four A2 (EI-227) read routes and nothing else yet", () => {
+    expect(Object.keys(buildPublicDocument().paths ?? {}).sort()).toEqual(
+      ["/api/v1/labels", "/api/v1/lists", "/api/v1/tabs", "/api/v1/todos"].sort(),
+    );
   });
 
   it("validates as OpenAPI 3.1", async () => {

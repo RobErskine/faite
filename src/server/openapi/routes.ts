@@ -3,6 +3,7 @@ import type { ZodOpenApiPathsObject } from "zod-openapi";
 import { autocompleteRequestSchema, detailsRequestSchema } from "@/server/places/validate";
 import { pushRequestSchema } from "@/server/sync/validate";
 import { contactRequestSchema } from "@/server/contact/validate";
+import { V1_RESOURCES } from "@/server/v1/routes";
 import { SYNC_KINDS } from "@/lib/sync/wire";
 
 /**
@@ -74,6 +75,11 @@ const unauthenticated = {
   content: { "application/json": { schema: errorSchema("unauthenticated") } },
 };
 
+const insufficientScope = {
+  description: 'A valid API key without the required scope (A2, EI-227). A cookie session or a full desktop-handoff key never sees this.',
+  content: { "application/json": { schema: errorSchema("insufficient-scope") } },
+};
+
 const syncPaths: ZodOpenApiPathsObject = {
   "/api/sync/ws": {
     get: {
@@ -87,7 +93,10 @@ const syncPaths: ZodOpenApiPathsObject = {
         "101": { description: "Switching Protocols — the WebSocket is open." },
         "401": unauthenticated,
         "403": {
-          description: "Origin not on the CORS allow-list.",
+          description:
+            "Origin not on the CORS allow-list (`forbidden-origin`), OR a " +
+            "valid API key without the `sync` scope (`insufficient-scope`, " +
+            "A2, EI-227).",
           content: { "application/json": { schema: errorSchema("forbidden-origin") } },
         },
         "426": {
@@ -119,6 +128,7 @@ const syncPaths: ZodOpenApiPathsObject = {
           content: { "application/json": { schema: errorSchema("invalid-request") } },
         },
         "401": unauthenticated,
+        "403": insufficientScope,
         "500": {
           description: "Unhandled server error.",
           content: { "application/json": { schema: errorSchema("internal-error") } },
@@ -147,6 +157,7 @@ const syncPaths: ZodOpenApiPathsObject = {
           content: { "application/json": { schema: errorSchema("invalid-cursor") } },
         },
         "401": unauthenticated,
+        "403": insufficientScope,
       },
     },
   },
@@ -161,6 +172,7 @@ const syncPaths: ZodOpenApiPathsObject = {
           content: { "application/json": { schema: schemaInfoResponseSchema } },
         },
         "401": unauthenticated,
+        "403": insufficientScope,
       },
     },
   },
@@ -176,6 +188,7 @@ const syncPaths: ZodOpenApiPathsObject = {
           content: { "application/json": { schema: z.object({ ok: z.literal(true) }) } },
         },
         "401": unauthenticated,
+        "403": insufficientScope,
       },
     },
   },
@@ -235,6 +248,7 @@ const placesPaths: ZodOpenApiPathsObject = {
           content: { "application/json": { schema: errorSchema("invalid-request") } },
         },
         "401": unauthenticated,
+        "403": insufficientScope,
         "501": placesNotConfigured,
         ...upstreamResponses,
       },
@@ -258,6 +272,7 @@ const placesPaths: ZodOpenApiPathsObject = {
           content: { "application/json": { schema: errorSchema("invalid-request") } },
         },
         "401": unauthenticated,
+        "403": insufficientScope,
         "501": placesNotConfigured,
         ...upstreamResponses,
       },
@@ -411,6 +426,42 @@ const contactPaths: ZodOpenApiPathsObject = {
   },
 };
 
+// ---- /api/v1/* (A2, EI-227) ----------------------------------------------
+
+/**
+ * Built FROM `v1/routes.ts`'s own `V1_RESOURCES` — the same map the route
+ * dispatch switches on — rather than a second hand-typed list of the four
+ * resource names. A fifth kind added there without a doc entry here is
+ * exactly the drift EI-226 exists to close.
+ */
+export const v1Paths: ZodOpenApiPathsObject = Object.fromEntries(
+  Object.entries(V1_RESOURCES).map(([path, { kind, schema }]) => [
+    `/api/v1/${path}`,
+    {
+      get: {
+        tags: ["v1"],
+        summary: `List the caller's ${path}.`,
+        description:
+          "Requires the `read` scope — every cookie session and every API " +
+          "key has it by default. Soft-deleted rows are never included.",
+        operationId: `listV1${kind[0].toUpperCase()}${kind.slice(1)}s`,
+        responses: {
+          "200": {
+            description: `${path}, in board order.`,
+            content: { "application/json": { schema: z.array(schema) } },
+          },
+          "401": unauthenticated,
+          "403": insufficientScope,
+          "500": {
+            description: "Unhandled server error.",
+            content: { "application/json": { schema: errorSchema("internal-error") } },
+          },
+        },
+      },
+    },
+  ]),
+);
+
 /** Every hand-documented path, keyed the same way `worker.ts` dispatches. */
 export const internalOnlyPaths: ZodOpenApiPathsObject = {
   ...syncPaths,
@@ -418,4 +469,5 @@ export const internalOnlyPaths: ZodOpenApiPathsObject = {
   ...desktopPaths,
   ...emailPaths,
   ...contactPaths,
+  ...v1Paths,
 };

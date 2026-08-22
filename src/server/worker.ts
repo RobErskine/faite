@@ -29,6 +29,7 @@ import { handleEmail } from "./email/ingest";
 import { handleEmailRequest } from "./email/routes";
 import { handlePlacesRequest } from "./places/routes";
 import { handleSyncRequest } from "./sync/routes";
+import { handleV1Request } from "./v1/routes";
 
 export { UserDurableObject } from "./user-do";
 
@@ -78,6 +79,11 @@ export default {
       // Same reasoning again (EI-206): TURNSTILE_SECRET_KEY is a Worker
       // secret and must never reach client JS. See ./contact/routes.ts.
       return handleContactRequest(request, env);
+    }
+    if (pathname.startsWith("/api/v1")) {
+      // The public, versioned read API (A2, EI-227). Same reasoning again —
+      // see ./v1/routes.ts.
+      return handleV1Request(request, env);
     }
     // OpenNext always exports a fetch handler; the optional type is generic
     // ExportedHandler boilerplate, not a real possibility here.
