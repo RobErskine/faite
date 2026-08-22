@@ -1,4 +1,5 @@
-import { createAuth, getSessionSafe } from "../auth";
+import { createAuth } from "../auth";
+import { authorizeScope } from "../auth-scopes";
 import { corsHeaders, handleOptions } from "../cors";
 import { fetchAutocomplete, fetchDetails } from "./google";
 import { parseAutocompleteRequest, parseDetailsRequest } from "./validate";
@@ -50,12 +51,15 @@ export async function handlePlacesRequest(
   // manual address, we just don't match it against the Places API. So 401 is
   // never a nag — the client degrades to a plain text input, which is exactly
   // what the field was before this feature existed.
-  // `getSessionSafe`, not `auth.api.getSession()` directly — see its own doc
-  // comment (`auth.ts`): a malformed bearer-shaped `Authorization` header
-  // now throws (`auth-tokens.ts`'s D2a cutover), and this route never went
-  // through Better Auth's own router, which is what normally catches that.
-  const session = await getSessionSafe(createAuth(env, request), request);
-  if (!session) return json({ error: "unauthenticated" }, 401, headers);
+  //
+  // `authorizeScope(auth, request, "places")` (A2, EI-227), not a bare
+  // session check: a cookie session behaves exactly as before (unauthenticated
+  // → 401), but an API-key-carrying request must ALSO hold the `places`
+  // permission — this is a paid Google API, and a narrow user-generated key
+  // (A3) must not be able to spend the account owner's money by default. See
+  // `auth-scopes.ts`.
+  const auth = await authorizeScope(createAuth(env, request), request, "places");
+  if (!auth.ok) return json({ error: auth.error }, auth.status, headers);
 
   try {
     if (url.pathname === "/api/places/autocomplete" && request.method === "POST") {

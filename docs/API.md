@@ -1,17 +1,16 @@
-# P5 — documented API + tokens (EI-50)
+# P5 — documented API + tokens (EI-50), and Milestone A — Public API + MCP
 
-**Scaffolded, not cut over.** A scoped-down first pass landed the token model
-(`src/server/auth-tokens.ts`), an OpenAPI-from-Zod generator
-(`scripts/openapi/generate.ts`), and the transport-agnostic service-layer
-shape (`src/lib/service/`, `src/server/service/`) — groundwork for the
-desktop-shell bearer-auth work (D2), reviewed but deliberately not wired
-into `/api/sync/*`'s live auth path. **"Who stamps the server-side HLC?"
-below is still open** — the scaffold makes it an injectable seam
-(`ServiceContext.nextHlc` in `src/lib/service/context.ts`) rather than
-answering it. See that PR for the rest of this file's open questions and
-what's still needed before any of this is real. This file otherwise remains
-the design constraint a fresh agent needs *before* writing any endpoint, not
-a spec.
+**Status, updated through A2 (EI-227):** the token model
+(`src/server/auth-tokens.ts`), the OpenAPI generator (A1, EI-226 —
+`scripts/openapi/generate.ts`, two documents: `openapi/openapi.json`
+internal, `openapi/v1.json` public), the durable server HLC (A4, EI-229 —
+`UserDurableObject.nextServerHlc()`), and enforced key scopes plus the first
+`/api/v1` read routes (A2, EI-227 — see "Key scopes" below) are all real and
+live. What's below this point is the ORIGINAL P5 design doc, kept because
+its constraints still hold; treat "open question" language in the
+historical sections as answered where a later note says so, not as current
+uncertainty. Remaining open work: write endpoints (A5, EI-230), the MCP
+server (A6, EI-52), and published public docs (A7, EI-231).
 
 [EI-50](https://linear.app/rob-erskine/issue/EI-50/zod-openapi-documented-api-tokens):
 generate OpenAPI from the P1 Zod schemas, add API tokens with scopes and rate
@@ -52,14 +51,21 @@ Two consequences worth deciding early:
   is simpler and keeps `nodeId` meaningful; it needs a stable server node id,
   which does not exist yet.
 
-  **Half-answered by EI-186.** `serverHlcClock()`
-  (`src/server/service/hlc.ts`) stamps `<phys>:<counter>:server` and is safe
-  **for creates**: a create targets an entity with no `field_clocks` rows, so
-  there is no LWW comparison to lose and no durable node id is required.
-  **Server-originated UPDATES are still open** — the clock is per-isolate, so
-  two isolates can issue the same stamp inside one millisecond and an update
-  would silently lose. Do not reach for it from an update path until the
-  persisted-node-id question is answered.
+  **Half-answered by EI-186, fully answered by A4 (EI-229).**
+  `serverHlcClock()` (`src/server/service/hlc.ts`) stamps
+  `<phys>:<counter>:server` and, with its DEFAULT in-memory persistence, is
+  safe **for creates only**: a create targets an entity with no
+  `field_clocks` rows, so there is no LWW comparison to lose and no durable
+  node id is required.
+
+  **Server-originated UPDATEs are now safe too.** `serverHlcClock` takes an
+  injectable `HlcPersistence`; `UserDurableObject.nextServerHlc()` backs it
+  with `sync_meta.server_last_hlc`, read and written with plain synchronous
+  `ctx.storage.sql.exec` calls — the DO is single-threaded per user, so this
+  closes the collision hole with no `transactionSync` needed (there is no
+  `await` between the read and the write). Call `nextServerHlc()` from an
+  update path now; the old create-only in-memory mode is unchanged and still
+  what `email/ingest.ts` uses.
 
 - **How does a server write resolve `position`?** *Answered by EI-186.* It
   cannot use `buildCreateTodoEntry`'s `fallbackPosition()`, which is the
@@ -85,6 +91,41 @@ Two consequences worth deciding early:
 | The service layer's first real consumer | `src/server/email/ingest.ts` (EI-186) | Non-HTTP transport (`email()`) going through `createTodo` → `push()`. Shows what a `ServiceContext` and a `PushTransport` actually look like at a call site |
 | CORS allow-list | `src/server/auth.ts`'s `TRUSTED_ORIGINS` | One list |
 
+## Key scopes (A2, EI-227)
+
+`enableSessionForAPIKeys: true` (`auth-tokens.ts`, D2a) stays global and
+untouched — narrowing it, or checking `permissions` inside Better Auth's own
+session hook, would leave `useSession()` blind to a valid key, which is
+exactly the mistake D2a's own comment warns against. Scopes are enforced one
+layer up instead, in `src/server/auth-scopes.ts`:
+
+- **Two permission sets, not one.** A desktop-handoff key
+  (`/api/desktop/handoff`) is created with `DESKTOP_KEY_PERMISSIONS` — full
+  equivalence (`read`, `write`, `sync`, `places`), unchanged from before this
+  ticket: "this is me, on my own device." Any other key (A3's user-generated
+  keys) gets `auth-tokens.ts`'s `defaultPermissions` — `{ api: ["read"] }` —
+  unless a future UI asks for more.
+- **`authorizeScope(auth, request, scope)`** gates `/api/sync/*` (`scope:
+  "sync"`), `/api/places/*` (`scope: "places"`), and `/api/v1/*` (`scope:
+  "read"`). A cookie session is unaffected — full access, exactly as before
+  this ticket, because a cookie carries no permission set to check at all.
+  An API-key-carrying request must additionally hold the required
+  permission, checked with `role(...).authorize(...)` from
+  `better-auth/plugins/access` (the same primitive `@better-auth/api-key`
+  uses internally) against the key's OWN stored `permissions` — never by
+  "is this an API key," which is exactly the naive rule that would have
+  broken desktop.
+- **One verification per request, not two.** `authorizeScope` calls
+  `auth.api.verifyApiKey({ body: { key } })` with no `headers` and no
+  `permissions` in the body. Passing `headers` would make Better Auth's own
+  `enableSessionForAPIKeys` hook re-validate the SAME key a second time
+  (it matches on `ctx.headers`), silently doubling the per-key rate-limit
+  cost of every gated request — including every desktop sync push. Passing
+  `permissions` would trigger the plugin's OWN internal check, which throws
+  the identical error for "key doesn't exist" and "key lacks this
+  permission," making 401 vs 403 impossible to tell apart from outside. See
+  `auth-scopes.ts`'s doc comments for the full reasoning.
+
 ## Open questions for P5
 
 - **Tokens live where?** Sessions are in D1; per-user data is in the DO. An
@@ -94,12 +135,16 @@ Two consequences worth deciding early:
 - **Rate limits keyed on what?** A DO is single-threaded per user and already
   has a documented ~1,000 req/s soft ceiling, so per-user limiting has a
   natural home in the DO itself. Global limits do not.
-- **Does the API expose `version`/`hlc`?** They are currently
-  `SERVER_ONLY_FIELDS` and never cross the sync wire. A documented API
-  probably wants an opaque `updatedAt` and nothing else — exposing the clock
-  makes it a compatibility surface forever.
-- **Read path.** Reads are much simpler than writes: no version, no clocks.
-  Consider shipping read-only endpoints first.
+- **Does the API expose `version`/`hlc`? Answered: no (A2, EI-227).**
+  `/api/v1/*`'s responses run each Durable Object row through the entity's
+  own Zod schema (`src/lib/schema.ts`) — `version` isn't a field either
+  schema declares, so it's stripped by ordinary `.parse()` rather than
+  hand-picked out. `hlc` never entered the shape at all; it lives in
+  `field_clocks`, a table the read RPC (`UserDurableObject.listEntities()`)
+  never touches.
+- **Read path. Answered: yes (A2, EI-227).** `GET /api/v1/{todos,lists,
+  labels,tabs}` shipped first, exactly as this section suggested — no
+  version, no clocks, no push() involved at all.
 
 ## Before writing code
 

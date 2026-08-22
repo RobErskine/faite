@@ -422,6 +422,30 @@ export class UserDurableObject extends DurableObject {
   }
 
   /**
+   * Read-only listing for the public `/api/v1` read routes (A2, EI-227).
+   * Typed to exactly the four kinds A2 exposes rather than the full
+   * `SyncKind` — `todo`/`list`/`label`/`tab` all have `deleted_at` and
+   * `position` columns; several other kinds (`settings`, `dayNote`) do not,
+   * so widening this signature is a footgun to extend deliberately, not by
+   * loosening a type.
+   *
+   * Excludes soft-deleted rows: a tombstone is a sync-internal concept a REST
+   * reader has no use for. Ordered the same way the client's own board does.
+   *
+   * Returns raw camelCase rows including `version` — callers (`v1/routes.ts`)
+   * are expected to run these through the entity's own Zod schema, which
+   * strips `version` (never declared there) by virtue of not being a
+   * recognized field, rather than this RPC hand-picking columns to omit.
+   */
+  async listEntities(kind: "todo" | "list" | "label" | "tab"): Promise<Record<string, unknown>[]> {
+    const tableName = TABLE_NAME_BY_KIND[kind];
+    const rows = this.ctx.storage.sql
+      .exec(`SELECT * FROM ${tableName} WHERE deleted_at IS NULL ORDER BY position`)
+      .toArray();
+    return rows.map((row) => rowFromSqlRow(kind, row));
+  }
+
+  /**
    * Applies a batch of outbox entries. `userId` comes from the worker's
    * verified session — never from the request body — and is the only source
    * of `owner_id` on an insert (see `columns.ts`'s `SERVER_ONLY_FIELDS`).
