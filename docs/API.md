@@ -163,6 +163,48 @@ from a plain closure. Over-requesting (always 2, whether or not a
 companion `todoEvent` ends up firing) is harmless — a wasted
 `sync_meta.server_last_hlc` tick costs nothing.
 
+## MCP server (A6, EI-52)
+
+A remote MCP server at `/mcp` — deliberately not under `/api`, matching the
+milestone doc's own design. First consumer: Pointer (EI-221).
+
+`src/server/mcp/routes.ts` builds on `createMcpHandler` (`agents@0.21.0`'s
+`agents/mcp`, wrapping `@modelcontextprotocol/server@2.0.0`), **not** the
+older `McpAgent` class from the same SDK — that class is feature-frozen.
+The handler is stateless per request: `resolveIdentity()` re-authenticates
+the bearer token (or session cookie) on every call via `authorizeScope()`
+(the same module A2 built), so a revoked key stops working on its very next
+request — no separate revocation path to keep in sync. Tools wrap
+`src/server/service/*`, never DO tables directly, same as the `/api/v1`
+routes.
+
+Registered: `list_todos`, `create_todo`, `complete_todo` tools, plus a
+`summarize_backlog` prompt (a resource-only server without at least one
+prompt fails to connect for clients that require the `prompts` capability).
+
+Two SDK behaviors worth knowing before touching this file:
+
+- **406 on a JSON-only `Accept` header.** The transport's pre-dispatch gate
+  rejects any request whose `Accept` header omits `text/event-stream`, and
+  `responseMode` cannot relax that gate — it only picks the response shape
+  once a request is past it. `src/server/mcp/accept.ts`'s
+  `withEventStreamAccept()` widens (never narrows) the header before the
+  request reaches the SDK. Kept in its own dependency-free module, mirroring
+  `hlc-core.ts`'s split from `hlc.ts`, because `routes.ts` transitively
+  imports `agents/mcp`, which has a hard `cloudflare:workers` runtime
+  dependency vitest's Node environment can't resolve.
+- **SSE framing is not fully eliminated for "legacy"-era clients.** Setting
+  `responseMode: "json"` had zero observed effect in live testing — every
+  request negotiated back protocol version `2025-11-25` ("legacy" era, per
+  the SDK's own era classification), and `responseMode` only applies to
+  "modern" (2026-07-28) era traffic. Left at the default (`'auto'`). This is
+  a known, documented residual risk, not something this ticket resolved —
+  worth re-checking against Pointer specifically once it's a real client.
+
+Never expose DO-internal fields (`version`, HLC stamps) through a tool
+result — `todoOrNull()` runs every write tool's response through
+`todoSchema.parse()` before returning it, same rule as `/api/v1`.
+
 ## Open questions for P5
 
 - **Tokens live where?** Sessions are in D1; per-user data is in the DO. An

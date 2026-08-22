@@ -27,6 +27,7 @@ import { handleOptions, withCors } from "./cors";
 import { handleDesktopRequest } from "./desktop/routes";
 import { handleEmail } from "./email/ingest";
 import { handleEmailRequest } from "./email/routes";
+import { handleMcpRequest } from "./mcp/routes";
 import { handlePlacesRequest } from "./places/routes";
 import { handleSyncRequest } from "./sync/routes";
 import { handleV1Request } from "./v1/routes";
@@ -84,6 +85,12 @@ export default {
       // The public, versioned read API (A2, EI-227). Same reasoning again —
       // see ./v1/routes.ts.
       return handleV1Request(request, env);
+    }
+    if (pathname.startsWith("/mcp")) {
+      // The remote MCP server (A6, EI-52) — deliberately NOT under `/api`,
+      // matching the milestone doc's own design: a bare `/mcp`, not
+      // `/api/mcp`. See ./mcp/routes.ts.
+      return handleMcpRequest(request, env);
     }
     // OpenNext always exports a fetch handler; the optional type is generic
     // ExportedHandler boilerplate, not a real possibility here.
