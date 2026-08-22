@@ -1,7 +1,8 @@
-import { Bell, CornerDownRight, Info, Mail, MapPin, Palette, User, UserCog, Wrench } from "lucide-react";
+import { Bell, CornerDownRight, Info, KeyRound, Mail, MapPin, Palette, User, UserCog, Wrench } from "lucide-react";
 import type { SettingsSection } from "./types";
 import { AboutSection } from "./about-section";
 import { AccountSection } from "./account-section";
+import { ApiKeysSection } from "./api-keys-section";
 import { ProfileSection } from "./profile-section";
 import { DesignSection } from "./design-section";
 import { LoopSection } from "./loop-section";
@@ -64,6 +65,13 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     description: "A private address that turns forwarded email into to-dos.",
     icon: Mail,
     Component: EmailSection,
+  },
+  {
+    id: "api-keys",
+    label: "API Keys",
+    description: "Read-only tokens for scripts and other apps.",
+    icon: KeyRound,
+    Component: ApiKeysSection,
   },
   {
     id: "about",
