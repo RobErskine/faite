@@ -21,14 +21,16 @@ import {
 
 const sessionTokenSchema = z.string().regex(SESSION_TOKEN_PATTERN);
 
-const autocompleteRequestSchema = z.object({
+// Exported for `src/server/openapi/routes.ts` (A1, EI-226) — the OpenAPI doc
+// reuses these rather than hand-mirroring the request shape a second time.
+export const autocompleteRequestSchema = z.object({
   // `.trim()` before the length checks so "   " is rejected as empty rather
   // than spending a billable request on whitespace.
   input: z.string().trim().min(1).max(MAX_QUERY_LENGTH),
   sessionToken: sessionTokenSchema,
 });
 
-const detailsRequestSchema = z.object({
+export const detailsRequestSchema = z.object({
   // Google place ids are opaque and have no documented maximum; 255 is a sanity
   // bound, not a spec. The value is percent-encoded into the URL path by
   // `buildDetailsUrl`, so its contents are not an injection concern the way the

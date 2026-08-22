@@ -1,4 +1,5 @@
 import { APIError, betterAuth } from "better-auth";
+import { openAPI } from "better-auth/plugins";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { drizzle } from "drizzle-orm/d1";
 import * as schema from "./auth-schema";
@@ -148,7 +149,15 @@ export function createAuth(env: CloudflareEnv, request?: Request) {
     // `/api/auth/api-key/*` endpoints, zero change to any existing path —
     // see auth-tokens.ts's file-level comment for exactly why this is safe
     // to add without cutting anything over.
-    plugins: [apiTokenPlugin],
+    //
+    // `openAPI()` (A1, EI-226) adds a read-only `GET /api/auth/open-api/
+    // generate-schema` endpoint; `disableDefaultReference: true` skips
+    // mounting its own Scalar reference page at `/api/auth/reference` since
+    // `scripts/openapi/generate.ts` is the only consumer — it calls
+    // `auth.api.generateOpenAPISchema()` directly (no HTTP hop) via the
+    // stub-bound instance in `auth-cli.ts`, same pattern that file already
+    // uses for `@better-auth/cli`.
+    plugins: [apiTokenPlugin, openAPI({ disableDefaultReference: true })],
   });
 }
 

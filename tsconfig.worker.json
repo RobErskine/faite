@@ -15,6 +15,9 @@
       "open-next/worker": ["./src/server/open-next.d.ts"]
     }
   },
-  "include": ["src/server/**/*.ts", "cloudflare-env.d.ts"],
+  // scripts/openapi lives here rather than under the root tsconfig — see
+  // that file's exclude comment. It needs the same CloudflareEnv-aware
+  // program `src/server` gets, since `generate.ts` imports `auth-cli.ts`.
+  "include": ["src/server/**/*.ts", "scripts/openapi/**/*.ts", "cloudflare-env.d.ts"],
   "exclude": ["node_modules"]
 }

@@ -86,6 +86,14 @@ jobs:
       - name: Tests
         run: npm test
 
+      # A1 (EI-226): both openapi/*.json files are generated, not
+      # hand-edited. Regenerating and diffing catches whoever changes a Zod
+      # schema (or a hand-documented route in src/server/openapi/routes.ts)
+      # without re-running `npm run openapi:generate` — the doc goes stale
+      # silently otherwise, exactly what EI-50 shipped and nothing caught.
+      - name: OpenAPI drift check
+        run: npm run openapi:generate && git diff --exit-code openapi/
+
       # `npm run lint` had a pre-existing failure at `use-day-track.ts:156`
       # that used to halt the job here, so this and everything below it never
       # actually ran in CI — see docs/SYNC.md "Verification bar". Fixed

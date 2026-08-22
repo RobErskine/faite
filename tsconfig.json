@@ -39,9 +39,21 @@
   // would otherwise drag worker.ts — and its Workers-only `open-next/worker`
   // import — into this program too. Nothing in the Next app layer touches
   // CloudflareEnv; only tsconfig.worker.json needs it.
+  //
+  // scripts/openapi excluded for the same reason, one hop further down:
+  // `exclude` only stops TS from picking a file as a ROOT match for
+  // `**/*.ts` above — it does NOT stop the compiler following an import INTO
+  // an excluded file. `scripts/openapi/generate.ts` imports `src/server/auth-cli`
+  // (A1, EI-226), so if it stayed in this program that import would drag
+  // `src/server/*` in anyway, just via a different door — and without
+  // `cloudflare-env.d.ts` loaded, `CloudflareEnv` resolves to some other
+  // ambient (empty) fallback instead, so every binding access in `auth.ts`
+  // fails as a phantom "property does not exist" with no relation to the
+  // actual bug. See tsconfig.worker.json's matching include.
   "exclude": [
     "node_modules",
     "src/server",
+    "scripts/openapi",
     ".open-next",
     ".next-static",
     "cloudflare-env.d.ts"
