@@ -107,6 +107,14 @@ export const SITE_PAGES: readonly SitePage[] = [
     updated: "2026-08-20",
     footerGroup: "support",
   },
+  {
+    path: "/docs",
+    title: "API Reference",
+    description: "The public, versioned Faite API — read and write todos from your own client.",
+    updated: "2026-08-22",
+    footerGroup: "product",
+    footerLabel: "API",
+  },
 ];
 
 /**
