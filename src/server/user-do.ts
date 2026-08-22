@@ -446,6 +446,61 @@ export class UserDurableObject extends DurableObject {
   }
 
   /**
+   * One non-deleted todo by id, or `null`. Two jobs for `/api/v1/todos`
+   * writes (A5, EI-230):
+   *
+   * - `PATCH /api/v1/todos/{id}` 404s BEFORE building a push entry when this
+   *   returns `null` — `docs/API.md`: a patch for an unknown id still gets
+   *   accepted by `push()`, which INSERTs it with `FIELD_DEFAULTS`
+   *   placeholders and no `field_clocks` row (the EI-68 mechanism). A
+   *   soft-deleted todo 404s too — this route has no writable `deletedAt`
+   *   field, so there is no way to un-delete through it anyway, and "the
+   *   resource is gone" is the more correct REST answer than silently
+   *   patching a tombstone's other fields.
+   * - Both POST (create) and PATCH (update) re-read the row after a
+   *   successful push and return THAT as the response body, rather than
+   *   reconstructing it from the request — the row in storage is the one
+   *   source of truth after `resolveEntityPush`'s LWW comparison, which can
+   *   differ from what was just pushed (a losing field keeps its old value).
+   */
+  async getTodo(id: string): Promise<Record<string, unknown> | null> {
+    const [row] = this.ctx.storage.sql
+      .exec("SELECT * FROM todos WHERE id = ? AND deleted_at IS NULL", id)
+      .toArray();
+    return row ? rowFromSqlRow("todo", row) : null;
+  }
+
+  /**
+   * Mirrors the client's `defaultReminderTimeForList()`
+   * (`store/repositories.ts`) — resolves `List.defaultReminderPresetId` to
+   * that preset's `time`, or `null` if the list has none. A5, EI-230: the
+   * parity gap the milestone doc's §6 names — `buildCreateTodoEntry` never
+   * had a database to resolve this against, so an API/MCP-created todo
+   * silently got no reminder even when its list had a default. The CALLER
+   * resolves this before building a create entry, exactly the same pattern
+   * `nextTodoPosition()` already established for `position` — see
+   * `docs/API.md`'s "don't add a second answer."
+   */
+  async defaultReminderTimeForList(listId: string | null): Promise<string | null> {
+    if (!listId) return null;
+    const [list] = this.ctx.storage.sql
+      .exec<{ default_reminder_preset_id: string | null }>(
+        "SELECT default_reminder_preset_id FROM lists WHERE id = ?",
+        listId,
+      )
+      .toArray();
+    if (!list?.default_reminder_preset_id) return null;
+
+    const [preset] = this.ctx.storage.sql
+      .exec<{ time: string; deleted_at: string | null }>(
+        "SELECT time, deleted_at FROM reminder_presets WHERE id = ?",
+        list.default_reminder_preset_id,
+      )
+      .toArray();
+    return preset && !preset.deleted_at ? preset.time : null;
+  }
+
+  /**
    * Applies a batch of outbox entries. `userId` comes from the worker's
    * verified session — never from the request body — and is the only source
    * of `owner_id` on an insert (see `columns.ts`'s `SERVER_ONLY_FIELDS`).

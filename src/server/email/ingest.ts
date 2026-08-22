@@ -146,13 +146,13 @@ export async function handleEmail(
     // `user-do.ts`'s `nextTodoPosition`.
     const position = await stub.nextTodoPosition();
 
-    const result = await createTodo(
+    const { response } = await createTodo(
       { userId: decision.userId, nextHlc },
       { ...input, position },
       pushTransportFor(stub, decision.userId),
     );
 
-    if (result.rejected.length > 0) {
+    if (response.rejected.length > 0) {
       // Our own builder produced an entry the DO refused — a bug here, not
       // bad input. Reject so the message bounces rather than vanishing.
       message.setReject("could not be filed");

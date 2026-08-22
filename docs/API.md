@@ -1,16 +1,18 @@
 # P5 — documented API + tokens (EI-50), and Milestone A — Public API + MCP
 
-**Status, updated through A2 (EI-227):** the token model
+**Status, updated through A5 (EI-230):** the token model
 (`src/server/auth-tokens.ts`), the OpenAPI generator (A1, EI-226 —
 `scripts/openapi/generate.ts`, two documents: `openapi/openapi.json`
 internal, `openapi/v1.json` public), the durable server HLC (A4, EI-229 —
-`UserDurableObject.nextServerHlc()`), and enforced key scopes plus the first
-`/api/v1` read routes (A2, EI-227 — see "Key scopes" below) are all real and
-live. What's below this point is the ORIGINAL P5 design doc, kept because
-its constraints still hold; treat "open question" language in the
-historical sections as answered where a later note says so, not as current
-uncertainty. Remaining open work: write endpoints (A5, EI-230), the MCP
-server (A6, EI-52), and published public docs (A7, EI-231).
+`UserDurableObject.nextServerHlc()`), enforced key scopes plus the
+`/api/v1` read routes (A2, EI-227 — see "Key scopes" below), the Settings →
+API Keys panel (A3, EI-228), and the first write endpoints —
+`POST`/`PATCH /api/v1/todos` (A5, EI-230 — see "Parity gaps," below the Key
+scopes section) — are all real and live. What's below this point is the
+ORIGINAL P5 design doc, kept because its constraints still hold; treat
+"open question" language in the historical sections as answered where a
+later note says so, not as current uncertainty. Remaining open work: the
+MCP server (A6, EI-52) and published public docs (A7, EI-231).
 
 [EI-50](https://linear.app/rob-erskine/issue/EI-50/zod-openapi-documented-api-tokens):
 generate OpenAPI from the P1 Zod schemas, add API tokens with scopes and rate
@@ -125,6 +127,41 @@ layer up instead, in `src/server/auth-scopes.ts`:
   the identical error for "key doesn't exist" and "key lacks this
   permission," making 401 vs 403 impossible to tell apart from outside. See
   `auth-scopes.ts`'s doc comments for the full reasoning.
+
+## Write endpoints and parity gaps (A5, EI-230)
+
+`POST /api/v1/todos` and `PATCH /api/v1/todos/{id}` are the first writes:
+`src/server/v1/routes.ts` → `src/server/service/todos.ts`'s
+`createTodo`/`updateTodo` → `push()`, exactly the shape "A write is a push"
+above describes. Five gaps between `src/lib/service/todos.ts`'s builders
+and the client's real `store/repositories.ts` closed here:
+
+- **`reminderTime`** now resolves the list's `defaultReminderPresetId` —
+  `UserDurableObject.defaultReminderTimeForList()`, a new read RPC mirroring
+  the client's own function, resolved by the route before calling
+  `createTodo` (same pattern `nextTodoPosition()` already established).
+- **`parentId`** is threaded through `CreateTodoInput` instead of
+  hard-coded `null`.
+- **A `todoEvent` "created"/"edited" row** is now built alongside every
+  create/update and pushed in the SAME batch — `buildCreateTodoEntry` and
+  `buildUpdateTodoEntry` both return `PushEntry[]`, not a single entry, for
+  exactly this reason. Both entries must land in one `push()` call so the DO
+  applies them in one `transactionSync`.
+- **`updatedAt`** is now stamped on every `buildUpdateTodoEntry` patch,
+  matching `mutate()`.
+- **`position`** was already answered correctly by EI-186 (`nextTodoPosition()`,
+  resolved at the call site) — A5 just extends the same pattern to
+  `reminderTime` rather than inventing a second one.
+
+**Two entries, two HLC stamps, one synchronous contract.** Each `PushEntry`
+a builder returns calls `ctx.nextHlc()` separately, but `nextHlc` must stay
+synchronous while `UserDurableObject.nextServerHlc()` (the durable mode
+updates require, per "Key scopes" above) is an async RPC call.
+`src/server/service/hlc.ts`'s `durableHlcQueue()` bridges this: it
+pre-fetches N durable stamps up front, then hands them out one at a time
+from a plain closure. Over-requesting (always 2, whether or not a
+companion `todoEvent` ends up firing) is harmless — a wasted
+`sync_meta.server_last_hlc` tick costs nothing.
 
 ## Open questions for P5
 

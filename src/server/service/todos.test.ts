@@ -15,18 +15,23 @@ function fakeContext(): ServiceContext {
 }
 
 describe("service-layer builders feed the real push pipeline", () => {
-  it("a built create entry survives validateEntries/groupByEntity/resolveEntityPush unrejected", () => {
+  it("a built create batch survives validateEntries/groupByEntity/resolveEntityPush unrejected", () => {
     // No Durable Object involved — `push.ts`'s pipeline is pure (see its own
     // header comment), which is what makes this a real end-to-end check of
     // "would this actually apply" without standing up a DO in a test.
-    const entry = buildCreateTodoEntry(fakeContext(), { title: "Ship the scaffold" });
+    // Two entries (the todo and its "created" todoEvent, A5/EI-230) — both
+    // must survive the same real pipeline, not just the todo.
+    const entries = buildCreateTodoEntry(fakeContext(), { title: "Ship the scaffold" });
 
-    const { accepted, rejected } = validateEntries([entry]);
+    const { accepted, rejected } = validateEntries(entries);
     expect(rejected).toEqual([]);
-    expect(accepted).toHaveLength(1);
+    expect(accepted).toHaveLength(2);
 
-    const [group] = groupByEntity(accepted);
-    const resolution = resolveEntityPush({}, group);
+    const groups = groupByEntity(accepted);
+    expect(groups).toHaveLength(2);
+
+    const todoGroup = groups.find((g) => g.kind === "todo")!;
+    const resolution = resolveEntityPush({}, todoGroup);
 
     expect(resolution.conflicts).toEqual([]);
     expect(resolution.apply).toMatchObject({ title: "Ship the scaffold", status: "open" });
@@ -34,22 +39,35 @@ describe("service-layer builders feed the real push pipeline", () => {
     // though the builder set it. Confirms `sanitizePatch` (inside
     // `validateEntries`) strips it exactly like an ordinary client push.
     expect(resolution.apply.ownerId).toBeUndefined();
+
+    const eventGroup = groups.find((g) => g.kind === "todoEvent")!;
+    const eventResolution = resolveEntityPush({}, eventGroup);
+    expect(eventResolution.apply).toMatchObject({ kind: "created" });
   });
 });
 
 describe("createTodo (server adapter)", () => {
-  it("builds one entry and hands it to the injected PushTransport", async () => {
-    const response: PushResponse = { acked: ["e1"], rejected: [], highestVersion: 1, conflicts: [] };
+  it("builds the todo + created-event batch and hands both to the injected PushTransport in one call", async () => {
+    const response: PushResponse = { acked: ["e1", "e2"], rejected: [], highestVersion: 1, conflicts: [] };
     const push = vi.fn<PushTransport>().mockResolvedValue(response);
 
-    const result = await createTodo(fakeContext(), { title: "Delegate this" }, push);
+    const { response: result, todoId } = await createTodo(
+      fakeContext(),
+      { title: "Delegate this" },
+      push,
+    );
 
     expect(push).toHaveBeenCalledTimes(1);
     const [entries] = push.mock.calls[0];
-    expect(entries).toHaveLength(1);
+    expect(entries).toHaveLength(2);
     expect(entries[0].kind).toBe("todo");
     expect(entries[0].patch).toMatchObject({ title: "Delegate this" });
+    expect(entries[1].kind).toBe("todoEvent");
     expect(result).toBe(response);
+    // REGRESSION: `response.acked` holds outbox ENTRY ids, never the
+    // entity id — `todoId` must come from the built entry itself.
+    expect(todoId).toBe(entries[0].entityId);
+    expect(todoId).not.toBe(response.acked[0]);
   });
 });
 

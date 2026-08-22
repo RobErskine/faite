@@ -1,9 +1,11 @@
 import { z } from "zod";
 import type { ZodOpenApiPathsObject } from "zod-openapi";
+import { todoSchema } from "@/lib/schema";
 import { autocompleteRequestSchema, detailsRequestSchema } from "@/server/places/validate";
 import { pushRequestSchema } from "@/server/sync/validate";
 import { contactRequestSchema } from "@/server/contact/validate";
 import { V1_RESOURCES } from "@/server/v1/routes";
+import { createTodoRequestSchema, updateTodoRequestSchema } from "@/server/v1/validate";
 import { SYNC_KINDS } from "@/lib/sync/wire";
 
 /**
@@ -458,9 +460,85 @@ export const v1Paths: ZodOpenApiPathsObject = Object.fromEntries(
           },
         },
       },
+      // Only `todos` writes exist yet (A5, EI-230) — `lists`/`labels`/`tabs`
+      // stay read-only until a future ticket extends this the same way.
+      ...(kind === "todo"
+        ? {
+            post: {
+              tags: ["v1"],
+              summary: "Create a todo.",
+              description:
+                "Requires the `write` scope — a cookie session and a " +
+                "desktop-handoff key have it; a narrow user-generated key " +
+                "(A3) does not by default. A write here is a push, not a " +
+                "database write — see docs/API.md.",
+              operationId: "createV1Todo",
+              requestBody: {
+                content: { "application/json": { schema: createTodoRequestSchema } },
+              },
+              responses: {
+                "201": {
+                  description: "The created todo.",
+                  content: { "application/json": { schema } },
+                },
+                "400": {
+                  description: "Malformed request — missing title, or a field fails validation.",
+                  content: { "application/json": { schema: errorSchema("invalid-request") } },
+                },
+                "401": unauthenticated,
+                "403": insufficientScope,
+                "500": {
+                  description: "Unhandled server error.",
+                  content: { "application/json": { schema: errorSchema("internal-error") } },
+                },
+              },
+            },
+          }
+        : {}),
     },
   ]),
 );
+
+export const patchTodoPath: ZodOpenApiPathsObject = {
+  "/api/v1/todos/{id}": {
+    patch: {
+      tags: ["v1"],
+      summary: "Patch an existing todo.",
+      description:
+        "Requires the `write` scope. Only the fields present in the request " +
+        "body are touched — every other field on the todo is left exactly " +
+        "as it was. A write here is a push, not a database write; see " +
+        "docs/API.md.",
+      operationId: "updateV1Todo",
+      requestParams: {
+        path: z.object({ id: z.string().min(1) }),
+      },
+      requestBody: {
+        content: { "application/json": { schema: updateTodoRequestSchema } },
+      },
+      responses: {
+        "200": {
+          description: "The updated todo.",
+          content: { "application/json": { schema: todoSchema } },
+        },
+        "400": {
+          description: "Malformed request, or an empty patch.",
+          content: { "application/json": { schema: errorSchema("invalid-request") } },
+        },
+        "401": unauthenticated,
+        "403": insufficientScope,
+        "404": {
+          description: "No such todo, or it belongs to a different account, or it's deleted.",
+          content: { "application/json": { schema: errorSchema("not-found") } },
+        },
+        "500": {
+          description: "Unhandled server error.",
+          content: { "application/json": { schema: errorSchema("internal-error") } },
+        },
+      },
+    },
+  },
+};
 
 /** Every hand-documented path, keyed the same way `worker.ts` dispatches. */
 export const internalOnlyPaths: ZodOpenApiPathsObject = {
@@ -470,4 +548,5 @@ export const internalOnlyPaths: ZodOpenApiPathsObject = {
   ...emailPaths,
   ...contactPaths,
   ...v1Paths,
+  ...patchTodoPath,
 };

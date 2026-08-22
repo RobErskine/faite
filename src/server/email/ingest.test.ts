@@ -136,7 +136,7 @@ function decision(): string {
 }
 
 describe("handleEmail — the happy path", () => {
-  it("turns a forwarded message into one pushed todo", async () => {
+  it("turns a forwarded message into one pushed todo, with its 'created' history event (A5, EI-230)", async () => {
     vi.mocked(loadByLocalPart).mockResolvedValue(row());
     const { env, stub } = fakeEnv();
     const { message, state } = fakeMessage(mime());
@@ -146,7 +146,10 @@ describe("handleEmail — the happy path", () => {
     expect(state.rejected).toBeNull();
     expect(decision()).toBe("accepted");
     expect(stub.push).toHaveBeenCalledTimes(1);
-    expect(pushed[0]).toHaveLength(1);
+    // Two entries in the SAME push() call, not two calls — see
+    // `buildCreateTodoEntry`'s doc comment for why both must land in one
+    // `transactionSync`.
+    expect(pushed[0]).toHaveLength(2);
 
     const entry = pushed[0][0];
     expect(entry.kind).toBe("todo");
@@ -155,6 +158,12 @@ describe("handleEmail — the happy path", () => {
     expect(patch.description).toBe(BODY);
     expect(patch.ownerId).toBe(USER_ID);
     expect(patch.status).toBe("open");
+
+    const eventEntry = pushed[0][1];
+    expect(eventEntry.kind).toBe("todoEvent");
+    const eventPatch = eventEntry.patch as Record<string, unknown>;
+    expect(eventPatch.todoId).toBe(entry.entityId);
+    expect(eventPatch.kind).toBe("created");
   });
 
   it("addresses the DO by the resolved user, never by anything in the message", async () => {
