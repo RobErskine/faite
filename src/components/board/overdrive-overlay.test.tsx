@@ -91,6 +91,7 @@ const list = (id: string, name: string): List => ({
   position: "a0",
   tabId: "tab-1",
   defaultReminderPresetId: null,
+  description: null,
   color: null,
   emoji: null,
   iconUrl: null,

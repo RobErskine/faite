@@ -48,6 +48,7 @@ export const lists = sqliteTable("lists", {
   position: text("position").notNull(),
   tabId: text("tab_id"),
   defaultReminderPresetId: text("default_reminder_preset_id"),
+  description: text("description"),
 });
 
 export const labels = sqliteTable("labels", {

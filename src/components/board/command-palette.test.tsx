@@ -37,6 +37,7 @@ const list = (id: string, name: string, isBacklog = false): List => ({
   position: "a0",
   tabId: null,
   defaultReminderPresetId: null,
+  description: null,
   color: null,
   emoji: null,
   iconUrl: null,

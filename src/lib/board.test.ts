@@ -67,6 +67,7 @@ function list(
     position,
     tabId: null,
     defaultReminderPresetId: null,
+    description: null,
     color: null,
     emoji: null,
     iconUrl: null,

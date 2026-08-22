@@ -52,6 +52,7 @@ const list = (overrides: Partial<List> & { id: string }): List => ({
   position: "a0",
   tabId: null,
   defaultReminderPresetId: null,
+  description: null,
   color: null,
   emoji: null,
   iconUrl: null,

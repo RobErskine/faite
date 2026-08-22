@@ -588,6 +588,7 @@ export async function createList(
     position: positionAtEnd(last?.position ?? null),
     tabId,
     defaultReminderPresetId: null,
+    description: null,
     color: decoration.color ?? null,
     emoji: decoration.emoji ?? null,
     iconUrl: decoration.iconUrl ?? null,
@@ -1166,6 +1167,7 @@ export async function seedIfEmpty(): Promise<void> {
         // Everything else starts on the default tab.
         tabId: seed.isBacklog ? null : DEFAULT_TAB_ID,
         defaultReminderPresetId: null,
+        description: null,
         color: null,
         emoji: null,
         iconUrl: null,
