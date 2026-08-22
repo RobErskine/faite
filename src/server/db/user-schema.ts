@@ -217,4 +217,7 @@ export const fieldClocks = sqliteTable(
 export const syncMeta = sqliteTable("sync_meta", {
   id: integer("id").primaryKey(),
   nextVersion: integer("next_version").notNull().default(1),
+  /** The last HLC this DO stamped for a server-originated write (A4, EI-229).
+   * Null until the first one. See `UserDurableObject.nextServerHlc()`. */
+  serverLastHlc: text("server_last_hlc"),
 });

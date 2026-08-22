@@ -1,0 +1,1 @@
+ALTER TABLE `sync_meta` ADD `server_last_hlc` text;
