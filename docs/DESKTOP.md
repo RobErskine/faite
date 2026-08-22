@@ -226,33 +226,86 @@ whether `tauri-plugin-log`'s debug-assertions build behavior or App Nap
 specifically (vs. window visibility) is the actual cause — this spike did not
 isolate those two.
 
-### 3.5 Swift AX prototype — **built and runs; live browser-URL capture unverified pending Rob**
+### 3.5 Swift AX prototype — **verified live; all three browsers tested return real page URLs**
 
 Standalone script (not the D5 sidecar shape) at
 `desktop/context-probe/ax-probe.swift`. Compiles clean with `swiftc`.
-Implements exactly the decision-doc rung ladder:
+Implements the decision-doc rung ladder.
 
-- Rung 1 (`NSWorkspace.shared.frontmostApplication`, no permission) — **works,
-  verified live**: `swiftc -o /tmp/ax-probe ax-probe.swift && /tmp/ax-probe`
-  correctly returned this session's host process (`Jean`,
-  `com.jean.desktop`, real pid) with `axTrusted: false` and a clean
-  `apiDisabled` `AXError` for the rung-2 attempt — latency **~75ms** for the
-  full rung-1 + failed-rung-2 round trip.
-- Rung 2 (`AXUIElementCreateApplication` → `kAXFocusedWindowAttribute` →
-  `AXDocumentAttribute` / walk to `AXWebArea` → `AXURL`) — **implemented,
-  cannot be exercised in this environment.** `AXIsProcessTrusted()` correctly
-  reports `false`; granting Accessibility requires a human clicking through
-  System Settings → Privacy & Security → Accessibility, which this agent
-  cannot do. The script also sets `AXUIElementSetMessagingTimeout(0.2)`
-  per decision #6's hang-mitigation, and depth-limits its `AXWebArea` tree
-  walk (max 6) as a defensive measure beyond what the plan doc specified.
-- Browsers available on this machine for a future live pass: **Safari,
-  Chrome, Arc** (all in `/Applications`). **Firefox is not installed** —
-  per the plan doc it needs `AXManualAccessibility` poked separately and has
-  no AppleScript URL support, so it should get its own line in the eventual
-  `docs/CAPTURE.md` matrix regardless.
-- `--watch` mode (re-capture every 2s) is included for a human to Cmd-Tab
-  between apps and watch it track focus live — needs Rob.
+Rung 1 (`NSWorkspace.shared.frontmostApplication`, no permission) worked from
+the first build. **Rung 2 (`AXUIElementCreateApplication` →
+`kAXFocusedWindowAttribute` → walk to `AXWebArea` → `AXURL`) was verified live
+on 2026-08-21** once Rob granted Accessibility, across five `--watch` runs.
+Getting there took four separate bug fixes, all of which are load-bearing for
+D5 (EI-164/EI-165) and none of which were obvious from the API docs.
+
+**Support matrix — measured, not assumed:**
+
+| Browser | `AXWebArea` depth | Needs the AX opt-in? | Result |
+|---|---|---|---|
+| Safari | **6** | No — rejects it (`attributeUnsupported`) | 11/12, 14/26, 6/7 samples returned a real page URL. WebKit builds the tree unconditionally. Window title == page title. |
+| Dia (Chromium) | **1** | **Yes — `AXManualAccessibility`** | **0/67 → 45/45.** Window title is truncated and profile-prefixed (`"Personal: Code Vein II -…"`), so rung-1-only context is lossy here too. |
+| Google Chrome | **8** | No — rejects both attributes | **0/26 → 14/14.** |
+| Firefox, Edge, Brave, Arc | — | — | **UNTESTED.** Firefox is the one the plan doc specifically flagged; not installed on this machine. |
+| Faite itself (Tauri) | — | No | Reports `tauri://localhost` — Tauri webviews expose `AXWebArea` like any browser, so **Faite's own capture window is capturable**. Concrete reason EI-164's tracker must ignore self. |
+
+**Latency, all fixes in:** Safari median 12ms, Chrome 24–32ms, Dia 31–90ms.
+Worst single sample **396ms** — Dia's cold opt-in on the 3-attempt path, paid
+once per browser process, not per capture. A Safari single-attempt outlier hit
+**388ms**. EI-165's 400ms cap holds, but the outliers say it must be a
+*deadline that degrades gracefully* (show the capture window, fill context in
+late) rather than a budget the sidecar assumes it fits inside.
+
+**The four bugs, because each is a trap D5 would otherwise re-enter:**
+
+1. **Chromium keeps its web-content AX tree switched off** until a client
+   explicitly asks. Being AX-trusted is necessary but not sufficient. Dia
+   accepts `AXManualAccessibility`; `AXEnhancedUserInterface` comes back
+   `notImplemented` there. Proven causal by a clean control — Dia quit and
+   relaunched (which resets the flag) gave 0/67, and the very next sample
+   after the opt-in returned `success` gave a real URL.
+   **The flag persists for the life of the browser process**, so the sidecar
+   enables once per process, not once per capture — and so a control run
+   *after* a treatment run is contaminated. An earlier pass produced a
+   35/35 "control" that appeared to refute the entire finding for exactly
+   this reason.
+2. **The `AXWebArea` depth cap was a guess, and it was wrong.** The original
+   `maxDepth: 6` was defensive hand-waving. Chrome's page web area is at
+   **depth 8**, so the walk gave up before reaching it and Chrome looked
+   unsupported for 26 samples — it never needed the opt-in at all. Safari
+   sits at depth **6**, one level from being silently broken the same way.
+   Now 12, and the depth is *reported* in the JSON rather than assumed.
+3. **The first `AXWebArea` is often not the page.** Inside 6 levels Chrome
+   does have one — `chrome://omnibox-popup.top-chrome/`, the address-bar
+   dropdown, which is itself a web view. The old "return the first match"
+   logic reported it as what the user was looking at. Now all web areas are
+   collected and browser-internal schemes (`chrome://`, `devtools://`,
+   `about:`, extension popups) are filtered out, with a `nil` fallback —
+   "we saw web areas but none were the page" beats a confidently wrong URL.
+4. **`AXUIElementSetMessagingTimeout` on the app element bounds almost
+   nothing.** Decision #6 says "set it to ~200ms" and the obvious reading —
+   set it on the `AXUIElement` you just created for the app — is the one that
+   doesn't work. Apple: *"Setting the timeout on another accessibility object
+   sets it only for that object"* / *"Pass the system-wide accessibility
+   object … if you want to set the timeout globally for this process."* So
+   the app element was bounded and every element reached *through* it — the
+   focused window, each child of the tree walk, the web area, the `AXURL`
+   read — silently used the 6-second system default. Not theoretical: a
+   Safari sample took **6120ms** on a path budgeted at 400ms. Now set once on
+   `AXUIElementCreateSystemWide()`.
+
+A fifth bug was in the harness rather than the API, and is worth recording
+because EI-164 depends on not repeating it: **`--watch` froze on whatever app
+was frontmost at launch.** It was `while true { capture(); Thread.sleep(2) }`,
+and `NSWorkspace` learns about activation from notifications delivered on a
+*run loop* — which a process that only sleeps never pumps. The window title
+kept updating (re-read live off the stale pid), which made it look like a
+permissions problem. Fixed with a `didActivateApplicationNotification`
+observer plus `RunLoop.main.run()` — the same mechanism EI-164 specifies for
+the real sidecar, where it additionally has to ignore Faite's own window.
+
+`--no-enable-ax` runs the probe without the opt-in, for A/B'ing a browser that
+has been quit and relaunched first.
 
 ### 3.6 TCC identity check — **blocked, needs Rob**
 
@@ -346,19 +399,18 @@ loop, since this cost real time to diagnose here.
 
 ## 4. Needs Rob — cannot be verified without physical presence
 
-1. **Accessibility permission grant.** `desktop/context-probe/ax-probe.swift`
-   is built and rung-1-verified; rung 2 (`AXWebArea` → `AXURL`, the whole
-   point of Feature B) needs a human to grant Accessibility to a compiled
-   binary via System Settings → Privacy & Security → Accessibility, then
-   re-run `/tmp/ax-probe` (or `swift ax-probe.swift --watch` and Cmd-Tab
-   around) against Safari/Chrome/Arc to see real `AXURL` values and latency
-   with the API actually enabled.
+1. ~~**Accessibility permission grant.**~~ **Done 2026-08-21** — granted, and
+   rung 2 verified live against Safari, Chrome and Dia. See §3.5 for the
+   support matrix, the latency numbers, and the four bugs it surfaced.
 2. **TCC identity check** (§3.6). Needs a signed build plus a human watching
    System Settings while an `externalBin` sidecar spawns, to confirm one row
    vs. two.
-3. **Firefox AX behavior**, if it's worth installing for the D5 support
-   matrix — needs `AXManualAccessibility` poked per-app, per the plan doc;
-   not installed on this machine.
+3. **Firefox, Edge, Brave and Arc AX behavior** — still untested (§3.5).
+   Firefox is the one the plan doc singled out and is not installed on this
+   machine; per that doc it needs `AXManualAccessibility` poked per-app and
+   has no AppleScript URL fallback. Note Chrome turned out NOT to need the
+   opt-in, so "Chromium needs it" is not a safe generalization — Edge, Brave
+   and Arc each need their own row rather than an inherited one.
 4. **A real signed/notarized `.app` footprint measurement** (§3.8's caveat) —
    meaningfully different from the unsigned-binary numbers here, and cold
    launch specifically may look better through normal Launch Services
