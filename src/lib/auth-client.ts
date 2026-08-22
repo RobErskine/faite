@@ -1,3 +1,4 @@
+import { apiKeyClient } from "@better-auth/api-key/client";
 import { createAuthClient } from "better-auth/react";
 import { getStoredAuthToken, isDesktopShell } from "./desktop/bridge";
 import { resolveApiBaseURL } from "./api-origin";
@@ -38,6 +39,12 @@ export const authClient = createAuthClient({
       token: desktopBearerToken,
     },
   },
+  // A3, EI-228 — Settings → API Keys. The server side (`auth-tokens.ts`)
+  // already registers the matching `apiKey` plugin; this is only the
+  // client-side surface (`authClient.apiKey.create/list/delete`) needed to
+  // call it. No new server route: `worker.ts` already dispatches every
+  // `/api/auth/*` path, including `/api/auth/api-key/*`, to Better Auth.
+  plugins: [apiKeyClient()],
 });
 
 export const { useSession, signIn, signUp, signOut } = authClient;
