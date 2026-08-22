@@ -205,6 +205,19 @@ Never expose DO-internal fields (`version`, HLC stamps) through a tool
 result — `todoOrNull()` runs every write tool's response through
 `todoSchema.parse()` before returning it, same rule as `/api/v1`.
 
+## Published docs (A7, EI-231)
+
+`/docs` renders `openapi/v1.json` — the public document only, never
+`openapi/openapi.json` — via Scalar's React component
+(`@scalar/api-reference-react`). `src/components/docs/api-reference.tsx`
+imports the spec at build time rather than fetching it at runtime: this app
+also ships as a static Capacitor export with no server to fetch from, and a
+build-time import means a spec that fails the CI drift check
+(`openapi:generate && git diff --exit-code`) fails the build before a stale
+copy could ever ship. The page itself skips `PageShell` — that component's
+`max-w-2xl` reading-measure container is for prose, and Scalar renders its
+own full-viewport layout that a narrow wrapper would clip.
+
 ## Open questions for P5
 
 - **Tokens live where?** Sessions are in D1; per-user data is in the DO. An

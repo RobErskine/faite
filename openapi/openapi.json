@@ -10530,7 +10530,7 @@
       "bearerAuth": {
         "type": "http",
         "scheme": "bearer",
-        "description": "An API token minted via /api/auth/api-key/* or the desktop handoff (/api/desktop/exchange). Currently full-session-equivalent for every key — see src/server/auth-tokens.ts."
+        "description": "An API token minted via /api/auth/api-key/* or the desktop handoff (/api/desktop/exchange). Scoped per key (A2, EI-227) — see src/server/auth-scopes.ts."
       }
     }
   }

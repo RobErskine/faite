@@ -3,7 +3,7 @@
  * in `src/server/openapi/spec.ts`:
  *
  *   - `openapi/openapi.json` — internal, everything this Worker serves
- *   - `openapi/v1.json` — public, `/api/v1` only (empty until A2, EI-227)
+ *   - `openapi/v1.json` — public, `/api/v1` only, published by A7 (EI-231)
  *
  * Run by hand or in CI:
  *
