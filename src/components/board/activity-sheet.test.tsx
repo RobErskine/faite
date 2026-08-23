@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ActivitySheet } from "./activity-sheet";
+import { ActivitySheet, PAGE_SIZE } from "./activity-sheet";
 import type { List, Settings, Tab, TodoEvent, Todo } from "@/lib/schema";
 import type { PlacementContext } from "@/lib/scheduling";
 
@@ -19,11 +19,21 @@ vi.mock("@/lib/store/mutate", () => ({
  * (`lib/store/hooks.ts`), both thin Dexie live-queries — mocked here so each
  * test controls exactly what the feed sees, the same trade `DaySheet`'s
  * tests make by taking `todos` as a prop instead of querying Dexie directly.
+ *
+ * The mock reproduces the real hook's two-step shape — a raw newest-first
+ * fetch capped at `shown`, THEN an `alive()` filter — rather than filtering
+ * first and slicing second, specifically so a test can put a tombstoned
+ * event inside the fetched window and assert `hasMore` still reflects the
+ * raw fetch, not the post-filter count (the bug `useGlobalEvents`'s own
+ * `GlobalEventsPage.hasMore` doc comment explains).
  */
 let eventsFixture: TodoEvent[] = [];
 let titlesFixture: ReadonlyMap<string, { title: string; deleted: boolean }> = new Map();
 vi.mock("@/lib/store/hooks", () => ({
-  useGlobalEvents: (shown: number) => eventsFixture.slice(0, shown),
+  useGlobalEvents: (shown: number) => {
+    const raw = [...eventsFixture].sort((a, b) => b.at.localeCompare(a.at)).slice(0, shown);
+    return { events: raw.filter((e) => !e.deletedAt), hasMore: raw.length === shown };
+  },
   useTodoTitles: () => titlesFixture,
 }));
 
@@ -316,5 +326,53 @@ describe("kind filter", () => {
     render(<Harness settingsOverride={settings({ visibleActivityKinds: ["done"] })} />);
 
     expect(screen.getByText(/hidden by the view filter/)).toBeTruthy();
+  });
+});
+
+/** N synthetic `created` events for todo-a, each a minute apart, newest at index 0. */
+function manyEvents(n: number, startOffsetMinutes = 0): TodoEvent[] {
+  return Array.from({ length: n }, (_, i) =>
+    event({
+      id: `evt-${String(i + startOffsetMinutes).padStart(4, "0")}`,
+      todoId: "todo-a",
+      kind: "created",
+      at: new Date(Date.parse(`${DAY}T12:00:00.000Z`) - (i + startOffsetMinutes) * 60_000).toISOString(),
+    }),
+  );
+}
+
+describe("pagination", () => {
+  beforeEach(() => {
+    titlesFixture = new Map([["todo-a", { title: "Task", deleted: false }]]);
+  });
+
+  it("shows Load more when the page is exactly full, hides it once exhausted", () => {
+    eventsFixture = manyEvents(PAGE_SIZE + 10);
+    render(<Harness />);
+
+    expect(screen.getByRole("button", { name: `Load ${PAGE_SIZE} more` })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: `Load ${PAGE_SIZE} more` }));
+    expect(screen.queryByRole("button", { name: `Load ${PAGE_SIZE} more` })).toBeNull();
+  });
+
+  it("hides Load more immediately when there are fewer than one page's worth", () => {
+    eventsFixture = manyEvents(5);
+    render(<Harness />);
+    expect(screen.queryByRole("button", { name: `Load ${PAGE_SIZE} more` })).toBeNull();
+  });
+
+  it("REGRESSION: still shows Load more when a tombstoned event falls inside the fetched window", () => {
+    // Exactly PAGE_SIZE real (alive) events, plus a handful of undo-
+    // tombstoned ones interleaved among the most recent PAGE_SIZE by `at` —
+    // the raw fetch returns PAGE_SIZE rows, of which some are filtered out,
+    // so the post-filter count alone would read as "not a full page" even
+    // though PAGE_SIZE raw rows — and more beyond them — genuinely exist.
+    const alive = manyEvents(PAGE_SIZE, 5);
+    const tombstoned = manyEvents(5, 0).map((e) => ({ ...e, deletedAt: `${DAY}T00:00:00.000Z` }));
+    eventsFixture = [...tombstoned, ...alive];
+    render(<Harness />);
+
+    expect(screen.getByRole("button", { name: `Load ${PAGE_SIZE} more` })).toBeTruthy();
   });
 });
