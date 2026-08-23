@@ -2,7 +2,16 @@ import { createMcpHandler } from "agents/mcp";
 import type { AuthInfo } from "@modelcontextprotocol/server";
 import { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
-import { prioritySchema, todoSchema } from "@/lib/schema";
+import {
+  idSchema,
+  labelSchema,
+  listSchema,
+  prioritySchema,
+  tabSchema,
+  todoSchema,
+  todoStatusSchema,
+} from "@/lib/schema";
+import { contextFromSettings, deriveColumn, OVERFLOW } from "@/lib/scheduling";
 import type { ServiceContext } from "@/lib/service/context";
 import { createAuth } from "../auth";
 import { keyGrantsScope, type ApiScope } from "../auth-scopes";
@@ -12,6 +21,7 @@ import { durableHlcQueue } from "../service/hlc";
 import { createTodo, pushTransportFor, updateTodo } from "../service/todos";
 import type { UserDurableObject } from "../user-do";
 import { withEventStreamAccept } from "./accept";
+import { settingsOrDefault } from "./settings-defaults";
 
 export { withEventStreamAccept } from "./accept";
 
@@ -81,6 +91,22 @@ export { withEventStreamAccept } from "./accept";
  * per the milestone doc's design note. `complete_todo` is that note's own
  * named example of a server-originated UPDATE that needs A4's durable HLC;
  * both write tools use `durableHlcQueue()` for exactly that reason.
+ *
+ * Full API-parity pass (post-milestone): `list_lists`/`list_labels`/
+ * `list_tabs` mirror `/api/v1`'s three other read resources (`listEntities()`
+ * already served all four; only `todo` had an MCP tool). `update_todo` is
+ * the general patch `/api/v1/todos/{id}` offers — `complete_todo` stays as
+ * its own tool rather than folding into this one, since "mark done" is
+ * common enough to deserve a one-field call. `get_backlog`/`get_overflow`
+ * are convenience reads with NO REST equivalent: Backlog is just "the list
+ * with `isBacklog: true`", and Overflow is `@/lib/scheduling`'s
+ * `deriveColumn()` — the exact pure function the board itself renders
+ * with — run against this account's own Settings (`UserDurableObject.
+ * getSettings()`, new here) instead of a client's in-memory copy.
+ * `get_profile` exposes identity fields only (`displayName`/avatar/
+ * `timezone`) — never the device-local board-layout prefs (`backlogWidth`,
+ * `splitRatio`, etc.) that live in the same `settings` row but describe one
+ * device's screen, not the account.
  */
 
 interface McpIdentity {
@@ -140,6 +166,27 @@ const todoOrNull = (row: Record<string, unknown> | null) => (row ? todoSchema.pa
  */
 function listTodos(stub: DurableObjectStub<UserDurableObject>): ReturnType<UserDurableObject["listEntities"]> {
   return stub.listEntities("todo");
+}
+
+/** Same `never`-through-the-RPC-proxy workaround as `listTodos`, one wrapper
+ * per literal kind. */
+function listLists(stub: DurableObjectStub<UserDurableObject>): ReturnType<UserDurableObject["listEntities"]> {
+  return stub.listEntities("list");
+}
+
+function listLabels(stub: DurableObjectStub<UserDurableObject>): ReturnType<UserDurableObject["listEntities"]> {
+  return stub.listEntities("label");
+}
+
+function listTabs(stub: DurableObjectStub<UserDurableObject>): ReturnType<UserDurableObject["listEntities"]> {
+  return stub.listEntities("tab");
+}
+
+/** Fetches, then applies `settingsOrDefault`'s (`./settings-defaults`)
+ * fallback for a row that was never written. */
+async function loadSettings(identity: McpIdentity, stub: DurableObjectStub<UserDurableObject>) {
+  const row = await stub.getSettings();
+  return settingsOrDefault(row, identity.userId);
 }
 
 function buildServer(
@@ -230,6 +277,166 @@ function buildServer(
 
       const todo = await stub.getTodo(id);
       return textResult(todoOrNull(todo));
+    },
+  );
+
+  server.registerTool(
+    "update_todo",
+    {
+      description:
+        "Patch an existing to-do. Only the fields provided are touched — " +
+        "everything else on the to-do is left exactly as it was.",
+      inputSchema: {
+        id: z.string().min(1),
+        title: z.string().min(1).optional(),
+        description: z.string().nullable().optional(),
+        status: todoStatusSchema.optional(),
+        priority: prioritySchema.nullable().optional(),
+        scheduledDate: z.string().nullable().optional(),
+        deadline: z.string().nullable().optional(),
+        listId: idSchema.nullable().optional(),
+        projectId: idSchema.nullable().optional(),
+        labelIds: z.array(idSchema).optional(),
+        location: z.string().nullable().optional(),
+        parentId: idSchema.nullable().optional(),
+        completedAt: z.string().nullable().optional(),
+      },
+    },
+    async ({ id, ...input }) => {
+      requireScope(identity, "write");
+
+      // None of these fields carry a Zod `.default()` — deliberately, so an
+      // absent key stays absent here rather than resolving to a schema
+      // default. `buildUpdateTodoEntry` (called via `updateTodo` below) has
+      // its own dynamic pick-from-present-keys mask as a second, independent
+      // safety net — see its doc comment for the live incident that mask
+      // exists to prevent — but there is no reason to hand it a patch that
+      // already contains `undefined`-valued keys the SDK's own arg parsing
+      // may have added for fields the caller never mentioned.
+      const patch = Object.fromEntries(
+        Object.entries(input).filter(([, value]) => value !== undefined),
+      );
+      if (Object.keys(patch).length === 0) {
+        throw new Error("Provide at least one field to update.");
+      }
+
+      const existing = await stub.getTodo(id);
+      if (!existing) throw new Error(`No such to-do: ${id}`);
+
+      const nextHlc = await durableHlcQueue(stub, 2);
+      const ctx: ServiceContext = { userId: identity.userId, nextHlc };
+
+      const { rejected } = await updateTodo(ctx, id, patch, pushTransportFor(stub, identity.userId));
+      if (rejected.length > 0) {
+        throw new Error("The server refused this update — please try again.");
+      }
+
+      const todo = await stub.getTodo(id);
+      return textResult(todoOrNull(todo));
+    },
+  );
+
+  server.registerTool(
+    "list_lists",
+    {
+      description:
+        "List the caller's lists (board columns), in board order. Each " +
+        "list's `description`, when set, explains what belongs there — " +
+        "useful context for deciding where a new to-do should go.",
+      inputSchema: {},
+    },
+    async () => {
+      requireScope(identity, "read");
+      const rows = await listLists(stub);
+      return textResult(rows.map((row) => listSchema.parse(row)));
+    },
+  );
+
+  server.registerTool(
+    "list_labels",
+    {
+      description: "List the caller's labels.",
+      inputSchema: {},
+    },
+    async () => {
+      requireScope(identity, "read");
+      const rows = await listLabels(stub);
+      return textResult(rows.map((row) => labelSchema.parse(row)));
+    },
+  );
+
+  server.registerTool(
+    "list_tabs",
+    {
+      description: "List the caller's tabs (the groups lists are organized into).",
+      inputSchema: {},
+    },
+    async () => {
+      requireScope(identity, "read");
+      const rows = await listTabs(stub);
+      return textResult(rows.map((row) => tabSchema.parse(row)));
+    },
+  );
+
+  server.registerTool(
+    "get_backlog",
+    {
+      description:
+        "To-dos in the Backlog list — the always-present list a to-do lands " +
+        "in when it isn't filed anywhere else.",
+      inputSchema: {},
+    },
+    async () => {
+      requireScope(identity, "read");
+      const [todoRows, listRows] = await Promise.all([listTodos(stub), listLists(stub)]);
+      const backlog = listRows.map((row) => listSchema.parse(row)).find((list) => list.isBacklog);
+      if (!backlog) return textResult([]);
+
+      const todos = todoRows.map((row) => todoSchema.parse(row));
+      return textResult(todos.filter((todo) => todo.listId === backlog.id));
+    },
+  );
+
+  server.registerTool(
+    "get_overflow",
+    {
+      description:
+        "To-dos that have rolled past the caller's Faite Loop window and " +
+        "fallen into Overflow — missed for longer than their Settings' " +
+        "`overflowAfterDays` allows.",
+      inputSchema: {},
+    },
+    async () => {
+      requireScope(identity, "read");
+      const [todoRows, settings] = await Promise.all([listTodos(stub), loadSettings(identity, stub)]);
+      const placementCtx = contextFromSettings(settings);
+
+      const todos = todoRows.map((row) => todoSchema.parse(row));
+      const overflowing = todos.filter((todo) => {
+        const placement = deriveColumn(todo, placementCtx);
+        return placement.half === "calendar" && placement.day === OVERFLOW;
+      });
+      return textResult(overflowing);
+    },
+  );
+
+  server.registerTool(
+    "get_profile",
+    {
+      description: "The caller's display name, avatar, and timezone.",
+      inputSchema: {},
+    },
+    async () => {
+      requireScope(identity, "read");
+      const settings = await loadSettings(identity, stub);
+      return textResult({
+        displayName: settings.displayName,
+        avatarKind: settings.avatarKind,
+        avatarInitials: settings.avatarInitials,
+        avatarEmoji: settings.avatarEmoji,
+        avatarImage: settings.avatarImage,
+        timezone: settings.timezone,
+      });
     },
   );
 

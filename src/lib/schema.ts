@@ -144,10 +144,10 @@ export const listSchema = z.object({
    * Plain text, same convention as `tabSchema.description`. Free-form context
    * for what this list is for — e.g. "Dreamworks tickets, look for WTT- or
    * SPLLAT- prefixes" — meant to be read by a human via the list's info
-   * dialog, and by future automation: smart/automatic todo routing, and MCP
-   * clients deciding which list a new todo belongs in. Nothing reads it for
-   * either yet; it exists so the context isn't lost by the time something
-   * does.
+   * dialog, and by an MCP client deciding which list a new todo belongs in
+   * (the `list_lists` tool returns it verbatim). Nothing does smart/automatic
+   * routing FROM it yet; it exists so the context isn't lost by the time
+   * something does.
    */
   description: z.string().nullable().default(null),
 });
