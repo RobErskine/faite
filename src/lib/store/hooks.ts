@@ -230,6 +230,27 @@ export function useTodoEvents(todoId: string | null): TodoEvent[] {
   return useMemo(() => alive(rows), [rows]);
 }
 
+export interface GlobalEventsPage {
+  events: TodoEvent[];
+  /**
+   * True when the raw fetch (before `alive()` filtering) came back exactly
+   * `shown` rows — the caller's signal that older rows likely still exist
+   * beyond this page, so a "Load more" affordance should offer to fetch a
+   * bigger page.
+   *
+   * Deliberately computed from the RAW row count, not `events.length`
+   * (post-filter). `alive()` drops undo-tombstoned rows, which can land
+   * anywhere inside the fetched window — a todo settled-then-undone last
+   * week is still `at`-ordered wherever it happened, not clustered at the
+   * edge. Gating on the filtered count means every tombstone inside the
+   * window silently shrinks it below `shown`, so `hasMore` would read false
+   * — "nothing more to load" — even though the query never actually reached
+   * the end of the table. The raw count is the only signal that reflects
+   * what the query itself did.
+   */
+  hasMore: boolean;
+}
+
 /**
  * The most recent `shown` rows of the WHOLE-app event log (the Global
  * Timeline, todos-only v1), newest first — the second scoped query in this
@@ -244,13 +265,13 @@ export function useTodoEvents(todoId: string | null): TodoEvent[] {
  * upper-bound cursor would freeze the feed's live edge, hiding a fresh event
  * from what's supposed to be a live view. See `lib/global-timeline.ts`.
  */
-export function useGlobalEvents(shown: number): TodoEvent[] {
+export function useGlobalEvents(shown: number): GlobalEventsPage {
   const rows = useLiveQuery(
     () => getDb().todoEvents.orderBy("at").reverse().limit(shown).toArray(),
     [shown],
     [] as TodoEvent[],
   );
-  return useMemo(() => alive(rows), [rows]);
+  return useMemo(() => ({ events: alive(rows), hasMore: rows.length === shown }), [rows, shown]);
 }
 
 /**

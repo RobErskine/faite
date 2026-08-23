@@ -47,7 +47,8 @@ import { LOCAL_OWNER_ID } from "@/lib/store/owner";
 import type { ActivityEventKind, CivilDate, List, Settings, Tab, Todo } from "@/lib/schema";
 import { cn } from "@/lib/utils";
 
-const PAGE_SIZE = 50;
+// Exported for activity-sheet.test.tsx's Load More tests, not for reuse.
+export const PAGE_SIZE = 50;
 /**
  * Hard ceiling on how much of the log this feed will ever load. Past this
  * the feed shows a "not shown" marker rather than growing the query
@@ -198,7 +199,7 @@ export function ActivitySheet({
 }: ActivitySheetProps) {
   const [shown, setShown] = useState(PAGE_SIZE);
   const atCap = shown >= MAX_SHOWN;
-  const events = useGlobalEvents(Math.min(shown, MAX_SHOWN));
+  const { events, hasMore } = useGlobalEvents(Math.min(shown, MAX_SHOWN));
   const titles = useTodoTitles();
 
   const rollups = useMemo(
@@ -400,7 +401,7 @@ export function ActivitySheet({
             </>
           )}
 
-          {!atCap && events.length === shown && events.length > 0 && (
+          {!atCap && hasMore && (
             <Button
               variant="ghost"
               size="sm"
