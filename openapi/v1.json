@@ -1940,6 +1940,38 @@
               ]
             }
           },
+          "visibleActivityKinds": {
+            "default": [
+              "created",
+              "scheduled",
+              "unscheduled",
+              "moved",
+              "done",
+              "dropped",
+              "reopened",
+              "edited",
+              "deleted",
+              "rolledOver",
+              "overflowed"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "created",
+                "scheduled",
+                "unscheduled",
+                "moved",
+                "done",
+                "dropped",
+                "reopened",
+                "edited",
+                "deleted",
+                "rolledOver",
+                "overflowed"
+              ]
+            }
+          },
           "showWeekends": {
             "default": true,
             "type": "boolean"
@@ -2087,6 +2119,7 @@
           "visibleDays",
           "visibleStatuses",
           "visibleEventKinds",
+          "visibleActivityKinds",
           "showWeekends",
           "fontPairing",
           "theme",
