@@ -147,6 +147,7 @@ function list(id: string, overrides: Partial<List> = {}): List {
     position: "a0",
     tabId: null,
     defaultReminderPresetId: null,
+    description: null,
     color: null,
     emoji: null,
     iconUrl: null,
