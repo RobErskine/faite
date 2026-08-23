@@ -277,6 +277,16 @@ export const USER_DB_MIGRATIONS: readonly UserDbMigration[] = [
       "ALTER TABLE lists ADD COLUMN description text",
     ],
   },
+  {
+    id: 17,
+    name: "settings-add-visible-activity-kinds",
+    statements: [
+      // Same reasoning as migration 7/13: NOT NULL with a DEFAULT matching
+      // the Zod default, so every existing row comes out with the global
+      // activity feed showing every kind, same as a fresh account.
+      `ALTER TABLE settings ADD COLUMN visible_activity_kinds text DEFAULT '["created","scheduled","unscheduled","moved","done","dropped","reopened","edited","deleted","rolledOver","overflowed"]' NOT NULL`,
+    ],
+  },
   // Add new migrations here. Never edit one above this line.
   //
   // Example — adding a nullable column (the safe, ordinary case):

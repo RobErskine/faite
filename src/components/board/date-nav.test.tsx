@@ -1,5 +1,9 @@
-import { describe, expect, it } from "vitest";
-import { civilDateToLocalDate, daysBetweenLocalDates } from "./date-nav";
+// @vitest-environment happy-dom
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { civilDateToLocalDate, daysBetweenLocalDates, DateNav } from "./date-nav";
+
+vi.mock("@/lib/store/mutate", () => ({ mutateSettings: vi.fn() }));
 
 describe("civilDateToLocalDate", () => {
   it("builds a local midnight Date matching the civil date's parts", () => {
@@ -53,5 +57,35 @@ describe("daysBetweenLocalDates", () => {
         civilDateToLocalDate("2027-01-01"),
       ),
     ).toBe(1);
+  });
+});
+
+const baseProps = {
+  settings: undefined,
+  today: "2026-08-10" as const,
+  anchorIndex: 0,
+  visibleCount: 7,
+  canJumpBack: () => false,
+  canJumpForward: () => false,
+  onJump: () => {},
+  onJumpToDate: () => {},
+  onToday: () => {},
+};
+
+describe("DateNav activity trigger", () => {
+  afterEach(cleanup);
+
+  it("renders in the full (desktop) branch and calls onOpenActivity", () => {
+    const onOpenActivity = vi.fn();
+    render(<DateNav {...baseProps} onOpenActivity={onOpenActivity} />);
+    fireEvent.click(screen.getByRole("button", { name: "Open activity feed" }));
+    expect(onOpenActivity).toHaveBeenCalledOnce();
+  });
+
+  it("renders in the compact (phone) branch and calls onOpenActivity", () => {
+    const onOpenActivity = vi.fn();
+    render(<DateNav {...baseProps} compact onOpenActivity={onOpenActivity} />);
+    fireEvent.click(screen.getByRole("button", { name: "Open activity feed" }));
+    expect(onOpenActivity).toHaveBeenCalledOnce();
   });
 });

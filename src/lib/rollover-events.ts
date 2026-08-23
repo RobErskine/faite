@@ -1,5 +1,6 @@
 import type { CivilDate, Todo } from "./schema";
 import { type PlacementContext, formatShortDate, rollsElapsed, rolloverTarget } from "./scheduling";
+import { zonedInstant } from "./zoned";
 
 /**
  * The Faite Loop, made visible: the individual rolls a todo has made on its
@@ -70,6 +71,77 @@ export function rollEventsFor(
     }
   }
   return events;
+}
+
+export interface RolledTodo {
+  todo: Todo;
+  /** Eligible days elapsed as of `day` — 1-indexed, same field `RollEvent`
+   * carries. Per-todo, not per-group: two todos landing on the same `day`
+   * can have different `rolls` if they were originally scheduled on
+   * different days, which is why this can't live on `DailyRollSummary`
+   * itself alongside `todos: Todo[]` the way it used to. */
+  rolls: number;
+  /** The todo's original scheduled date — the anchor a "3 days, from Aug 19"
+   * cell reads, same field `RollEvent.from` carries. */
+  from: CivilDate;
+}
+
+export interface DailyRollSummary {
+  key: string;
+  kind: "rolledOver" | "overflowed";
+  /** The day this group of rolls happened on. */
+  day: CivilDate;
+  /** `day` at 00:00 in `timezone` — same synthetic-instant convention as
+   * `rollTimelineEvents` (`todo-timeline.ts`), so a summary sorts alongside
+   * real events by `at` without a special case. */
+  at: string;
+  /** Every todo that rolled (or overflowed) on `day`, each with its own
+   * roll count and origin date, unordered. */
+  todos: RolledTodo[];
+}
+
+/**
+ * One row per `(day, kind)` across every todo, for a whole-app activity feed
+ * — "6 to-dos rolled over" instead of `rollTimelineEvents`'s one-row-per-todo
+ * shape, which would drown a global feed the way an uncollapsed per-todo log
+ * would (see that function's comment).
+ *
+ * Two limits worth knowing before trusting this as "what rolled":
+ *
+ * 1. **Answers "what is rolling," not "what rolled."** `rollEventsFor` only
+ *    fires for todos that are STILL open and STILL scheduled as of
+ *    `ctx.today` (see its own doc comment) — a todo that rolled three times
+ *    and was then completed contributes nothing here, retroactively. Real
+ *    per-roll history would need logged events, not this derivation.
+ * 2. **Rescheduling rewrites the past.** Like every rollover view in this
+ *    app, changing a todo's `scheduledDate` changes which days it appears to
+ *    have rolled through on next render (`day-timeline.ts` limit 8).
+ *
+ * Cost is naturally bounded, not something this function has to enforce:
+ * `rollEventsFor` only ever looks back `overflowAfterDays + 1` days (≤31) per
+ * todo, the same computation the board already does every render for card
+ * badges — so the result set stays small regardless of table size.
+ */
+export function dailyRollSummaries(
+  todos: readonly Todo[],
+  ctx: Pick<PlacementContext, "today" | "workdaysOnly" | "workdays" | "overflowAfterDays">,
+  timezone: string,
+): DailyRollSummary[] {
+  const groups = new Map<string, DailyRollSummary>();
+
+  for (const todo of todos) {
+    for (const roll of rollEventsFor(todo, ctx)) {
+      const key = `${roll.kind}:${roll.day}`;
+      let group = groups.get(key);
+      if (!group) {
+        group = { key, kind: roll.kind, day: roll.day, at: zonedInstant(roll.day, "00:00", timezone), todos: [] };
+        groups.set(key, group);
+      }
+      group.todos.push({ todo, rolls: roll.rolls, from: roll.from });
+    }
+  }
+
+  return [...groups.values()].sort((a, b) => a.at.localeCompare(b.at) || a.key.localeCompare(b.key));
 }
 
 /**

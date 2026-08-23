@@ -247,15 +247,16 @@ source of truth; there are no project guards inside specs any more (§7).
 | `core-flows` (5) | ● | ● | ● | ● | ● |
 | `reminders` (4) | ● | | ● | | |
 | `overdrive` (8) | ● | | ● | ● | |
+| `activity-timeline` (2) | ● | | ● | | |
 | `touch-affordances` (3) | | ● | ● | ● | ● |
 | `touch-smoke` (2) | | | ● | ● | ● |
 
-**111 tests.** Before, every project ran every spec — 36 x 5 = **180 runs**,
+**115 tests.** Before, every project ran every spec — 36 x 5 = **180 runs**,
 of which 56 immediately hit a skip guard and exited.
 
 This table is what `npm run e2e` runs, and it is the *full* matrix. A pull
 request runs a subset of it: the **`desktop` and `phone-iphone` columns
-only** (75 tests, `npm run e2e:ci`). The other three columns are deferred to
+only** (79 tests, `npm run e2e:ci`). The other three columns are deferred to
 a local run or a `workflow_dispatch` — see §8.5 for why those two, and what
 deferring the rest gives up.
 
@@ -304,6 +305,16 @@ deferring the rest gives up.
   where a full-screen overlay actually breaks and this is the only project
   that exercises one. **Risk accepted:** an Overdrive regression specific to
   iPad Mini's width or to Pixel's device-pixel-ratio.
+- **`activity-timeline` on `desktop` + `phone-iphone` only.** *Traded away:*
+  tablet, landscape and Pixel — same call as `reminders`, and for the same
+  reason: the drawer's one viewport-sensitive property is full width vs.
+  `sm:max-w-[75ch]` (`activity-sheet.tsx`), which `desktop-layout.spec.ts`
+  already covers structurally for every right-side sheet, and `phone-iphone`
+  is where the trigger's visibility is actually conditional (`DateNav`
+  renders only on the "Days" pager on phone — see `phone-board.tsx`).
+  **Risk accepted:** the same class of risk `reminders` accepts — a rendering
+  regression specific to iPad Mini's width or Pixel's DPR that Tier A's
+  structure-only assertions likely wouldn't have caught anyway.
 
 ### 8.3 The one change that wasn't a coverage trade
 
@@ -399,7 +410,7 @@ for that spec rather than deleting it globally.
 ### 8.5 Mandatory vs optional — what a PR actually runs
 
 The full matrix stopped running on every PR. `npm run e2e:ci` — the **gate** —
-runs `--project=desktop --project=phone-iphone`, **53 of the 89 tests**.
+runs `--project=desktop --project=phone-iphone`, **79 of the 115 tests**.
 
 **Why that pair, and not just `desktop`.** `resolveLayout()`
 (`src/lib/use-viewport.ts`) is `< 640` phone, `< 1024` tablet, `>= 1024`

@@ -51,6 +51,30 @@ export const dayEventKindSchema = z.enum([
 ]);
 export type DayEventKind = z.infer<typeof dayEventKindSchema>;
 
+/**
+ * What a global-activity-feed entry can be — every real `TodoEventKind`
+ * (`lib/store/todo-events.ts`) plus the two Faite Loop kinds
+ * `dailyRollSummaries` (`lib/rollover-events.ts`) derives. A separate enum
+ * from `dayEventKindSchema` on purpose: the two views filter different
+ * vocabularies (this one has `unscheduled`/`moved`/`reopened`/`edited`/
+ * `deleted`, which the day sheet doesn't show), and `visibleEventKinds`
+ * below is documented as scoped to exactly the day sheet's six.
+ */
+export const activityEventKindSchema = z.enum([
+  "created",
+  "scheduled",
+  "unscheduled",
+  "moved",
+  "done",
+  "dropped",
+  "reopened",
+  "edited",
+  "deleted",
+  "rolledOver",
+  "overflowed",
+]);
+export type ActivityEventKind = z.infer<typeof activityEventKindSchema>;
+
 /** 1 = highest. Matches the 4-level convention in the original spec. */
 export const prioritySchema = z.union([
   z.literal(1),
@@ -465,6 +489,26 @@ export const settingsSchema = z.object({
   visibleEventKinds: z
     .array(dayEventKindSchema)
     .default(["created", "scheduled", "done", "dropped", "rolledOver", "overflowed"]),
+  /**
+   * Which kinds render in the global activity feed (`activity-sheet.tsx`) —
+   * a separate field from `visibleEventKinds` above, not a reuse of it, so
+   * filtering one surface can never silently filter the other. Same
+   * may-legally-be-empty rule as `visibleEventKinds`, for the same reason:
+   * the feed has its own "N hidden by the view filter" notice.
+   */
+  visibleActivityKinds: z.array(activityEventKindSchema).default([
+    "created",
+    "scheduled",
+    "unscheduled",
+    "moved",
+    "done",
+    "dropped",
+    "reopened",
+    "edited",
+    "deleted",
+    "rolledOver",
+    "overflowed",
+  ]),
   /**
    * When false, each run of consecutive non-working days collapses into a
    * single expandable strip and stops counting toward `visibleDays`.

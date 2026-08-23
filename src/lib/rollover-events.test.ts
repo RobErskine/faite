@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { describeLoop, loopExample, rollEventsFor } from "./rollover-events";
+import { dailyRollSummaries, describeLoop, loopExample, rollEventsFor } from "./rollover-events";
 import { type PlacementContext, addDays, buildWindow } from "./scheduling";
+import type { Todo } from "./schema";
 
 const WORKDAYS = [1, 2, 3, 4, 5];
 
@@ -146,5 +147,76 @@ describe("describeLoop", () => {
       ctx({ today: "2026-08-07", overflowAfterDays: 1, workdaysOnly: true }),
     );
     expect(result).toBe("Miss Aug 7 → rolls to Aug 10 → Overflow on Aug 11");
+  });
+});
+
+function todo(id: string, overrides: Partial<Todo> = {}): Todo {
+  return {
+    id,
+    title: id,
+    status: "open",
+    scheduledDate: null,
+    recurrenceParentId: null,
+    ...overrides,
+  } as Todo;
+}
+
+describe("dailyRollSummaries", () => {
+  it("groups multiple todos rolling on the same day into one row", () => {
+    // Both scheduled 2026-07-31, both roll once as of 2026-08-01.
+    const a = todo("a", { scheduledDate: "2026-07-31" });
+    const b = todo("b", { scheduledDate: "2026-07-31" });
+
+    const summaries = dailyRollSummaries([a, b], ctx({ today: "2026-08-01", overflowAfterDays: 3 }), "UTC");
+
+    expect(summaries).toHaveLength(1);
+    expect(summaries[0]).toMatchObject({ kind: "rolledOver", day: "2026-08-01" });
+    expect(summaries[0].todos.map((t) => t.todo.id).sort()).toEqual(["a", "b"]);
+  });
+
+  it("carries each todo's own roll count and origin date, not just its id", () => {
+    // a rolled once from 2026-07-31 (one elapsed day) — appears only on
+    // 2026-08-01. b rolled twice from 2026-07-30 (two elapsed days) —
+    // `rollEventsFor` emits one event per elapsed day, so b appears on BOTH
+    // 2026-07-31 (rolls: 1) and 2026-08-01 (rolls: 2). The 08-01 group is
+    // where their per-todo `rolls`/`from` actually differ.
+    const a = todo("a", { scheduledDate: "2026-07-31" });
+    const b = todo("b", { scheduledDate: "2026-07-30" });
+
+    const summaries = dailyRollSummaries([a, b], ctx({ today: "2026-08-01", overflowAfterDays: 3 }), "UTC");
+
+    const aug1 = summaries.find((s) => s.day === "2026-08-01")!;
+    const byId = new Map(aug1.todos.map((t) => [t.todo.id, t]));
+    expect(byId.get("a")).toMatchObject({ rolls: 1, from: "2026-07-31" });
+    expect(byId.get("b")).toMatchObject({ rolls: 2, from: "2026-07-30" });
+  });
+
+  it("separates rolledOver and overflowed into distinct rows even on the same day", () => {
+    // a: scheduled 2026-07-31, rolls to overflow exactly at overflowAfterDays=1.
+    // b: scheduled 2026-08-02 (today), no roll at all — excluded entirely.
+    const a = todo("a", { scheduledDate: "2026-07-31" });
+    const b = todo("b", { scheduledDate: "2026-08-02" });
+
+    const summaries = dailyRollSummaries([a, b], ctx({ today: "2026-08-02", overflowAfterDays: 1 }), "UTC");
+
+    const kinds = summaries.map((s) => s.kind).sort();
+    expect(kinds).toEqual(["overflowed", "rolledOver"]);
+    for (const s of summaries) expect(s.todos.map((t) => t.todo.id)).toEqual(["a"]);
+  });
+
+  it("excludes a settled todo even if it would have rolled", () => {
+    const done = todo("a", { scheduledDate: "2026-07-31", status: "done" });
+    const summaries = dailyRollSummaries([done], ctx({ today: "2026-08-01" }), "UTC");
+    expect(summaries).toEqual([]);
+  });
+
+  it("returns nothing for an empty todo list", () => {
+    expect(dailyRollSummaries([], ctx(), "UTC")).toEqual([]);
+  });
+
+  it("stamps each summary's `at` at 00:00 of `day` in the given timezone", () => {
+    const a = todo("a", { scheduledDate: "2026-07-31" });
+    const summaries = dailyRollSummaries([a], ctx({ today: "2026-08-01", overflowAfterDays: 3 }), "America/New_York");
+    expect(summaries[0].at).toBe("2026-08-01T04:00:00.000Z"); // midnight EDT
   });
 });

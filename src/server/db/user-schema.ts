@@ -167,6 +167,12 @@ export const settings = sqliteTable("settings", {
   visibleEventKinds: text("visible_event_kinds")
     .notNull()
     .default('["created","scheduled","done","dropped"]'),
+  /** JSON-encoded array of kinds — see `settingsSchema.visibleActivityKinds`. */
+  visibleActivityKinds: text("visible_activity_kinds")
+    .notNull()
+    .default(
+      '["created","scheduled","unscheduled","moved","done","dropped","reopened","edited","deleted","rolledOver","overflowed"]',
+    ),
   showWeekends: integer("show_weekends", { mode: "boolean" }).notNull().default(true),
   fontPairing: text("font_pairing").notNull(),
   theme: text("theme").notNull(),

@@ -25,6 +25,7 @@ import { ListInfoDialog } from "./list-info-dialog";
 import { TabInfoDialog } from "./tab-info-dialog";
 import { ArchivedListsSheet } from "./archived-lists-sheet";
 import { HelpSheet } from "./help-sheet";
+import { ActivitySheet } from "./activity-sheet";
 import { SettingsSheet } from "@/components/settings/settings-sheet";
 import { CommandPalette } from "./command-palette";
 import { DaySheet } from "./day-sheet";
@@ -253,6 +254,7 @@ export function Board() {
       openDay: ui.openDay,
       overdriveOpen: ui.overdriveOpen,
       helpSheetOpen: ui.helpSheetOpen,
+      activityOpen: ui.activityOpen,
     }),
   };
 
@@ -507,6 +509,25 @@ export function Board() {
 
       <HelpSheet open={ui.helpSheetOpen} onOpenChange={ui.setHelpSheetOpen} hotkeys={hotkeys} />
 
+      {/*
+        Plain-text rows only — no `TodoCard` — so unlike `DaySheet` this is
+        safe to mount INSIDE the DndContext (see this file's own doc comment).
+      */}
+      <ActivitySheet
+        open={ui.activityOpen}
+        onOpenChange={ui.setActivityOpen}
+        todos={data.nonTemplateTodos}
+        ctx={data.ctx}
+        timezone={data.settings?.timezone ?? "UTC"}
+        settings={data.settings}
+        listsById={data.listsById}
+        tabsById={data.tabsById}
+        onOpenTodo={(todoId) => {
+          ui.openTodoSheet(todoId);
+          ui.setActivityOpen(false);
+        }}
+      />
+
       <CommandPalette
         open={ui.paletteOpen}
         onOpenChange={ui.setPaletteOpen}
@@ -529,6 +550,7 @@ export function Board() {
         overflowCount={data.board.overflow.todos.length}
         onOpenOverdrive={() => ui.setOverdriveOpen(true)}
         onOpenHelp={() => ui.setHelpSheetOpen(true)}
+        onOpenActivity={() => ui.setActivityOpen(true)}
       />
 
       <SessionProvider />

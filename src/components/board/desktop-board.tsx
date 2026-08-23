@@ -201,6 +201,7 @@ export function DesktopBoard({
         onJump={jumpBy}
         onJumpToDate={jumpToIndex}
         onToday={jumpToToday}
+        onOpenActivity={() => ui.setActivityOpen(true)}
       />
 
       {/*

@@ -9,7 +9,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -41,7 +41,7 @@ import type {
   Todo,
 } from "@/lib/schema";
 import { cn } from "@/lib/utils";
-import { TimelineList, TimelineRow } from "./timeline";
+import { HiddenByFilterNotice, TimelineList, TimelineRow } from "./timeline";
 import { TodoCard } from "./todo-card";
 
 /**
@@ -283,35 +283,6 @@ function DaySheetContent({
         </div>
       </SheetContent>
     </Sheet>
-  );
-}
-
-/**
- * "N hidden by the view filter · Show all" — one component for two spots:
- * replacing the list entirely when the filter hides every event, and as a
- * footer line when it hides some. Reused rather than two separately worded
- * messages, so the count and the reset action can't drift apart.
- */
-function HiddenByFilterNotice({
-  count,
-  onShowAll,
-}: {
-  count: number;
-  onShowAll: () => void;
-}) {
-  return (
-    <p className="flex items-center gap-1 py-2 text-sm text-muted-foreground">
-      {/* Own span, not inlined with the button: keeps the count text
-          queryable by its exact words rather than the row's full text,
-          which includes "Show all". */}
-      <span>
-        {count} {count === 1 ? "entry" : "entries"} hidden by the view filter
-      </span>
-      <span aria-hidden>·</span>
-      <Button variant="link" size="xs" className="h-auto p-0" onClick={onShowAll}>
-        Show all
-      </Button>
-    </p>
   );
 }
 

@@ -19,6 +19,7 @@ const settings = (over: Partial<Settings> = {}): Settings => ({
   visibleDays: 7,
   visibleStatuses: ["open"],
   visibleEventKinds: ["created", "scheduled", "done", "dropped"],
+  visibleActivityKinds: ["created", "scheduled", "unscheduled", "moved", "done", "dropped", "reopened", "edited", "deleted", "rolledOver", "overflowed"],
   showWeekends: true,
   fontPairing: "hyperlegible",
   theme: "system",

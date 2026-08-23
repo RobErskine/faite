@@ -966,7 +966,10 @@ limits that follow from deriving history out of `createdAt`/`completedAt` are
 documented in that module's header, and five of the seven are exactly what
 motivated the real log below. This derived timeline is unchanged and stays
 derived for now — migrating it to the real log is a later, triggered
-follow-up (`todo-timeline.ts`'s header) once the log has enough coverage.
+follow-up (`todo-timeline.ts`'s header) once the log has enough coverage. The
+global activity feed below is what arms that trigger: it is a second, whole-
+account reader of the same log, so once it ships, "enough coverage" is a
+question of elapsed time rather than a gap still to close.
 
 **`todoEvent` is the ninth sync kind** (migration 10, EI-94) — an append-only
 per-todo history log, the first entity in this codebase that PERSISTS a fact
@@ -981,6 +984,56 @@ never by diffing. Rendered by `todo-timeline.ts`'s `buildTodoTimeline` below
 the todo sheet's Notes field, behind a collapsed disclosure. See
 `docs/SCHEMA-CHANGES.md` for the plumbing and `lib/store/todo-events.ts` for
 the payload shapes and the write-site table.
+
+**The global activity feed (`activity-sheet.tsx`) is a second reader of the
+same `todoEvent` table — todos only, no new schema.** Opened from a
+`list-clock` button in `DateNav` (present in both board shells; see
+`date-nav.tsx`'s doc comment on why the trigger lives there rather than in
+`AppHeader`) or `⌘⇧A`. Assembly is `lib/global-timeline.ts`'s
+`buildGlobalTimeline`, newest first — the mirror image of
+`buildTodoTimeline`'s oldest-first per-todo History — plus the Faite Loop's
+rolls aggregated to one row per `(day, kind)` across every todo
+(`dailyRollSummaries`, `lib/rollover-events.ts`), expandable to the list of
+todos that rolled. Two limits worth restating outside that module's own
+comments: the rollup rows answer "what is rolling," not "what rolled" (a
+todo that rolled and was then completed contributes nothing, retroactively),
+and rescheduling rewrites which days a todo appears to have rolled through —
+both inherited from `rollEventsFor`, not new to this feature.
+
+Query shape is a growing `limit` over a bare `at` index added in Dexie v7
+(`useGlobalEvents`, `lib/store/hooks.ts`), not `.offset()` (no seek-by-
+ordinal in IndexedDB — Dexie would walk every skipped record on every write)
+and not a fixed cursor (would freeze the feed's live edge). Capped at
+`MAX_SHOWN` (1,000 rows) rather than pruned: nothing in this codebase prunes
+`todoEvents` anywhere, and this feature does not start now — see
+`activity-sheet.tsx`'s `MAX_SHOWN` doc comment for why server-side pruning
+would race the `since=0` catch-up path and client-side pruning would either
+desync (hard delete, no outbox entry) or corrupt `deletedAt`'s single-writer
+invariant (soft delete). The real ceiling here is the DO's SQLite, which has
+no compaction — a future archival sweep is a separate, server-side follow-up
+that needs a wire-level "truncated before T" signal, not a bare `DELETE`.
+
+A deleted todo still gets a row: its title comes from the (still-present)
+tombstoned `Todo` row first, falling back to a one-time title snapshot
+captured on the `deleted` event itself (`DeletedPayload`,
+`lib/store/todo-events.ts`) only when the row is gone entirely. This is a
+narrower exemption from `EditedPayload`'s no-title rule than it looks —
+`edited` never captures title/description because it fires on every
+keystroke-committed change; `deleted` fires at most once per todo, ever, and
+the title is exactly what the feed needs to render a since-removed todo's
+row without a live lookup. The feed's own kind filter is a separate settings
+field, `visibleActivityKinds`, not a reuse of the day sheet's
+`visibleEventKinds` — see `timeline.tsx`'s header comment for why sharing one
+filter across two surfaces would make filtering one silently filter the
+other.
+
+List/tab lifecycle events (created, renamed, archived, deleted) are
+deliberately **not** part of this feed yet — `todoEvent`'s `todoId` column
+stays a todo id, not a generalized subject id, so this shipped as a reader of
+the existing log rather than a schema change. That history is not being
+captured anywhere in the meantime, so it is a strictly harder gap to close
+later than the todo-only feed was to ship now — see `git log` on this file
+for whether a follow-up has landed.
 
 ### P2 is live
 

@@ -25,6 +25,7 @@ const CLOSED: BoardOverlayState = {
   openDay: null,
   overdriveOpen: false,
   helpSheetOpen: false,
+  activityOpen: false,
 };
 
 /** The "open" value for each field — `true` for booleans, a sentinel string for the rest. */
@@ -38,6 +39,7 @@ const OPEN_VALUE: { [K in keyof BoardOverlayState]: BoardOverlayState[K] } = {
   openDay: "2026-08-13",
   overdriveOpen: true,
   helpSheetOpen: true,
+  activityOpen: true,
 };
 
 describe("computeModalOpen", () => {

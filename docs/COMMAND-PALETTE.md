@@ -111,6 +111,8 @@ At root, in render order:
 | | New to-do / list / label / project / tab | New to-do parses quick-add tokens too — §5; the rest enter a plain entry mode |
 | **Tabs** | one row per tab, active marked `current` | hidden when `tabs.length <= 1` |
 | **Manage** | Delete a list… / Delete a tab… | each enters a picker mode |
+| | Keyboard shortcuts | opens the help sheet (`?`, EI-75) |
+| | Activity feed | opens the global activity feed (`⌘⇧A`) — the whole-app event log, `activity-sheet.tsx` |
 | **View** | Show 1 / 3 / 5 / 7 days | writes `settings.visibleDays` |
 | | Roll over on workdays only ⇄ every day | writes `settings.workdaysOnly` — same setting also lives in Settings → Faite Loop (`loop-section.tsx`, EI-96), which additionally exposes `overflowAfterDays`; see [FAITE-LOOP.md](FAITE-LOOP.md) |
 | | Open Overdrive (N) | disabled when Overflow is empty; opens the same full-screen triage overlay as the button at the foot of the Overflow column (EI-97) — see [OVERDRIVE.md](OVERDRIVE.md) |

@@ -89,6 +89,8 @@ interface CommandPaletteProps {
   onOpenOverdrive: () => void;
   /** `?` opens the same sheet — see help-sheet.tsx. */
   onOpenHelp: () => void;
+  /** `⌘⇧A` opens the same sheet — see activity-sheet.tsx. */
+  onOpenActivity: () => void;
 }
 
 /** `PaletteEntryMode` (command-registry.ts) plus the always-present root. */
@@ -119,6 +121,7 @@ export function CommandPalette({
   overflowCount,
   onOpenOverdrive,
   onOpenHelp,
+  onOpenActivity,
 }: CommandPaletteProps) {
   const platform = usePlatform();
   const [mode, setMode] = useState<Mode>({ kind: "root" });
@@ -430,6 +433,7 @@ export function CommandPalette({
     createFromQuery,
     openHelp: onOpenHelp,
     openOverdrive: onOpenOverdrive,
+    openActivity: onOpenActivity,
     close,
     setVisibleDays: async (days) => {
       await mutateSettings(LOCAL_OWNER_ID, { visibleDays: days });

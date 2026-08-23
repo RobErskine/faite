@@ -17,6 +17,7 @@ import type {
 } from "@/lib/schema";
 import { byPosition } from "@/lib/ordering";
 import { contextFromSettings, type PlacementContext } from "@/lib/scheduling";
+import type { TodoTitleInfo } from "@/lib/global-timeline";
 import { canUseDb, getDb } from "./db";
 import {
   ensureDefaultTab,
@@ -227,6 +228,44 @@ export function useTodoEvents(todoId: string | null): TodoEvent[] {
     [] as TodoEvent[],
   );
   return useMemo(() => alive(rows), [rows]);
+}
+
+/**
+ * The most recent `shown` rows of the WHOLE-app event log (the Global
+ * Timeline, todos-only v1), newest first — the second scoped query in this
+ * file, for the same reason `useTodoEvents` is one: `todoEvents` grows
+ * without bound while every other table's live-row count stays roughly
+ * constant, so a `toArray()`-and-filter here would re-scan the whole table
+ * on every write to any todo in the account.
+ *
+ * A growing `limit` over the `at` index, NOT `.offset()` and NOT a
+ * `.where("at").below(cursor)` window — `.offset(n)` has no seek-by-ordinal
+ * in IndexedDB, so Dexie walks `n` records on every re-run, and a fixed
+ * upper-bound cursor would freeze the feed's live edge, hiding a fresh event
+ * from what's supposed to be a live view. See `lib/global-timeline.ts`.
+ */
+export function useGlobalEvents(shown: number): TodoEvent[] {
+  const rows = useLiveQuery(
+    () => getDb().todoEvents.orderBy("at").reverse().limit(shown).toArray(),
+    [shown],
+    [] as TodoEvent[],
+  );
+  return useMemo(() => alive(rows), [rows]);
+}
+
+/**
+ * `id -> { title, deleted }` for EVERY todo, including tombstones —
+ * deliberately not `alive()`-filtered, unlike every other hook here. A
+ * global feed shows events for todos that no longer exist on the board, and
+ * nothing hard-deletes a todo row (`remove()` only ever soft-deletes), so the
+ * title is still sitting right there to read.
+ */
+export function useTodoTitles(): ReadonlyMap<string, TodoTitleInfo> {
+  const rows = useLiveQuery(() => getDb().todos.toArray(), [], [] as Todo[]);
+  return useMemo(
+    () => new Map(rows.map((t) => [t.id, { title: t.title, deleted: !!t.deletedAt }])),
+    [rows],
+  );
 }
 
 export function useSettings(): Settings | undefined {
