@@ -773,3 +773,37 @@ in both: the test could not physically observe the thing it claimed to cover.
 
 Both are the specific form of `docs/DRAG-AND-DROP.md` §8's caution: say what
 was and was not *exercised*, not what passed.
+
+## A Zod field with `.default()` fires on ANY absent key, not just `.parse({})`
+
+Bit three times now, in three different files, always the same shape: build a
+schema meant to validate a PARTIAL patch, and Zod invisibly turns "you didn't
+mention this field" into "set it to its schema default" — under `.partial()`,
+under `.pick()` on a narrower set of keys, whenever the missing key is still
+declared with `.default(...)` anywhere in what gets parsed.
+
+- `v1/validate.ts`'s `parseUpdateTodoRequest` — a static `.pick(ALL).partial()`
+  expanded `{status: "done"}` into a full-record overwrite (A5, caught
+  pre-merge by its own tests).
+- `lib/service/todos.ts`'s `buildUpdateTodoEntry` — same shape, independently
+  guarded with the identical dynamic-mask fix, in the same ticket.
+- `mcp/routes.ts`'s `settingsOrDefault` (the A6 MCP-tools follow-up) —
+  `settingsSchema.parse({ownerId})` threw on `updatedAt` instead of silently
+  clobbering, only because `updatedAt` happens to be one of the two fields in
+  that schema with NO `.default()`. One field away from reproducing A5's bug
+  a third time, caught live by a real MCP-client smoke test, not a unit test.
+
+**Rule:** never validate a partial/patch object against a schema built by
+`.pick(SOME_FIELDS).partial()` or `.parse({subset})` if ANY field in that
+schema carries `.default(...)`. Build the `.pick()` mask FROM the keys
+actually present in the input every time —
+`Object.fromEntries(Object.keys(input).filter(...).map(...))` — never from a
+static, pre-declared field list. Test it by asserting a single-field patch
+leaves a second field untouched, not just that valid data round-trips.
+
+**Corollary:** a broad, table-driven test (`e2e/marketing-pages.spec.ts`,
+looping every `SITE_PAGES` entry) caught a duplicate-`<h1>` bug the same
+session that no unit test would have — a new page's own heading collided
+with one a third-party component (Scalar) rendered internally. When you can,
+prefer one generic test iterating real data over a hand-written test per
+case; it catches integration shape you didn't think to assert.
