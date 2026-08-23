@@ -79,6 +79,7 @@ const settings: Settings = {
   visibleDays: 7,
   visibleStatuses: ["open"],
   visibleEventKinds: ["created", "scheduled", "done", "dropped"],
+  visibleActivityKinds: ["created", "scheduled", "unscheduled", "moved", "done", "dropped", "reopened", "edited", "deleted", "rolledOver", "overflowed"],
   showWeekends: true,
   fontPairing: "hyperlegible",
   theme: "system",
@@ -160,6 +161,7 @@ function renderPalette(
     overflowCount: 0,
     onOpenOverdrive: () => {},
     onOpenHelp: () => {},
+    onOpenActivity: () => {},
     ...overrides,
   };
   return render(<CommandPalette {...props} />);

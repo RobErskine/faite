@@ -11,6 +11,7 @@ const settings: Settings = {
   visibleDays: 7,
   visibleStatuses: ["open"],
   visibleEventKinds: ["created", "scheduled", "done", "dropped"],
+  visibleActivityKinds: ["created", "scheduled", "unscheduled", "moved", "done", "dropped", "reopened", "edited", "deleted", "rolledOver", "overflowed"],
   showWeekends: true,
   fontPairing: "hyperlegible",
   theme: "system",
@@ -44,6 +45,7 @@ function makeCtx(overrides: Partial<PaletteCommandCtx> = {}): PaletteCommandCtx 
     createFromQuery: vi.fn(),
     openHelp: vi.fn(),
     openOverdrive: vi.fn(),
+    openActivity: vi.fn(),
     close: vi.fn(),
     setVisibleDays: vi.fn(),
     setVisibleStatuses: vi.fn(),
@@ -141,6 +143,17 @@ describe("commandsByGroup", () => {
 
     manage.find((c) => c.id === "manage-keyboard-shortcuts")!.run(ctx);
     expect(openHelp).toHaveBeenCalled();
+    expect(close).toHaveBeenCalled();
+  });
+
+  it("routes the activity-feed entry to openActivity+close", () => {
+    const openActivity = vi.fn();
+    const close = vi.fn();
+    const ctx = makeCtx({ openActivity, close });
+    const manage = commandsByGroup(ctx).get("Manage")!;
+
+    manage.find((c) => c.id === "manage-activity-feed")!.run(ctx);
+    expect(openActivity).toHaveBeenCalled();
     expect(close).toHaveBeenCalled();
   });
 });

@@ -34,6 +34,7 @@ below can.
 | `⌘K` / `Ctrl+K` | Toggle the command palette | all three |
 | `⌘Z` / `Ctrl+Z` | Undo the last board action | none |
 | `?` (`shift+slash`) | Open the keyboard shortcut help sheet (EI-75) | none |
+| `⌘⇧A` / `Ctrl+Shift+A` | Toggle the global activity feed | none |
 | `⇧⌘Z` | **Deliberately unbound.** Redo does not exist; see ARCHITECTURE §2.11 | — |
 
 **Local** — `onKeyDown` on the element that owns the behaviour. Hand-authored

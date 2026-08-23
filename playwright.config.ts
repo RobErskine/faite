@@ -58,6 +58,7 @@ const SPECS = {
   coreFlows: "**/core-flows.spec.ts",
   reminders: "**/reminders.spec.ts",
   overdrive: "**/overdrive.spec.ts",
+  activityTimeline: "**/activity-timeline.spec.ts",
   touchAffordances: "**/touch-affordances.spec.ts",
   touchSmoke: "**/touch-smoke.spec.ts",
 } as const;
@@ -150,6 +151,7 @@ export default defineConfig({
         SPECS.coreFlows,
         SPECS.reminders,
         SPECS.overdrive,
+        SPECS.activityTimeline,
       ],
     },
     // Every touch/tablet project below forces `defaultBrowserType: "chromium"`
@@ -181,6 +183,7 @@ export default defineConfig({
         SPECS.touchSmoke,
         SPECS.reminders,
         SPECS.overdrive,
+        SPECS.activityTimeline,
       ],
     },
     {

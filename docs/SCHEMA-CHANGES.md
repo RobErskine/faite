@@ -195,8 +195,11 @@ chunked (`sql-limits.ts`), and `sql-limits.test.ts` pins the arithmetic — a
 tenth kind will fail a test rather than production if it ever exceeds the
 100-bound-parameter ceiling. `todoEvent` (the 9th) is immutable-per-row and
 delivered exactly once per device ever, so it's strictly cheaper than a
-mutable table of the same row count — but see `todo-timeline.ts`'s header for
-the first-sync round-trip cost that still applies to any new kind.
+mutable table of the same row count — but the underlying per-kind pull cost
+that still applies to any new kind is documented in `sql-limits.ts`'s header,
+not here: every kind adds its own capped-`limit` query to the union
+`readFieldClocksBulk` builds, and a `since=0` catch-up is where that first
+shows up.
 
 ---
 

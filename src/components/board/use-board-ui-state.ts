@@ -41,6 +41,10 @@ export interface BoardOverlayState {
   /** The keyboard-shortcut help sheet (EI-75). Same as every other sheet: a
    * board hotkey firing behind it would edit the board out of sight. */
   helpSheetOpen: boolean;
+  /** The global activity feed. Plain-text rows, no editor — held off the
+   * same as every other sheet regardless, for consistency with the rest of
+   * this list rather than because it holds anything undo could corrupt. */
+  activityOpen: boolean;
 }
 
 /**
@@ -63,7 +67,8 @@ export function computeModalOpen(state: BoardOverlayState): boolean {
     // especially — must not fire while someone is typing a journal entry.
     !!state.openDay ||
     state.overdriveOpen ||
-    state.helpSheetOpen
+    state.helpSheetOpen ||
+    state.activityOpen
   );
 }
 
@@ -163,6 +168,8 @@ export function useBoardUiState() {
   const [overdriveOpen, setOverdriveOpen] = useState(false);
   /** The keyboard-shortcut help sheet (EI-75), opened by `?`. */
   const [helpSheetOpen, setHelpSheetOpen] = useState(false);
+  /** The global activity feed, opened by `⌘⇧A`. */
+  const [activityOpen, setActivityOpen] = useState(false);
 
   /**
    * Which page the phone shell's bottom bar shows (`phone-board.tsx`, P3).
@@ -260,6 +267,15 @@ export function useBoardUiState() {
         // "?" must still type a literal question mark), mid-drag, and
         // behind another modal (the help sheet doesn't stack on top of one).
         run: () => setHelpSheetOpen((o) => !o),
+      },
+      {
+        id: "activity-feed",
+        combo: "mod+shift+a",
+        label: "Open the activity feed",
+        group: "Navigation",
+        // No opt-ins, same reasoning as the help sheet directly above: dead
+        // in text fields, mid-drag, and behind another modal.
+        run: () => setActivityOpen((o) => !o),
       },
     ],
     [handleUndo],
@@ -517,6 +533,8 @@ export function useBoardUiState() {
     setOverdriveOpen,
     helpSheetOpen,
     setHelpSheetOpen,
+    activityOpen,
+    setActivityOpen,
     phoneView,
     setPhoneView,
     landingTodoIds,

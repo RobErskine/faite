@@ -11,3 +11,14 @@ export async function switchToLists(page: Page): Promise<void> {
   const listsButton = page.getByRole("button", { name: "Lists", exact: true });
   if ((await listsButton.count()) > 0) await listsButton.click();
 }
+
+/**
+ * The inverse of `switchToLists` — back to the "Days" pager, where `DateNav`
+ * (and so the activity-feed trigger, `date-nav.tsx`) lives on phone; it
+ * renders only while `phoneView === "days"` (`phone-board.tsx`). Same
+ * no-op-elsewhere shape as `switchToLists`.
+ */
+export async function switchToDays(page: Page): Promise<void> {
+  const daysButton = page.getByRole("button", { name: "Days", exact: true });
+  if ((await daysButton.count()) > 0) await daysButton.click();
+}

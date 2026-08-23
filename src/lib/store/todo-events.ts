@@ -54,7 +54,30 @@ export interface EditedPayload {
   to?: { priority?: Priority | null; deadline?: CivilDate | null };
 }
 
-export type TodoEventPayload = EmptyPayload | ScheduledPayload | MovedPayload | EditedPayload;
+/** Cap on `DeletedPayload.title` — long enough for any real title, short
+ * enough that a pathological one can't bloat a synced table. */
+export const DELETED_TITLE_MAX_LENGTH = 200;
+
+export interface DeletedPayload {
+  v: 1;
+  /**
+   * A one-time title snapshot, unlike `EditedPayload`'s deliberate omission
+   * of title/description — that omission is about `edited`, which fires on
+   * every keystroke-committed change and would double note-edit storage.
+   * `deleted` fires at most once per todo, ever, and the title is exactly
+   * what a global activity feed needs to render a since-removed todo's row
+   * without a live lookup. Truncated to `DELETED_TITLE_MAX_LENGTH`;
+   * description is still never captured.
+   */
+  title: string;
+}
+
+export type TodoEventPayload =
+  | EmptyPayload
+  | ScheduledPayload
+  | MovedPayload
+  | EditedPayload
+  | DeletedPayload;
 
 /**
  * Fields that trigger an `edited` event when patched through `updateTodo`.

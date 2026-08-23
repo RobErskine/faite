@@ -56,6 +56,7 @@ export interface PaletteCommandCtx {
   createFromQuery: () => void | Promise<void>;
   openHelp: () => void;
   openOverdrive: () => void;
+  openActivity: () => void;
   close: () => void;
   setVisibleDays: (days: number) => void | Promise<void>;
   setVisibleStatuses: (next: TodoStatus[]) => void | Promise<void>;
@@ -130,6 +131,16 @@ const MANAGE_COMMANDS: PaletteCommand[] = [
     shortcut: (ctx) => formatCombo("shift+slash", ctx.platform),
     run: (ctx) => {
       ctx.openHelp();
+      ctx.close();
+    },
+  },
+  {
+    id: "manage-activity-feed",
+    group: "Manage",
+    label: () => "Activity feed",
+    shortcut: (ctx) => formatCombo("mod+shift+a", ctx.platform),
+    run: (ctx) => {
+      ctx.openActivity();
       ctx.close();
     },
   },

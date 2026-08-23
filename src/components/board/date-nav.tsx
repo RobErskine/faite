@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, ListClock } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -29,6 +29,12 @@ interface DateNavProps {
   /** Jumps to an absolute day index — the date picker's only use of the hook. */
   onJumpToDate: (target: number) => void;
   onToday: () => void;
+  /** Opens the global activity feed (`ActivitySheet`). Sits here, not in
+   * `AppHeader`, because `DateNav` — unlike the header — is already rendered
+   * by both shells with an identical calendar-button neighbor in both the
+   * `compact` and full branches, so one placement covers desktop and phone
+   * with no new prop threading through either shell. */
+  onOpenActivity: () => void;
   /**
    * The phone shell's context bar (`phone-board.tsx`, mobile plan M3). Drops
    * `ViewSettings` (the day-count toggle is moot — the pager always shows
@@ -66,6 +72,7 @@ export function DateNav({
   onJump,
   onJumpToDate,
   onToday,
+  onOpenActivity,
   compact,
 }: DateNavProps) {
   const rangeStart = addDays(today, anchorIndex);
@@ -85,6 +92,7 @@ export function DateNav({
           </Button>
         )}
         <JumpToDatePicker today={today} onSelect={onJumpToDate} />
+        <ActivityTrigger onClick={onOpenActivity} />
       </div>
     );
   }
@@ -137,8 +145,23 @@ export function DateNav({
         )}
 
         <JumpToDatePicker today={today} onSelect={onJumpToDate} />
+        <ActivityTrigger onClick={onOpenActivity} />
       </div>
     </div>
+  );
+}
+
+function ActivityTrigger({ onClick }: { onClick: () => void }) {
+  return (
+    <Button
+      variant="ghost"
+      size="icon-xs"
+      className="text-muted-foreground"
+      onClick={onClick}
+      aria-label="Open activity feed"
+    >
+      <ListClock aria-hidden />
+    </Button>
   );
 }
 

@@ -1165,6 +1165,23 @@ describe("todoEvent history log (EI-94)", () => {
     expect((await eventsFor(id)).map((e) => e.kind)).toEqual(["created", "deleted"]);
   });
 
+  it("deleteTodo's `deleted` event snapshots the title", async () => {
+    const id = await createTodo({ title: "Buy milk" });
+    await deleteTodo(id);
+    const [deleted] = (await eventsFor(id)).filter((e) => e.kind === "deleted");
+    expect(JSON.parse(deleted.payload!)).toEqual({ v: 1, title: "Buy milk" });
+  });
+
+  it("deleteTodo truncates a long title to 200 chars", async () => {
+    const longTitle = "x".repeat(250);
+    const id = await createTodo({ title: longTitle });
+    await deleteTodo(id);
+    const [deleted] = (await eventsFor(id)).filter((e) => e.kind === "deleted");
+    const payload = JSON.parse(deleted.payload!);
+    expect(payload.title).toHaveLength(200);
+    expect(payload.title).toBe("x".repeat(200));
+  });
+
   it("reorderTodo logs nothing — highest-frequency mutation, pure presentation", async () => {
     const id = await createTodo({ title: "Buy milk" });
     await reorderTodo(id, "z9");

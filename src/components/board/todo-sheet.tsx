@@ -1071,7 +1071,7 @@ function HistorySection({ todo, events, timezone, ctx, listsById }: HistorySecti
           {items.map((item, index) => {
             if (item.type === "marker") {
               return (
-                <li key={item.key} className="pl-6 text-2xs text-muted-foreground">
+                <li key={item.key} className="pl-7 text-2xs text-muted-foreground">
                   — History recorded from here —
                 </li>
               );

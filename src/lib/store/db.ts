@@ -79,6 +79,16 @@ export class FaiteDatabase extends Dexie {
     this.version(6).stores({
       reminderPresets: "id, position, deletedAt",
     });
+    // Global activity feed (todos-only v1): a bare `at` index backs a
+    // newest-first `.orderBy("at").reverse().limit(shown)` query across every
+    // todo's events, not just one. `.stores()` REPLACES a table's whole index
+    // list rather than merging within it — this restates the three existing
+    // `todoEvents` indexes verbatim alongside the new one, or they'd silently
+    // drop and `useTodoEvents()` would fall back to a full scan. Same
+    // precedent as v3 restating all of `todos` to add one index.
+    this.version(7).stores({
+      todoEvents: "id, todoId, [todoId+at], deletedAt, at",
+    });
   }
 }
 

@@ -27,7 +27,7 @@ import {
 import { getDb } from "./db";
 import { create, materialize, mutate, mutateSettings, newId, now, remove, seedWrite } from "./mutate";
 import { getCurrentOwnerId, LOCAL_OWNER_ID } from "./owner";
-import { buildEditedPayload, logTodoEvent } from "./todo-events";
+import { buildEditedPayload, DELETED_TITLE_MAX_LENGTH, logTodoEvent } from "./todo-events";
 
 /**
  * CRUD for every entity, expressed on top of mutate().
@@ -385,7 +385,14 @@ export async function deleteTodo(id: string): Promise<void> {
   for (const child of children) {
     await mutate("todo", child.id, { parentId: null });
   }
-  await remove("todo", id, { events: [logTodoEvent(id, "deleted")] });
+  // Snapshot the title before it's gone — `remove()` reads the row internally
+  // for its own patch, but doesn't hand that read back to the caller, and a
+  // global activity feed needs a title to render this todo's row without a
+  // live lookup. See `DeletedPayload`'s doc comment for why this one kind is
+  // exempt from `EditedPayload`'s no-title rule.
+  const todo = await db.todos.get(id);
+  const title = todo ? todo.title.slice(0, DELETED_TITLE_MAX_LENGTH) : "";
+  await remove("todo", id, { events: [logTodoEvent(id, "deleted", { v: 1, title })] });
 }
 
 // ---------------------------------------------------------------------------
