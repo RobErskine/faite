@@ -501,6 +501,20 @@ export class UserDurableObject extends DurableObject {
   }
 
   /**
+   * The caller's Settings row. No id/userId parameter — `settings` is a
+   * singleton keyed by `owner_id`, and this whole Durable Object already
+   * belongs to one user, the same reasoning `listEntities`/`getTodo` rely on
+   * to `SELECT *` with no owner filter. Null iff a row was never written
+   * (`seedIfEmpty()` writes one on first local boot; an account that has
+   * never opened the client — desktop-handoff-only, say — could reach an MCP
+   * tool before that happens). Callers substitute schema defaults.
+   */
+  async getSettings(): Promise<Record<string, unknown> | null> {
+    const [row] = this.ctx.storage.sql.exec("SELECT * FROM settings").toArray();
+    return row ? rowFromSqlRow("settings", row) : null;
+  }
+
+  /**
    * Applies a batch of outbox entries. `userId` comes from the worker's
    * verified session — never from the request body — and is the only source
    * of `owner_id` on an insert (see `columns.ts`'s `SERVER_ONLY_FIELDS`).

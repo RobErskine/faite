@@ -178,9 +178,25 @@ request — no separate revocation path to keep in sync. Tools wrap
 `src/server/service/*`, never DO tables directly, same as the `/api/v1`
 routes.
 
-Registered: `list_todos`, `create_todo`, `complete_todo` tools, plus a
-`summarize_backlog` prompt (a resource-only server without at least one
-prompt fails to connect for clients that require the `prompts` capability).
+Registered tools — full parity with `/api/v1` plus two convenience reads
+that have no REST equivalent:
+
+| Tool | Scope | Notes |
+|---|---|---|
+| `list_todos` | read | |
+| `create_todo` | write | |
+| `update_todo` | write | General patch — only the fields provided are touched, same rule as `PATCH /api/v1/todos/{id}`. |
+| `complete_todo` | write | Kept as its own tool rather than folded into `update_todo` — "mark done" is common enough to deserve a one-field call. |
+| `list_lists` | read | Includes each list's `description`, so a client can decide where a to-do belongs. |
+| `list_labels` | read | |
+| `list_tabs` | read | |
+| `get_backlog` | read | To-dos whose list has `isBacklog: true`. No REST equivalent. |
+| `get_overflow` | read | Runs `@/lib/scheduling`'s `deriveColumn()` — the SAME pure function the board renders with — against this account's own Settings (`UserDurableObject.getSettings()`) instead of a client's in-memory copy. No REST equivalent. |
+| `get_profile` | read | `displayName`/avatar fields/`timezone` only — never the device-local board-layout prefs (`backlogWidth`, `splitRatio`, etc.) that live in the same `settings` row but describe one device's screen, not the account. |
+
+Plus a `summarize_backlog` prompt (a resource-only server without at least
+one prompt fails to connect for clients that require the `prompts`
+capability).
 
 Two SDK behaviors worth knowing before touching this file:
 
