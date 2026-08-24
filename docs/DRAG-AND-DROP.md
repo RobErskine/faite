@@ -1109,10 +1109,28 @@ now *reachable* and *unverified* — see the rewritten entries.
 
 **`position` means an order in the planning half and only a tiebreaker in the
 calendar half.** Day columns and Overflow partition their cards by originating
-list (`todo.listId`, which survives scheduling), sort the groups alphabetically on
-`listSortKey` — which strips a leading "To ", so "To Buy" files under B — and sort
-within each group by `byPriorityThenPosition`. List columns are untouched: they
-are still arranged by hand.
+list (`todo.listId`, which survives scheduling), sort the groups **by tab and
+then alphabetically** (`byListGroup` — see below), and sort within each group by
+`byPriorityThenPosition`. List columns are untouched: they are still arranged by
+hand.
+
+`byListGroup` is two-level, and the outer level is the one that matters. A group
+header takes its colour from the owning **tab** (a list is born colourless, so
+`effectiveListColor` falls through to the tab almost always), which means a day
+holding work from three tabs already shows three colours. Sorting on the list
+name alone then scattered them — two same-coloured groups either side of a group
+of another colour, the colour saying "these belong together" while the order said
+otherwise. So groups first sort on the owning tab's `position`, putting each
+tab's lists in one contiguous run **in tab-strip order**; the alphabet
+(`listSortKey`, which strips a leading "To ", so "To Buy" files under B) then
+orders the lists *inside* a run.
+
+Backlog leads every day column, and nothing pins it there. It carries
+`tabId: null`, so it falls out of the tab level with an empty sort key, which
+sorts ahead of every real fractional index for free — unplanned work at the top,
+where it gets addressed first. A list whose `tabId` no longer resolves counts as
+untabbed too, joining Backlog rather than forming a one-list run of its own
+ordered by a raw uuid.
 
 `DayColumn.todos` is **derived** from `groups` via `flatMap`, never sorted
 independently. The arrow keys, the drop path, the filler arithmetic and
@@ -1631,8 +1649,14 @@ rect-based collision logic cannot be meaningfully tested there.
 25. In the detail sheet, paste a long title: the field grows to 3 lines and then
     scrolls, and `Enter` commits rather than inserting a newline.
 26. Give two lists colours, then schedule cards from both onto one day. Two group
-    headers, alphabetical on the stripped name ("To Buy" under B), priority order
-    inside each so the rails run thick → thin, and a faint wash behind each run.
+    headers, priority order inside each so the rails run thick → thin, and a faint
+    wash behind each run.
+26b. Schedule cards onto one day from **two lists on one tab and one list on
+    another**, named so the alphabet would interleave them (say `Admin` and
+    `Notes` on one tab, `Errands` on the other). The two same-coloured headers sit
+    together, the runs follow the tab strip left to right, Backlog leads the
+    column, and names stay A–Z *within* a run. Reorder the tab strip → the runs
+    reorder with it.
 27. Click a group header: it collapses, the count appears, and **the same list
     collapses in every other day column too**. Click again to expand.
 28. Drag a card onto another group's header: its list changes, its date does not,
