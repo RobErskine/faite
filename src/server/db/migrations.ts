@@ -287,6 +287,38 @@ export const USER_DB_MIGRATIONS: readonly UserDbMigration[] = [
       `ALTER TABLE settings ADD COLUMN visible_activity_kinds text DEFAULT '["created","scheduled","unscheduled","moved","done","dropped","reopened","edited","deleted","rolledOver","overflowed"]' NOT NULL`,
     ],
   },
+  {
+    id: 18,
+    name: "add-attachments",
+    statements: [
+      // A whole new table, not added to `bootstrap.ts` — same reasoning as
+      // `add-day-notes`/`add-places`/`add-todo-events`/`add-reminder-presets`
+      // above: a fresh DO runs the WHOLE ledger, so new accounts get this
+      // table from here exactly like existing ones do, and `bootstrap.ts`
+      // keeps its frozen fingerprint.
+      //
+      // Every payload column is nullable despite being required in Zod — see
+      // the doc comment on `attachments` in `user-schema.ts`, and migration
+      // 10's identical reasoning for `todo_events`.
+      `CREATE TABLE IF NOT EXISTS attachments (
+    id text PRIMARY KEY NOT NULL,
+    owner_id text NOT NULL,
+    created_at text NOT NULL,
+    updated_at text NOT NULL,
+    deleted_at text,
+    version integer NOT NULL,
+    todo_id text,
+    filename text,
+    mime_type text,
+    byte_size integer,
+    storage_key text
+  )`,
+      // Reads are always "every attachment for this todo" — the sheet renders
+      // one todo at a time, and the orphan sweep walks a todo's rows on
+      // delete. Without this it is a full table scan per open.
+      "CREATE INDEX IF NOT EXISTS attachments_todo_id_idx ON attachments (todo_id)",
+    ],
+  },
   // Add new migrations here. Never edit one above this line.
   //
   // Example — adding a nullable column (the safe, ordinary case):

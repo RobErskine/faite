@@ -378,7 +378,13 @@ describe("handleEmail — parsing real MIME", () => {
     expect((pushed[0][0].patch as Record<string, unknown>).title).toBe(BODY);
   });
 
-  it("drops attachments — there is no blob store, and they must not be persisted", async () => {
+  // EI-242 added an R2 bucket for TODO attachments, so "there is no blob
+  // store" is no longer why this holds. It still holds: an ingest address is
+  // a shared secret with no sender authentication behind it, so accepting
+  // attachments here would be an unauthenticated write into a billed store,
+  // with none of the type sniffing `/api/attachments` does. See
+  // docs/EMAIL-INGEST.md.
+  it("drops attachments — an unauthenticated sender must not write to storage", async () => {
     vi.mocked(loadByLocalPart).mockResolvedValue(row());
     const { env } = fakeEnv();
     const raw = [

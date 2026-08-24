@@ -39,6 +39,7 @@ Everything is written down. The problem is knowing which file, so start here:
 | work on locations — free text, saved places, or the Google typeahead | **[LOCATION.md](docs/LOCATION.md)** — the three-layer model, the Worker proxy, and the cost rules that break silently |
 | set up or re-key the Google Places API | **[GOOGLE-PLACES-SETUP.md](docs/GOOGLE-PLACES-SETUP.md)** — the one-time runbook. Do **not** referrer-restrict the key |
 | work on email capture — forwarding mail into Backlog | **[EMAIL-INGEST.md](docs/EMAIL-INGEST.md)** — the flow, the trust model, and the privacy invariants |
+| touch attachments, R2, or anything that moves file bytes | **[ATTACHMENTS.md](docs/ATTACHMENTS.md)** — the two-plane split, the ordering invariant, the limits and why they are not higher |
 | add a marketing/legal/support page, or touch `SITE_PAGES`, sitemap, robots, or the contact form | **[SITE.md](docs/SITE.md)** — the route table, the metadata contract, and how to add a page |
 
 Split by design: **rationale lives in ARCHITECTURE, setup in SETUP, operations

@@ -70,7 +70,18 @@
   // tells the Worker which domain to accept, so a message delivered to some
   // other hostname is rejected rather than silently resolved.
   "vars": {
-    "EMAIL_INGEST_DOMAIN": "in.myfaite.app"
+    "EMAIL_INGEST_DOMAIN": "in.myfaite.app",
+
+    // Who gets the raised per-file attachment cap (EI-242). Comma-separated,
+    // matched case-insensitively against the session's VERIFIED email — see
+    // src/server/attachments/is-owner.ts for why `emailVerified` is not
+    // optional here. Configuration, not a secret: knowing an address on this
+    // list grants nothing without that account's session.
+    //
+    // This is the whole "admin" mechanism in the app. Deliberately: a role
+    // system for one raised limit would be a lot of machinery to maintain and
+    // one more thing to get wrong.
+    "OWNER_EMAILS": "rob@roberskine.com,roberskine13@gmail.com"
   },
 
   // Per-IP abuse guard for POST /api/contact (EI-206). Turnstile stops bots,
@@ -104,6 +115,23 @@
     {
       "tag": "v1",
       "new_sqlite_classes": ["UserDurableObject"]
+    }
+  ],
+
+  // Attachment BYTES (EI-242). The first blob store in this app — until this
+  // landed, `docs/EMAIL-INGEST.md` could say "there is no blob store" as a
+  // flat fact, and `src/server/email/ingest.ts` still drops inbound mail
+  // attachments on purpose. That remains a separate decision; adding a bucket
+  // does not silently opt email into storing what it used to discard.
+  //
+  // No public access and no custom domain: every read goes through
+  // `GET /api/attachments/{id}`, which checks the session against the row's
+  // ownerId. A public bucket would make the storage key the only secret, and
+  // keys end up in logs.
+  "r2_buckets": [
+    {
+      "binding": "ATTACHMENTS",
+      "bucket_name": "faite-attachments"
     }
   ],
 

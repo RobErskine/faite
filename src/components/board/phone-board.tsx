@@ -96,6 +96,7 @@ export function PhoneBoard({
     recurrenceSummaries,
     recurrenceExpansion,
     subtaskCounts,
+    attachmentCounts,
     renderedDays,
   } = data;
 
@@ -200,6 +201,7 @@ export function PhoneBoard({
               missedCounts={recurrenceExpansion?.missedCounts}
               recurrenceSummaries={recurrenceSummaries}
               subtaskCounts={subtaskCounts}
+              attachmentCounts={attachmentCounts}
               onNavigate={navigate}
               filter={columnFilters.get(board.overflow.id)}
               onFilterChange={(query) => setColumnFilter(board.overflow.id, query)}
@@ -269,6 +271,7 @@ export function PhoneBoard({
                   dueCount={deadlineCounts.get(column.day)}
                   recurrenceSummaries={recurrenceSummaries}
                   subtaskCounts={subtaskCounts}
+                  attachmentCounts={attachmentCounts}
                   groups={column.groups}
                   collapsedGroups={collapsedGroups}
                   onToggleGroup={toggleGroup}
@@ -370,6 +373,7 @@ export function PhoneBoard({
                   onSelect={actions.handleSelect}
                   recurrenceSummaries={recurrenceSummaries}
                   subtaskCounts={subtaskCounts}
+                  attachmentCounts={attachmentCounts}
                   isColumnDragActive={!!activeList}
                   accentColor={null}
                 />
@@ -409,6 +413,7 @@ export function PhoneBoard({
                   onSelect={actions.handleSelect}
                   recurrenceSummaries={recurrenceSummaries}
                   subtaskCounts={subtaskCounts}
+                  attachmentCounts={attachmentCounts}
                   reorderListId={column.list.id}
                   onOpenInfo={() => setInfoListId(column.list.id)}
                   isColumnDropTarget={columnDropTargetId === column.list.id}

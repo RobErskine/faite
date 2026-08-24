@@ -436,6 +436,52 @@ export const todoEventSchema = z.object({
 export type TodoEvent = z.infer<typeof todoEventSchema>;
 
 /**
+ * A file attached to a todo — image, CSV, PDF (EI-242).
+ *
+ * **This row is metadata only. The bytes live in R2**, reached through
+ * `GET /api/attachments/{id}`, and they never travel the sync wire: an
+ * outbox patch is JSON, and this is the one entity whose real payload
+ * cannot be. That split is the whole design — see `docs/ATTACHMENTS.md`.
+ *
+ * Consequences worth stating rather than discovering:
+ *
+ * - A row is written only AFTER its bytes are safely in R2 (upload is
+ *   online-only in v1), so a row can never point at nothing. The reverse —
+ *   an R2 object with no row — is possible and is merely wasted storage.
+ * - Offline you can neither attach nor VIEW an attachment whose bytes this
+ *   device has not already fetched. The UI must say so, not show a broken
+ *   image.
+ *
+ * Why a separate entity kind rather than an array field on `todoSchema`,
+ * which would have been far less work and would have ridden the existing
+ * `/api/v1/todos` and MCP reads for free: field-level LWW keys on the FIELD
+ * NAME (see `merge.ts`). One `attachments` array field means two devices
+ * each attaching a file to the same todo resolve to one winner, and the
+ * loser's R2 object is orphaned with nothing to collect it. One row per
+ * file gives each its own clocks, so concurrent attaches both survive.
+ *
+ * `storageKey` is stored rather than derived from `id` so the key scheme can
+ * change later without stranding existing objects.
+ */
+export const attachmentSchema = z.object({
+  ...syncableFields,
+  /** Advisory only — never cleared if the todo is later deleted, same
+   * convention as `todoEventSchema.todoId`. */
+  todoId: idSchema,
+  /** The uploader's original filename, for display and for the download's
+   * `Content-Disposition`. Never used to build the R2 key. */
+  filename: z.string().min(1),
+  /** Server-verified at upload (`src/server/attachments/validate.ts`), not
+   * the browser's claim. Constrained to `ALLOWED_MIME_TYPES`. */
+  mimeType: z.string().min(1),
+  byteSize: z.number().int().nonnegative(),
+  /** R2 object key. Namespaced by owner and unguessable — see
+   * `storageKeyFor()` in `src/server/attachments/storage.ts`. */
+  storageKey: z.string().min(1),
+});
+export type Attachment = z.infer<typeof attachmentSchema>;
+
+/**
  * Per-user settings.
  *
  * `timezone` is load-bearing: the overflow rule counts days, so the day
@@ -694,6 +740,7 @@ export const entityKindSchema = z.enum([
   "place",
   "todoEvent",
   "reminderPreset",
+  "attachment",
   "settings",
 ]);
 export type EntityKind = z.infer<typeof entityKindSchema>;

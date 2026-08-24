@@ -3,6 +3,7 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useMemo, useState } from "react";
 import type {
+  Attachment,
   CivilDate,
   DayNote,
   Label,
@@ -228,6 +229,57 @@ export function useTodoEvents(todoId: string | null): TodoEvent[] {
     [] as TodoEvent[],
   );
   return useMemo(() => alive(rows), [rows]);
+}
+
+/**
+ * One todo's attachments, oldest first (EI-242).
+ *
+ * `.where("todoId")` rather than the `toArray()`-and-filter pattern most
+ * hooks here use, for the same reason `useTodoEvents` does: this table grows
+ * with every file ever attached, while the tables those hooks scan stay
+ * roughly constant.
+ *
+ * These rows are METADATA. The bytes are in R2 and are fetched by the
+ * browser from `attachmentUrl(id)` when something renders — nothing here
+ * hits the network.
+ *
+ * `null` (no todo open) skips the query entirely rather than querying with a
+ * sentinel — Dexie has no "match nothing" value to equal against.
+ */
+export function useAttachments(todoId: string | null): Attachment[] {
+  const rows = useLiveQuery(
+    () =>
+      todoId
+        ? getDb().attachments.where("todoId").equals(todoId).toArray()
+        : Promise.resolve([] as Attachment[]),
+    [todoId],
+    [] as Attachment[],
+  );
+  return useMemo(
+    () => alive(rows).sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+    [rows],
+  );
+}
+
+/**
+ * How many live attachments each todo has, for the card badge (EI-242).
+ *
+ * One query for the whole board rather than one per card — a card must never
+ * open its own live query. `useAttachments` (above) is the per-todo read, and
+ * it exists for the sheet, where exactly one todo is in play.
+ *
+ * A todo absent from the map has none, which is what keeps the badge off
+ * every ordinary card.
+ */
+export function useAttachmentCounts(): ReadonlyMap<string, number> {
+  const rows = useLiveQuery(() => getDb().attachments.toArray(), [], [] as Attachment[]);
+  return useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const row of alive(rows)) {
+      counts.set(row.todoId, (counts.get(row.todoId) ?? 0) + 1);
+    }
+    return counts;
+  }, [rows]);
 }
 
 export interface GlobalEventsPage {

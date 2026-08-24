@@ -59,6 +59,7 @@ const SPECS = {
   reminders: "**/reminders.spec.ts",
   overdrive: "**/overdrive.spec.ts",
   activityTimeline: "**/activity-timeline.spec.ts",
+  attachments: "**/attachments.spec.ts",
   touchAffordances: "**/touch-affordances.spec.ts",
   touchSmoke: "**/touch-smoke.spec.ts",
 } as const;
@@ -152,6 +153,7 @@ export default defineConfig({
         SPECS.reminders,
         SPECS.overdrive,
         SPECS.activityTimeline,
+        SPECS.attachments,
       ],
     },
     // Every touch/tablet project below forces `defaultBrowserType: "chromium"`
@@ -184,6 +186,10 @@ export default defineConfig({
         SPECS.reminders,
         SPECS.overdrive,
         SPECS.activityTimeline,
+        // On BOTH gate projects on purpose: the Attachments section lives in
+        // the shared `TodoSheet`, above the desktop/phone branch, and "neither
+        // shell needs its own copy" is the actual claim being tested.
+        SPECS.attachments,
       ],
     },
     {

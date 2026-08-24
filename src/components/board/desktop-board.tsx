@@ -126,6 +126,7 @@ export function DesktopBoard({
     recurrenceSummaries,
     recurrenceExpansion,
     subtaskCounts,
+    attachmentCounts,
     overflowCollapsed,
     backlogCollapsed,
     renderedDays,
@@ -269,6 +270,7 @@ export function DesktopBoard({
             missedCounts={recurrenceExpansion?.missedCounts}
             recurrenceSummaries={recurrenceSummaries}
             subtaskCounts={subtaskCounts}
+            attachmentCounts={attachmentCounts}
             // No `onQuickAdd`, so no quick-add row: nothing can be scheduled
             // INTO Overflow, only out of it.
             onNavigate={navigate}
@@ -380,6 +382,7 @@ export function DesktopBoard({
                   dueCount={deadlineCounts.get(column.day)}
                   recurrenceSummaries={recurrenceSummaries}
                   subtaskCounts={subtaskCounts}
+                  attachmentCounts={attachmentCounts}
                   groups={column.groups}
                   collapsedGroups={collapsedGroups}
                   onToggleGroup={toggleGroup}
@@ -509,6 +512,7 @@ export function DesktopBoard({
                   onSelect={actions.handleSelect}
               recurrenceSummaries={recurrenceSummaries}
               subtaskCounts={subtaskCounts}
+              attachmentCounts={attachmentCounts}
               // Backlog cannot be renamed, archived, or deleted, so its one
               // real action is collapsing the rail — see RailCollapseButton.
               isColumnDragActive={!!activeList}
@@ -603,6 +607,7 @@ export function DesktopBoard({
                   onSelect={actions.handleSelect}
                   recurrenceSummaries={recurrenceSummaries}
                   subtaskCounts={subtaskCounts}
+                  attachmentCounts={attachmentCounts}
                   reorderListId={column.list.id}
                   reservesGripSlot
                   onOpenInfo={() => setInfoListId(column.list.id)}

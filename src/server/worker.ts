@@ -21,6 +21,7 @@
  * Set as `main` in wrangler.jsonc via the build script (see package.json).
  */
 import openNextHandler from "open-next/worker";
+import { handleAttachmentsRequest } from "./attachments/routes";
 import { createAuth } from "./auth";
 import { handleContactRequest } from "./contact/routes";
 import { handleOptions, withCors } from "./cors";
@@ -80,6 +81,14 @@ export default {
       // Same reasoning again (EI-206): TURNSTILE_SECRET_KEY is a Worker
       // secret and must never reach client JS. See ./contact/routes.ts.
       return handleContactRequest(request, env);
+    }
+    if (pathname.startsWith("/api/attachments")) {
+      // The bytes half of todo attachments (EI-242). Same seam again, plus
+      // the only reason this cannot be anything else: it is the one route in
+      // the app that reads a raw binary body and the one that touches R2.
+      // Metadata does NOT come through here — it rides the ordinary outbox.
+      // See ./attachments/routes.ts and docs/ATTACHMENTS.md.
+      return handleAttachmentsRequest(request, env);
     }
     if (pathname.startsWith("/api/v1")) {
       // The public, versioned read API (A2, EI-227). Same reasoning again —

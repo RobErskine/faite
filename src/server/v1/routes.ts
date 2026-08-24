@@ -1,4 +1,4 @@
-import { labelSchema, listSchema, tabSchema, todoSchema } from "@/lib/schema";
+import { attachmentSchema, labelSchema, listSchema, tabSchema, todoSchema } from "@/lib/schema";
 import type { ServiceContext } from "@/lib/service/context";
 import { createAuth } from "../auth";
 import { authorizeScope } from "../auth-scopes";
@@ -40,6 +40,18 @@ const KIND_BY_PATH = {
   lists: { kind: "list", schema: listSchema },
   labels: { kind: "label", schema: labelSchema },
   tabs: { kind: "tab", schema: tabSchema },
+  /**
+   * Read-only, and read-only on purpose (EI-242). A write here would have to
+   * carry file bytes, and this API is JSON — uploads go to
+   * `POST /api/attachments`, which is browser/session-only in v1.
+   *
+   * Each row carries the `id` a consumer needs to fetch the file itself:
+   * `GET /api/attachments/{id}`. That URL is deliberately NOT a field on the
+   * row — the dispatch below returns `schema.parse(row)` verbatim and has
+   * nowhere to inject a derived value, and a stored URL column would be a
+   * second thing to keep true. See `docs/API.md`.
+   */
+  attachments: { kind: "attachment", schema: attachmentSchema },
 } as const;
 
 type V1Kind = (typeof KIND_BY_PATH)[keyof typeof KIND_BY_PATH]["kind"];
@@ -69,6 +81,8 @@ function listEntities(
       return stub.listEntities("label");
     case "tab":
       return stub.listEntities("tab");
+    case "attachment":
+      return stub.listEntities("attachment");
   }
 }
 
@@ -194,6 +208,6 @@ export async function handleV1Request(request: Request, env: CloudflareEnv): Pro
   }
 }
 
-/** Exported for `openapi/routes.ts` — one source of the four resource names
- * and their response schemas, so the docs can't drift from the dispatch. */
+/** Exported for `openapi/routes.ts` — one source of the resource names and
+ * their response schemas, so the docs can't drift from the dispatch. */
 export const V1_RESOURCES = KIND_BY_PATH;

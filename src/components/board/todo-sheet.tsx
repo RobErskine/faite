@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { AttachmentsSection } from "@/components/board/attachments-section";
 import { RepeatDialog } from "@/components/board/repeat-dialog";
 import { RepeatSection, type RecurrenceInfo } from "@/components/board/repeat-section";
 import { LocationField } from "@/components/board/location-field";
@@ -742,6 +743,16 @@ function TodoSheetContent({
               }
             />
           </div>
+
+          <Separator />
+
+          {/*
+            Between Notes and History, matching where the plan put it: an
+            attachment is content the way notes are, not an audit record the
+            way history is. Self-contained (reads its own rows, calls the
+            repository itself) — see its own doc comment.
+          */}
+          <AttachmentsSection todoId={todo.id} />
 
           <Separator />
 

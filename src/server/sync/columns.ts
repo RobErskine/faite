@@ -3,6 +3,7 @@ import type { SQLiteTable } from "drizzle-orm/sqlite-core";
 import type { SyncKind } from "@/lib/sync/wire";
 import { SERVER_ONLY_FIELDS, SETTINGS_SYNCED_FIELDS } from "@/lib/sync/wire";
 import {
+  attachments,
   dayNotes,
   labels,
   lists,
@@ -40,6 +41,7 @@ const TABLES: Record<SyncKind, SQLiteTable> = {
   place: places,
   todoEvent: todoEvents,
   reminderPreset: reminderPresets,
+  attachment: attachments,
   settings,
 };
 
