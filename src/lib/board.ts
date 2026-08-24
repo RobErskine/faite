@@ -432,7 +432,37 @@ const COLLATOR = new Intl.Collator(undefined, {
   numeric: true,
 });
 
+/**
+ * Order group headers within one computed column: BY TAB, then alphabetically.
+ *
+ * The tab level came second and is the load-bearing half. Group headers take
+ * their colour from the owning tab (a list is born colourless — see
+ * `effectiveListColor`), so a column holding work from three tabs already
+ * shows three colours; sorting on the list name alone then scattered them,
+ * putting two lists of the SAME colour either side of a list of another. The
+ * colour said "these belong together" and the order said otherwise. Runs now
+ * follow the tab strip, so what the eye groups by colour is contiguous.
+ *
+ * The alphabet still decides everything INSIDE a run, which is where it does
+ * real work: a tab has few enough lists to scan, and the tab strip has no
+ * meaningful "position" for the lists under it to inherit.
+ */
 export function byListGroup(a: TodoGroup, b: TodoGroup): number {
+  /*
+    Plain `<`/`>`, NOT the collator: `tabSortKey` is a fractional index, which
+    is compared bytewise everywhere else it is ordered (`byPosition`,
+    lib/ordering.ts). Running it through COLLATOR would be actively wrong —
+    `numeric: true` reads the digits inside "a1"/"a10" as a number and reorders
+    keys whose whole contract is that byte order IS their order.
+  */
+  if (a.tabSortKey !== b.tabSortKey) return a.tabSortKey < b.tabSortKey ? -1 : 1;
+  /*
+    Two tabs can hold equal positions — nothing enforces uniqueness across a
+    sync merge — and without this a column could interleave their runs, which
+    is the exact failure the tab level exists to prevent. Same totality
+    argument as the `key` tiebreak below, one level up.
+  */
+  if (a.tabKey !== b.tabKey) return a.tabKey < b.tabKey ? -1 : 1;
   const byName = COLLATOR.compare(a.sortKey, b.sortKey);
   if (byName !== 0) return byName;
   /*
@@ -468,6 +498,23 @@ export interface TodoGroup {
   color: string | null;
   /** What the alphabet actually sorts on. See `listSortKey`. */
   sortKey: string;
+  /**
+   * Owning tab's id — the OUTER grouping. Empty string for a group that has no
+   * tab: Backlog, which is shared by every tab, and a list whose `tabId` points
+   * at a tab that no longer resolves.
+   */
+  tabKey: string;
+  /**
+   * The owning tab's fractional index, so runs of same-tab groups sort in
+   * TAB-STRIP order rather than by tab name — the strip is arranged by hand and
+   * that arrangement is the user's own answer to "which of these comes first".
+   *
+   * Empty string when `tabKey` is, and that sorts before every real position,
+   * which is the whole point: Backlog leads the column. Unplanned work belongs
+   * at the top where it gets addressed first, rather than filed under "B"
+   * halfway down.
+   */
+  tabSortKey: string;
   /** P1 → P4 then unprioritised, `position` breaking ties. */
   todos: Todo[];
 }
@@ -689,7 +736,7 @@ function groupTodosByList(
   day: CivilDate,
   index: ReadonlyMap<string, List>,
   backlog: List | undefined,
-  tabsById: ReadonlyMap<string, Pick<Tab, "color">>,
+  tabsById: ReadonlyMap<string, Pick<Tab, "color" | "position">>,
 ): TodoGroup[] {
   const buckets = new Map<string, { list: List; todos: Todo[] }>();
 
@@ -710,14 +757,28 @@ function groupTodosByList(
   }
 
   return [...buckets.values()]
-    .map(({ list, todos: bucket }) => ({
-      id: dayGroupId(day, list.id),
-      key: list.id,
-      name: list.name,
-      color: effectiveListColor(list, tabsById),
-      sortKey: listSortKey(list.name),
-      todos: bucket.sort(openFirst(byPriorityThenPosition)),
-    }))
+    .map(({ list, todos: bucket }) => {
+      /*
+        RESOLVED against the map, not read straight off `list.tabId`: a pointer
+        at a tab that is gone counts as untabbed. Taking the raw id would leave
+        the two keys disagreeing — a `tabKey` naming a tab with no `tabSortKey`
+        to sort by — and every such orphan would then form its own one-list run
+        at the head of the column, ordered by a raw uuid. One "no tab" answer,
+        shared with Backlog, is the same rule buildBoard already applies to a
+        todo whose list is gone.
+      */
+      const tab = list.tabId ? tabsById.get(list.tabId) : undefined;
+      return {
+        id: dayGroupId(day, list.id),
+        key: list.id,
+        name: list.name,
+        color: effectiveListColor(list, tabsById),
+        sortKey: listSortKey(list.name),
+        tabKey: tab ? (list.tabId ?? "") : "",
+        tabSortKey: tab?.position ?? "",
+        todos: bucket.sort(openFirst(byPriorityThenPosition)),
+      };
+    })
     .sort(byListGroup);
 }
 
@@ -766,11 +827,13 @@ export interface BuildBoardOptions {
   forceOverflow?: readonly Todo[];
   /**
    * Every tab, keyed by id — including archived ones, so a list filed away
-   * with its tab still resolves. Backs `TodoGroup.color`'s tab fallback; see
-   * `effectiveListColor` (lib/colors.ts). Omitted defaults to an empty map,
-   * i.e. groups fall back to nothing and `color` is exactly `list.color`.
+   * with its tab still resolves. Backs `TodoGroup.color`'s tab fallback (see
+   * `effectiveListColor`, lib/colors.ts) and the tab level of the group sort
+   * (`position`, see `byListGroup`). Omitted defaults to an empty map, i.e.
+   * `color` is exactly `list.color` and every group sorts as untabbed —
+   * alphabetically, the behaviour this had before tabs entered the sort.
    */
-  tabsById?: ReadonlyMap<string, Pick<Tab, "color">>;
+  tabsById?: ReadonlyMap<string, Pick<Tab, "color" | "position">>;
 }
 
 /**
@@ -893,10 +956,17 @@ export function buildBoard(
     ...lists.map((l) => [l.id, l] as const),
     ...hiddenLists.map((l) => [l.id, l] as const),
   ]);
-  // Backlog as a record rather than a column, for the grouping fallback. Same
-  // lookup as the column above, and note Backlog is NOT pinned first among
-  // groups the way it is pinned leftmost among columns — it sorts under B like
-  // any other list, which is deliberate.
+  /*
+    Backlog as a record rather than a column, for the grouping fallback — same
+    lookup as the column above.
+
+    Backlog DOES lead every day column, mirroring the way it is pinned leftmost
+    among columns, but nothing here pins it: it carries `tabId: null`, so it
+    falls out of `byListGroup`'s tab level with an empty `tabSortKey` and sorts
+    ahead of every tabbed run for free. (It used to sort under "B" among the
+    other lists; unplanned work reads better at the top, where it gets addressed
+    first.)
+  */
   const backlogList = lists.find((l) => l.isBacklog) ?? lists[0];
 
   const applyGroups = (column: DayColumn | OverflowColumn, day: CivilDate) => {

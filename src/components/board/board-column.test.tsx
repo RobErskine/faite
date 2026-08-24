@@ -69,6 +69,10 @@ const group = (
   name,
   color,
   sortKey: name,
+  // Untabbed: these groups are handed to the column already ordered, so the
+  // tab level of `byListGroup` never runs here.
+  tabKey: "",
+  tabSortKey: "",
   todos,
 });
 

@@ -406,6 +406,100 @@ describe("buildBoard groups: color inheritance via tabsById", () => {
   });
 });
 
+describe("buildBoard groups: day columns run tab by tab", () => {
+  const DAY = "2026-08-05";
+
+  // Rob's screenshot, reduced: two Dreamworks lists that the alphabet drove
+  // apart, with another tab's two lists landing between them.
+  const dreamworks = tab("dreamworks", "Dreamworks", positions[0]);
+  const personal = tab("personal", "Personal", positions[1]);
+  const tabsById = new Map([
+    [dreamworks.id, dreamworks],
+    [personal.id, personal],
+  ]);
+
+  const backlog = list("backlog", "Backlog", true); // tabId: null
+  const dwui: List = { ...list("dwui", "DWUI"), tabId: "dreamworks" };
+  const rico: List = { ...list("rico", "Rico"), tabId: "dreamworks" };
+  const freelance: List = { ...list("freelance", "Freelance List"), tabId: "personal" };
+  const projects: List = { ...list("projects", "Personal Projects List"), tabId: "personal" };
+
+  const scheduled = (id: string, listId: string) =>
+    todo({ id, listId, scheduledDate: DAY });
+
+  const dayOf = (board: ReturnType<typeof buildBoard>) =>
+    board.days.find((d) => d.day === DAY)!;
+
+  // Dreamworks is the open tab; Personal's lists are hidden, and reach the day
+  // column only because scheduling is not a tab-level concern.
+  const board = buildBoard(
+    [
+      scheduled("t1", "rico"),
+      scheduled("t2", "freelance"),
+      scheduled("t3", "dwui"),
+      scheduled("t4", "backlog"),
+      scheduled("t5", "projects"),
+    ],
+    [backlog, dwui, rico],
+    ctx,
+    [freelance, projects],
+    { tabsById },
+  );
+
+  it("puts a tab's lists side by side instead of scattering them alphabetically", () => {
+    // Sorted on the name alone this was Backlog, DWUI, Freelance List,
+    // Personal Projects List, Rico — two blue groups split by two green ones.
+    expect(dayOf(board).groups.map((g) => g.key)).toEqual([
+      "backlog",
+      "dwui",
+      "rico",
+      "freelance",
+      "projects",
+    ]);
+  });
+
+  it("keeps the rendered card order in step with the groups", () => {
+    // `column.todos` is re-derived from the groups, so the two cannot drift.
+    expect(dayOf(board).todos.map((t) => t.id)).toEqual(["t4", "t3", "t1", "t2", "t5"]);
+  });
+
+  it("follows the tab strip when a later tab sorts earlier by name", () => {
+    // Personal moved to the front of the strip; Dreamworks' run follows it even
+    // though "D" precedes "P".
+    const restripped = new Map([
+      [dreamworks.id, { ...dreamworks, position: positions[1] }],
+      [personal.id, { ...personal, position: positions[0] }],
+    ]);
+    const reordered = buildBoard(
+      [scheduled("t1", "rico"), scheduled("t2", "freelance"), scheduled("t3", "dwui")],
+      [backlog, dwui, rico],
+      ctx,
+      [freelance, projects],
+      { tabsById: restripped },
+    );
+    expect(dayOf(reordered).groups.map((g) => g.key)).toEqual(["freelance", "dwui", "rico"]);
+  });
+
+  it("leads with Backlog rather than filing it under B", () => {
+    const [first] = dayOf(board).groups;
+    expect(first.key).toBe("backlog");
+    expect(first.tabSortKey).toBe("");
+  });
+
+  it("sends a list whose tab no longer resolves to the front with Backlog", () => {
+    // An orphan must not strand itself between two real runs.
+    const orphan: List = { ...list("orphan", "Zebra"), tabId: "deleted-tab" };
+    const withOrphan = buildBoard(
+      [scheduled("t1", "dwui"), scheduled("t2", "orphan")],
+      [backlog, dwui, orphan],
+      ctx,
+      [],
+      { tabsById },
+    );
+    expect(dayOf(withOrphan).groups.map((g) => g.key)).toEqual(["orphan", "dwui"]);
+  });
+});
+
 describe("tabForTodo", () => {
   const personal = tab("tab-personal", "Personal");
   const tabsById = new Map([[personal.id, personal]]);
@@ -477,12 +571,14 @@ describe("listSortKey", () => {
 });
 
 describe("byListGroup", () => {
-  const group = (key: string, name: string): TodoGroup => ({
+  const group = (key: string, name: string, tab?: [string, string]): TodoGroup => ({
     id: dayGroupId("2026-08-05", key),
     key,
     name,
     color: null,
     sortKey: listSortKey(name),
+    tabKey: tab?.[0] ?? "",
+    tabSortKey: tab?.[1] ?? "",
     todos: [],
   });
 
@@ -510,7 +606,51 @@ describe("byListGroup", () => {
     expect(sorted.map((g) => g.key)).toEqual(["a", "z"]);
   });
 
-  it("does not pin Backlog first the way the planning half does", () => {
+  it("keeps a tab's lists in one contiguous run", () => {
+    // The failure this exists to catch: sorted on the name alone these
+    // interleave — Admin, Errands, Notes, Rico — putting a Blue list between
+    // two Green ones even though the header colour comes from the tab.
+    const sorted = [
+      group("notes", "Notes", ["green", "a1"]),
+      group("errands", "Errands", ["blue", "a2"]),
+      group("admin", "Admin", ["green", "a1"]),
+      group("rico", "Rico", ["blue", "a2"]),
+    ].sort(byListGroup);
+    expect(sorted.map((g) => g.name)).toEqual(["Admin", "Notes", "Errands", "Rico"]);
+  });
+
+  it("orders runs by the tab's position, not the tab's name", () => {
+    // "Zoo" the tab sits leftmost in the strip, so its run leads regardless of
+    // where the alphabet would put either the tab or the lists under it.
+    const sorted = [
+      group("admin", "Admin", ["alpha", "a2"]),
+      group("rico", "Rico", ["zoo", "a1"]),
+    ].sort(byListGroup);
+    expect(sorted.map((g) => g.name)).toEqual(["Rico", "Admin"]);
+  });
+
+  it("leads with Backlog and every other untabbed group", () => {
+    // The reverse of the old rule: Backlog carries no tabId, so its empty
+    // tabSortKey sorts ahead of every real fractional index. Unplanned work
+    // belongs at the top of the day.
+    const sorted = [
+      group("admin", "Admin", ["alpha", "a1"]),
+      group("backlog", "Backlog"),
+    ].sort(byListGroup);
+    expect(sorted.map((g) => g.name)).toEqual(["Backlog", "Admin"]);
+  });
+
+  it("breaks an equal tab position on the tab key, so runs never interleave", () => {
+    const sorted = [
+      group("b1", "Alpha", ["zz", "a1"]),
+      group("a1", "Beta", ["aa", "a1"]),
+      group("b2", "Gamma", ["zz", "a1"]),
+      group("a2", "Delta", ["aa", "a1"]),
+    ].sort(byListGroup);
+    expect(sorted.map((g) => g.name)).toEqual(["Beta", "Delta", "Alpha", "Gamma"]);
+  });
+
+  it("sorts alphabetically when nothing carries a tab", () => {
     expect(order(["backlog", "Backlog"], ["a", "Admin"])).toEqual([
       "Admin",
       "Backlog",
