@@ -807,3 +807,46 @@ session that no unit test would have — a new page's own heading collided
 with one a third-party component (Scalar) rendered internally. When you can,
 prefer one generic test iterating real data over a hand-written test per
 case; it catches integration shape you didn't think to assert.
+
+---
+
+## A defensive header can silently break the feature it protects (EI-242)
+
+Attachment downloads were sent with a blanket
+`Content-Disposition: attachment` plus `X-Content-Type-Options: nosniff`.
+Both are the textbook answer to "we are serving user-uploaded bytes from our
+own origin", and both were wrong to apply uniformly.
+
+**Chrome will not paint an `attachment`-dispositioned response in an `<img>`.**
+The request succeeds. The status is 200. The bytes arrive, the right length,
+the right `Content-Type`. `img.complete` is `true`. And `naturalWidth` is
+`0` — every thumbnail a blank box, with nothing anywhere saying so.
+
+Nothing in the repo could have caught it:
+
+- Unit tests asserted the header string, which was exactly as intended.
+- The e2e harness serves Next with no Worker, so it cannot upload at all.
+- The network tab shows a clean 200.
+
+It was found by opening the sheet in a real browser against `npm run preview`
+and reading `naturalWidth` off the rendered element.
+
+**Rule:** for anything whose output is *rendered* rather than returned —
+images, embeds, iframes, downloads — a passing request is not a passing
+feature. Assert on the rendered result (`naturalWidth`, computed size, a
+screenshot), not on the response. "200 with the right headers" and "the user
+can see it" are different claims.
+
+**Corollary, and the sharper half.** The fix was to serve verified raster
+images `inline`. The first implementation used `mimeType.startsWith("image/")`
+— and the regression test written alongside it failed immediately, because
+`image/svg+xml` starts with `image/`. SVG is not allow-listed today, so the
+prefix check was harmless *now*; it would have become stored XSS the day
+anyone widened `ALLOWED_MIME_TYPES`, in a completely unrelated change, with
+no reason to look at this function.
+
+A prefix test over a security-relevant set is a landmine with a delay fuse.
+Enumerate the safe values explicitly, so widening the allow-list is a
+deliberate edit in two places rather than an accident in one — and write the
+test for the case that cannot happen yet, because that test is the tripwire
+that makes it stay impossible.
