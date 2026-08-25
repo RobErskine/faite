@@ -105,7 +105,10 @@ const KNOWN_DIVERGENCES: Record<string, { drizzleOnly?: string[]; zodOnly?: stri
   place: { drizzleOnly: ["version"] },
   todoEvent: { drizzleOnly: ["version"] },
   reminderPreset: { drizzleOnly: ["version"] },
-  attachment: { drizzleOnly: ["version"] },
+  // `sweptAt` joins `version` as a server-only column with no Zod field: the
+  // sweep's own bookkeeping (EI-245), never sent to a client. See
+  // `SERVER_ONLY_FIELDS` in `lib/sync/wire.ts`.
+  attachment: { drizzleOnly: ["version", "sweptAt"] },
   settings: { drizzleOnly: ["version"] },
 };
 
