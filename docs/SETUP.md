@@ -305,6 +305,22 @@ npx wrangler secret put GOOGLE_CLIENT_SECRET
 npx wrangler secret list           # confirm
 ```
 
+**One `.dev.vars` entry is required for attachments to work locally
+(EI-244):**
+
+```
+ATTACHMENTS_ORIGIN=""
+```
+
+Attachment bytes are served from `files.myfaite.app` in production, so a
+previewed PDF renders cross-origin and is isolated by the same-origin policy.
+Blanking the var serves them same-origin instead, which is what you want on a
+laptop. Without it, `npm run preview` redirects to a hostname that does not
+resolve and every attachment 404s — and it is not obvious why, because
+`wrangler dev` simulates the production routes: locally the request's
+hostname, its `Host` header and `request.cf` all report production, so
+nothing in the app can tell the difference.
+
 Mirror the same values into `.dev.vars` (git-ignored) for local work. Email
 needs no key — it is a binding.
 

@@ -118,48 +118,79 @@ silently showing a fraction.
 Anything else has no preview and says so. An honest empty state beats a
 viewer that shows a blank rectangle.
 
-### ⚠️ The PDF preview is NOT sandboxed in Chrome
+### How the PDF preview is contained (EI-244)
 
-This is the one place where the safe answer and the working answer conflict,
-so the reasoning is written down rather than left in a comment.
+Attachment bytes are served from **`files.myfaite.app`**, a different origin
+from the app. A previewed PDF therefore renders cross-origin, and the
+same-origin policy isolates it: the app cannot read the frame's
+`contentDocument`, and touching its `localStorage` throws `SecurityError`.
+Both measured in a browser, not inferred.
 
-`?preview=1` is the only thing that makes the server send `inline` for a PDF,
-and it also attaches `Content-Security-Policy: sandbox allow-scripts`.
-Measured behaviour, in Chrome, not assumed:
+**This is what the `sandbox` attribute could not do.** Chrome's PDF viewer
+refuses to render inside a sandboxed iframe — every flag combination tried
+(EI-243) produced a broken-file icon with a 200 response and no error. Going
+cross-origin gives containment *and* rendering, which is the whole reason
+EI-244 existed.
 
-- **An iframe with any `sandbox` attribute does not render the PDF at all.**
-  Tried `sandbox=""`, `sandbox="allow-scripts"`, and
-  `sandbox="allow-scripts allow-popups"`. All three show a broken-file icon:
-  200 response, correct bytes, nothing painted, no console error.
-- **The response CSP does not contain Chrome's built-in viewer either.** With
-  the header set and no iframe attribute, the parent page can still read the
-  frame's `contentDocument`, `localStorage`, and `location`. Chrome's viewer
-  is not on the document-sandbox path.
-- The header **does** contain a browser that renders PDFs as an ordinary
-  document — Firefox's pdf.js — which is why it is still sent.
+The iframe therefore carries **no `sandbox` attribute, deliberately**. Adding
+one back would break rendering again and buy nothing the origin split does
+not already provide.
 
-So in Chrome a previewed PDF runs on `myfaite.app`'s origin. That is
-acceptable **only because of this threat model**: an attachment is readable
-by exactly one account, the one that uploaded it, and Faite has no sharing.
-There is no attacker-uploads / victim-views path, which is the scenario that
-makes hosting user content on your own origin dangerous.
+### How reads are authorised
 
-### Why not a separate origin
+The session cookie is host-only (`Path=/; HttpOnly; SameSite=Lax`, **no
+`Domain=`** — verified against a running server), so it never reaches
+`files.myfaite.app`. That origin has no credential at all, which is exactly
+the property that makes it safe to render someone's file there: even if a
+hostile PDF ran script, there is no session for it to steal.
 
-Serving previews from a distinct apex (`faite-usercontent.net`) is the
-strictly correct fix and the one to reach for when the condition below
-changes. It was not done now because it needs its own DNS, its own Worker
-route, and signed URLs — a session cookie is not sent cross-origin, so the
-whole auth model changes with it.
+Reads are authorised by a **short-lived signed token** instead
+(`attachments/signing.ts`). `GET /api/attachments/{id}` on the app origin
+authenticates the cookie session, mints a token, and 302s. A redirect rather
+than an API returning a URL because `<img src>`, `<a download>` and
+`<iframe src>` are all synchronous — this way no call site had to change.
 
-**The trigger is sharing.** The moment one account can view another
-account's attachment — a shared board, a public link, a team — the reasoning
-above collapses and the preview must move to a separate origin before that
-ships.
+- HMAC-SHA256, keyed by HKDF from `BETTER_AUTH_SECRET` with a versioned
+  `info` label. Domain separation means this key cannot forge a session and a
+  session key cannot forge a URL, and there is no second secret to provision
+  and forget.
+- Five-minute expiry. These URLs are not shareable by design; the app mints a
+  fresh one per view.
+- Forged signature, edited payload, and expired token are all one `403`.
+  Distinguishing them tells an attacker which half to keep working on.
 
-Tracked as **EI-244**, filed as a blocker on a feature that does not exist
-yet, which is the only way a conditional decision like this survives. If you
-are reading this while building sharing: that ticket is the gate.
+### The one exception: text and CSV
+
+`?raw=1` streams those from the **app** origin, deliberately. The isolated
+origin exists to contain what the BROWSER renders; text and CSV are fetched
+and escaped by us, so the browser never interprets them. Routing them
+cross-origin would buy nothing and would force
+`Access-Control-Allow-Credentials: true` on the user-content origin — the one
+thing that origin is designed never to advertise. `?raw=1` always serves
+`Content-Disposition: attachment`, whatever the type, which is what makes it
+safe to leave open rather than type-gated.
+
+### What a subdomain does not give you
+
+`files.myfaite.app` shares a registrable domain with the app. Today that is
+fine: the session cookie is host-only, so it does not travel. The residual
+risk is that someone later enables `crossSubDomainCookies` or sets a
+`Domain=.myfaite.app` cookie for an unrelated reason, and the isolation
+quietly disappears with nothing failing.
+
+`attachments/cookie-isolation.test.ts` is that failure. A separate registrable
+domain would remove the risk outright rather than guarding it; that remains
+the upgrade path, and it is now a one-line change to `ATTACHMENTS_ORIGIN`
+plus DNS.
+
+### Local development
+
+`wrangler dev` simulates the configured routes, so **locally the request's
+hostname, its `Host` header and `request.cf` all report production** — there
+is no runtime signal to derive the origin from. Hence `ATTACHMENTS_ORIGIN` is
+an explicit var, blanked in `.dev.vars` so bytes are served same-origin on a
+laptop. That path is functional and **not isolated**, which is fine there and
+never in production. See `docs/SETUP.md`.
 
 ## 4. Security
 
@@ -283,6 +314,20 @@ npm run preview          # the Worker, with real bindings, on :8787
    whether someone re-added a `sandbox` attribute to the iframe** — that is
    the known failure, and it looks like a corrupt file rather than a config
    change.
+
+   To test the ISOLATION locally, point `ATTACHMENTS_ORIGIN` at
+   `http://127.0.0.1:8789` in `.dev.vars` — a different origin from
+   `localhost:8789`, so the same-origin policy applies exactly as in
+   production. Then, from the console:
+
+   ```js
+   const f = document.querySelector('[data-slot="dialog-content"] iframe');
+   f.contentDocument;              // expect null
+   f.contentWindow.localStorage;   // expect SecurityError
+   ```
+
+   Both must fail. If either succeeds, the bytes are being served from the
+   app origin and the containment is gone.
 10. Click a CSV's name → a table. Test it with a file that has a comma inside
     a quoted field, a newline inside a quoted field, and a doubled quote;
     all three are what a naive split gets wrong, and all three are covered by

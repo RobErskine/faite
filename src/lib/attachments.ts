@@ -179,7 +179,13 @@ export function attachmentPreviewUrl(attachmentId: string): string {
 export async function fetchAttachmentText(
   attachmentId: string,
 ): Promise<{ text: string; truncated: boolean }> {
-  const response = await fetch(attachmentUrl(attachmentId), { credentials: "include" });
+  // `?raw=1` — the app origin streams these bytes itself rather than
+  // redirecting to the user-content origin. This is the one read we parse
+  // ourselves, so it needs no isolation, and keeping it same-origin avoids
+  // a credentialed cross-origin fetch (see `handleRawDownload`).
+  const response = await fetch(`${attachmentUrl(attachmentId)}?raw=1`, {
+    credentials: "include",
+  });
   if (!response.ok) throw new AttachmentError("That file could not be read.", "unreadable");
 
   const buffer = await response.arrayBuffer();
