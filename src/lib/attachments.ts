@@ -1,5 +1,9 @@
 import { apiUrl } from "@/lib/api-origin";
-import { isAllowedMimeType, MAX_ATTACHMENT_BYTES } from "@/lib/attachment-limits";
+import {
+  isAllowedMimeType,
+  MAX_ATTACHMENT_BYTES,
+  MAX_PREVIEW_TEXT_BYTES,
+} from "@/lib/attachment-limits";
 
 /**
  * The client half of `/api/attachments/*` (EI-242) — the ONE place in the app
@@ -30,7 +34,11 @@ export {
   ALLOWED_MIME_TYPES,
   formatBytes,
   MAX_ATTACHMENT_BYTES,
+  MAX_PREVIEW_CSV_ROWS,
+  MAX_PREVIEW_TEXT_BYTES,
   maxAttachmentMb,
+  type PreviewKind,
+  previewKindFor,
 } from "@/lib/attachment-limits";
 
 /**
@@ -140,6 +148,44 @@ export async function uploadAttachment(
  */
 export function attachmentUrl(attachmentId: string): string {
   return apiUrl(`/api/attachments/${encodeURIComponent(attachmentId)}`);
+}
+
+/**
+ * The same object, asked for in a form the browser will RENDER rather than
+ * download.
+ *
+ * Only meaningful for PDF today: images already come back `inline` so the
+ * plain URL is enough, and text/CSV are fetched as text and drawn by us. The
+ * flag widens the `Content-Disposition` the server picks and makes it attach
+ * `Content-Security-Policy: sandbox`; it grants no extra access, and
+ * ownership is checked identically either way.
+ */
+export function attachmentPreviewUrl(attachmentId: string): string {
+  return `${attachmentUrl(attachmentId)}?preview=1`;
+}
+
+/**
+ * Reads an attachment as TEXT for the preview dialog.
+ *
+ * Capped at `MAX_PREVIEW_TEXT_BYTES` — a 25 MB CSV is a legal upload, and
+ * putting it in the DOM would hang the tab. `truncated` is returned rather
+ * than hidden so the dialog can say so instead of silently showing a
+ * fraction of the file.
+ *
+ * Decoded non-fatally: the bytes already passed strict UTF-8 validation at
+ * upload, but a cut at `MAX_PREVIEW_TEXT_BYTES` can land mid-codepoint, and
+ * one replacement character at the very end beats throwing away the preview.
+ */
+export async function fetchAttachmentText(
+  attachmentId: string,
+): Promise<{ text: string; truncated: boolean }> {
+  const response = await fetch(attachmentUrl(attachmentId), { credentials: "include" });
+  if (!response.ok) throw new AttachmentError("That file could not be read.", "unreadable");
+
+  const buffer = await response.arrayBuffer();
+  const truncated = buffer.byteLength > MAX_PREVIEW_TEXT_BYTES;
+  const slice = truncated ? buffer.slice(0, MAX_PREVIEW_TEXT_BYTES) : buffer;
+  return { text: new TextDecoder().decode(slice), truncated };
 }
 
 /**

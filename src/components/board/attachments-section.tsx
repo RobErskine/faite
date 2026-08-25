@@ -10,7 +10,9 @@ import {
   attachmentUrl,
   formatBytes,
   maxAttachmentMb,
+  previewKindFor,
 } from "@/lib/attachments";
+import { AttachmentPreview } from "@/components/board/attachment-preview";
 import type { Attachment } from "@/lib/schema";
 import { useAttachments } from "@/lib/store/hooks";
 import { createAttachment, deleteAttachment } from "@/lib/store/repositories";
@@ -67,11 +69,15 @@ interface AttachmentRowProps {
   attachment: Attachment;
   online: boolean;
   onRemove: (attachment: Attachment) => void;
+  onPreview: (attachment: Attachment) => void;
 }
 
-function AttachmentRow({ attachment, online, onRemove }: AttachmentRowProps) {
+function AttachmentRow({ attachment, online, onRemove, onPreview }: AttachmentRowProps) {
   const isImage = attachment.mimeType.startsWith("image/");
   const href = attachmentUrl(attachment.id);
+  // Offline the bytes are unreachable, so opening a preview would show a
+  // spinner that never resolves. The row goes inert instead.
+  const canPreview = online && previewKindFor(attachment.mimeType) !== null;
 
   return (
     <li className="flex items-center gap-2">
@@ -83,25 +89,55 @@ function AttachmentRow({ attachment, online, onRemove }: AttachmentRowProps) {
         here — the source is a runtime API route, not a known asset.
       */}
       {isImage && online ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={href}
-          alt=""
-          className="size-8 shrink-0 rounded border border-border object-cover"
-          loading="lazy"
-        />
+        <button
+          type="button"
+          onClick={() => onPreview(attachment)}
+          className="shrink-0 rounded focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          // The filename button beside this one carries the accessible name
+          // for the same action; a second identical label would just be two
+          // stops on the same destination for a screen-reader user.
+          aria-hidden
+          tabIndex={-1}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={href}
+            alt=""
+            className="size-8 rounded border border-border object-cover"
+            loading="lazy"
+          />
+        </button>
       ) : (
         <span className="flex size-8 shrink-0 items-center justify-center rounded border border-border text-muted-foreground">
           {iconFor(attachment.mimeType)}
         </span>
       )}
 
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm">{attachment.filename}</span>
-        <span className="block text-xs text-muted-foreground">
-          {formatBytes(attachment.byteSize)}
+      {/*
+        A button, not the whole `<li>` — the row already contains a download
+        link and a remove button, and nesting controls inside a clickable
+        container is how you get a click target that swallows both.
+      */}
+      {canPreview ? (
+        <button
+          type="button"
+          onClick={() => onPreview(attachment)}
+          className="min-w-0 flex-1 rounded-sm text-left hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          aria-label={`Preview ${attachment.filename}`}
+        >
+          <span className="block truncate text-sm">{attachment.filename}</span>
+          <span className="block text-xs text-muted-foreground">
+            {formatBytes(attachment.byteSize)}
+          </span>
+        </button>
+      ) : (
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm">{attachment.filename}</span>
+          <span className="block text-xs text-muted-foreground">
+            {formatBytes(attachment.byteSize)}
+          </span>
         </span>
-      </span>
+      )}
 
       {/*
         A real anchor styled as a button, not `<Button asChild>` — this
@@ -141,6 +177,10 @@ export function AttachmentsSection({ todoId }: { todoId: string }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Held by id, not by object: the row re-renders from Dexie on every sync,
+  // so a captured object would go stale while the dialog is open.
+  const [previewId, setPreviewId] = useState<string | null>(null);
+  const previewing = attachments.find((a) => a.id === previewId) ?? null;
 
   const handlePick = async (file: File | undefined) => {
     // Clearing the input BEFORE the await, so picking the same file twice in
@@ -192,6 +232,7 @@ export function AttachmentsSection({ todoId }: { todoId: string }) {
               attachment={attachment}
               online={online}
               onRemove={handleRemove}
+              onPreview={(a) => setPreviewId(a.id)}
             />
           ))}
         </ul>
@@ -228,6 +269,11 @@ export function AttachmentsSection({ todoId }: { todoId: string }) {
           {error}
         </p>
       )}
+
+      <AttachmentPreview
+        attachment={previewing}
+        onOpenChange={(open) => !open && setPreviewId(null)}
+      />
     </section>
   );
 }

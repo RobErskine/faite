@@ -79,6 +79,44 @@ export function isAllowedMimeType(value: string): value is AllowedMimeType {
   return (ALLOWED_MIME_TYPES as readonly string[]).includes(value);
 }
 
+/**
+ * Types the preview dialog can render, and how.
+ *
+ * `"image"` and `"pdf"` are rendered by the browser from the download route;
+ * `"text"` and `"csv"` are FETCHED AS TEXT and rendered by us, so nothing is
+ * ever interpreted as markup. Anything absent here has no preview and falls
+ * back to a download link — an honest empty state beats a broken viewer.
+ */
+export const PREVIEW_KIND: Record<string, "image" | "pdf" | "text" | "csv"> = {
+  "image/png": "image",
+  "image/jpeg": "image",
+  "image/gif": "image",
+  "image/webp": "image",
+  "application/pdf": "pdf",
+  "text/csv": "csv",
+  "text/plain": "text",
+  "text/markdown": "text",
+  "application/json": "text",
+};
+
+export type PreviewKind = (typeof PREVIEW_KIND)[string];
+
+export function previewKindFor(mimeType: string): PreviewKind | null {
+  return PREVIEW_KIND[mimeType] ?? null;
+}
+
+/**
+ * How much of a text/CSV attachment the preview will read.
+ *
+ * A 25 MB CSV is a legal upload, and rendering it into the DOM would hang the
+ * tab. The dialog reads this much, says so, and offers the download for the
+ * rest — a truncated preview that admits it is truncated.
+ */
+export const MAX_PREVIEW_TEXT_BYTES = 256 * 1024;
+
+/** Rows the CSV table shows before it stops and says how many it skipped. */
+export const MAX_PREVIEW_CSV_ROWS = 200;
+
 /** Longest filename accepted. Stored for display only, never used as a key. */
 export const MAX_FILENAME_LENGTH = 200;
 

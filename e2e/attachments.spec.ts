@@ -54,6 +54,20 @@ test("the section states the limit the server actually enforces", async ({ page 
   await expect(sheet.getByText(/Images, PDF, CSV and text/)).toBeVisible();
 });
 
+test("with no files there is nothing to preview", async ({ page }) => {
+  // The preview dialog is driven entirely by attachment rows, and there is no
+  // way to create one without a Worker (see the header). So the coverage that
+  // IS real here is the empty state: no rows, therefore no preview affordance
+  // and no dialog. The preview renderers themselves are covered by unit tests
+  // over the parser (`src/lib/csv.test.ts`) and the disposition rules
+  // (`src/server/attachments/disposition.test.ts`), and by the manual runbook
+  // in docs/ATTACHMENTS.md §7.
+  const sheet = await openSheetFor(page, "Nothing attached here");
+
+  await expect(sheet.getByRole("button", { name: /^Preview / })).toHaveCount(0);
+  await expect(page.locator('[data-slot="dialog-content"]')).toHaveCount(0);
+});
+
 test("a todo with no files shows no attachment count anywhere", async ({ page }) => {
   const title = "Water the plants";
   const sheet = await openSheetFor(page, title);
