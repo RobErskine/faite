@@ -96,6 +96,71 @@ This is cheap only because uploads are cookie-session-only: `user.email` and
 bearer path wanting the raised cap would have to make `ScopeResult`
 (`auth-scopes.ts`) resolve an email first.
 
+## 3a. Preview (EI-243)
+
+Clicking an attachment's name (or its thumbnail) opens a dialog. Four
+renderers, chosen by `PREVIEW_KIND` in `attachment-limits.ts`:
+
+| Type | Rendered by | Notes |
+|---|---|---|
+| PNG / JPEG / GIF / WebP | `<img>` | Already served `inline`; nothing special needed |
+| PDF | `<iframe>` at `?preview=1` | The browser's own viewer — see the warning below |
+| CSV | Our own table | Parsed by `src/lib/csv.ts` |
+| Plain text / Markdown / JSON | `<pre>` | Source, not rendered |
+
+**Text and CSV are fetched as text and drawn by us**, never handed to the
+browser as markup. That is why Markdown previews as source: rendering it
+would mean running an HTML pipeline over an untrusted file, for a nicety.
+Text reads are capped at `MAX_PREVIEW_TEXT_BYTES` and CSV at
+`MAX_PREVIEW_CSV_ROWS`, and the dialog says when it truncated rather than
+silently showing a fraction.
+
+Anything else has no preview and says so. An honest empty state beats a
+viewer that shows a blank rectangle.
+
+### ⚠️ The PDF preview is NOT sandboxed in Chrome
+
+This is the one place where the safe answer and the working answer conflict,
+so the reasoning is written down rather than left in a comment.
+
+`?preview=1` is the only thing that makes the server send `inline` for a PDF,
+and it also attaches `Content-Security-Policy: sandbox allow-scripts`.
+Measured behaviour, in Chrome, not assumed:
+
+- **An iframe with any `sandbox` attribute does not render the PDF at all.**
+  Tried `sandbox=""`, `sandbox="allow-scripts"`, and
+  `sandbox="allow-scripts allow-popups"`. All three show a broken-file icon:
+  200 response, correct bytes, nothing painted, no console error.
+- **The response CSP does not contain Chrome's built-in viewer either.** With
+  the header set and no iframe attribute, the parent page can still read the
+  frame's `contentDocument`, `localStorage`, and `location`. Chrome's viewer
+  is not on the document-sandbox path.
+- The header **does** contain a browser that renders PDFs as an ordinary
+  document — Firefox's pdf.js — which is why it is still sent.
+
+So in Chrome a previewed PDF runs on `myfaite.app`'s origin. That is
+acceptable **only because of this threat model**: an attachment is readable
+by exactly one account, the one that uploaded it, and Faite has no sharing.
+There is no attacker-uploads / victim-views path, which is the scenario that
+makes hosting user content on your own origin dangerous.
+
+### Why not a separate origin
+
+Serving previews from a distinct apex (`faite-usercontent.net`) is the
+strictly correct fix and the one to reach for when the condition below
+changes. It was not done now because it needs its own DNS, its own Worker
+route, and signed URLs — a session cookie is not sent cross-origin, so the
+whole auth model changes with it.
+
+**The trigger is sharing.** The moment one account can view another
+account's attachment — a shared board, a public link, a team — the reasoning
+above collapses and the preview must move to a separate origin before that
+ships.
+
+Tracked as **EI-244**, filed as a blocker on a feature that does not exist
+yet, which is the only way a conditional decision like this survives. If you
+are reading this while building sharing: that ticket is the gate.
+
 ## 4. Security
 
 - **SVG is not allow-listed, and must stay that way.** It is an image
@@ -130,8 +195,9 @@ bearer path wanting the raised cap would have to make `ScopeResult`
   `GET /api/attachments/{id}` themselves — deliberately not a stored URL
   column, since the generic `/api/v1` dispatch returns `schema.parse(row)`
   verbatim and a stored URL would be a second thing to keep true.
-- **CSV and PDF preview.** Images get a thumbnail; everything else is an icon,
-  a name and a download.
+- **Preview of anything beyond images / PDF / CSV / text.** Office formats
+  are zip containers with a stable magic number and would be an allow-list
+  addition plus a renderer; nothing has asked for them.
 - **Drag-and-drop onto a card.** Orthogonal to the board's own dnd — dnd-kit
   runs on `MouseSensor`/`TouchSensor`, not HTML5 drag events
   (`docs/DRAG-AND-DROP.md` §4.8) — so this is available work, not blocked work.
@@ -153,6 +219,10 @@ instead would be worse — a user who deleted everything could never upload
 again. Closing this properly means a sweep (an R2 lifecycle rule, or a
 scheduled pass reconciling `att/{ownerId}/` against live rows).
 
+Tracked as **EI-245**, which also notes that cause 2 above — a deleted to-do
+leaving its attachments behind — is the ordinary path rather than an error
+path, and is worth fixing on its own before any reconciling sweep exists.
+
 ## 7. Testing it end to end
 
 Unit and e2e cover what they can. The upload path needs a live Worker **and**
@@ -173,3 +243,16 @@ npm run preview          # the Worker, with real bindings, on :8787
 6. Remove it → the row goes, and `wrangler r2 object get` now 404s.
 7. Sign in on a second device → the row syncs, and the thumbnail loads from
    R2 without the bytes ever having synced.
+
+**Preview (EI-243), same session:**
+
+8. Click a PNG's name → the image fills the dialog.
+9. Click a PDF's name → the browser's PDF viewer renders inside the dialog,
+   with page thumbnails and zoom. **If it shows a broken-file icon, check
+   whether someone re-added a `sandbox` attribute to the iframe** — that is
+   the known failure, and it looks like a corrupt file rather than a config
+   change.
+10. Click a CSV's name → a table. Test it with a file that has a comma inside
+    a quoted field, a newline inside a quoted field, and a doubled quote;
+    all three are what a naive split gets wrong, and all three are covered by
+    `src/lib/csv.test.ts`.

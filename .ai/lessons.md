@@ -850,3 +850,62 @@ Enumerate the safe values explicitly, so widening the allow-list is a
 deliberate edit in two places rather than an accident in one — and write the
 test for the case that cannot happen yet, because that test is the tripwire
 that makes it stay impossible.
+
+---
+
+## Do not write a security claim you have not measured (EI-243)
+
+The PDF preview was built with two layers of containment: a `sandbox`
+attribute on the iframe, and `Content-Security-Policy: sandbox` on the
+response. Both were commented at length — "renders in an opaque origin", "no
+access to cookies, `localStorage`, or anything belonging to `myfaite.app`",
+"belt and braces".
+
+Every word of that was reasoned from documentation. None of it was true.
+
+Measured in Chrome:
+
+- **Any `sandbox` attribute on the iframe renders nothing at all.** Tried
+  `""`, `allow-scripts`, and `allow-scripts allow-popups`. All three: 200
+  response, correct bytes, a broken-file icon, no console error. Chrome's
+  built-in PDF viewer refuses a sandboxed frame outright.
+- **The response CSP does not contain that viewer either.** With the header
+  set and no iframe attribute, `f.contentDocument`, `f.contentWindow.
+  localStorage` and `f.contentWindow.location` were all readable from the
+  parent. The frame was fully same-origin.
+
+So the feature had a choice between working and contained, and the comments
+described a third state that did not exist. Had it shipped, the next person
+to touch it would have read "opaque origin" and reasoned from a false
+premise — which is worse than no comment, because a wrong invariant gets
+built on.
+
+**Rule:** a comment asserting a security property is a claim, and a claim
+needs a measurement. Before writing "cannot access X", open a browser and try
+to access X. The probe is usually four lines:
+
+```js
+try { f.contentWindow.localStorage; 'READABLE — not contained'; }
+catch (e) { 'contained (' + e.name + ')'; }
+```
+
+**Rule:** when two mechanisms are described as "belt and braces", check they
+are actually independent. Here they were not — the header was inert for this
+content type, so removing the attribute removed *all* the containment, not
+half of it. Redundancy that has never been tested separately is one
+mechanism wearing a disguise.
+
+**On isolating it.** The first diagnosis was wrong: the test PDF was
+hand-written without an xref table, so "the file is corrupt" was a live
+hypothesis competing with "the sandbox blocks it". Generating a real PDF
+(`cupsfilter`) killed that variable, and opening the same URL as a TOP-LEVEL
+tab — where it rendered perfectly, with the CSP header applied — proved the
+header was fine and the iframe attribute was not. Two variables, two
+controls, in that order. Changing both at once would have produced a working
+preview and no idea why.
+
+**Related:** the EI-242 entry above, where `Content-Disposition: attachment`
+silently stopped `<img>` from painting. Same shape, one ticket apart: a
+header chosen for defence, breaking rendering, with a 200 response and
+nothing in the console. Assume every such header is load-bearing on the
+render path until a browser says otherwise.

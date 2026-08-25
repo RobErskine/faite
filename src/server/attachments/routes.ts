@@ -93,8 +93,56 @@ const STATUS_BY_CODE: Record<string, number> = {
  */
 const INLINE_SAFE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
 
-export function contentDisposition(filename: string, mimeType: string): string {
-  const disposition = INLINE_SAFE_TYPES.has(mimeType) ? "inline" : "attachment";
+/**
+ * Types that may render inline ONLY when the caller explicitly asks
+ * (`?preview=1`), and only alongside `PREVIEW_SANDBOX` below.
+ *
+ * PDF is here rather than in `INLINE_SAFE_TYPES` because the two are not
+ * comparable risks. A raster image is inert data. A PDF is a document format
+ * with its own scripting, an embedded-file feature, and a long history of
+ * viewer bugs — so it renders only where we mean it to (inside the preview
+ * dialog's iframe), never as a drive-by navigation someone can be linked
+ * into.
+ */
+const PREVIEW_INLINE_TYPES = new Set(["application/pdf"]);
+
+/**
+ * Sent with every `?preview=1` response.
+ *
+ * **Read the limits before trusting this.** Measured in Chrome, not assumed:
+ *
+ * - In a browser that renders a PDF as an ordinary DOCUMENT — Firefox, which
+ *   uses pdf.js — this sandbox applies, and the file lands in a unique opaque
+ *   origin with no access to `document.cookie`, `localStorage`, or the
+ *   embedding page. That is real containment and worth having.
+ * - **In Chrome it does NOT contain the built-in PDF viewer.** With this
+ *   header set and no `sandbox` attribute on the iframe, the parent can still
+ *   read the frame's `contentDocument`, its `localStorage`, and its
+ *   `location`. Chrome's viewer is not on the document-sandbox path.
+ *
+ * Adding `sandbox` to the iframe *does* contain it in Chrome — and stops the
+ * PDF rendering at all, with every flag combination tried (`""`,
+ * `allow-scripts`, `allow-scripts allow-popups`). Chrome's viewer refuses any
+ * sandboxed frame. So the choice was containment or a working preview, not
+ * both. See `attachment-preview.tsx` for why a working preview won, and
+ * `docs/ATTACHMENTS.md` §"Why not a separate origin" for the condition that
+ * should change the answer — tracked as EI-244.
+ *
+ * `allow-scripts` is required by every renderer that is itself a scripted
+ * document. `allow-same-origin` is deliberately absent and the two must never
+ * both be set: script plus its own origin can reach `parent` and undo the
+ * sandbox, which is the whole thing being prevented.
+ */
+const PREVIEW_SANDBOX = "sandbox allow-scripts";
+
+export function contentDisposition(
+  filename: string,
+  mimeType: string,
+  preview = false,
+): string {
+  const inline =
+    INLINE_SAFE_TYPES.has(mimeType) || (preview && PREVIEW_INLINE_TYPES.has(mimeType));
+  const disposition = inline ? "inline" : "attachment";
   return `${disposition}; filename="${filename}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
 }
 
@@ -125,7 +173,13 @@ export async function handleAttachmentsRequest(
     const match = /^\/api\/attachments\/([^/]+)$/.exec(url.pathname);
     if (match) {
       const id = decodeURIComponent(match[1]);
-      if (request.method === "GET") return await handleDownload(env, id, { userId, stub, headers });
+      if (request.method === "GET") {
+        // `?preview=1` is a rendering hint and nothing more — it widens which
+        // types may go `inline`, and never what the caller is allowed to
+        // read. Ownership is checked identically either way.
+        const preview = url.searchParams.get("preview") === "1";
+        return await handleDownload(env, id, { userId, stub, headers }, preview);
+      }
       if (request.method === "DELETE") return await handleDelete(env, id, { userId, stub, headers });
     }
 
@@ -242,11 +296,12 @@ async function handleUpload(
   );
 }
 
-/** `GET /api/attachments/{id}` — streams the bytes back, never inline. */
+/** `GET /api/attachments/{id}` — streams the bytes back. */
 async function handleDownload(
   env: CloudflareEnv,
   id: string,
   { userId, stub, headers }: Ctx,
+  preview = false,
 ): Promise<Response> {
   const row = await stub.getAttachment(id);
   if (!row) return json({ error: "not-found" }, 404, headers);
@@ -271,12 +326,15 @@ async function handleDownload(
       ...headers,
       "Content-Type": attachment.mimeType,
       "Content-Length": String(attachment.byteSize),
-      // `attachment` for everything but verified raster images — see
-      // `contentDisposition` for why images have to be `inline` and why that
-      // is safe. `nosniff` rides on every response regardless, so the browser
-      // cannot second-guess the type we verified.
-      "Content-Disposition": contentDisposition(attachment.filename, attachment.mimeType),
+      // `attachment` for everything but verified raster images, plus PDF when
+      // `?preview=1` — see `contentDisposition` for why each is where it is.
+      // `nosniff` rides on every response regardless, so the browser cannot
+      // second-guess the type we verified.
+      "Content-Disposition": contentDisposition(attachment.filename, attachment.mimeType, preview),
       "X-Content-Type-Options": "nosniff",
+      // Only on the preview path: an opaque origin for the one response that
+      // renders as a document rather than as data.
+      ...(preview ? { "Content-Security-Policy": PREVIEW_SANDBOX } : {}),
       // Private: this response is session-scoped, and a shared cache holding
       // it would serve one account's file to another.
       "Cache-Control": "private, max-age=31536000, immutable",
