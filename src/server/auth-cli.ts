@@ -35,4 +35,5 @@ export const auth = createAuth({
   // the address list here would give it a second home to drift from, and
   // Better Auth never reads it.
   OWNER_EMAILS: "" as unknown as CloudflareEnv["OWNER_EMAILS"],
+  ATTACHMENTS_ORIGIN: "" as unknown as CloudflareEnv["ATTACHMENTS_ORIGIN"],
 });

@@ -180,23 +180,18 @@ function PreviewBody({ attachment }: { attachment: Attachment }) {
       // iframe — measured with `sandbox=""`, `sandbox="allow-scripts"`, and
       // `sandbox="allow-scripts allow-popups"`. All three show a broken-file
       // icon and nothing else: no error, no console warning, a 200 response
-      // with the right bytes. Removing the attribute is what makes the
-      // preview work at all.
+      // with the right bytes.
       //
-      // The cost is honest: without it, this frame is same-origin, and the
-      // response's `Content-Security-Policy: sandbox` does not contain
-      // Chrome's viewer either (it does contain Firefox's pdf.js, which is a
-      // real document). So a PDF previewed here runs on `myfaite.app`'s
-      // origin in Chrome.
+      // Containment comes from the ORIGIN instead (EI-244). `src` resolves,
+      // via a 302, to `files.myfaite.app` — so this frame is cross-origin and
+      // the same-origin policy isolates it: the app cannot read its
+      // `contentDocument`, and its `localStorage` throws `SecurityError`.
+      // Both measured. That is containment AND rendering, which no sandbox
+      // flag could give.
       //
-      // Acceptable *given this threat model, and only given it*: an
-      // attachment is readable by exactly one account — the one that uploaded
-      // it — and Faite has no sharing. There is no attacker-uploads /
-      // victim-views path, which is the scenario that makes serving user
-      // content from your own origin dangerous. The moment sharing exists,
-      // this has to move to a separate user-content origin. That condition is
-      // EI-244, and it is written down in docs/ATTACHMENTS.md
-      // §"Why not a separate origin" rather than left to memory.
+      // Re-adding `sandbox` would break rendering again and protect nothing
+      // the origin split does not already cover. See docs/ATTACHMENTS.md
+      // §"How the PDF preview is contained".
       <iframe
         src={attachmentPreviewUrl(attachment.id)}
         title={attachment.filename}

@@ -12,7 +12,28 @@
   //
   // This is the canonical origin: src/server/auth.ts derives `baseURL` from it
   // outside development, and every OAuth callback is registered against it.
-  "routes": [{ "pattern": "myfaite.app", "custom_domain": true }],
+  //
+  // `files.myfaite.app` is the USER-CONTENT origin (EI-244). Attachment bytes
+  // are served only from there, against a short-lived signed token, so a
+  // previewed PDF renders in a different origin from the app — which is what
+  // contains it, since a cross-origin iframe is isolated by the same-origin
+  // policy without the `sandbox` attribute that stops Chrome rendering PDFs
+  // at all. `src/server/worker.ts` matches this HOSTNAME before every other
+  // route, so auth, sync and the Next app are all unreachable there.
+  //
+  // Cloudflare creates and manages the DNS record for a custom domain — do
+  // not hand-add one, same as the apex above.
+  //
+  // A subdomain rather than a separate apex is a deliberate, documented
+  // trade: the session cookie is host-only (verified: `Path=/; HttpOnly;
+  // SameSite=Lax`, no `Domain=`), so it never reaches here. The residual is
+  // that a future cookie set with `Domain=.myfaite.app` WOULD — which is why
+  // `attachments/cookie-isolation.test.ts` fails if one ever appears. See
+  // docs/ATTACHMENTS.md §3a.
+  "routes": [
+    { "pattern": "myfaite.app", "custom_domain": true },
+    { "pattern": "files.myfaite.app", "custom_domain": true }
+  ],
 
   // Declaring a route silently turns BOTH of these off by default — wrangler
   // warns about it at the end of a deploy, where it is easy to miss. The old
@@ -81,7 +102,19 @@
     // This is the whole "admin" mechanism in the app. Deliberately: a role
     // system for one raised limit would be a lot of machinery to maintain and
     // one more thing to get wrong.
-    "OWNER_EMAILS": "rob@roberskine.com,roberskine13@gmail.com"
+    "OWNER_EMAILS": "rob@roberskine.com,roberskine13@gmail.com",
+
+    // The user-content origin for attachment bytes (EI-244). Deliberately a
+    // var rather than derived from the request hostname: `wrangler dev`
+    // simulates the configured `routes`, so locally `url.hostname`, the
+    // `Host` header and `request.cf` ALL report production — there is no
+    // runtime signal to derive from, and a derived answer redirects local
+    // development at a hostname that does not resolve.
+    //
+    // Blank it in `.dev.vars` (git-ignored) to serve bytes same-origin
+    // locally. Empty means same-origin, which is functional and NOT
+    // isolated — fine on a laptop, never in production. See docs/SETUP.md.
+    "ATTACHMENTS_ORIGIN": "https://files.myfaite.app"
   },
 
   // Per-IP abuse guard for POST /api/contact (EI-206). Turnstile stops bots,

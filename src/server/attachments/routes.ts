@@ -5,9 +5,11 @@ import {
   MAX_TOTAL_ATTACHMENT_BYTES,
 } from "@/lib/attachment-limits";
 import { attachmentSchema } from "@/lib/schema";
-import { createAuth, getSessionSafe } from "../auth";
+import { createAuth, getSessionSafe, TRUSTED_ORIGINS } from "../auth";
 import { corsHeaders, handleOptions } from "../cors";
 import { isOwnerEmail } from "./is-owner";
+import { fileOriginFor } from "./origin";
+import { mintToken, URL_TTL_MS, verifyToken } from "./signing";
 import { storageKeyFor } from "./storage";
 import { AttachmentRejected, validateUpload } from "./validate";
 
@@ -123,10 +125,15 @@ const PREVIEW_INLINE_TYPES = new Set(["application/pdf"]);
  * Adding `sandbox` to the iframe *does* contain it in Chrome — and stops the
  * PDF rendering at all, with every flag combination tried (`""`,
  * `allow-scripts`, `allow-scripts allow-popups`). Chrome's viewer refuses any
- * sandboxed frame. So the choice was containment or a working preview, not
- * both. See `attachment-preview.tsx` for why a working preview won, and
- * `docs/ATTACHMENTS.md` §"Why not a separate origin" for the condition that
- * should change the answer — tracked as EI-244.
+ * sandboxed frame.
+ *
+ * **That dilemma is resolved and this header is no longer what contains a
+ * PDF.** EI-244 moved bytes to `files.myfaite.app`, so the preview renders
+ * CROSS-ORIGIN and the same-origin policy isolates it — containment and
+ * rendering at once, which no sandbox flag could deliver. The header is kept
+ * because it costs nothing and still does real work in a browser that
+ * renders PDFs as a document. See `docs/ATTACHMENTS.md`
+ * §"How the PDF preview is contained".
  *
  * `allow-scripts` is required by every renderer that is itself a scripted
  * document. `allow-same-origin` is deliberately absent and the two must never
@@ -178,7 +185,13 @@ export async function handleAttachmentsRequest(
         // types may go `inline`, and never what the caller is allowed to
         // read. Ownership is checked identically either way.
         const preview = url.searchParams.get("preview") === "1";
-        return await handleDownload(env, id, { userId, stub, headers }, preview);
+        // `?raw=1` streams from THIS origin instead of redirecting — see
+        // `handleRawDownload`. Used only by the text/CSV preview, which
+        // parses the bytes itself and never lets the browser render them.
+        if (url.searchParams.get("raw") === "1") {
+          return await handleRawDownload(env, id, { userId, stub, headers });
+        }
+        return await handleRedirectToBytes(env, url, id, { userId, preview, headers });
       }
       if (request.method === "DELETE") return await handleDelete(env, id, { userId, stub, headers });
     }
@@ -296,28 +309,81 @@ async function handleUpload(
   );
 }
 
-/** `GET /api/attachments/{id}` — streams the bytes back. */
-async function handleDownload(
+/**
+ * `GET /api/attachments/{id}` — a 302 to the user-content origin (EI-244).
+ *
+ * The bytes are NOT served from here any more. This route authenticates the
+ * session, mints a short-lived signed token, and redirects; the actual object
+ * comes back from `files.myfaite.app`, a different origin, which is what
+ * isolates a previewed PDF from the app.
+ *
+ * A redirect rather than an API returning a URL, for one reason worth stating:
+ * `<img src>`, `<a download>` and `<iframe src>` are all SYNCHRONOUS. Making
+ * the client fetch a URL first would push async state into every component
+ * that renders an attachment. This way not a single call site changed.
+ *
+ * No Durable Object read here. The token carries the session's `userId`, and
+ * the file origin refuses any row whose `ownerId` differs — so a caller can
+ * only ever mint a token for their own attachments, and a bad `id` costs one
+ * lookup on the other side instead of two.
+ */
+async function handleRedirectToBytes(
+  env: CloudflareEnv,
+  url: URL,
+  id: string,
+  { userId, preview, headers }: { userId: string; preview: boolean; headers: HeadersInit },
+): Promise<Response> {
+  const token = await mintToken(
+    { userId, attachmentId: id, expiresAt: Date.now() + URL_TTL_MS, preview },
+    env.BETTER_AUTH_SECRET,
+  );
+  return new Response(null, {
+    status: 302,
+    headers: {
+      ...headers,
+      Location: `${fileOriginFor(url, env.ATTACHMENTS_ORIGIN)}/a/${token}`,
+      // The redirect itself must never be cached: it carries a token that
+      // expires in minutes, and a cached 302 would outlive it and 403.
+      "Cache-Control": "no-store",
+    },
+  });
+}
+
+/**
+ * `GET /api/attachments/{id}?raw=1` — bytes from the APP origin, always as a
+ * download, never inline.
+ *
+ * The isolated origin exists to contain content the BROWSER renders: an
+ * image, a PDF. Text and CSV are fetched by `fetchAttachmentText` and drawn
+ * by us as escaped text, so the browser never interprets them and a second
+ * origin buys nothing.
+ *
+ * It costs something, though, which is why this exists. A cross-origin
+ * `fetch` with `credentials: "include"` — and the credential is needed on the
+ * app origin, to mint the token — forces the final response to carry
+ * `Access-Control-Allow-Credentials: true`. Advertising credential support on
+ * the user-content origin is precisely what that origin is designed not to
+ * do. Keeping this one path same-origin avoids relaxing it.
+ *
+ * **Always `attachment`, never `inline`, regardless of type.** That is what
+ * makes `?raw=1` safe to leave open rather than type-gated: a PDF fetched
+ * this way is downloaded, not rendered on our origin.
+ */
+async function handleRawDownload(
   env: CloudflareEnv,
   id: string,
   { userId, stub, headers }: Ctx,
-  preview = false,
 ): Promise<Response> {
   const row = await stub.getAttachment(id);
   if (!row) return json({ error: "not-found" }, 404, headers);
 
   const parsed = attachmentSchema.safeParse(row);
-  // A row that fails its own schema is a half-written or pre-validation row,
-  // not something to serve bytes for on a guess.
-  if (!parsed.success) return json({ error: "not-found" }, 404, headers);
+  if (!parsed.success || parsed.data.ownerId !== userId) {
+    return json({ error: "not-found" }, 404, headers);
+  }
   const attachment = parsed.data;
 
-  // Belt and braces — the DO is already per-user (see `getAttachment`).
-  if (attachment.ownerId !== userId) return json({ error: "not-found" }, 404, headers);
-
   const object = await env.ATTACHMENTS.get(attachment.storageKey);
-  // A row whose object is missing: possible only if a delete half-completed.
-  // 404 rather than 500 — nothing is broken that a retry would fix.
   if (!object) return json({ error: "not-found" }, 404, headers);
 
   return new Response(object.body, {
@@ -326,20 +392,81 @@ async function handleDownload(
       ...headers,
       "Content-Type": attachment.mimeType,
       "Content-Length": String(attachment.byteSize),
-      // `attachment` for everything but verified raster images, plus PDF when
-      // `?preview=1` — see `contentDisposition` for why each is where it is.
-      // `nosniff` rides on every response regardless, so the browser cannot
-      // second-guess the type we verified.
-      "Content-Disposition": contentDisposition(attachment.filename, attachment.mimeType, preview),
+      // `preview` is deliberately not threaded here — this path never serves
+      // inline, whatever the caller asks for.
+      "Content-Disposition": contentDisposition(attachment.filename, attachment.mimeType, false),
       "X-Content-Type-Options": "nosniff",
-      // Only on the preview path: an opaque origin for the one response that
-      // renders as a document rather than as data.
-      ...(preview ? { "Content-Security-Policy": PREVIEW_SANDBOX } : {}),
-      // Private: this response is session-scoped, and a shared cache holding
-      // it would serve one account's file to another.
-      "Cache-Control": "private, max-age=31536000, immutable",
+      "Cache-Control": "private, max-age=300",
     },
   });
+}
+
+/**
+ * `GET https://files.myfaite.app/a/{token}` — the bytes, on the isolated
+ * origin (EI-244).
+ *
+ * **This handler has no cookie path and must never grow one.** The session
+ * cookie is host-only, so it does not reach this origin at all — which is the
+ * property that makes serving someone's PDF here safe. A credential on this
+ * origin would hand a hostile file something worth stealing.
+ *
+ * Ownership is re-checked against the token's `userId` even though the token
+ * is signed: defence that depends on nothing but the row itself.
+ */
+export async function handleFileOriginRequest(
+  request: Request,
+  env: CloudflareEnv,
+): Promise<Response> {
+  const url = new URL(request.url);
+  const match = /^\/a\/([^/]+)$/.exec(url.pathname);
+  if (!match || request.method !== "GET") {
+    return new Response("not found", { status: 404 });
+  }
+
+  const verified = await verifyToken(match[1], env.BETTER_AUTH_SECRET, Date.now());
+  // One status for every refusal — forged, expired, malformed. Telling them
+  // apart tells an attacker which half of the token to keep working on.
+  if (!verified.ok) return new Response("forbidden", { status: 403 });
+
+  const { userId, attachmentId, preview } = verified.payload;
+  const stub = env.USER_DO.get(env.USER_DO.idFromName(userId));
+  const row = await stub.getAttachment(attachmentId);
+  if (!row) return new Response("not found", { status: 404 });
+
+  const parsed = attachmentSchema.safeParse(row);
+  if (!parsed.success || parsed.data.ownerId !== userId) {
+    return new Response("not found", { status: 404 });
+  }
+  const attachment = parsed.data;
+
+  const object = await env.ATTACHMENTS.get(attachment.storageKey);
+  if (!object) return new Response("not found", { status: 404 });
+
+  return new Response(object.body, {
+    status: 200,
+    headers: {
+      "Content-Type": attachment.mimeType,
+      "Content-Length": String(attachment.byteSize),
+      "Content-Disposition": contentDisposition(attachment.filename, attachment.mimeType, preview),
+      "X-Content-Type-Options": "nosniff",
+      ...(preview ? { "Content-Security-Policy": PREVIEW_SANDBOX } : {}),
+      // `fetch()` follows the app origin's redirect to here, so the TEXT
+      // preview needs CORS. `<img>`/`<iframe>` do not, but the header is
+      // harmless for them. No `Allow-Credentials` — there is no credential
+      // on this origin and there must never be one.
+      "Access-Control-Allow-Origin": corsAllowedOrigin(request),
+      Vary: "Origin",
+      // Safe to cache hard: the URL is signed and expires, and the object it
+      // names is immutable for the life of that token.
+      "Cache-Control": "private, max-age=300",
+    },
+  });
+}
+
+/** Echoes a trusted app origin, or nothing. Never `*`. */
+function corsAllowedOrigin(request: Request): string {
+  const origin = request.headers.get("Origin");
+  return origin && TRUSTED_ORIGINS.includes(origin) ? origin : "null";
 }
 
 /**
