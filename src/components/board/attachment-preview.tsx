@@ -194,8 +194,9 @@ function PreviewBody({ attachment }: { attachment: Attachment }) {
       // it — and Faite has no sharing. There is no attacker-uploads /
       // victim-views path, which is the scenario that makes serving user
       // content from your own origin dangerous. The moment sharing exists,
-      // this has to move to a separate user-content origin; that condition is
-      // written down in docs/ATTACHMENTS.md §5 rather than left to memory.
+      // this has to move to a separate user-content origin. That condition is
+      // EI-244, and it is written down in docs/ATTACHMENTS.md
+      // §"Why not a separate origin" rather than left to memory.
       <iframe
         src={attachmentPreviewUrl(attachment.id)}
         title={attachment.filename}

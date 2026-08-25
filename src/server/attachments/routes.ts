@@ -125,7 +125,8 @@ const PREVIEW_INLINE_TYPES = new Set(["application/pdf"]);
  * `allow-scripts`, `allow-scripts allow-popups`). Chrome's viewer refuses any
  * sandboxed frame. So the choice was containment or a working preview, not
  * both. See `attachment-preview.tsx` for why a working preview won, and
- * `docs/ATTACHMENTS.md` §5 for the condition that should change the answer.
+ * `docs/ATTACHMENTS.md` §"Why not a separate origin" for the condition that
+ * should change the answer — tracked as EI-244.
  *
  * `allow-scripts` is required by every renderer that is itself a scripted
  * document. `allow-same-origin` is deliberately absent and the two must never

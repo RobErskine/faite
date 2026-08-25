@@ -155,7 +155,11 @@ whole auth model changes with it.
 **The trigger is sharing.** The moment one account can view another
 account's attachment — a shared board, a public link, a team — the reasoning
 above collapses and the preview must move to a separate origin before that
-ships. Nothing enforces this but this paragraph.
+ships.
+
+Tracked as **EI-244**, filed as a blocker on a feature that does not exist
+yet, which is the only way a conditional decision like this survives. If you
+are reading this while building sharing: that ticket is the gate.
 
 ## 4. Security
 
@@ -214,6 +218,10 @@ under-counts real storage by however much is orphaned. Counting tombstones
 instead would be worse — a user who deleted everything could never upload
 again. Closing this properly means a sweep (an R2 lifecycle rule, or a
 scheduled pass reconciling `att/{ownerId}/` against live rows).
+
+Tracked as **EI-245**, which also notes that cause 2 above — a deleted to-do
+leaving its attachments behind — is the ordinary path rather than an error
+path, and is worth fixing on its own before any reconciling sweep exists.
 
 ## 7. Testing it end to end
 
