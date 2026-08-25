@@ -20,7 +20,9 @@ vi.mock("@/lib/attachments", () => ({
   AttachmentError: class AttachmentError extends Error {},
 }));
 
-const { createAttachment, deleteAttachment } = await import("./repositories");
+const { createAttachment, deleteAttachment, createTodo, deleteTodo } = await import(
+  "./repositories"
+);
 
 const TODO_ID = "todo-1";
 
@@ -92,6 +94,76 @@ describe("createAttachment", () => {
     // every device, with nothing to repair it.
     expect(await getDb().attachments.count()).toBe(0);
     expect(await getDb().outbox.count()).toBe(0);
+  });
+});
+
+describe("deleteTodo cascade (EI-245)", () => {
+  async function todoWithTwoFiles() {
+    uploadAttachment.mockImplementation(async (_f, todoId, id) => ({
+      ...uploadResult(id),
+      todoId,
+    }));
+    const todoId = await createTodo({ title: "Has files" });
+    const a = await createAttachment({ name: "a.pdf" } as File, todoId);
+    const b = await createAttachment({ name: "b.pdf" } as File, todoId);
+    return { todoId, a, b };
+  }
+
+  it("tombstones the todo's attachments, which used to be left live forever", async () => {
+    const { todoId, a, b } = await todoWithTwoFiles();
+
+    await deleteTodo(todoId);
+
+    const db = getDb();
+    expect((await db.attachments.get(a))?.deletedAt).toBeTruthy();
+    expect((await db.attachments.get(b))?.deletedAt).toBeTruthy();
+  });
+
+  it("NEVER deletes the bytes — a todo delete is undoable and R2 is not", async () => {
+    // The load-bearing assertion of this whole change. Deleting the objects
+    // here would make ⌘Z restore rows pointing at nothing, which is exactly
+    // the state EI-242's bytes-first ordering exists to prevent. The bytes
+    // are collected later by a sweep that only touches unreferenced objects.
+    const { todoId } = await todoWithTwoFiles();
+
+    await deleteTodo(todoId);
+
+    expect(deleteAttachmentBytes).not.toHaveBeenCalled();
+  });
+
+  it("returns the tombstoned ids so they can join the caller's undo entry", async () => {
+    const { todoId, a, b } = await todoWithTwoFiles();
+    expect((await deleteTodo(todoId)).sort()).toEqual([a, b].sort());
+  });
+
+  it("leaves another todo's attachments alone", async () => {
+    const { todoId } = await todoWithTwoFiles();
+    const otherTodo = await createTodo({ title: "Untouched" });
+    const other = await createAttachment({ name: "c.pdf" } as File, otherTodo);
+
+    await deleteTodo(todoId);
+
+    expect((await getDb().attachments.get(other))?.deletedAt).toBeNull();
+  });
+
+  it("does not re-tombstone an already-removed attachment", async () => {
+    const { todoId, a, b } = await todoWithTwoFiles();
+    await deleteAttachment(a);
+    deleteAttachmentBytes.mockClear();
+
+    // Only the still-live one comes back, so undo cannot resurrect a file the
+    // user had already removed on purpose — and whose bytes really are gone.
+    expect(await deleteTodo(todoId)).toEqual([b]);
+  });
+
+  it("enqueues each tombstone for sync like any other write", async () => {
+    const { todoId, a } = await todoWithTwoFiles();
+    await deleteTodo(todoId);
+
+    const outbox = await getDb().outbox.toArray();
+    const entry = outbox.filter((e) => e.entityId === a).at(-1);
+    expect(entry?.kind).toBe("attachment");
+    expect(entry?.patch).toMatchObject({ deletedAt: expect.any(String) });
   });
 });
 

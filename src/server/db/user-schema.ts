@@ -166,6 +166,20 @@ export const attachments = sqliteTable("attachments", {
   mimeType: text("mime_type"),
   byteSize: integer("byte_size"),
   storageKey: text("storage_key"),
+  /**
+   * When the orphan sweep deleted this row's R2 object (EI-245).
+   *
+   * SERVER-ONLY, exactly like `version`: never in the Zod schema, listed in
+   * `SERVER_ONLY_FIELDS` so it is neither client-writable nor emitted on
+   * pull. A client has no use for it — the row is a tombstone by the time it
+   * is set, and the bytes it describes are gone either way.
+   *
+   * Its whole job is to keep the sweep's query bounded. Without it, every
+   * already-swept tombstone matches the sweep query forever and the alarm
+   * re-issues a delete for an object that is long gone — harmless (R2's
+   * delete is idempotent) but unbounded, and growing with the account.
+   */
+  sweptAt: text("swept_at"),
 });
 
 /** Named reminder times — see `reminderPresetSchema` in `lib/schema.ts`. */

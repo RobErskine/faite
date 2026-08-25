@@ -18,6 +18,13 @@ import type { FieldClockMap } from "./sync/apply-patch";
 import { COLUMNS_BY_KIND, rowFromSqlRow, TABLE_NAME_BY_KIND, toColumnValue } from "./sync/columns";
 import { type KindPage, mergePages } from "./sync/pull";
 import { groupByEntity, resolveEntityPush, validateEntries } from "./sync/push";
+import {
+  SWEEP_AFTER_MS,
+  SWEEP_BATCH,
+  shouldRescheduleImmediately,
+  shouldScheduleSweep,
+  sweepCutoff,
+} from "./attachments/sweep";
 import { chunkForInClause } from "./sync/sql-limits";
 import { buildInsertColumns } from "./sync/upsert";
 import { clampPullArgs, parsePushRequest } from "./sync/validate";
@@ -76,6 +83,10 @@ const ORDER_BY_KIND = {
 } as const;
 
 export type ListableKind = keyof typeof ORDER_BY_KIND;
+
+// The sweep's judgement calls live in `./attachments/sweep.ts` — pure, and
+// therefore testable without SQLite, R2, or an alarm. What stays here is the
+// mechanical half: run the query, delete, stamp.
 
 /**
  * Per-user Durable Object. Authoritative store for one user's todos/lists/labels
@@ -602,6 +613,7 @@ export class UserDurableObject extends DurableObject {
     const groups = groupByEntity(accepted);
     const conflicts: PushResponse["conflicts"] = [];
     let highestVersion = 0;
+    let tombstonedAttachment = false;
     const nowIso = new Date().toISOString();
 
     this.ctx.storage.transactionSync(() => {
@@ -625,6 +637,13 @@ export class UserDurableObject extends DurableObject {
           const row = buildInsertColumns(group.kind, group.entityId, userId, resolution.apply, nowIso, version);
           this.insertRow(group.kind, tableName, row);
         }
+        // An attachment gaining a `deletedAt` is the one write that creates
+        // collectable bytes (EI-245). Noted here rather than swept here: the
+        // objects must outlive the undo window, and this closure has to stay
+        // synchronous for `transactionSync`.
+        if (group.kind === "attachment" && resolution.apply.deletedAt != null) {
+          tombstonedAttachment = true;
+        }
         this.writeFieldClocks(group.entityId, group.kind, resolution.clockUpdates);
         highestVersion = Math.max(highestVersion, version);
       }
@@ -635,6 +654,11 @@ export class UserDurableObject extends DurableObject {
     // no version at all (see the `continue` above). Broadcasting on those
     // would wake every device on every retry to pull nothing.
     if (highestVersion > 0) this.broadcastChanged(highestVersion, originWs);
+
+    // After the transaction, and only when this push actually tombstoned an
+    // attachment — scheduling on every push would mean an alarm on every
+    // account that has never attached anything.
+    if (tombstonedAttachment) await this.scheduleSweep();
 
     return {
       acked: accepted.map((entry) => entry.id),
@@ -675,6 +699,74 @@ export class UserDurableObject extends DurableObject {
         console.warn("[faite] broadcast to a socket failed", error);
       }
     }
+  }
+
+  /**
+   * Deletes R2 objects belonging to attachments that were tombstoned long
+   * enough ago to be past undo (EI-245).
+   *
+   * Runs on a Durable Object alarm rather than a global cron for the reason
+   * the whole DO design exists: this object already knows its own rows, and
+   * its R2 keys are namespaced by owner, so there is nothing to fan out over
+   * and no cross-account query to get wrong. Alarms were previously unused
+   * here, so this conflicts with nothing.
+   *
+   * `swept_at` is what keeps the query bounded. R2's delete is idempotent, so
+   * re-deleting would be harmless — but without the mark, every tombstone
+   * this account has ever produced matches forever and the alarm's work grows
+   * without limit.
+   *
+   * Reschedules itself while a full batch keeps coming back, so a bulk delete
+   * drains over several alarms instead of one long one.
+   */
+  async alarm(): Promise<void> {
+    const cutoff = sweepCutoff(Date.now());
+    const rows = this.ctx.storage.sql
+      .exec<{ id: string; storage_key: string }>(
+        `SELECT id, storage_key FROM attachments
+          WHERE deleted_at IS NOT NULL
+            AND deleted_at < ?
+            AND storage_key IS NOT NULL
+            AND swept_at IS NULL
+          LIMIT ?`,
+        cutoff,
+        SWEEP_BATCH,
+      )
+      .toArray();
+
+    if (rows.length === 0) return;
+
+    const sweptAt = new Date().toISOString();
+    for (const row of rows) {
+      try {
+        await this.env.ATTACHMENTS.delete(row.storage_key);
+      } catch (error) {
+        // Leave `swept_at` NULL so the next alarm retries this one. An object
+        // we failed to delete is wasted storage, not a broken row, so this
+        // must never take down the rest of the batch.
+        console.warn(`[faite] sweep failed for ${row.storage_key}`, error);
+        continue;
+      }
+      // Written directly, NOT through the sync path: `swept_at` is in
+      // `SERVER_ONLY_FIELDS`, so it has no client-side meaning and allocating
+      // a `version` for it would wake every device to deliver a field none of
+      // them can see.
+      this.ctx.storage.sql.exec("UPDATE attachments SET swept_at = ? WHERE id = ?", sweptAt, row.id);
+    }
+
+    if (shouldRescheduleImmediately(rows.length)) await this.scheduleSweep(0);
+  }
+
+  /**
+   * Ensures an alarm exists to collect tombstoned attachments.
+   *
+   * Only sets one when none is pending: `setAlarm` overwrites, so calling it
+   * on every push would push the sweep permanently into the future on an
+   * active account — the one whose files most need collecting.
+   */
+  private async scheduleSweep(delayMs: number = SWEEP_AFTER_MS): Promise<void> {
+    if (!shouldScheduleSweep(await this.ctx.storage.getAlarm())) return;
+    await this.ctx.storage.setAlarm(Date.now() + delayMs);
   }
 
   /** `since=version` pull across every sync kind — see `pull.ts`'s `mergePages`. */

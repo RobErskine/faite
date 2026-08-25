@@ -21,7 +21,8 @@
  * Set as `main` in wrangler.jsonc via the build script (see package.json).
  */
 import openNextHandler from "open-next/worker";
-import { handleAttachmentsRequest } from "./attachments/routes";
+import { isFileOriginRequest } from "./attachments/origin";
+import { handleAttachmentsRequest, handleFileOriginRequest } from "./attachments/routes";
 import { createAuth } from "./auth";
 import { handleContactRequest } from "./contact/routes";
 import { handleOptions, withCors } from "./cors";
@@ -37,7 +38,27 @@ export { UserDurableObject } from "./user-do";
 
 export default {
   fetch(request, env, ctx) {
-    const pathname = new URL(request.url).pathname;
+    const url = new URL(request.url);
+    const pathname = url.pathname;
+
+    // FIRST, before anything else can claim it (EI-244). `files.myfaite.app`
+    // is the user-content origin: it serves attachment bytes against a signed
+    // token and nothing else. Everything below this line — auth, sync, the
+    // Next app — is deliberately unreachable there, because the whole value
+    // of the split is that a hostile file renders somewhere with no session,
+    // no cookies, and no app to talk to.
+    //
+    // A path check would not do. This is a HOSTNAME check, so `/a/...` on the
+    // app origin is still just a 404 from Next.
+    if (isFileOriginRequest(url)) {
+      return handleFileOriginRequest(request, env);
+    }
+    // The same token path, served locally and on previews where there is no
+    // second hostname to redirect to (see `fileOriginFor`). Not isolated
+    // there, and documented as such.
+    if (pathname.startsWith("/a/")) {
+      return handleFileOriginRequest(request, env);
+    }
 
     if (pathname.startsWith("/api/auth")) {
       // CORS is applied HERE rather than inside Better Auth because Better Auth

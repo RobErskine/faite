@@ -134,6 +134,30 @@ export function attachEventIds(entryId: string, eventIds: string[]): void {
 }
 
 /**
+ * Adds steps to an already-pushed entry, once a forward write has revealed
+ * which rows it touched (EI-245).
+ *
+ * Same shape and same reason as `attachEventIds` above: `handleDelete` pushes
+ * its undo entry BEFORE awaiting the write, so the toast can appear
+ * instantly — but deleting a todo also tombstones that todo's attachments,
+ * and which rows those are is only known once the delete has read them.
+ * Without this, ⌘Z would restore the todo and silently leave its files
+ * detached, which reads as data loss rather than as an undo.
+ *
+ * Appended, not prepended: the todo has to come back before rows that point
+ * at it, the same ordering rule `undoListDeletion` follows one level up.
+ *
+ * A no-op if the entry is gone (already undone, or evicted past `MAX_UNDO`) —
+ * there is nothing left to add to, and the rows stay tombstoned, which is
+ * what the user asked for in the first place.
+ */
+export function appendUndoSteps(entryId: string, steps: UndoStep[]): void {
+  if (steps.length === 0) return;
+  const entry = stack.find((e) => e.id === entryId);
+  entry?.steps.push(...steps);
+}
+
+/**
  * Apply an entry's steps as ordinary writes.
  *
  * Kept standalone because it is the seam redo will need: computing the
