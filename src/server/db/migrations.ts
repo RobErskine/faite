@@ -319,6 +319,18 @@ export const USER_DB_MIGRATIONS: readonly UserDbMigration[] = [
       "CREATE INDEX IF NOT EXISTS attachments_todo_id_idx ON attachments (todo_id)",
     ],
   },
+  {
+    id: 19,
+    name: "attachments-add-swept-at",
+    statements: [
+      // Nullable, server-only. Marks a tombstoned attachment whose R2 object
+      // the sweep has already deleted, so the alarm's query stays bounded
+      // instead of re-deleting long-gone objects forever. See the column's
+      // doc comment in `user-schema.ts` and `SERVER_ONLY_FIELDS` in
+      // `lib/sync/wire.ts` — it is never sent to a client.
+      "ALTER TABLE attachments ADD COLUMN swept_at text",
+    ],
+  },
   // Add new migrations here. Never edit one above this line.
   //
   // Example — adding a nullable column (the safe, ordinary case):

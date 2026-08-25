@@ -211,17 +211,48 @@ object outlives its row:
 2. A todo is deleted. **Its attachments' bytes are not swept today.** Known
    debt, called out rather than hidden.
 3. An upload succeeds and the row write never happens (a crash between the
-   two).
+   two). **Still open** — the sweep works from rows, and this leaves no row
+   to work from. Closing it needs a reconciling pass that lists
+   `att/{ownerId}/` and compares against live rows, with a minimum object age
+   so it cannot race an upload in flight.
 
 `attachmentBytesTotal()` counts non-deleted rows only, so the quota
 under-counts real storage by however much is orphaned. Counting tombstones
 instead would be worse — a user who deleted everything could never upload
-again. Closing this properly means a sweep (an R2 lifecycle rule, or a
-scheduled pass reconciling `att/{ownerId}/` against live rows).
+again.
 
-Tracked as **EI-245**, which also notes that cause 2 above — a deleted to-do
-leaving its attachments behind — is the ordinary path rather than an error
-path, and is worth fixing on its own before any reconciling sweep exists.
+**EI-245 closed causes 1 and 2. Cause 3 is still open**, and is a crash
+window rather than a routine path.
+
+### How collection works now
+
+Two halves, and the split is the whole design:
+
+1. **Deleting a to-do cascades a TOMBSTONE to its attachments**, and
+   deliberately does not touch R2 (`deleteTodo`,
+   `src/lib/store/repositories.ts`). A to-do delete is undoable — ⌘Z restores
+   the rows — so deleting the bytes there would produce live rows pointing at
+   nothing, the mirror image of the failure the bytes-first ordering
+   prevents. `deleteTodo` returns the tombstoned ids so they join the same
+   undo entry; without that, ⌘Z restored the to-do with its files silently
+   detached.
+2. **A Durable Object alarm collects the bytes once the tombstone is past
+   undo** (`UserDurableObject.alarm()`, window in
+   `src/server/attachments/sweep.ts`). A DO alarm rather than a global cron
+   because this object already knows its own rows and its R2 keys are
+   namespaced by owner — nothing to fan out over, no cross-account query to
+   get wrong. Alarms were unused here before, so it conflicts with nothing.
+
+`swept_at` is a **server-only column** (same footing as `version`: in
+`SERVER_ONLY_FIELDS`, absent from the Zod schema, never sent to a client).
+R2's delete is idempotent, so re-deleting would be harmless — but without the
+mark, every tombstone the account has ever produced matches the sweep query
+forever and the alarm's work grows without bound.
+
+**The window is an undo window, not a tidiness setting.** Shortening it below
+the time a person can press ⌘Z reintroduces exactly the bug the two-phase
+design exists to avoid. `sweep.test.ts` asserts the refusals rather than the
+collections, for that reason.
 
 ## 7. Testing it end to end
 

@@ -77,6 +77,7 @@ import {
 import { now } from "@/lib/store/mutate";
 import type { Verdict } from "@/lib/overdrive";
 import {
+  appendUndoSteps,
   attachEventIds,
   createUndoStep,
   inversePatch,
@@ -1518,7 +1519,20 @@ export function useBoardActions(
       ]);
       void (async () => {
         await materializeIfNeeded(before);
-        await deleteTodo(id);
+        // Deleting a todo tombstones its attachments too (EI-245), and which
+        // rows those are is only known once the delete has read them — so
+        // they join the undo entry after the fact, exactly like
+        // `attachEventIds`. Without this, ⌘Z restores the todo with its files
+        // silently detached, which reads as data loss, not as an undo.
+        const attachmentIds = await deleteTodo(id);
+        appendUndoSteps(
+          entryId,
+          attachmentIds.map((attachmentId) => ({
+            kind: "attachment" as const,
+            entityId: attachmentId,
+            patch: { deletedAt: null },
+          })),
+        );
       })();
       toast.success(label, {
         duration: 8000,

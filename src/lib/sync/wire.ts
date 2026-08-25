@@ -180,6 +180,10 @@ export const SERVER_ONLY_FIELDS: ReadonlySet<string> = new Set([
   "version",
   "id",
   "ownerId",
+  // EI-245. Bookkeeping for the attachment orphan sweep — set by the DO's
+  // alarm, meaningless to a client, and never client-writable. Same footing
+  // as `version`: a real column that deliberately has no Zod field.
+  "sweptAt",
 ]);
 
 // ---- push -------------------------------------------------------------

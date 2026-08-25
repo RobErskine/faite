@@ -381,7 +381,13 @@ export async function reorderTodo(id: string, position: string): Promise<void> {
  * `{deletedAt: null}` through mutate() like any other patch, so a bespoke
  * restore helper would be a second way to do the same thing.
  */
-export async function deleteTodo(id: string): Promise<void> {
+/**
+ * Soft-delete a todo, its parent link on any children, and its attachments.
+ *
+ * Returns the ids of the attachment rows it tombstoned, so the caller can
+ * make them part of the same undo.
+ */
+export async function deleteTodo(id: string): Promise<string[]> {
   const db = getDb();
   const children = await db.todos.filter((t) => t.parentId === id && !t.deletedAt).toArray();
   for (const child of children) {
@@ -394,7 +400,39 @@ export async function deleteTodo(id: string): Promise<void> {
   // exempt from `EditedPayload`'s no-title rule.
   const todo = await db.todos.get(id);
   const title = todo ? todo.title.slice(0, DELETED_TITLE_MAX_LENGTH) : "";
+
+  // Cascade to this todo's attachments (EI-245). Before this, deleting a todo
+  // left its files behind entirely: the rows stayed live, so they still
+  // counted against the storage quota and no sweep could ever tell they were
+  // dead. That was the ORDINARY path, not an error path.
+  //
+  // **Tombstones only. The R2 objects are deliberately NOT deleted here**,
+  // and that is the whole design of this function. Deleting a todo is
+  // undoable — `handleDelete` shows an 8-second Undo toast — so removing the
+  // bytes would make ⌘Z restore rows pointing at objects that no longer
+  // exist, which is precisely the state EI-242's bytes-first ordering
+  // invariant exists to make impossible. A tombstone is reversible; a DELETE
+  // against R2 is not.
+  //
+  // The bytes are collected later by a sweep that only touches objects with
+  // no live row (EI-245's second half). This cascade is what MAKES that sweep
+  // possible: until the rows are tombstoned, a sweep cannot distinguish an
+  // attachment of a deleted todo from a live one.
+  const attachments = await db.attachments
+    .where("todoId")
+    .equals(id)
+    .filter((a) => !a.deletedAt)
+    .toArray();
+  for (const attachment of attachments) {
+    await remove("attachment", attachment.id);
+  }
+
   await remove("todo", id, { events: [logTodoEvent(id, "deleted", { v: 1, title })] });
+
+  // Returned so the caller can extend its undo entry — see
+  // `appendUndoSteps` (`lib/undo.ts`). Without it, ⌘Z brings the todo back
+  // with its files silently detached.
+  return attachments.map((a) => a.id);
 }
 
 // ---------------------------------------------------------------------------
