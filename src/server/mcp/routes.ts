@@ -3,6 +3,7 @@ import type { AuthInfo } from "@modelcontextprotocol/server";
 import { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import {
+  attachmentSchema,
   idSchema,
   labelSchema,
   listSchema,
@@ -180,6 +181,10 @@ function listLabels(stub: DurableObjectStub<UserDurableObject>): ReturnType<User
 
 function listTabs(stub: DurableObjectStub<UserDurableObject>): ReturnType<UserDurableObject["listEntities"]> {
   return stub.listEntities("tab");
+}
+
+function listAttachments(stub: DurableObjectStub<UserDurableObject>): ReturnType<UserDurableObject["listEntities"]> {
+  return stub.listEntities("attachment");
 }
 
 /** Fetches, then applies `settingsOrDefault`'s (`./settings-defaults`)
@@ -362,6 +367,23 @@ function buildServer(
       requireScope(identity, "read");
       const rows = await listLabels(stub);
       return textResult(rows.map((row) => labelSchema.parse(row)));
+    },
+  );
+
+  server.registerTool(
+    "list_attachments",
+    {
+      description:
+        "List the files attached to the caller's to-dos, across every to-do. " +
+        "Join on `todoId` to find one to-do's files. Each row is metadata only — " +
+        "fetch the file itself from GET /api/attachments/{id} on the same host, " +
+        "with the same credentials. Read-only: attaching a file needs the app UI.",
+      inputSchema: {},
+    },
+    async () => {
+      requireScope(identity, "read");
+      const rows = await listAttachments(stub);
+      return textResult(rows.map((row) => attachmentSchema.parse(row)));
     },
   );
 

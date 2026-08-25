@@ -39,11 +39,14 @@ const EXPECTED_INTERNAL_PATHS = [
   "/api/email/address",
   "/api/email/address/rotate",
   "/api/contact",
+  "/api/attachments",
+  "/api/attachments/{id}",
   "/api/v1/todos",
   "/api/v1/todos/{id}",
   "/api/v1/lists",
   "/api/v1/labels",
   "/api/v1/tabs",
+  "/api/v1/attachments",
 ];
 
 describe("buildInternalDocument", () => {
@@ -92,9 +95,10 @@ describe("buildInternalDocument", () => {
 });
 
 describe("buildPublicDocument", () => {
-  it("documents the four A2 (EI-227) reads plus A5's (EI-230) two todo writes, nothing else", () => {
+  it("documents A2 (EI-227) reads plus A5's (EI-230) two todo writes, nothing else", () => {
     expect(Object.keys(buildPublicDocument().paths ?? {}).sort()).toEqual(
       [
+        "/api/v1/attachments",
         "/api/v1/labels",
         "/api/v1/lists",
         "/api/v1/tabs",
@@ -104,12 +108,15 @@ describe("buildPublicDocument", () => {
     );
   });
 
-  it("todos gained POST; lists/labels/tabs stay GET-only", () => {
+  it("todos gained POST; every other resource stays GET-only", () => {
     const paths = buildPublicDocument().paths ?? {};
     expect(paths["/api/v1/todos"]).toHaveProperty("post");
     expect(paths["/api/v1/lists"]).not.toHaveProperty("post");
     expect(paths["/api/v1/labels"]).not.toHaveProperty("post");
     expect(paths["/api/v1/tabs"]).not.toHaveProperty("post");
+    // EI-242: a write here would have to carry file bytes, and this API is
+    // JSON. Uploads go to POST /api/attachments, which is session-only.
+    expect(paths["/api/v1/attachments"]).not.toHaveProperty("post");
   });
 
   it("validates as OpenAPI 3.1", async () => {

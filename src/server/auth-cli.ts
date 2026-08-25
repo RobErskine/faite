@@ -30,4 +30,9 @@ export const auth = createAuth({
   EMAIL_INGEST_DOMAIN: "in.myfaite.app",
   TURNSTILE_SECRET_KEY: "",
   CONTACT_RATE_LIMITER: {} as unknown as CloudflareEnv["CONTACT_RATE_LIMITER"],
+  ATTACHMENTS: {} as unknown as CloudflareEnv["ATTACHMENTS"],
+  // Cast rather than the literal wrangler generated from `vars`: repeating
+  // the address list here would give it a second home to drift from, and
+  // Better Auth never reads it.
+  OWNER_EMAILS: "" as unknown as CloudflareEnv["OWNER_EMAILS"],
 });

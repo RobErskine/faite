@@ -94,6 +94,11 @@ interface TodoCardProps {
    * todo with no sub-tasks has nothing to report progress on.
    */
   subtaskCount?: { done: number; total: number } | null;
+  /**
+   * How many files are attached (EI-242) — see `use-board-data.ts`'s
+   * `attachmentCounts`. Undefined or 0 shows no badge.
+   */
+  attachmentCount?: number;
 }
 
 export function TodoCard({
@@ -115,6 +120,7 @@ export function TodoCard({
   missedCount,
   recurrenceSummary,
   subtaskCount,
+  attachmentCount,
 }: TodoCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: todo.id });
@@ -563,6 +569,7 @@ export function TodoCard({
           overflow={overflowInfo}
           reminderPresets={reminderPresets}
           subtaskCount={subtaskCount}
+          attachmentCount={attachmentCount}
         />
       </button>
     </div>

@@ -37,6 +37,7 @@ import {
 import {
   useArchivedLists,
   useArchivedTabs,
+  useAttachmentCounts,
   useBootstrap,
   useDayNotes,
   useLabels,
@@ -225,6 +226,19 @@ export function useBoardData(params: UseBoardDataParams) {
     }
     return counts;
   }, [todos]);
+
+  /**
+   * Attachment counts per todo (EI-242), for `TodoMetaBadges`' paperclip.
+   *
+   * One `attachments.toArray()` for the whole board rather than a query per
+   * card — same shape as `subtaskCounts` above, and the same reason: a card
+   * must not open its own live query. `useAttachments` (the per-todo hook) is
+   * for the sheet, where exactly one todo is in play.
+   *
+   * A todo absent from this map has no attachments, which is what keeps the
+   * badge off every ordinary card.
+   */
+  const attachmentCounts = useAttachmentCounts();
 
   /**
    * `visibleTodos` split into recurrence templates (never rendered directly —
@@ -843,6 +857,7 @@ export function useBoardData(params: UseBoardDataParams) {
     infoTab,
     visibleTodos,
     subtaskCounts,
+    attachmentCounts,
     templates,
     nonTemplateTodos,
     recurrenceSummaries,

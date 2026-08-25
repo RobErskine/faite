@@ -403,6 +403,16 @@ consumer of the transport-agnostic service layer from EI-50: it builds a
 `ServiceContext`, calls `createTodo`, and the write lands through
 `UserDurableObject.push()` like any other. See `docs/EMAIL-INGEST.md`.
 
+`/api/attachments/*` (EI-242) is the seam with the sharpest reason of all: it
+is the only route in the app whose request and response bodies are **binary**,
+and the only one that touches R2. Every other write in Faite is a JSON field
+patch through the outbox, and a file is not a JSON field patch — so
+attachments deliberately split in two, with metadata riding the ordinary sync
+machinery as a normal entity kind while the bytes go here and never touch the
+outbox at all. The ordering between the two planes (bytes first, row second;
+tombstone first, bytes second) is the whole correctness argument. See
+`docs/ATTACHMENTS.md`.
+
 `/api/places/*` has a second, independent reason to live server-side: it holds
 `GOOGLE_PLACES_API_KEY`, a Worker secret that must never reach client JS — and
 a browser-held key could not be restricted anyway, since Google's HTTP-referrer
@@ -735,6 +745,11 @@ src/
       addresses.ts            secret local part, +tag split, rate window, D1 access
       schema.ts               drizzle `email_ingest` — kept OUT of auth-schema.ts
       routes.ts               /api/email/address reveal + rotate
+    attachments/              file BYTES over R2 (EI-242) — see docs/ATTACHMENTS.md
+      routes.ts                 /api/attachments upload/download/delete
+      validate.ts               magic-byte sniffing, caps, filename sanitizing
+      storage.ts                the only place an R2 key is constructed
+      is-owner.ts               OWNER_EMAILS — the whole privilege model
     service/                  transport-agnostic write path (EI-50)
       todos.ts                createTodo/updateTodo over a PushTransport
       hlc.ts                  serverHlcClock() — creates only, see docs/API.md

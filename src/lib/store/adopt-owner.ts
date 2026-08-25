@@ -18,7 +18,8 @@ type RecordTable =
   | "dayNotes"
   | "places"
   | "todoEvents"
-  | "reminderPresets";
+  | "reminderPresets"
+  | "attachments";
 
 /**
  * Every id-keyed syncable table. **A new sync kind must be added here**, and
@@ -37,6 +38,7 @@ const TABLES: Array<{ table: RecordTable; kind: EntityKind }> = [
   { table: "places", kind: "place" },
   { table: "todoEvents", kind: "todoEvent" },
   { table: "reminderPresets", kind: "reminderPreset" },
+  { table: "attachments", kind: "attachment" },
 ];
 
 async function adoptTable(
@@ -110,6 +112,7 @@ export async function adoptLocalData(newOwnerId: string): Promise<AdoptionResult
       db.places,
       db.todoEvents,
       db.reminderPresets,
+      db.attachments,
       db.outbox,
     ],
     async () => {
@@ -146,6 +149,7 @@ export async function resetLocalDataForNewOwner(): Promise<void> {
       db.places,
       db.todoEvents,
       db.reminderPresets,
+      db.attachments,
       db.settings,
       db.outbox,
     ],
@@ -159,6 +163,7 @@ export async function resetLocalDataForNewOwner(): Promise<void> {
       await db.places.clear();
       await db.todoEvents.clear();
       await db.reminderPresets.clear();
+      await db.attachments.clear();
       await db.settings.clear();
       await db.outbox.clear();
     },

@@ -269,6 +269,9 @@ interface BoardColumnProps {
    * rather than special-cased to one.
    */
   subtaskCounts?: ReadonlyMap<string, { done: number; total: number }>;
+  /** Attachment counts per todo (EI-242) — see `use-board-data.ts`'s
+   * `attachmentCounts`. Same shape and same reason as `subtaskCounts`. */
+  attachmentCounts?: ReadonlyMap<string, number>;
   /**
    * Escape hatch, merged onto the root `<section>` after every other class
    * here. The phone pager (`phone-board.tsx`) uses it to add `pager-column`
@@ -340,6 +343,7 @@ export function BoardColumn({
   missedCounts,
   recurrenceSummaries,
   subtaskCounts,
+  attachmentCounts,
   className,
   footer,
 }: BoardColumnProps) {
@@ -591,6 +595,7 @@ export function BoardColumn({
           todo.recurrenceParentId ? recurrenceSummaries?.get(todo.recurrenceParentId) : undefined
         }
         subtaskCount={subtaskCounts?.get(todo.id)}
+        attachmentCount={attachmentCounts?.get(todo.id)}
       />
     ));
 

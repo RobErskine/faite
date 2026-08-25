@@ -7,6 +7,7 @@ import {
   CornerDownRight,
   ListChecks,
   MapPin,
+  Paperclip,
   Repeat,
 } from "lucide-react";
 import { Badge, badgeVariants } from "@/components/ui/badge";
@@ -190,6 +191,7 @@ export function TodoMetaBadges({
   overflow,
   reminderPresets,
   subtaskCount,
+  attachmentCount,
 }: {
   todo: Todo;
   labels: LabelRecord[];
@@ -210,6 +212,9 @@ export function TodoMetaBadges({
    * `subtaskCounts`. Undefined/null, or a `total` of 0, shows no badge.
    */
   subtaskCount?: { done: number; total: number } | null;
+  /** How many files are attached (EI-242) — see `use-board-data.ts`'s
+   * `attachmentCounts`. Undefined or 0 shows no badge. */
+  attachmentCount?: number;
 }) {
   const deadlineMissed = isDeadlineMissed(todo, { today });
   const todoLabels = labels.filter((l) => todo.labelIds.includes(l.id));
@@ -221,7 +226,8 @@ export function TodoMetaBadges({
     (missedCount ?? 0) > 1 ||
     Boolean(overflow) ||
     Boolean(todo.reminderTime) ||
-    (subtaskCount?.total ?? 0) > 0;
+    (subtaskCount?.total ?? 0) > 0 ||
+    (attachmentCount ?? 0) > 0;
 
   if (!hasContent) return null;
 
@@ -247,6 +253,16 @@ export function TodoMetaBadges({
         >
           <ListChecks className="size-2.5" aria-hidden />
           {subtaskCount.done}/{subtaskCount.total}
+        </Badge>
+      )}
+      {(attachmentCount ?? 0) > 0 && (
+        <Badge
+          variant="outline"
+          className="num gap-1 text-2xs font-normal"
+          title={`${attachmentCount} ${attachmentCount === 1 ? "attachment" : "attachments"}`}
+        >
+          <Paperclip className="size-2.5" aria-hidden />
+          {attachmentCount}
         </Badge>
       )}
       {overflow && (

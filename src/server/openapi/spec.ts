@@ -1,6 +1,7 @@
 import { createDocument } from "zod-openapi";
 import type { ZodOpenApiPathsObject } from "zod-openapi";
 import {
+  attachmentSchema,
   dayNoteSchema,
   labelSchema,
   listSchema,
@@ -43,6 +44,13 @@ dayNoteSchema.meta({ id: "DayNote", description: "A calendar day's journal entry
 placeSchema.meta({ id: "Place", description: "A saved, named address." });
 reminderPresetSchema.meta({ id: "ReminderPreset", description: "A named reminder time." });
 settingsSchema.meta({ id: "Settings", description: "Per-user settings." });
+attachmentSchema.meta({
+  id: "Attachment",
+  description:
+    "A file attached to a to-do. Metadata only — fetch the file itself from " +
+    "GET /api/attachments/{id} using this row's `id`. Read-only here: " +
+    "uploading needs the app UI (see docs/ATTACHMENTS.md).",
+});
 
 // Illustrative shape only — NOT wired to any path yet. Kept registered so A2
 // (EI-227) can reference it the moment `/api/v1/todos` reads land, per
@@ -87,6 +95,7 @@ const entitySchemas = {
   Place: placeSchema,
   ReminderPreset: reminderPresetSchema,
   Settings: settingsSchema,
+  Attachment: attachmentSchema,
   CreateTodoInput: createTodoInputSchema,
 };
 

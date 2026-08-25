@@ -1,5 +1,6 @@
 import Dexie, { type EntityTable } from "dexie";
 import type {
+  Attachment,
   DayNote,
   Label,
   List,
@@ -31,6 +32,7 @@ export class FaiteDatabase extends Dexie {
   places!: EntityTable<Place, "id">;
   todoEvents!: EntityTable<TodoEvent, "id">;
   reminderPresets!: EntityTable<ReminderPreset, "id">;
+  attachments!: EntityTable<Attachment, "id">;
   settings!: EntityTable<Settings, "ownerId">;
   outbox!: EntityTable<OutboxEntry, "id">;
 
@@ -88,6 +90,17 @@ export class FaiteDatabase extends Dexie {
     // precedent as v3 restating all of `todos` to add one index.
     this.version(7).stores({
       todoEvents: "id, todoId, [todoId+at], deletedAt, at",
+    });
+    // Attachment METADATA only (`lib/schema.ts`'s `attachmentSchema`) — the
+    // bytes live in R2 and are fetched on demand, never stored here. That is
+    // what keeps this a plain synced table instead of the "Blob in a Dexie
+    // table" that `lib/avatar-image.ts`'s header talks itself out of.
+    // `todoId` indexed for `useAttachments()`; `deletedAt` to match every
+    // other table's tombstone filter. A new table needs no restatement of the
+    // others — Dexie merges versions, and only an EXISTING table's index list
+    // gets replaced wholesale (see v7 above).
+    this.version(8).stores({
+      attachments: "id, todoId, deletedAt",
     });
   }
 }

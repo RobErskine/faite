@@ -132,6 +132,12 @@ export async function handleEmail(
 
     // Streamed and parsed in memory. `message.raw` is read exactly here and
     // is never written anywhere; `parsed.attachments` is never read at all.
+    //
+    // EI-242 added an R2 bucket for todo attachments, which removes the old
+    // reason for that ("there is no blob store") and not the current one:
+    // nothing authenticates a sender here, so honouring `parsed.attachments`
+    // would be an unauthenticated write into billed storage with none of the
+    // magic-byte checking `/api/attachments` does. See docs/EMAIL-INGEST.md.
     const parsed = await PostalMime.parse(message.raw);
 
     const input = emailToTodoInput(parsed, [], {

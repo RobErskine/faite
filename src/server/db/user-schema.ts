@@ -143,6 +143,31 @@ export const todoEvents = sqliteTable("todo_events", {
   payload: text("payload"),
 });
 
+/**
+ * Attachment METADATA — see `attachmentSchema` in `lib/schema.ts`. The bytes
+ * are in R2 under `storage_key`; nothing binary is ever stored in the DO.
+ *
+ * Every non-`syncableColumns` field is required in Zod but deliberately
+ * NULLABLE here, for exactly the reason spelled out on `todoEvents` above:
+ * none has a `FIELD_DEFAULTS` entry in `upsert.ts`, and a NOT NULL column
+ * with no fallback makes `buildInsertColumns` omit it from a partial-first-
+ * write INSERT, so SQLite throws inside `push()`'s `transactionSync` and
+ * that account's pushes break permanently and silently. Zod is the real
+ * enforcement; these columns just refuse to brick the DO.
+ *
+ * No `position` column, on purpose — attachments have one natural order
+ * (`created_at`) and no reorder UI. See `ORDER_BY_KIND` in `user-do.ts`,
+ * which exists because of this row.
+ */
+export const attachments = sqliteTable("attachments", {
+  ...syncableColumns,
+  todoId: text("todo_id"),
+  filename: text("filename"),
+  mimeType: text("mime_type"),
+  byteSize: integer("byte_size"),
+  storageKey: text("storage_key"),
+});
+
 /** Named reminder times — see `reminderPresetSchema` in `lib/schema.ts`. */
 export const reminderPresets = sqliteTable("reminder_presets", {
   ...syncableColumns,

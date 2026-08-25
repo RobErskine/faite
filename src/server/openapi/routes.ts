@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { ZodOpenApiPathsObject } from "zod-openapi";
-import { todoSchema } from "@/lib/schema";
+import { attachmentSchema, todoSchema } from "@/lib/schema";
 import { autocompleteRequestSchema, detailsRequestSchema } from "@/server/places/validate";
 import { pushRequestSchema } from "@/server/sync/validate";
 import { contactRequestSchema } from "@/server/contact/validate";
@@ -428,6 +428,109 @@ const contactPaths: ZodOpenApiPathsObject = {
   },
 };
 
+// ---- /api/attachments/* (EI-242) -----------------------------------------
+
+/**
+ * The bytes half of attachments. Internal-only and NOT in `openapi/v1.json`:
+ * it is session-authenticated (no bearer path), and it is the one route in
+ * the app whose request and response bodies are binary rather than JSON.
+ *
+ * The metadata half is an ordinary `/api/v1` resource — see `v1Paths`.
+ */
+const attachmentPaths: ZodOpenApiPathsObject = {
+  "/api/attachments": {
+    post: {
+      tags: ["attachments"],
+      summary: "Upload a file's bytes and get back the row to write (EI-242).",
+      description:
+        "Raw body, not multipart. `Content-Type` describes the bytes and is " +
+        "verified against them; `X-Filename` carries the percent-encoded " +
+        "original name. Does NOT write the attachment row — the client does " +
+        "that through the outbox, so bytes always land before the row that " +
+        "references them. Cookie session only. See docs/ATTACHMENTS.md.",
+      operationId: "uploadAttachment",
+      requestBody: {
+        content: {
+          "application/octet-stream": {
+            schema: z.string().meta({ format: "binary", description: "The file's bytes." }),
+          },
+        },
+      },
+      responses: {
+        "201": {
+          description: "Stored. Write an `attachment` row from this body.",
+          content: { "application/json": { schema: attachmentSchema } },
+        },
+        "400": {
+          description: "Empty file, or a missing todoId/id/filename.",
+          content: { "application/json": { schema: errorSchema("missing-todo-id") } },
+        },
+        "401": {
+          description: "No session.",
+          content: { "application/json": { schema: errorSchema("unauthenticated") } },
+        },
+        "413": {
+          description: "Over the per-file or per-account cap.",
+          content: { "application/json": { schema: errorSchema("too-large") } },
+        },
+        "415": {
+          description: "Type not allow-listed, or the bytes are not that type.",
+          content: { "application/json": { schema: errorSchema("unsupported-type") } },
+        },
+        "500": {
+          description: "Unhandled server error.",
+          content: { "application/json": { schema: errorSchema("internal-error") } },
+        },
+      },
+    },
+  },
+  "/api/attachments/{id}": {
+    get: {
+      tags: ["attachments"],
+      summary: "Download one attachment's bytes.",
+      description:
+        "Always `Content-Disposition: attachment` with `X-Content-Type-Options: " +
+        "nosniff` — an uploaded file is never rendered inline on this origin. " +
+        "404s for another account's id, matching the not-found case exactly.",
+      operationId: "downloadAttachment",
+      requestParams: { path: z.object({ id: z.string() }) },
+      responses: {
+        "200": {
+          description: "The file.",
+          content: {
+            "application/octet-stream": { schema: z.string().meta({ format: "binary" }) },
+          },
+        },
+        "401": {
+          description: "No session.",
+          content: { "application/json": { schema: errorSchema("unauthenticated") } },
+        },
+        "404": {
+          description: "No such attachment for this account, or its bytes are gone.",
+          content: { "application/json": { schema: errorSchema("not-found") } },
+        },
+      },
+    },
+    delete: {
+      tags: ["attachments"],
+      summary: "Delete one attachment's bytes.",
+      description:
+        "Idempotent, and deliberately partial: this removes the OBJECT only. " +
+        "The row is tombstoned separately by the client, because that is the " +
+        "half that syncs. Tombstone first, then call this.",
+      operationId: "deleteAttachment",
+      requestParams: { path: z.object({ id: z.string() }) },
+      responses: {
+        "204": { description: "Gone, or never there." },
+        "401": {
+          description: "No session.",
+          content: { "application/json": { schema: errorSchema("unauthenticated") } },
+        },
+      },
+    },
+  },
+};
+
 // ---- /api/v1/* (A2, EI-227) ----------------------------------------------
 
 /**
@@ -449,7 +552,13 @@ export const v1Paths: ZodOpenApiPathsObject = Object.fromEntries(
         operationId: `listV1${kind[0].toUpperCase()}${kind.slice(1)}s`,
         responses: {
           "200": {
-            description: `${path}, in board order.`,
+            // Not every resource has a `position` — attachments sort by
+            // creation time (`ORDER_BY_KIND` in `user-do.ts`), so the blanket
+            // "board order" would have been a documented untruth.
+            description:
+              path === "attachments"
+                ? "attachments, oldest first."
+                : `${path}, in board order.`,
             content: { "application/json": { schema: z.array(schema) } },
           },
           "401": unauthenticated,
@@ -547,6 +656,7 @@ export const internalOnlyPaths: ZodOpenApiPathsObject = {
   ...desktopPaths,
   ...emailPaths,
   ...contactPaths,
+  ...attachmentPaths,
   ...v1Paths,
   ...patchTodoPath,
 };

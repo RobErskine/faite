@@ -35,6 +35,7 @@ const TABLE_BY_KIND: Record<
   | "places"
   | "todoEvents"
   | "reminderPresets"
+  | "attachments"
   | "settings"
 > = {
   todo: "todos",
@@ -46,6 +47,7 @@ const TABLE_BY_KIND: Record<
   place: "places",
   todoEvent: "todoEvents",
   reminderPreset: "reminderPresets",
+  attachment: "attachments",
   settings: "settings",
 };
 

@@ -53,6 +53,31 @@ export interface SchemaInfo {
 }
 
 /**
+ * The kinds `listEntities()` can serve, and the `ORDER BY` each one uses.
+ *
+ * This map is the gate the old inline comment on `listEntities` asked for.
+ * A kind belongs here only once someone has checked it has BOTH a
+ * `deleted_at` column and the sort column named — `settings` (a singleton
+ * with neither) and `dayNote` still do not qualify, and adding a kind here
+ * without checking reintroduces exactly the footgun this replaced.
+ *
+ * Values are interpolated into SQL, so they must stay literal SQL fragments
+ * written in this file and never derive from anything a request supplies.
+ */
+const ORDER_BY_KIND = {
+  todo: "position",
+  list: "position",
+  label: "position",
+  tab: "position",
+  // No `position` column at all — attachments have one natural order and no
+  // reorder UI. `id` breaks ties because UUIDv7 is time-ordered, so two rows
+  // written in the same millisecond still come back deterministically.
+  attachment: "created_at, id",
+} as const;
+
+export type ListableKind = keyof typeof ORDER_BY_KIND;
+
+/**
  * Per-user Durable Object. Authoritative store for one user's todos/lists/labels
  * and the coordinator for sync (plan P3).
  *
@@ -423,11 +448,14 @@ export class UserDurableObject extends DurableObject {
 
   /**
    * Read-only listing for the public `/api/v1` read routes (A2, EI-227).
-   * Typed to exactly the four kinds A2 exposes rather than the full
-   * `SyncKind` — `todo`/`list`/`label`/`tab` all have `deleted_at` and
-   * `position` columns; several other kinds (`settings`, `dayNote`) do not,
-   * so widening this signature is a footgun to extend deliberately, not by
-   * loosening a type.
+   *
+   * Deliberately NOT widened to the full `SyncKind`. Every kind named in
+   * `ORDER_BY_KIND` has been checked to have a `deleted_at` column and the
+   * sort column named there; `settings` (a singleton with neither) and
+   * `dayNote` still do not qualify. Extending this means adding an
+   * `ORDER_BY_KIND` entry, which is the deliberate act the old comment here
+   * asked for — `attachment` (EI-242) was the first kind to take it up, and
+   * it sorts by `created_at` because it has no `position` column at all.
    *
    * Excludes soft-deleted rows: a tombstone is a sync-internal concept a REST
    * reader has no use for. Ordered the same way the client's own board does.
@@ -437,10 +465,14 @@ export class UserDurableObject extends DurableObject {
    * strips `version` (never declared there) by virtue of not being a
    * recognized field, rather than this RPC hand-picking columns to omit.
    */
-  async listEntities(kind: "todo" | "list" | "label" | "tab"): Promise<Record<string, unknown>[]> {
+  async listEntities(kind: ListableKind): Promise<Record<string, unknown>[]> {
     const tableName = TABLE_NAME_BY_KIND[kind];
+    // Interpolated, never bound — both halves come from module-level constants
+    // keyed by a union type, so neither can carry request input. SQLite does
+    // not accept a bound parameter in `ORDER BY` anyway.
+    const orderBy = ORDER_BY_KIND[kind];
     const rows = this.ctx.storage.sql
-      .exec(`SELECT * FROM ${tableName} WHERE deleted_at IS NULL ORDER BY position`)
+      .exec(`SELECT * FROM ${tableName} WHERE deleted_at IS NULL ORDER BY ${orderBy}`)
       .toArray();
     return rows.map((row) => rowFromSqlRow(kind, row));
   }
@@ -463,6 +495,47 @@ export class UserDurableObject extends DurableObject {
    *   source of truth after `resolveEntityPush`'s LWW comparison, which can
    *   differ from what was just pushed (a losing field keeps its old value).
    */
+  /**
+   * One non-deleted attachment row by id, or `null` (EI-242).
+   *
+   * `GET /api/attachments/{id}` needs three things off this row before it
+   * will stream any bytes: `ownerId` (does the caller own it), `storageKey`
+   * (where the bytes are) and `filename`/`mimeType` (what to call it on the
+   * way out). A soft-deleted row returns `null` — its R2 object may already
+   * be gone, and "the resource is gone" is the honest answer either way.
+   *
+   * Ownership is re-checked by the route even though this DO is already
+   * per-user: the id comes from the URL, and defence that depends on the
+   * routing layer having picked the right DO is defence that disappears the
+   * first time someone adds an admin path.
+   */
+  async getAttachment(id: string): Promise<Record<string, unknown> | null> {
+    const [row] = this.ctx.storage.sql
+      .exec("SELECT * FROM attachments WHERE id = ? AND deleted_at IS NULL", id)
+      .toArray();
+    return row ? rowFromSqlRow("attachment", row) : null;
+  }
+
+  /**
+   * Total live attachment bytes for this account, for the per-user quota
+   * (`MAX_TOTAL_ATTACHMENT_BYTES`).
+   *
+   * Counts non-deleted rows only. That deliberately under-counts: a
+   * soft-deleted row's R2 object survives until something sweeps it, so real
+   * stored bytes can exceed this. Counting tombstones instead would be worse
+   * — a user who deleted everything could never upload again. The gap is
+   * bounded by the sweep, not by this number; see `docs/ATTACHMENTS.md`
+   * §"Orphaned bytes".
+   *
+   * `COALESCE` because `SUM` over zero rows is NULL, not 0.
+   */
+  async attachmentBytesTotal(): Promise<number> {
+    const [row] = this.ctx.storage.sql
+      .exec("SELECT COALESCE(SUM(byte_size), 0) AS total FROM attachments WHERE deleted_at IS NULL")
+      .toArray();
+    return Number(row?.total ?? 0);
+  }
+
   async getTodo(id: string): Promise<Record<string, unknown> | null> {
     const [row] = this.ctx.storage.sql
       .exec("SELECT * FROM todos WHERE id = ? AND deleted_at IS NULL", id)

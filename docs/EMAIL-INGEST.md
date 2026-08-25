@@ -129,7 +129,28 @@ can issue the same stamp within a millisecond.
 | `source` | `{ v:1, kind:"email", at, email:{ from, subject, messageId } }` via `serializeSource` |
 | `listId` | always `null` (→ Backlog) |
 | `position` | `UserDurableObject.nextTodoPosition()` |
-| attachments | **dropped** — there is no blob store |
+| attachments | **dropped** — still, and now by choice rather than by absence (see below) |
+
+> **"There is no blob store" stopped being true in EI-242.** Todo attachments
+> added an R2 bucket (`docs/ATTACHMENTS.md`), so the original reason inbound
+> mail discarded attachments — nowhere to put them — is gone. They are still
+> discarded, and the regression test asserting that
+> (`src/server/email/ingest.test.ts`) still stands, because the remaining
+> reasons are the ones that were always the stronger half:
+>
+> - **Nothing authenticates a sender.** An ingest address is a shared secret in
+>   a URL-ish shape; anyone who learns one can post to it. Attachments over
+>   `/api/attachments` come from a signed-in session and are capped per
+>   account. Attachments over email would be an unauthenticated write into a
+>   billed store.
+> - **Nothing verifies the bytes.** The upload route sniffs magic numbers and
+>   refuses SVG outright; the mail path parses whatever arrived.
+> - `MAX_RAW_SIZE_BYTES` rejects the whole message at 10 MiB *before* parsing,
+>   precisely so a Worker never buffers a big multipart body.
+>
+> Wiring mail attachments into R2 is therefore a real feature with a real
+> threat model, not a config change. Do not treat the bucket's existence as
+> permission.
 
 > **On a forward, `from` is the forwarder, not the original sender.**
 > `addressOf(parsed.from)` reads the `From:` header, and a client-side forward

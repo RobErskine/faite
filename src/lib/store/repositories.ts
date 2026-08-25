@@ -1,4 +1,5 @@
 import type {
+  Attachment,
   CivilDate,
   DayNote,
   Label,
@@ -24,6 +25,7 @@ import {
   serializeRule,
   type RecurrenceRule,
 } from "@/lib/recurrence";
+import { deleteAttachmentBytes, uploadAttachment } from "@/lib/attachments";
 import { getDb } from "./db";
 import { create, materialize, mutate, mutateSettings, newId, now, remove, seedWrite } from "./mutate";
 import { getCurrentOwnerId, LOCAL_OWNER_ID } from "./owner";
@@ -1041,6 +1043,67 @@ export async function setDayNote(date: CivilDate, body: string): Promise<void> {
  * outbox entries and two sync pushes for a single user action, and every
  * reader would briefly see a place with an address and no coordinates.
  */
+/**
+ * Attach a file to a todo (EI-242).
+ *
+ * **The order is the whole contract.** The bytes go to R2 first; only when
+ * that succeeds does the row get written through `create()` — so an
+ * `attachment` row can never reference an object that is not there. Reverse
+ * the two and a failed upload leaves a row whose download 404s forever, on
+ * every device, with nothing to repair it.
+ *
+ * The id is minted here rather than by the server so the same value keys the
+ * R2 object and the row; `uploadAttachment` takes it as an argument.
+ *
+ * Throws `AttachmentError` (from `lib/attachments.ts`) for anything the user
+ * can act on — wrong type, too big, offline, signed out. Nothing is written
+ * locally when it throws, so a retry starts clean.
+ */
+export async function createAttachment(file: File, todoId: string): Promise<string> {
+  const id = newId();
+  const uploaded = await uploadAttachment(file, todoId, id);
+
+  const timestamp = now();
+  const attachment: Attachment = {
+    id,
+    ownerId: getCurrentOwnerId(),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    deletedAt: null,
+    todoId,
+    // The SERVER's values, not the File's: `filename` has been sanitized and
+    // `mimeType` verified against the actual bytes. Echoing the browser's
+    // originals here would let the row disagree with what is stored.
+    filename: uploaded.filename,
+    mimeType: uploaded.mimeType,
+    byteSize: uploaded.byteSize,
+    storageKey: uploaded.storageKey,
+  };
+  return create("attachment", attachment);
+}
+
+/**
+ * Detach a file: tombstone the row, then delete the bytes.
+ *
+ * That order, again deliberately. The tombstone is what syncs, so it goes
+ * first and the user's intent is durable immediately. If the byte delete then
+ * fails, the object is orphaned — wasted storage, no broken reference, and
+ * nothing the user can see. The reverse order would leave a live row pointing
+ * at deleted bytes, which every device would render as a broken attachment.
+ *
+ * The byte delete is therefore fire-and-forget by design: it must never fail
+ * the operation the user asked for. See `docs/ATTACHMENTS.md` §"Orphaned
+ * bytes".
+ */
+export async function deleteAttachment(id: string): Promise<void> {
+  await remove("attachment", id);
+  try {
+    await deleteAttachmentBytes(id);
+  } catch (error) {
+    console.warn("[faite] attachment bytes not deleted; object is orphaned", error);
+  }
+}
+
 export async function createPlace(
   name: string,
   address: string,
