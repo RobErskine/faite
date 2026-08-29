@@ -15,7 +15,7 @@ if you forget, so the mistake is caught in seconds, but only if you don't
 `test.skip(project.name !== ...)`; that was removed deliberately.
 
 **A pull request does not run the whole suite.** `npm run e2e:ci` — the gate
-— runs `desktop` + `phone-iphone` (79 of 115 tests). Those two are the
+— runs `desktop` + `phone-iphone` (90 of 129 tests). Those two are the
 cheapest pair that renders both board shells, because `resolveLayout()`
 (`src/lib/use-viewport.ts`) puts everything ≥640px on `DesktopBoard`. The
 other three projects run via `npm run e2e` locally, or the `CI` workflow's

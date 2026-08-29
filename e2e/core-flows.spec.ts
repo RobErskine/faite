@@ -138,3 +138,38 @@ test("mod+k opens the palette from the keyboard", async ({ page }) => {
   await expect(input).toBeVisible();
   await page.keyboard.press("Escape");
 });
+
+/**
+ * GOOD JOB mode (`lib/celebrate.ts`) — the setting reaches the completion path.
+ *
+ * Confetti pixels are unassertable, but its DELIVERY is not: `canvas-confetti`
+ * appends a lone `position: fixed` `<canvas>` straight to `<body>`, and this
+ * app never otherwise puts a canvas there. So "a canvas exists" is a true
+ * end-to-end proof that the setting was read, the origin resolved, the colour
+ * resolved, and the lazy chunk loaded.
+ *
+ * Lives here rather than in a `good-job.spec.ts` of its own: `core-flows` is
+ * already in `SPECS` and in every project's `testMatch`, so this needs no
+ * `playwright.config.ts` change and `e2e/config-coverage.test.ts` stays green
+ * by construction. See `docs/E2E.md` §8.
+ */
+test("GOOD JOB mode throws confetti when a to-do is completed", async ({ page }) => {
+  const confettiCanvas = page.locator("body > canvas");
+  await expect(confettiCanvas).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Account", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Settings" }).click();
+  await page.getByRole("tab", { name: /design/i }).click();
+  await page.getByRole("switch", { name: /good job mode/i }).click();
+  await page.keyboard.press("Escape");
+
+  await switchToLists(page);
+  const backlog = page.getByRole("region", { name: "Backlog" });
+  const title = "Finish the report";
+  await backlog.getByPlaceholder("Add a to-do").fill(title);
+  await page.keyboard.press("Enter");
+
+  await page.getByRole("checkbox", { name: new RegExp(title) }).click();
+
+  await expect(confettiCanvas).toBeAttached();
+});

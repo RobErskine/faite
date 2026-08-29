@@ -41,7 +41,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   {
     id: "design",
     label: "Design",
-    description: "How the board looks: typeface and appearance.",
+    description: "How the board looks: typeface, appearance, and celebrations.",
     icon: Palette,
     Component: DesignSection,
   },

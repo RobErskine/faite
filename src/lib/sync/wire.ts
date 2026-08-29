@@ -97,6 +97,10 @@ export const SETTINGS_SYNCED_FIELDS: ReadonlySet<string> = new Set([
   // one device follow them to another.
   "overdriveMinTodos",
   "overdriveAutoConfirmMs",
+  // Whether completing a to-do throws confetti — a taste preference about the
+  // account, not a fact about one screen, so it belongs with `theme` and
+  // `fontPairing` rather than with the excluded rail widths.
+  "goodJobMode",
 ]);
 
 export const SYNC_PROTOCOL_VERSION = 1 as const;

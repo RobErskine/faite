@@ -238,6 +238,8 @@ export const settings = sqliteTable("settings", {
   /** Overdrive's opt-in auto-confirm delay, ms (EI-103) — see
    * `settingsSchema.overdriveAutoConfirmMs`. 0 is OFF. */
   overdriveAutoConfirmMs: integer("overdrive_auto_confirm_ms").notNull().default(0),
+  /** Confetti on completion — see `settingsSchema.goodJobMode`. Off by default. */
+  goodJobMode: integer("good_job_mode", { mode: "boolean" }).notNull().default(false),
   updatedAt: text("updated_at").notNull(),
   version: integer("version").notNull(),
 });

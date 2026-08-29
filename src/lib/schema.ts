@@ -660,6 +660,18 @@ export const settingsSchema = z.object({
    * to add later as a single timer rather than a structural change.
    */
   overdriveAutoConfirmMs: z.number().int().min(0).max(10000).default(0),
+  /**
+   * "GOOD JOB" mode: a small confetti burst at the point of every completion,
+   * tinted with the colour the to-do already renders in. Opt-in and off by
+   * default — a celebration nobody asked for is a distraction, and this one
+   * fires on the single most-repeated action in the app.
+   *
+   * Only `done` celebrates. `dropped` is an abandonment, not an achievement,
+   * and reopening is not a completion at all — see `celebrateDone` in
+   * `components/board/use-board-actions.ts`, the one gate all three status
+   * handlers share.
+   */
+  goodJobMode: z.boolean().default(false),
   updatedAt: z.string(),
 });
 export type Settings = z.infer<typeof settingsSchema>;

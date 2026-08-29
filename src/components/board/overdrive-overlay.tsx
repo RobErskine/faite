@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 import type { Label as LabelRecord, List, ReminderPreset, Todo } from "@/lib/schema";
 import { toCivilDate, type PlacementContext } from "@/lib/scheduling";
 import { isTextEntry, undoById } from "@/lib/undo";
+import { originOf, type ConfettiOrigin } from "@/lib/celebrate";
 import {
   applyDecision,
   createSession,
@@ -159,7 +160,11 @@ export interface OverdriveOverlayProps {
   /** `use-board-actions.ts`'s `handleOverdriveVerdict` — the one write path
    * every verdict shares. Returns the `pushUndo` entry id synchronously,
    * plus the human-readable label the toast shows verbatim. */
-  onVerdict: (todo: Todo, verdict: Verdict) => { undoId: string; label: string };
+  onVerdict: (
+    todo: Todo,
+    verdict: Verdict,
+    origin?: ConfettiOrigin | null,
+  ) => { undoId: string; label: string };
   /**
    * Opt-in auto-confirm delay (EI-103), ms — `settings?.overdriveAutoConfirmMs`.
    * Defaults to `0` (off), so every existing caller/test that doesn't pass it
@@ -225,6 +230,12 @@ function OverdriveOverlayContent({
    * button would otherwise have taken focus with it into the void.
    */
   const popupRef = useRef<HTMLDivElement>(null);
+  /**
+   * The card at rest, for GOOD JOB mode's confetti origin. Read in `dispatch`
+   * before the flick starts — a card mid-throw is no longer where the
+   * decision was made.
+   */
+  const cardRef = useRef<HTMLDivElement>(null);
 
   /**
    * The card mid-flick — a single slot, not a queue. While this is set, the
@@ -411,7 +422,18 @@ function OverdriveOverlayContent({
       return;
     }
     if (result.commit && currentTodo) {
-      const { undoId, label } = onVerdict(currentTodo, result.commit);
+      /*
+        Measured HERE, before `triggerFlick` below throws the card off screen
+        — the burst has to leave from where the card was when you decided,
+        not from wherever the animation has carried it to. GOOD JOB mode only
+        acts on a `done` verdict; the other three are passed the origin too
+        and ignore it.
+      */
+      const { undoId, label } = onVerdict(
+        currentTodo,
+        result.commit,
+        originOf(cardRef.current),
+      );
       // Computed now (a pure value) but not yet applied via `setSession` —
       // the toast and the underlying write happen immediately (there's no
       // reason feedback or data integrity should wait on a flourish), but
@@ -671,6 +693,7 @@ function OverdriveOverlayContent({
                 just-decided card reappearing before it vanishes.
               */}
               <div
+                ref={cardRef}
                 key={transitioning ? `flick-${transitioning.seq}` : currentId}
                 onAnimationEnd={(e) => {
                   if (e.target === e.currentTarget) finishFlick();
