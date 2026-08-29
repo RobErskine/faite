@@ -201,7 +201,7 @@ describe("OverdriveOverlay", () => {
   it("← commits a dropped verdict; the next card is ready once the flick finishes", () => {
     const { verdictSpy } = renderOverlay();
     press("ArrowLeft");
-    expect(verdictSpy).toHaveBeenCalledWith(TODOS[0], { kind: "dropped" });
+    expect(verdictSpy).toHaveBeenCalledWith(TODOS[0], { kind: "dropped" }, null);
     flushFlick();
     expect(titleHeading("t2")).toBeTruthy();
     expect(screen.getByText("2 of 2")).toBeTruthy();
@@ -210,19 +210,19 @@ describe("OverdriveOverlay", () => {
   it("↑ commits a done verdict", () => {
     const { verdictSpy } = renderOverlay();
     press("ArrowUp");
-    expect(verdictSpy).toHaveBeenCalledWith(TODOS[0], { kind: "done" });
+    expect(verdictSpy).toHaveBeenCalledWith(TODOS[0], { kind: "done" }, null);
   });
 
   it("↓ commits the todo's own list", () => {
     const { verdictSpy } = renderOverlay();
     press("ArrowDown");
-    expect(verdictSpy).toHaveBeenCalledWith(TODOS[0], { kind: "listed", listId: "list-1" });
+    expect(verdictSpy).toHaveBeenCalledWith(TODOS[0], { kind: "listed", listId: "list-1" }, null);
   });
 
   it("⇧↓ forces Backlog even though the todo has a list", () => {
     const { verdictSpy } = renderOverlay();
     press("ArrowDown", { shiftKey: true });
-    expect(verdictSpy).toHaveBeenCalledWith(TODOS[0], { kind: "listed", listId: "list-backlog" });
+    expect(verdictSpy).toHaveBeenCalledWith(TODOS[0], { kind: "listed", listId: "list-backlog" }, null);
   });
 
   it("→ stages a day and writes nothing until Enter", () => {
@@ -239,7 +239,7 @@ describe("OverdriveOverlay", () => {
     press("ArrowRight");
     expect(screen.getByText("Tomorrow")).toBeTruthy();
     press("Enter");
-    expect(verdictSpy).toHaveBeenCalledWith(TODOS[0], { kind: "scheduled", date: "2026-08-11" });
+    expect(verdictSpy).toHaveBeenCalledWith(TODOS[0], { kind: "scheduled", date: "2026-08-11" }, null);
   });
 
   it("Enter with nothing staged writes nothing", () => {
@@ -275,7 +275,7 @@ describe("OverdriveOverlay", () => {
       act(() => {
         vi.advanceTimersByTime(2000);
       });
-      expect(verdictSpy).toHaveBeenCalledWith(TODOS[0], { kind: "scheduled", date: "2026-08-10" });
+      expect(verdictSpy).toHaveBeenCalledWith(TODOS[0], { kind: "scheduled", date: "2026-08-10" }, null);
     });
 
     it("further ramp input restarts the countdown rather than stacking with it", () => {
@@ -295,7 +295,7 @@ describe("OverdriveOverlay", () => {
       act(() => {
         vi.advanceTimersByTime(500);
       });
-      expect(verdictSpy).toHaveBeenCalledWith(TODOS[0], { kind: "scheduled", date: "2026-08-11" });
+      expect(verdictSpy).toHaveBeenCalledWith(TODOS[0], { kind: "scheduled", date: "2026-08-11" }, null);
     });
 
     it("clearing the stage (Escape) cancels the pending auto-confirm", () => {
@@ -441,7 +441,7 @@ describe("stage-aware wontDo (round 2 — overshoot fix)", () => {
   it("← with nothing staged still commits wontDo, exactly as before", () => {
     const { verdictSpy } = renderOverlay();
     press("ArrowLeft");
-    expect(verdictSpy).toHaveBeenCalledWith(TODOS[0], { kind: "dropped" });
+    expect(verdictSpy).toHaveBeenCalledWith(TODOS[0], { kind: "dropped" }, null);
   });
 });
 

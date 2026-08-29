@@ -20,6 +20,7 @@ import { TITLE_CLAMP_CLASS } from "@/lib/title";
 import { rollEventsFor } from "@/lib/rollover-events";
 import type { Label as LabelRecord, ReminderPreset, Todo } from "@/lib/schema";
 import type { PlacementContext } from "@/lib/scheduling";
+import { originOf, type ConfettiOrigin } from "@/lib/celebrate";
 
 interface TodoCardProps {
   todo: Todo;
@@ -66,7 +67,15 @@ interface TodoCardProps {
    * registered and `listeners` comes back empty.
    */
   draggable?: boolean;
-  onToggle: (todo: Todo) => void;
+  /**
+   * `origin` is where on screen the toggle happened, for GOOD JOB mode's
+   * confetti (`lib/celebrate.ts`). Optional so the several components that
+   * merely forward this handler need no changes, and measured HERE rather
+   * than looked up by id in the handler — `day-sheet.tsx` renders a second
+   * card for a to-do the board is already showing, so an id lookup would find
+   * the wrong one and burst behind the sheet.
+   */
+  onToggle: (todo: Todo, origin?: ConfettiOrigin | null) => void;
   onOpen: (todo: Todo) => void;
   /**
    * Arrow-key navigation out of this row. Returns true when focus moved, so
@@ -186,6 +195,14 @@ export function TodoCard({
   const titleRef = useRef<HTMLSpanElement | null>(null);
   const [titleClamped, setTitleClamped] = useState(false);
 
+  /**
+   * The checkbox's on-screen box, for GOOD JOB mode's confetti origin. Read
+   * synchronously in the toggle handlers below, because completing removes
+   * this card from the board — a moment later there is nothing left to
+   * measure.
+   */
+  const checkboxRef = useRef<HTMLSpanElement | null>(null);
+
   useEffect(() => {
     const el = titleRef.current;
     // Absent in happy-dom, which has no layout to observe anyway.
@@ -281,7 +298,9 @@ export function TodoCard({
           onOpen(todo);
         } else if (e.key === " ") {
           e.preventDefault();
-          onToggle(todo);
+          // Same origin as a click, not the focused row: the checkbox is what
+          // Space operates, so the confetti should leave from there too.
+          onToggle(todo, originOf(checkboxRef.current));
         } else if (e.key === "x" || e.key === "X") {
           // The keyboard route into a multi-selection (EI-194). Space is
           // already spoken for by "toggle done", so selection needs a letter;
@@ -460,11 +479,20 @@ export function TodoCard({
         */}
         <TooltipTrigger
           disabled={!completionStamp}
-          render={<span className="absolute left-3 top-2 inline-flex" />}
+          render={
+            /*
+              The ref rides the render element rather than the `Checkbox`
+              because Base UI's own components take their ref for internals;
+              this span is a plain element and already sits exactly on the
+              checkbox, so its rect IS the checkbox's rect. GOOD JOB mode
+              measures it at click time — see `onCheckedChange` below.
+            */
+            <span ref={checkboxRef} className="absolute left-3 top-2 inline-flex" />
+          }
         >
           <Checkbox
             checked={todo.status === "done"}
-            onCheckedChange={() => onToggle(todo)}
+            onCheckedChange={() => onToggle(todo, originOf(checkboxRef.current))}
             aria-label={`Mark ${todo.title} ${todo.status === "done" ? "not done" : "done"}`}
             data-completed-at={todo.completedAt ?? undefined}
             // Cursor is inherited, so without this the checkbox would read as a

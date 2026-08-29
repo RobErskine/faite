@@ -390,12 +390,52 @@ describe("footer", () => {
   });
 });
 
+/**
+ * GOOD JOB mode's confetti origin (`lib/celebrate.ts`), measured from the
+ * sheet's OWN controls.
+ *
+ * Not from the board card behind it — that card may be scrolled away,
+ * filtered out, or on another tab, and a sub-task never has one at all. Both
+ * assertions really test that a ref survives: the footer button reaches its
+ * DOM node through Base UI's `TooltipTrigger render={...}` prop, and if that
+ * merge ever stops working, `originOf` returns null and the confetti silently
+ * stops — which is indistinguishable from the setting being off.
+ *
+ * happy-dom has no layout, hence the stubbed rect; the tests elsewhere in this
+ * file that assert a trailing `null` origin are the unstubbed case.
+ */
+/**
+ * happy-dom has no layout, so any test wanting a real origin must say where
+ * the element is. Shared by the two `describe`s below that do.
+ */
+function stubRect(el: Element) {
+  window.innerWidth = 1000;
+  window.innerHeight = 500;
+  const box = { x: 200, y: 100, left: 200, top: 100, width: 100, height: 50, right: 300, bottom: 150 };
+  el.getBoundingClientRect = () => ({ ...box, toJSON: () => box }) as DOMRect;
+}
+
+describe("the confetti origin passed to onSetStatus", () => {
+
+  it("comes from the Mark done button, for both the click and ⌘Enter", () => {
+    const onSetStatus = vi.fn();
+    render(<Harness onSetStatus={onSetStatus} />);
+    stubRect(screen.getByRole("button", { name: "Mark done" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Mark done" }));
+    expect(onSetStatus).toHaveBeenLastCalledWith("t1", "done", { x: 0.25, y: 0.25 });
+
+    fireEvent.keyDown(sheetContent(), { key: "Enter", metaKey: true });
+    expect(onSetStatus).toHaveBeenLastCalledWith("t1", "done", { x: 0.25, y: 0.25 });
+  });
+});
+
 describe("keyboard shortcuts", () => {
   it("⌘Enter marks the todo done", () => {
     const onSetStatus = vi.fn();
     render(<Harness onSetStatus={onSetStatus} />);
     fireEvent.keyDown(sheetContent(), { key: "Enter", metaKey: true });
-    expect(onSetStatus).toHaveBeenCalledWith("t1", "done");
+    expect(onSetStatus).toHaveBeenCalledWith("t1", "done", null);
   });
 
   it("⌘Backspace marks the todo dropped (Won't do)", () => {
@@ -484,7 +524,21 @@ describe("Sub-tasks (EI-55)", () => {
     const onSetStatus = vi.fn();
     render(<Harness todos={[child("s1", "Book flights")]} onSetStatus={onSetStatus} />);
     fireEvent.click(screen.getByLabelText("Mark Book flights done"));
-    expect(onSetStatus).toHaveBeenCalledWith("s1", "done");
+    expect(onSetStatus).toHaveBeenCalledWith("s1", "done", null);
+  });
+
+  /**
+   * A sub-task has no board card, so the row itself is the only honest
+   * origin for GOOD JOB mode's confetti — see the footer's case above.
+   */
+  it("hands its own row as the confetti origin", () => {
+    const onSetStatus = vi.fn();
+    render(<Harness todos={[child("s1", "Book flights")]} onSetStatus={onSetStatus} />);
+    stubRect(screen.getByLabelText("Mark Book flights done").closest("li")!);
+
+    fireEvent.click(screen.getByLabelText("Mark Book flights done"));
+
+    expect(onSetStatus).toHaveBeenCalledWith("s1", "done", { x: 0.25, y: 0.25 });
   });
 
   it("unchecking a done sub-task reopens it", () => {
@@ -493,7 +547,7 @@ describe("Sub-tasks (EI-55)", () => {
       <Harness todos={[child("s1", "Book flights", "done")]} onSetStatus={onSetStatus} />,
     );
     fireEvent.click(screen.getByLabelText("Mark Book flights not done"));
-    expect(onSetStatus).toHaveBeenCalledWith("s1", "open");
+    expect(onSetStatus).toHaveBeenCalledWith("s1", "open", null);
   });
 
   it("deleting a sub-task calls onDelete with ITS id and does not close the sheet", () => {

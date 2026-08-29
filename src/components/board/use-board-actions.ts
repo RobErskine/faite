@@ -19,6 +19,8 @@ import {
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { toast } from "sonner";
 import type { List, Tab, Todo } from "@/lib/schema";
+import { celebrate, type ConfettiOrigin } from "@/lib/celebrate";
+import { effectiveListColor } from "@/lib/colors";
 import {
   parseColumnId,
   parseDayGroupId,
@@ -546,12 +548,49 @@ export function useBoardActions(
     rawTodoIds,
     activeTabId,
     listsById,
+    tabsById,
+    settings,
     ctx,
     openTodo,
     recurrenceExpansion,
     reminderPresets,
     selectedTodos,
   } = data;
+
+  /*
+   * Extracted to a boolean rather than depending on `settings` itself: that
+   * object is rewritten by every rail resize, tab switch and split drag, and
+   * three completion handlers rebuilding on a column drag would be churn for
+   * nothing. `useSettings()` is not called again here — `use-board-data`
+   * already subscribes to the singleton row, and a second liveQuery on it
+   * would just be a second re-render source.
+   */
+  const goodJob = settings?.goodJobMode ?? false;
+
+  /**
+   * GOOD JOB mode's one gate (see `settingsSchema.goodJobMode`).
+   *
+   * Only `done` reaches here — `dropped` is an abandonment and reopening is
+   * not a completion, so neither celebrates. Callers measure `origin`
+   * themselves, at the control the user actually actuated, because the same
+   * to-do can be on screen more than once: `day-sheet.tsx` renders a second
+   * `TodoCard` for a to-do the board is already showing, and
+   * `command-palette.tsx` renders a third row for it. Looking the card up by
+   * id would find whichever came first in the document and throw confetti
+   * from behind an overlay — and a sub-task has no card to find at all.
+   *
+   * The color is `effectiveListColor`, not the tab's: a to-do in a red list
+   * under a blue tab RENDERS red, and the burst has to match what the user is
+   * looking at.
+   */
+  const celebrateDone = useCallback(
+    (todo: Pick<Todo, "listId">, origin: ConfettiOrigin | null | undefined) => {
+      if (!goodJob || !origin) return;
+      const list = todo.listId ? listsById.get(todo.listId) : null;
+      void celebrate(origin, effectiveListColor(list, tabsById));
+    },
+    [goodJob, listsById, tabsById],
+  );
 
   /**
    * Materialize a virtual (or already-real) todo before writing to it.
@@ -1329,7 +1368,7 @@ export function useBoardActions(
    * the user can still see does not get one.
    */
   const handleToggle = useCallback(
-    (todo: Todo) => {
+    (todo: Todo, origin?: ConfettiOrigin | null) => {
       /*
        * A real toggle, reading the current status (EI-197).
        *
@@ -1375,8 +1414,9 @@ export function useBoardActions(
           action: { label: "Undo", onClick: () => void undoById(entryId) },
         });
       }
+      if (next === "done") celebrateDone(todo, origin);
     },
-    [materializeIfNeeded],
+    [materializeIfNeeded, celebrateDone],
   );
 
   /**
@@ -1414,7 +1454,7 @@ export function useBoardActions(
   );
 
   const handleSheetStatus = useCallback(
-    (id: string, status: Todo["status"]) => {
+    (id: string, status: Todo["status"], origin?: ConfettiOrigin | null) => {
       const before = todosById.get(id);
       if (!before) return;
       const forward = statusPatch(status);
@@ -1434,8 +1474,9 @@ export function useBoardActions(
           action: { label: "Undo", onClick: () => void undoById(entryId) },
         });
       }
+      if (status === "done") celebrateDone(before, origin);
     },
-    [todosById, materializeIfNeeded],
+    [todosById, materializeIfNeeded, celebrateDone],
   );
 
   /**
@@ -1449,7 +1490,11 @@ export function useBoardActions(
    * per-verdict wording a second time.
    */
   const handleOverdriveVerdict = useCallback(
-    (todo: Todo, verdict: Verdict): { undoId: string; label: string } => {
+    (
+      todo: Todo,
+      verdict: Verdict,
+      origin?: ConfettiOrigin | null,
+    ): { undoId: string; label: string } => {
       const forward: Partial<Todo> =
         verdict.kind === "listed"
           ? listPatch(verdict.listId)
@@ -1482,9 +1527,11 @@ export function useBoardActions(
         }
       })();
 
+      if (verdict.kind === "done") celebrateDone(todo, origin);
+
       return { undoId: entryId, label };
     },
-    [listsById, materializeIfNeeded],
+    [listsById, materializeIfNeeded, celebrateDone],
   );
 
   const handleToggleLabel = useCallback(

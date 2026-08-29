@@ -52,9 +52,53 @@ function dexieKeyFor(kind: EntityKind, entityId: string): string {
   return kind === "settings" ? LOCAL_OWNER_ID : entityId;
 }
 
+/**
+ * Forward compatibility: a kind this build has never heard of must be
+ * SKIPPED, never applied.
+ *
+ * This is a postmortem, not a hypothetical. A desktop `.app` built on
+ * 2026-08-22 predated the `attachment` kind (EI-242, 2026-08-24). The server
+ * is deployed continuously and has no idea what version a client is on, so
+ * its pull pages started carrying `attachment` rows. `TABLE_BY_KIND` on that
+ * old bundle had no `attachment` entry, so `db[undefined].get(...)` threw
+ * inside the `rw` transaction — which aborts the whole page, rejects
+ * `applyPulledChanges`, and throws out of `runSyncCycle`'s pull loop BEFORE
+ * `store.setCursor` runs. The cursor therefore never advanced past the page
+ * containing that one row, on every retry, from any starting cursor. Sync was
+ * permanently and silently dead, and re-installing or clearing local storage
+ * could not fix it: a re-pull from 0 walks straight back into the same record.
+ *
+ * `SYNC_PROTOCOL_VERSION` did not help — it was never bumped for a new kind,
+ * and bumping it would only have swapped a silent wedge for a hard refusal.
+ * Skipping is the right default: the rest of the page still applies, the
+ * cursor still advances, and the device stays useful on a slightly narrower
+ * view of the data until it is upgraded.
+ *
+ * The cost, and it is real: the cursor is a single scalar per page, not a
+ * per-row watermark, so a skipped row is not retried automatically even after
+ * the client learns the kind. Recovering it needs a full re-pull (clear
+ * `faite:sync-cursor:*`) — the same trade `plan.skipped` already documents
+ * below.
+ */
+function isKnownKind(kind: string): kind is EntityKind {
+  return Object.hasOwn(TABLE_BY_KIND, kind);
+}
+
 export async function applyPulledChanges(changes: WireChange[]): Promise<ApplyPlan> {
   const db = getDb();
   const ownerId = getCurrentOwnerId();
+
+  // Filtered OUTSIDE the transaction, so an unknown kind can never reach a
+  // `db[undefined]` lookup and abort the page — see `isKnownKind`.
+  const applicable = changes.filter((change) => isKnownKind(change.kind));
+  if (applicable.length !== changes.length) {
+    const unknown = [...new Set(changes.filter((c) => !isKnownKind(c.kind)).map((c) => c.kind))];
+    console.warn(
+      `[faite] skipping ${changes.length - applicable.length} pulled change(s) of unknown kind(s) ` +
+        `[${unknown.join(", ")}] — this build is older than the server. Update the app, then ` +
+        `re-pull from scratch to pick them up.`,
+    );
+  }
 
   return db.transaction(
     "rw",
@@ -78,7 +122,7 @@ export async function applyPulledChanges(changes: WireChange[]): Promise<ApplyPl
       const pending = await db.outbox.toArray();
 
       const locals = new Map<string, Record<string, unknown> | undefined>();
-      for (const change of changes) {
+      for (const change of applicable) {
         if (locals.has(change.entityId)) continue;
         const table = TABLE_BY_KIND[change.kind];
         const key = dexieKeyFor(change.kind, change.entityId);
@@ -87,7 +131,7 @@ export async function applyPulledChanges(changes: WireChange[]): Promise<ApplyPl
         locals.set(change.entityId, row);
       }
 
-      const plan = planApply(changes, pending, locals, { ownerId, now: now() });
+      const plan = planApply(applicable, pending, locals, { ownerId, now: now() });
 
       if (plan.skipped.length > 0) {
         // A skipped row's version is still below the cursor this cycle

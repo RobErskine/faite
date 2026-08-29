@@ -189,6 +189,13 @@ More involved; the kind has to be threaded through the sync machinery.
 9. `schema-parity.test.ts` — `ZOD_BY_KIND`, `TABLES_BY_KIND`, `ALL_TABLES`,
    and a documented `KNOWN_DIVERGENCES` entry for `version`.
 
+**A client older than this deploy sees the new kind and skips it, safely** —
+`apply-remote.ts`'s `isKnownKind` filters any kind missing from that build's
+`TABLE_BY_KIND` out before the sync transaction, rather than throwing and
+wedging the pull cursor. See the 2026-08-28 incident in `docs/SYNC.md`'s
+"Known traps". Nothing to do here; it falls out of step 6 automatically as
+long as `TABLE_BY_KIND` stays the single source of truth for known kinds.
+
 **Cost to know about:** `pull()` runs one query per kind, so the worst-case id
 count feeding `readFieldClocksBulk` grows by `limit` per kind. That is already
 chunked (`sql-limits.ts`), and `sql-limits.test.ts` pins the arithmetic — a

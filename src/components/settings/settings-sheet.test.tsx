@@ -58,6 +58,7 @@ function settingsWith(patch: Partial<Settings>): Settings {
     splitRatio: null,
     splitCollapsed: "none",
     reminderPresetsSeeded: false,
+    goodJobMode: false,
     overdriveMinTodos: 5,
     overdriveAutoConfirmMs: 0,
     updatedAt: "2026-08-03T00:00:00.000Z",

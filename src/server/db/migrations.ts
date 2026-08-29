@@ -331,6 +331,16 @@ export const USER_DB_MIGRATIONS: readonly UserDbMigration[] = [
       "ALTER TABLE attachments ADD COLUMN swept_at text",
     ],
   },
+  {
+    id: 20,
+    name: "settings-add-good-job-mode",
+    statements: [
+      // NOT NULL with a DEFAULT matching the Zod default, same reasoning as
+      // migrations 3/7/11/13: every existing row comes out with the exact
+      // behaviour it had before this was a setting — confetti off.
+      "ALTER TABLE settings ADD COLUMN good_job_mode integer NOT NULL DEFAULT 0",
+    ],
+  },
   // Add new migrations here. Never edit one above this line.
   //
   // Example — adding a nullable column (the safe, ordinary case):

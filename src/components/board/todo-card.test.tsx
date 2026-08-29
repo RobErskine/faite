@@ -71,7 +71,7 @@ const todo = (overrides: Partial<Todo> = {}): Todo => ({
 
 interface HarnessProps {
   todo?: Todo;
-  onToggle?: (t: Todo) => void;
+  onToggle?: (t: Todo, origin?: { x: number; y: number } | null) => void;
   onOpen?: (t: Todo) => void;
   onNavigate?: (stop: string, key: NavKey) => boolean;
   onDragStart?: () => void;
@@ -289,6 +289,52 @@ describe("the list wash stays off the card", () => {
     render(<Harness />);
     expect(row().className).toContain("hover:bg-accent/50");
     expect(row().style.backgroundColor).toBe("");
+  });
+});
+
+/**
+ * GOOD JOB mode's confetti origin (`lib/celebrate.ts`).
+ *
+ * The value of these two is entirely in the REF: `TooltipTrigger` takes the
+ * checkbox's wrapper span via a `render` prop, and Base UI has to merge our
+ * ref with its own for the measurement to work at all. If it ever stops doing
+ * that, `originOf` sees `null` and the feature silently dies everywhere —
+ * confetti that never appears looks exactly like confetti that is switched
+ * off, so nothing else would report it.
+ *
+ * happy-dom has no layout, so the span's rect is stubbed; without that stub
+ * `originOf` correctly returns null and these would pass while proving
+ * nothing.
+ */
+describe("the confetti origin passed to onToggle", () => {
+  const checkboxWrapper = () =>
+    document.querySelector<HTMLElement>('[data-slot="checkbox"]')!.parentElement!;
+
+  const stubRect = () => {
+    window.innerWidth = 1000;
+    window.innerHeight = 500;
+    const box = { x: 200, y: 100, left: 200, top: 100, width: 100, height: 50, right: 300, bottom: 150 };
+    checkboxWrapper().getBoundingClientRect = () => ({ ...box, toJSON: () => box }) as DOMRect;
+  };
+
+  it("comes from the checkbox on a click", () => {
+    const onToggle = vi.fn();
+    render(<Harness onToggle={onToggle} />);
+    stubRect();
+
+    fireEvent.click(document.querySelector<HTMLElement>('[data-slot="checkbox"]')!);
+
+    expect(onToggle).toHaveBeenCalledWith(expect.anything(), { x: 0.25, y: 0.25 });
+  });
+
+  it("comes from the checkbox on Space too, not from the focused row", () => {
+    const onToggle = vi.fn();
+    render(<Harness onToggle={onToggle} />);
+    stubRect();
+
+    fireEvent.keyDown(row(), { key: " " });
+
+    expect(onToggle).toHaveBeenCalledWith(expect.anything(), { x: 0.25, y: 0.25 });
   });
 });
 
@@ -698,6 +744,8 @@ describe("the checkbox's promise", () => {
     const done = todo({ status: "done", completedAt: "2026-08-14T21:41:00.000Z" });
     render(<Harness todo={done} onToggle={onToggle} />);
     fireEvent.click(box());
-    expect(onToggle).toHaveBeenCalledWith(done);
+    // Second arg is the confetti origin — null here, because this test stubs
+    // no rect and happy-dom has no layout. Irrelevant to what it is asserting.
+    expect(onToggle).toHaveBeenCalledWith(done, null);
   });
 });

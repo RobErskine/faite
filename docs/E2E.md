@@ -162,8 +162,8 @@ the local path, which is unchanged.
 ## 6. Running it
 
 ```bash
-npm run e2e:ci           # the PR gate — desktop + phone-iphone (53 tests)
-npm run e2e              # the full matrix — all five projects (89 tests)
+npm run e2e:ci           # the PR gate — desktop + phone-iphone (90 tests)
+npm run e2e              # the full matrix — all five projects (129 tests)
 npm run e2e -- --project=desktop
 npm run e2e -- --project=phone-iphone e2e/touch-smoke.spec.ts
 npm run e2e:ui            # Playwright's interactive UI mode
@@ -244,19 +244,19 @@ source of truth; there are no project guards inside specs any more (§7).
 | `keyboard-drag` (7) | ● | | | | |
 | `multi-drag` (5) | ● | | | | |
 | `completion-tooltip` (6) | ● | | | | |
-| `core-flows` (5) | ● | ● | ● | ● | ● |
+| `core-flows` (6) | ● | ● | ● | ● | ● |
 | `reminders` (4) | ● | | ● | | |
 | `overdrive` (8) | ● | | ● | ● | |
 | `activity-timeline` (2) | ● | | ● | | |
 | `touch-affordances` (3) | | ● | ● | ● | ● |
 | `touch-smoke` (2) | | | ● | ● | ● |
 
-**115 tests.** Before, every project ran every spec — 36 x 5 = **180 runs**,
+**129 tests.** Before, every project ran every spec — 36 x 5 = **180 runs**,
 of which 56 immediately hit a skip guard and exited.
 
 This table is what `npm run e2e` runs, and it is the *full* matrix. A pull
 request runs a subset of it: the **`desktop` and `phone-iphone` columns
-only** (79 tests, `npm run e2e:ci`). The other three columns are deferred to
+only** (90 tests, `npm run e2e:ci`). The other three columns are deferred to
 a local run or a `workflow_dispatch` — see §8.5 for why those two, and what
 deferring the rest gives up.
 
@@ -410,7 +410,7 @@ for that spec rather than deleting it globally.
 ### 8.5 Mandatory vs optional — what a PR actually runs
 
 The full matrix stopped running on every PR. `npm run e2e:ci` — the **gate** —
-runs `--project=desktop --project=phone-iphone`, **79 of the 115 tests**.
+runs `--project=desktop --project=phone-iphone`, **90 of the 129 tests**.
 
 **Why that pair, and not just `desktop`.** `resolveLayout()`
 (`src/lib/use-viewport.ts`) is `< 640` phone, `< 1024` tablet, `>= 1024`

@@ -909,3 +909,29 @@ silently stopped `<img>` from painting. Same shape, one ticket apart: a
 header chosen for defence, breaking rendering, with a 200 response and
 nothing in the console. Assume every such header is load-bearing on the
 render path until a browser says otherwise.
+
+---
+
+## `npm run verify` is not the CI gate — the OpenAPI drift check lives only in CI
+
+**2026-08-29, PR #65 (GOOD JOB mode).** Added a boolean to `settingsSchema`,
+walked the whole `docs/SCHEMA-CHANGES.md` checklist, ran `npm run verify`
+green — typecheck ×2, lint, 2145 tests, `build`, `build:static` — plus the
+e2e suite on both CI projects. CI's `verify` job still failed, in 3 minutes,
+on a step `npm run verify` does not contain: **OpenAPI drift check**.
+
+`openapi/openapi.json` and `openapi/v1.json` are COMMITTED ARTIFACTS
+generated from the Zod schemas by `npm run openapi:generate`. Any change to
+`settingsSchema` (or `todoSchema`, or any other schema the public API
+exposes) makes them stale, and CI diffs them and fails. Nothing local tells
+you.
+
+**Rule:** after touching any Zod schema in `src/lib/schema.ts`, run
+`npm run openapi:generate` and commit the result. Treat it as an unwritten
+eighth row of the SCHEMA-CHANGES table, alongside `schema:generate`.
+
+**Rule, more general:** `npm run verify` is a convenience script, not a
+mirror of `.github/workflows/ci.yml`. Before claiming a change is CI-clean,
+read the workflow's step list and check for steps the script omits. Here the
+`verify` JOB had six steps and the `verify` SCRIPT had five — the names being
+identical is exactly what makes this easy to miss.

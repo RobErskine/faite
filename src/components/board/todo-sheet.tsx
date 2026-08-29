@@ -81,6 +81,7 @@ import type {
   Todo,
   TodoEvent,
 } from "@/lib/schema";
+import { originOf, type ConfettiOrigin } from "@/lib/celebrate";
 
 export type { RecurrenceInfo };
 
@@ -141,7 +142,13 @@ interface TodoSheetProps {
    * completed todo here while the card checkbox set it — the same action
    * producing two different records depending on where it was triggered.
    */
-  onSetStatus: (id: string, status: Todo["status"]) => void;
+  /**
+   * `origin` feeds GOOD JOB mode's confetti (`lib/celebrate.ts`) and is
+   * optional. The sheet measures it from its own controls rather than from
+   * the board card behind it: that card may be scrolled away, filtered out,
+   * or on another tab, and a sub-task has no card at all.
+   */
+  onSetStatus: (id: string, status: Todo["status"], origin?: ConfettiOrigin | null) => void;
   onToggleLabel: (todoId: string, labelId: string) => void;
   onDelete: (id: string) => void;
   /**
@@ -397,8 +404,16 @@ function TodoSheetContent({
     return parsed.matches.map((m) => ({ key: `${m.kind}:${m.raw}`, label: m.label }));
   }, [title, today, reminderPresets]);
 
+  /** The "Mark done" button's box — the confetti origin for both it and `⌘↵`. */
+  const markDoneRef = useRef<HTMLButtonElement | null>(null);
+
   const markDone = () => {
-    onSetStatus(todo.id, todo.status === "done" ? "open" : "done");
+    // Measured before `onClose()`, while the footer is still on screen.
+    onSetStatus(
+      todo.id,
+      todo.status === "done" ? "open" : "done",
+      originOf(markDoneRef.current),
+    );
     onClose();
   };
   const wontDo = () => {
@@ -772,7 +787,11 @@ function TodoSheetContent({
         */}
         <SheetFooter className="grid grid-cols-3 gap-2 border-t">
           <Tooltip>
-            <TooltipTrigger render={<Button variant="outline" size="sm" onClick={markDone} />}>
+            <TooltipTrigger
+              render={
+                <Button ref={markDoneRef} variant="outline" size="sm" onClick={markDone} />
+              }
+            >
               {todo.status === "done" ? "Reopen" : "Mark done"}
             </TooltipTrigger>
             <TooltipContent>
@@ -838,7 +857,7 @@ interface SubtasksSectionProps {
   subtasks: Todo[];
   /** Reused verbatim from `TodoSheetProps` — both are already generic on
    * WHICH todo id, not tied to the sheet's own open one. */
-  onToggleStatus: (id: string, status: Todo["status"]) => void;
+  onToggleStatus: (id: string, status: Todo["status"], origin?: ConfettiOrigin | null) => void;
   onDelete: (id: string) => void;
   onAdd: (title: string) => void;
 }
@@ -855,6 +874,8 @@ interface SubtasksSectionProps {
  * section until one exists would hide the only way to create the first one.
  */
 function SubtasksSection({ subtasks, onToggleStatus, onDelete, onAdd }: SubtasksSectionProps) {
+  /** Per-row elements, for GOOD JOB mode's confetti origin. Keyed by subtask id. */
+  const rowRefs = useRef(new Map<string, HTMLLIElement>());
   const [draft, setDraft] = useState("");
 
   const doneCount = subtasks.filter((s) => s.status !== "open").length;
@@ -881,11 +902,28 @@ function SubtasksSection({ subtasks, onToggleStatus, onDelete, onAdd }: Subtasks
       {subtasks.length > 0 && (
         <ul className="space-y-1">
           {subtasks.map((subtask) => (
-            <li key={subtask.id} className="flex items-center gap-2">
+            <li
+              key={subtask.id}
+              /*
+                The row, not the checkbox: `Checkbox` is a Base UI component
+                whose ref belongs to its internals, and an `<li>` is a plain
+                element that already sits right on the control. Close enough
+                for a confetti origin — the burst is 20px wide either way.
+              */
+              ref={(el) => {
+                if (el) rowRefs.current.set(subtask.id, el);
+                else rowRefs.current.delete(subtask.id);
+              }}
+              className="flex items-center gap-2"
+            >
               <Checkbox
                 checked={subtask.status === "done"}
                 onCheckedChange={() =>
-                  onToggleStatus(subtask.id, subtask.status === "done" ? "open" : "done")
+                  onToggleStatus(
+                    subtask.id,
+                    subtask.status === "done" ? "open" : "done",
+                    originOf(rowRefs.current.get(subtask.id) ?? null),
+                  )
                 }
                 aria-label={`Mark ${subtask.title} ${
                   subtask.status === "done" ? "not done" : "done"

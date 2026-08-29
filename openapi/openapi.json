@@ -10785,6 +10785,10 @@
             "minimum": 0,
             "maximum": 10000
           },
+          "goodJobMode": {
+            "default": false,
+            "type": "boolean"
+          },
           "updatedAt": {
             "type": "string"
           }
@@ -10817,6 +10821,7 @@
           "reminderPresetsSeeded",
           "overdriveMinTodos",
           "overdriveAutoConfirmMs",
+          "goodJobMode",
           "updatedAt"
         ],
         "additionalProperties": false

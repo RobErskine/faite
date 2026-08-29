@@ -46,6 +46,7 @@ import type {
   Todo,
   TodoStatus,
 } from "@/lib/schema";
+import { originOf, type ConfettiOrigin } from "@/lib/celebrate";
 import type { MentionLabelOption, MentionListOption, MentionPick } from "./board-column";
 import { QuickAddPreview } from "./quick-add-preview";
 import { detectPlatform, formatCombo, type Platform } from "@/lib/keyboard";
@@ -80,7 +81,7 @@ interface CommandPaletteProps {
   /** Switches the planning half. Board owns where the active tab is stored. */
   onSelectTab: (tabId: string) => void;
   /** `⌘⏎` toggles done/open, `⌘⌫` marks won't-do, on the highlighted result. */
-  onSetTodoStatus: (id: string, status: TodoStatus) => void;
+  onSetTodoStatus: (id: string, status: TodoStatus, origin?: ConfettiOrigin | null) => void;
   /** `⌘⇧⌫` on the highlighted result. */
   onDeleteTodo: (id: string) => void;
   /** How many to-dos are currently in Overflow — `board.overflow.todos.length`,
@@ -393,10 +394,10 @@ export function CommandPalette({
    * value that stops matching any item leaves nothing selected, since
    * cmdk's "select first" only runs when the value is empty.
    */
-  const highlightedTodoId = () =>
-    listRef.current
-      ?.querySelector('[cmdk-item][aria-selected="true"]')
-      ?.getAttribute("data-todo-id") ?? null;
+  const highlightedTodoRow = () =>
+    listRef.current?.querySelector('[cmdk-item][aria-selected="true"]') ?? null;
+
+  const highlightedTodoId = () => highlightedTodoRow()?.getAttribute("data-todo-id") ?? null;
 
   const placeholder =
     mode.kind === "new-list"
@@ -560,7 +561,14 @@ export function CommandPalette({
               if (todo) {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
-                  onSetTodoStatus(todo.id, todo.status === "done" ? "open" : "done");
+                  // The highlighted ROW is the origin for GOOD JOB mode's
+                  // confetti — the board card for this todo is behind the
+                  // palette overlay, and may not even be on screen.
+                  onSetTodoStatus(
+                    todo.id,
+                    todo.status === "done" ? "open" : "done",
+                    originOf(highlightedTodoRow()),
+                  );
                   return;
                 }
                 if (e.key === "Backspace") {
