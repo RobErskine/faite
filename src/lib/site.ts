@@ -148,6 +148,10 @@ export const PRIVATE_ROUTES: readonly string[] = [
   // or nothing at all, same reasoning as `/board`.
   "/desktop-handoff",
   "/background-sync",
+  // Where sign-out lands in an app-shell build (docs/DESKTOP.md §11). Not
+  // indexable for the same reason as the two above: on the web this route is
+  // never navigated to at all — sign-out goes to `/` there.
+  "/signed-out",
 ];
 
 /** Throws on an unknown path — a missing table row is a build failure, not a silent gap. */

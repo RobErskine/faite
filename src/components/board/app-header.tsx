@@ -90,15 +90,21 @@ export function AppHeader({
    * `replace`, not `assign`, so `/board` leaves the history stack and Back
    * cannot restore it from bfcache.
    *
-   * App-shell builds reload instead. `NEXT_PUBLIC_APP_SHELL=1` is set by
-   * `build:static` and used by BOTH Capacitor and Tauri, where `/` is only a
-   * redirect stub and the windows open on `board.html` directly — a reload
-   * gives the same clean-document guarantee and cannot 404. `app/page.tsx`
-   * already keys off the same flag.
+   * App-shell builds (`NEXT_PUBLIC_APP_SHELL=1` — Tauri and Capacitor) go to
+   * `signed-out.html` instead of `/`. There, `/` is an unconditional redirect
+   * stub back to `/board` (`app/page.tsx` keys off the same flag) and the
+   * windows open on `board.html` directly (docs/DESKTOP.md §6.2), so `/` and
+   * a plain reload both land the user straight back on a board — which is the
+   * one thing signing out has to stop. A relative filename, because the
+   * export is flat `.html` files served from `tauri://localhost` and
+   * `capacitor://localhost` alike.
    */
   const leaveBoard = () => {
-    if (process.env.NEXT_PUBLIC_APP_SHELL === "1") window.location.reload();
-    else window.location.replace("/");
+    if (process.env.NEXT_PUBLIC_APP_SHELL === "1") {
+      window.location.replace("signed-out.html");
+    } else {
+      window.location.replace("/");
+    }
   };
 
   /**

@@ -100,7 +100,9 @@ The order is load-bearing, and lives in `app-header.tsx`'s `handleSignOut`:
    one transaction. See that file's comment for the crash table.
 5. **`window.location.replace("/")`** — a hard navigation, so no React tree,
    `useLiveQuery` cache or undo stack survives holding the old user's values.
-   App-shell builds (`NEXT_PUBLIC_APP_SHELL=1`) reload instead.
+   App-shell builds (`NEXT_PUBLIC_APP_SHELL=1` — Tauri and Capacitor) go to
+   `signed-out.html` instead, because `/` is only a redirect stub back to
+   `/board` there. See `docs/DESKTOP.md` §11.
 
 **The exception:** if `faite:bound-owner-id` is not the signed-in user — the
 state `session-provider.tsx`'s "switch accounts?" dialog creates — sign-out

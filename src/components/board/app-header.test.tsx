@@ -293,6 +293,31 @@ describe("AppHeader", () => {
     expect(mockReplace).toHaveBeenCalledWith("/");
   });
 
+  it("lands an app-shell build on the signed-out screen, not back on the board", async () => {
+    // Tauri and Capacitor. `/` is a redirect stub to /board there and the
+    // windows open on board.html directly, so both `/` and a plain reload
+    // would put the user straight back on a board.
+    vi.stubEnv("NEXT_PUBLIC_APP_SHELL", "1");
+    mockSession = { user: { id: USER_ID, email: "rob@myfaite.app" } };
+    localStorage.setItem(BOUND_OWNER_KEY, USER_ID);
+
+    render(
+      <AppHeader
+        onOpenPalette={noop}
+        onOpenSettings={noop}
+        onOpenHelp={noop}
+        settings={undefined}
+      />,
+    );
+    fireEvent.click(screen.getByLabelText("Account"));
+    fireEvent.click(screen.getByText("Log out"));
+
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("signed-out.html"));
+    expect(mockReload).not.toHaveBeenCalled();
+
+    vi.unstubAllEnvs();
+  });
+
   it("signs out WITHOUT erasing when the board belongs to a different account", async () => {
     mockSession = { user: { id: USER_ID, email: "rob@myfaite.app" } };
     // The state SessionProvider's "switch accounts?" dialog puts us in:

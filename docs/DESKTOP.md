@@ -1263,3 +1263,79 @@ silent and only shows up as behavior, not a compile error or a log line.
   by construction — multi-tab support has always assumed this), just a
   small, deliberately-unoptimized inefficiency: one extra idle WebSocket and
   occasional redundant polling for as long as the window stays closed.
+
+---
+
+## 11. Sign-out clears the device, and lands on a signed-out screen
+
+Signing out used to end the Better Auth session and clear the keychain token,
+and nothing else. That left the whole board — 12 Dexie tables, plus
+`faite:bound-owner-id` — on the device, so the next person to open the app saw
+the previous user's todos. Fixed by `clearDeviceData()`
+(`src/lib/store/clear-device.ts`); the sequence and the clear/keep key table
+live in `docs/AUTH.md` § *What sign-out does*.
+
+Two parts of that fix are desktop-specific.
+
+### 11.1 Why the shell needs its own landing page
+
+The web build sends sign-out to `/`, the marketing page, which already carries
+"Log in" and "Sign up". Neither exists here:
+
+- `NEXT_PUBLIC_APP_SHELL=1` (set by `build:static`, which
+  `tauri.conf.json`'s `beforeBuildCommand` runs) makes `/` an **unconditional
+  redirect stub to `/board`** — see `app/page.tsx`.
+- `main` opens `board.html` **directly** (§6.2), so there is no navigation
+  history to fall back to either.
+
+So `/` and a plain `location.reload()` both land the user straight back on a
+board, which is the one thing signing out has to stop. Sign-out in an
+app-shell build therefore goes to **`signed-out.html`**
+(`src/app/signed-out/page.tsx`), a relative filename because the export is
+flat `.html` served from `tauri://localhost` and `capacitor://localhost`
+alike.
+
+### 11.2 Why it is not `login.html`, and not a gate
+
+The static export **does** contain a `login.html`, and navigating to it would
+be actively wrong: `tauri://localhost` cannot hold a session cookie (§3.7),
+which is the whole reason §9.1 opens the SYSTEM BROWSER for every sign-in
+affordance. An in-app login form here would be a form that can never succeed.
+So the page's primary action is `startDesktopLogin()`, with a line of copy
+setting the expectation that the browser is about to open —
+`signed-out/page.test.tsx` asserts there is no `/login` link on this path.
+
+It is also **not a gate on `/board`**. ARCHITECTURE §2.13 is deliberate and
+still holds in the shell: the board works fully with no account and offline.
+This is where sign-out *lands*, not a wall — hence "Continue without an
+account", which is the honest description of what the board still is. Anyone
+who wants a real gate is asking for a different decision than §2.13, and
+should change §2.13 first.
+
+### 11.3 The hidden windows need nothing
+
+`flushOutbox()` only reaches the calling document's engine, so `core` (§6.2)
+and the D2b background window (§10) are missed by the flush. That is safe
+rather than merely tolerable:
+
+- The keychain token is cleared **before** `signOut()`, and `auth-client.ts`
+  reads it fresh per request (§9.2), so nothing in any window authenticates
+  afterwards.
+- `clearDeviceData()` removes `faite:bound-owner-id`, and every engine's
+  `isActive()` re-reads it on each tick — including the one
+  `__faiteBackgroundSyncTick` drives through `notifyRemoteChange()` →
+  `trigger()`. Both hidden windows go inactive on their own.
+- They share one IndexedDB (§3.3), so the wipe is already theirs too.
+
+No cross-window message, no Rust involvement, nothing added to
+`background_sync.rs`.
+
+### 11.4 Not verified on a real build
+
+Everything above is unit-tested and confirmed against the static export
+(`signed-out.html` is emitted and contains the right copy), but **no
+`tauri build` has been run against it** — the desktop verification loop needs
+a display session (§4). Worth one pass: sign in, sign out, confirm the window
+shows the signed-out screen rather than an empty board, confirm "Sign in"
+opens the system browser and the `faite://auth-callback` round trip still
+lands, and confirm the board is genuinely empty afterwards.
