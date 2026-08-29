@@ -13,6 +13,19 @@ import { ensureDefaultTab, seedIfEmpty } from "./repositories";
  * for it, and for the event that retires it: **a second real account.** You
  * cannot reset data that isn't yours.
  *
+ * ## Three destructive paths, and which is which
+ *
+ * | | Local | Durable Object | Session |
+ * |---|---|---|---|
+ * | reset (here) | wiped + reseeded | wiped | kept |
+ * | delete account | wiped | wiped | ended |
+ * | sign-out (`clear-device.ts`) | wiped | **never touched** | ended |
+ *
+ * Sign-out is the one that must never reach the server: the account keeps its
+ * board so a later sign-in pulls it all back down. Reaching for
+ * `resetAccountData` there would destroy the user's data to protect their
+ * privacy on one device.
+ *
  * ## The order is the whole point
  *
  * Wiping the Durable Object resets `sync_meta.next_version` to 1. Any device

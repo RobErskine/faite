@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { toast } from "sonner";
 import type { Todo } from "@/lib/schema";
 import { dueReminders, reminderFireKey } from "@/lib/reminders";
@@ -22,10 +22,50 @@ function loadFired(): Set<string> {
 
 function saveFired(fired: ReadonlySet<string>): void {
   try {
+    // Nothing fired: remove the key rather than parking a `"[]"` on disk.
+    // `loadFired` reads an absent key as an empty set, so this is the same
+    // state — and it means a signed-out device is observably clean instead of
+    // carrying an empty husk of the previous user's reminders.
+    if (fired.size === 0) {
+      localStorage.removeItem(FIRED_STORAGE_KEY);
+      return;
+    }
     localStorage.setItem(FIRED_STORAGE_KEY, JSON.stringify([...fired]));
   } catch {
     // Best effort — a full-in-memory set still keeps this session correct
     // even if it can't survive a reload.
+  }
+}
+
+/**
+ * The fired set, in memory. Module-level rather than a `useRef` for one
+ * reason: `clearFiredReminders()` has to be able to reset it.
+ *
+ * A ref is not clearable from outside React, and clearing only the persisted
+ * copy does not work — `check()` below writes this set back to localStorage
+ * on every effect re-run, and `clearDeviceData()` empties the `todos` table,
+ * which changes `todos` identity and re-runs the effect. The key would
+ * reappear milliseconds later still holding the previous user's todo ids,
+ * before the sign-out navigation tore the document down. Caught in the
+ * browser; a unit test with no React tree mounted cannot see it.
+ *
+ * One board per document, so a single module-level set is the whole story.
+ */
+let firedInMemory: Set<string> | null = null;
+
+/**
+ * Forget which reminders have already fired on this device — both copies.
+ * Called by `clearDeviceData()` on sign-out: the keys embed todo ids, so
+ * leaving them behind leaks a slice of the previous user's board even after
+ * the todos themselves are gone.
+ */
+export function clearFiredReminders(): void {
+  firedInMemory = null;
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.removeItem(FIRED_STORAGE_KEY);
+  } catch {
+    // Best effort, same as `saveFired`.
   }
 }
 
@@ -71,21 +111,19 @@ function deliver(todo: Todo): void {
  * A wall-clock comparison on every tick survives both, and sleep.
  */
 export function useReminders(todos: readonly Todo[], timezone: string): void {
-  const firedRef = useRef<Set<string> | null>(null);
-
   useEffect(() => {
     if (typeof window === "undefined") return;
-    firedRef.current ??= loadFired();
+    firedInMemory ??= loadFired();
 
     const check = () => {
       const today = todayIn(timezone);
-      const fired = pruneFired(firedRef.current!, today);
+      const fired = pruneFired(firedInMemory ?? loadFired(), today);
       const due = dueReminders(todos, today, new Date().toISOString(), timezone, fired);
       for (const todo of due) {
         deliver(todo);
         fired.add(reminderFireKey(todo));
       }
-      firedRef.current = fired;
+      firedInMemory = fired;
       saveFired(fired);
     };
 

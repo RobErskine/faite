@@ -15,10 +15,13 @@ import { useSettings } from "@/lib/store/hooks";
  *
  * Exists because resetting an account by hand is a three-part ritual that is
  * easy to get half-right: wipe the Durable Object, clear IndexedDB, and clear
- * the `faite:sync-cursor:*` / `faite:last-hlc` / `faite:bound-owner-id`
- * localStorage keys. `resetAccountData()` does all three in the one order
- * that survives a crash at any point — see `src/lib/store/reset.ts` and
- * `docs/SCHEMA-OPS.md`.
+ * the `faite:sync-cursor:*` / `faite:bound-owner-id` localStorage keys.
+ * `resetAccountData()` does all three in the one order that survives a crash
+ * at any point — see `src/lib/store/reset.ts` and `docs/SCHEMA-OPS.md`.
+ *
+ * `faite:last-hlc` is deliberately not in that list and never was: this
+ * device's clock must stay monotone across a reset, or a later write could
+ * lose an LWW comparison to a row this device itself pushed earlier.
  */
 export function DeveloperSection() {
   const { data: session } = useSession();

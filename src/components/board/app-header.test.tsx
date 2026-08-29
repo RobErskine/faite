@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppHeader } from "./app-header";
+import { BOUND_OWNER_KEY } from "@/lib/store/owner";
 import type { Settings } from "@/lib/schema";
 
 /**
@@ -11,7 +12,7 @@ import type { Settings } from "@/lib/schema";
  * in/out/pending, which also drives `useShouldShowAuthNudges` (auth-nudge.ts)
  * since it wraps this same `useSession`.
  */
-let mockSession: { user: { email: string; name?: string | null } } | null = null;
+let mockSession: { user: { id: string; email: string; name?: string | null } } | null = null;
 let mockIsPending = false;
 let mockError: unknown = null;
 const mockSignOut = vi.fn();
@@ -21,18 +22,61 @@ vi.mock("@/lib/auth-client", () => ({
 }));
 
 /**
+ * Sign-out now flushes the outbox and erases the device. Both are mocked
+ * here so this file needs neither `fake-indexeddb` nor a sync transport —
+ * `flushOutbox` returning a plain number is what makes that possible.
+ * `clear-device.test.ts` covers what the wipe actually does.
+ */
+const mockFlushOutbox = vi.fn(async () => 0);
+const mockClearDeviceData = vi.fn(async () => {});
+vi.mock("@/components/sync/sync-provider", () => ({
+  flushOutbox: () => mockFlushOutbox(),
+}));
+vi.mock("@/lib/store/clear-device", () => ({
+  clearDeviceData: () => mockClearDeviceData(),
+}));
+
+const USER_ID = "real-user-1";
+
+/**
  * The header is the only global chrome, and its search field is the sole
  * pointer-driven way into the command palette — ⌘K is the other. These guard
  * that the trigger stays wired and keeps advertising the shortcut, since the
  * palette is otherwise undiscoverable.
  */
 
+/**
+ * `window.location.replace` is what carries the user off the board, so every
+ * signed-in test needs it stubbed or happy-dom would try to navigate. Spying
+ * on it works under happy-dom — `api-origin.test.ts` relies on the same.
+ */
+let mockReplace: ReturnType<typeof vi.fn>;
+let mockReload: ReturnType<typeof vi.fn>;
+
+beforeEach(() => {
+  localStorage.clear();
+  mockReplace = vi.fn();
+  mockReload = vi.fn();
+  Object.defineProperty(window, "location", {
+    configurable: true,
+    value: { ...window.location, replace: mockReplace, reload: mockReload },
+  });
+});
+
 afterEach(() => {
   cleanup();
   mockSession = null;
   mockIsPending = false;
   mockError = null;
-  mockSignOut.mockClear();
+  // `mockReset`, not `mockClear` — the ordering test installs implementations
+  // that push into an array scoped to that test, and `mockClear` would leave
+  // them in place for every test after it.
+  mockSignOut.mockReset();
+  mockFlushOutbox.mockReset();
+  mockFlushOutbox.mockResolvedValue(0);
+  mockClearDeviceData.mockReset();
+  mockClearDeviceData.mockResolvedValue(undefined);
+  localStorage.clear();
 });
 
 const noop = () => {};
@@ -158,7 +202,7 @@ describe("AppHeader", () => {
   });
 
   it("shows the account email and a working sign-out when signed in", async () => {
-    mockSession = { user: { email: "rob@myfaite.app", name: "Rob Erskine" } };
+    mockSession = { user: { id: USER_ID, email: "rob@myfaite.app", name: "Rob Erskine" } };
     render(
       <AppHeader
         onOpenPalette={noop}
@@ -168,16 +212,115 @@ describe("AppHeader", () => {
       />,
     );
 
+    localStorage.setItem(BOUND_OWNER_KEY, USER_ID);
     fireEvent.click(screen.getByLabelText("Account"));
 
     expect(screen.getByText("rob@myfaite.app")).toBeTruthy();
     fireEvent.click(screen.getByText("Log out"));
 
+    await waitFor(() => expect(mockSignOut).toHaveBeenCalledOnce());
+  });
+
+  it("flushes, signs out, erases the device, then leaves the board — in that order", async () => {
+    mockSession = { user: { id: USER_ID, email: "rob@myfaite.app" } };
+    localStorage.setItem(BOUND_OWNER_KEY, USER_ID);
+
+    const order: string[] = [];
+    mockFlushOutbox.mockImplementation(async () => {
+      order.push("flush");
+      return 0;
+    });
+    mockSignOut.mockImplementation(() => {
+      order.push("signOut");
+    });
+    mockClearDeviceData.mockImplementation(async () => {
+      order.push("clear");
+    });
+    mockReplace.mockImplementation(() => {
+      order.push("navigate");
+    });
+
+    render(
+      <AppHeader
+        onOpenPalette={noop}
+        onOpenSettings={noop}
+        onOpenHelp={noop}
+        settings={undefined}
+      />,
+    );
+    fireEvent.click(screen.getByLabelText("Account"));
+    fireEvent.click(screen.getByText("Log out"));
+
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/"));
+
+    // The flush must beat the sign-out (the cookie is still valid), and the
+    // sign-out must beat the wipe — clearing while the session is live would
+    // let the still-mounted engine re-pull the whole board on its next tick.
+    expect(order).toEqual(["flush", "signOut", "clear", "navigate"]);
+  });
+
+  it("asks before erasing unsynced work, and erases nothing until confirmed", async () => {
+    mockSession = { user: { id: USER_ID, email: "rob@myfaite.app" } };
+    localStorage.setItem(BOUND_OWNER_KEY, USER_ID);
+    mockFlushOutbox.mockResolvedValue(3);
+
+    render(
+      <AppHeader
+        onOpenPalette={noop}
+        onOpenSettings={noop}
+        onOpenHelp={noop}
+        settings={undefined}
+      />,
+    );
+    fireEvent.click(screen.getByLabelText("Account"));
+    fireEvent.click(screen.getByText("Log out"));
+
+    await waitFor(() =>
+      expect(screen.getByText("Sign out with unsaved changes?")).toBeTruthy(),
+    );
+    expect(screen.getByText(/3 changes haven't/)).toBeTruthy();
+
+    // Nothing destructive may have happened yet — staying signed in is the
+    // only state those 3 changes can still be saved from.
+    expect(mockSignOut).not.toHaveBeenCalled();
+    expect(mockClearDeviceData).not.toHaveBeenCalled();
+    expect(mockReplace).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByText("Sign out and erase"));
+
+    await waitFor(() => expect(mockClearDeviceData).toHaveBeenCalledOnce());
     expect(mockSignOut).toHaveBeenCalledOnce();
+    expect(mockReplace).toHaveBeenCalledWith("/");
+  });
+
+  it("signs out WITHOUT erasing when the board belongs to a different account", async () => {
+    mockSession = { user: { id: USER_ID, email: "rob@myfaite.app" } };
+    // The state SessionProvider's "switch accounts?" dialog puts us in:
+    // this device's board is user A's, but user B is momentarily signed in.
+    localStorage.setItem(BOUND_OWNER_KEY, "someone-else");
+
+    render(
+      <AppHeader
+        onOpenPalette={noop}
+        onOpenSettings={noop}
+        onOpenHelp={noop}
+        settings={undefined}
+      />,
+    );
+    fireEvent.click(screen.getByLabelText("Account"));
+    fireEvent.click(screen.getByText("Log out"));
+
+    await waitFor(() => expect(mockSignOut).toHaveBeenCalledOnce());
+
+    // Erasing here would destroy A's board to fix B's mistake, and flushing
+    // would push A's rows into B's Durable Object.
+    expect(mockFlushOutbox).not.toHaveBeenCalled();
+    expect(mockClearDeviceData).not.toHaveBeenCalled();
+    expect(mockReplace).not.toHaveBeenCalled();
   });
 
   it("shows the account name and its initials instead of the placeholder", () => {
-    mockSession = { user: { email: "rob@myfaite.app", name: "Rob Erskine" } };
+    mockSession = { user: { id: USER_ID, email: "rob@myfaite.app", name: "Rob Erskine" } };
     render(
       <AppHeader
         onOpenPalette={noop}
@@ -195,7 +338,7 @@ describe("AppHeader", () => {
   });
 
   it("falls back to the email when the account has no name, without repeating it", () => {
-    mockSession = { user: { email: "rob@myfaite.app", name: null } };
+    mockSession = { user: { id: USER_ID, email: "rob@myfaite.app", name: null } };
     render(
       <AppHeader
         onOpenPalette={noop}
@@ -276,7 +419,7 @@ describe("AppHeader", () => {
   });
 
   it("hides the Sign up CTA once signed in", () => {
-    mockSession = { user: { email: "rob@myfaite.app" } };
+    mockSession = { user: { id: USER_ID, email: "rob@myfaite.app" } };
     render(
       <AppHeader
         onOpenPalette={noop}

@@ -72,8 +72,61 @@ Back on the client, the session drives three things, all of which read
 | `src/lib/onboarding.ts` | Welcome-dialog and banner dismissal flags |
 | `src/lib/store/owner.ts` | `getCurrentOwnerId()`, the bound-owner marker |
 | `src/lib/store/adopt-owner.ts` | One-time local→account `ownerId` backfill |
+| `src/lib/store/clear-device.ts` | `clearDeviceData()` — the sign-out wipe |
 | `src/components/auth/` | `session-provider` (adoption + account-switch dialog), `welcome-dialog`, `signed-out-banner`, `oauth-buttons`, `auth-shell` |
 | `src/app/{login,signup,forgot-password,reset-password,verify-email}/` | The pages |
+
+---
+
+## What sign-out does
+
+Sign-out is a **local** operation. It ends the session and erases this device.
+It never contacts the Durable Object: the account keeps its board server-side,
+so signing back in pulls the whole thing down again.
+
+The order is load-bearing, and lives in `app-header.tsx`'s `handleSignOut`:
+
+1. **`flushOutbox()`** (`components/sync/sync-provider.tsx`), while the cookie
+   is still valid. Returns how many entries are still un-pushed; anything above
+   0 raises a confirmation, because the wipe below would destroy that work with
+   no way back. A fully-synced sign-out is silent.
+2. **Clear the desktop keychain token** (`isDesktopShell()` only) — it lives
+   outside the cookie `signOut()` clears, and would keep authenticating.
+3. **`signOut()`** — *before* the wipe. Wiping first leaves a live session
+   against a cursor of 0, and the mounted sync engine's next tick pulls the
+   entire board straight back down.
+4. **`clearDeviceData()`** (`lib/store/clear-device.ts`) — cursors first, then
+   the owner binding, then the two local-only content keys, then the tables in
+   one transaction. See that file's comment for the crash table.
+5. **`window.location.replace("/")`** — a hard navigation, so no React tree,
+   `useLiveQuery` cache or undo stack survives holding the old user's values.
+   App-shell builds (`NEXT_PUBLIC_APP_SHELL=1`) reload instead.
+
+**The exception:** if `faite:bound-owner-id` is not the signed-in user — the
+state `session-provider.tsx`'s "switch accounts?" dialog creates — sign-out
+does none of this. It ends the session and stops. Flushing would push one
+account's rows into another's DO, and wiping would destroy the bound account's
+board to fix a different account's mistake.
+
+**Kept** across a sign-out, deliberately: `faite:last-hlc` (monotone clock),
+`faite:node-id` (device identity), `faite:theme` / `faite:font` (pre-paint
+prefs — clearing them is a visible flash), the onboarding dismissal flags, and
+`faite:outbox-hlc-normalized:v1`. `clear-device.test.ts` asserts each one.
+
+### Smoke test
+
+1. Sign in, add a few todos, wait for sync to settle.
+2. Open `/board` in a second tab.
+3. Log out in tab 1 → lands on `/`, the marketing page, and is *not* bounced
+   back to `/board`.
+4. DevTools → Application: the `faite` IndexedDB is empty; no
+   `faite:bound-owner-id`, no `faite:sync-cursor:*`, no `faite:saved-views`.
+5. Tab 2 shows an empty board and does not repopulate after 60s.
+6. Open `/board` → a fresh seeded board, none of the old todos.
+7. Sign back in → the original board pulls down from the DO intact.
+8. Offline case: DevTools → Network → Offline, edit a todo, Log out → the
+   confirmation appears with the pending count; "Stay signed in" leaves
+   everything intact.
 
 ---
 
