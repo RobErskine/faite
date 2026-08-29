@@ -18,6 +18,41 @@ function hlc(phys: number, counter = 0, nodeId = NODE_B): string {
   return encodeHlc({ phys, counter, nodeId });
 }
 
+describe("applyPulledChanges — forward compatibility", () => {
+  /**
+   * Regression for the 2026-08-28 incident: a desktop build predating the
+   * `attachment` kind wedged its pull cursor permanently on the first page
+   * carrying one. The unknown kind must be skipped, and — the part that
+   * actually matters — the rest of the page must still apply, because
+   * `runSyncCycle` only advances the cursor if this resolves.
+   *
+   * Uses an invented kind rather than `attachment`, which THIS build now
+   * knows — the test has to model a client older than the server, so the
+   * unknown kind must be one no build knows.
+   */
+  it("skips a kind this build does not know, and still applies the rest of the page", async () => {
+    const changes = [
+      { kind: "futureKind", entityId: "fk-1", patch: { filename: "shot.jpg" }, hlc: hlc(1000) },
+      { kind: "todo", entityId: "todo-1", patch: { title: "Survives", position: "a0" }, hlc: hlc(1001) },
+    ] as unknown as WireChange[];
+
+    await expect(applyPulledChanges(changes)).resolves.toBeDefined();
+
+    const todo = await getDb().todos.get("todo-1");
+    expect(todo?.title).toBe("Survives");
+  });
+
+  it("does not reject when EVERY change in the page is of an unknown kind", async () => {
+    const changes = [
+      { kind: "somethingNewer", entityId: "x-1", patch: { a: 1 }, hlc: hlc(1002) },
+    ] as unknown as WireChange[];
+
+    // The cursor advances only if this resolves — a rejection here is exactly
+    // what made sync unrecoverable.
+    await expect(applyPulledChanges(changes)).resolves.toBeDefined();
+  });
+});
+
 describe("applyPulledChanges", () => {
   it("ANTI-ECHO: leaves the outbox count unchanged", async () => {
     const before = await getDb().outbox.count();

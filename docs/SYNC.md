@@ -189,6 +189,23 @@ live smoke test against a real Durable Object confirmed.
 
 ### Known traps
 
+- **An old client must skip a kind it has never heard of, not throw on it —
+  ✅ fixed.** Incident, 2026-08-28: a desktop build predating the `attachment`
+  kind (EI-242, 2026-08-24) still had it in its pull pages, because the
+  server deploys continuously and does not know what version any client is
+  on. `TABLE_BY_KIND` on that old bundle had no `attachment` entry, so
+  `db[undefined].get(...)` threw inside `applyPulledChanges`'s `rw`
+  transaction, aborting the whole page before `store.setCursor` ran. The
+  cursor never advanced past that page, on every retry, from any starting
+  cursor — sync was permanently and silently dead, and neither reinstalling
+  nor clearing local storage fixed it, since a re-pull from 0 walks straight
+  back into the same row. `applyPulledChanges` (`apply-remote.ts`) now
+  filters unknown kinds out **before** the transaction (`isKnownKind`), so
+  the rest of the page still applies and the cursor still advances; the
+  device just runs on a slightly narrower view of the data until it upgrades.
+  The cost: the cursor is one scalar per page, not a per-row watermark, so a
+  skipped row is not retried automatically once the client learns the kind —
+  recovering it needs a full re-pull (clear `faite:sync-cursor:*`).
 - **`FLOOR_HLC` must be populate-only, and the enforcement lives in
   `merge.ts`, not in the sort order.** A live incident, found by Rob two-
   browser testing this session, not caught by any test at the time: signing
