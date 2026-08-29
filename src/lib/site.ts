@@ -74,7 +74,7 @@ export const SITE_PAGES: readonly SitePage[] = [
     path: "/privacy",
     title: "Privacy Policy",
     description: "What Faite collects, what it doesn't, and who can see it.",
-    updated: "2026-08-20",
+    updated: "2026-08-28",
     footerGroup: "legal",
     footerLabel: "Privacy",
     showUpdated: true,
