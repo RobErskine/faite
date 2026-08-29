@@ -80,6 +80,15 @@ export default function PrivacyPage() {
               an address for a saved place. See the next section for how
               that call is handled.
             </ProseItem>
+            <ProseItem>
+              <ProseTerm>Linear</ProseTerm> &mdash; if you contact us through the
+              form on this site, or by emailing{" "}
+              <ProseTerm>support@myfaite.app</ProseTerm>, your message is filed in
+              Linear, the issue tracker Faite uses to keep track of it and reply.
+              Messages you send to <ProseTerm>privacy@myfaite.app</ProseTerm> are
+              deliberately kept out of Linear &mdash; those reach a private inbox
+              and nowhere else.
+            </ProseItem>
           </ProseList>
         </ProseSection>
 
