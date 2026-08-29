@@ -212,6 +212,10 @@ export function Board() {
     // columns on phone (there's no pinned-sibling-outside-the-track the way
     // desktop has) — see use-day-track.ts's own comment on this option.
     indexOffset: layout === "phone" ? 1 : 0,
+    // Changing this re-measures visibleCount and re-anchors the current day
+    // — desktop-board.tsx sizes columns off `visibleDays`, which changes
+    // pitch without changing the track's own width. See use-day-track.ts.
+    pitchKey: settings?.visibleDays,
   });
 
   const jumpBy = useCallback(

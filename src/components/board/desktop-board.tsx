@@ -159,6 +159,21 @@ export function DesktopBoard({
   const backlogWidth = settings?.backlogWidth ?? null;
   const splitRatio = settings?.splitRatio ?? null;
   const splitCollapsed = settings?.splitCollapsed ?? "none";
+  const visibleDays = settings?.visibleDays ?? 7;
+  /*
+    Makes `visibleDays` the day track's page size: N columns fill the track
+    exactly (accounting for the `gap-px` between them), so choosing 3 widens
+    each column rather than merely widening a floor that `renderedDays`
+    already exceeds. `max()` with the shared floor keeps a narrow viewport
+    scrolling instead of squeezing columns into slivers, same as the default.
+    Min == max (both set to the same value) so columns are rigid, which is
+    what lets `pageAlignedJump` in date-nav.tsx land exactly on a page
+    boundary.
+  */
+  const dayTrackStyle = {
+    "--column-min": `max(var(--column-floor), calc((100% - ${visibleDays - 1}px) / ${visibleDays}))`,
+    "--column-max": `max(var(--column-floor), calc((100% - ${visibleDays - 1}px) / ${visibleDays}))`,
+  } as CSSProperties;
   // Resizing mid-drag would invalidate every droppable rect dnd-kit cached at
   // drag start (§4.2 of DRAG-AND-DROP.md) — same reasoning as `rejectsDrop`.
   const railDisabled = !!activeTodo || !!activeList;
@@ -318,7 +333,11 @@ export function DesktopBoard({
           )}
         </div>
         <div className="flex min-w-0 flex-1 gap-px px-4 pt-4">
-          <div ref={dayTrackRef} className="column-track flex flex-1 gap-px">
+          <div
+            ref={dayTrackRef}
+            className="column-track flex flex-1 gap-px"
+            style={dayTrackStyle}
+          >
             {trackSlots.map((slot) => {
               if (slot.kind === "weekend") {
                 return (

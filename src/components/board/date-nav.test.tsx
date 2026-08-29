@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { civilDateToLocalDate, daysBetweenLocalDates, DateNav } from "./date-nav";
+import { civilDateToLocalDate, daysBetweenLocalDates, DateNav, pageAlignedJump } from "./date-nav";
 
 vi.mock("@/lib/store/mutate", () => ({ mutateSettings: vi.fn() }));
 
@@ -60,6 +60,29 @@ describe("daysBetweenLocalDates", () => {
   });
 });
 
+describe("pageAlignedJump", () => {
+  it.each([
+    // [view (page), Week base=7, Month base=30, Quarter base=90]
+    [1, 7, 30, 90],
+    [3, 6, 30, 90],
+    [5, 5, 30, 90],
+    [7, 7, 28, 91],
+  ])("view of %i days quantizes Week/Month/Quarter to %i/%i/%i", (page, week, month, quarter) => {
+    expect(pageAlignedJump(7, page)).toBe(week);
+    expect(pageAlignedJump(30, page)).toBe(month);
+    expect(pageAlignedJump(90, page)).toBe(quarter);
+  });
+
+  it("never quantizes to less than one page", () => {
+    expect(pageAlignedJump(7, 30)).toBe(30);
+  });
+
+  it("defends against a non-positive page", () => {
+    expect(pageAlignedJump(7, 0)).toBe(7);
+    expect(pageAlignedJump(7, -3)).toBe(7);
+  });
+});
+
 const baseProps = {
   settings: undefined,
   today: "2026-08-10" as const,
@@ -87,5 +110,39 @@ describe("DateNav activity trigger", () => {
     render(<DateNav {...baseProps} compact onOpenActivity={onOpenActivity} />);
     fireEvent.click(screen.getByRole("button", { name: "Open activity feed" }));
     expect(onOpenActivity).toHaveBeenCalledOnce();
+  });
+});
+
+describe("DateNav jump buttons — page-aligned steps", () => {
+  afterEach(cleanup);
+
+  it("steps Month by 28 (not the raw 30) in the default 7-day view", () => {
+    const onJump = vi.fn();
+    render(
+      <DateNav
+        {...baseProps}
+        visibleCount={7}
+        canJumpForward={() => true}
+        onJump={onJump}
+        onOpenActivity={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Next month" }));
+    expect(onJump).toHaveBeenCalledWith(28);
+  });
+
+  it("steps Month by the raw 30 in a 3-day view", () => {
+    const onJump = vi.fn();
+    render(
+      <DateNav
+        {...baseProps}
+        visibleCount={3}
+        canJumpForward={() => true}
+        onJump={onJump}
+        onOpenActivity={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Next month" }));
+    expect(onJump).toHaveBeenCalledWith(30);
   });
 });

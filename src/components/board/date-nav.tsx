@@ -15,6 +15,27 @@ const WEEK = 7;
 const MONTH = 30;
 const QUARTER = 90;
 
+/**
+ * Jump distances, quantized to whole pages of the current view.
+ *
+ * The board stays day-indexed throughout (see the header comment below) —
+ * this is still calendar days, never `addMonths`. But stepping 30 raw days
+ * in, say, a 3-day view puts the grid on a different weekday every jump.
+ * Rounding to the nearest whole page keeps the columns on a stable grid and
+ * guarantees a jump never skips or repeats a day. `page` is the MEASURED
+ * column count (`visibleCount` from useDayTrack), so a viewport too narrow
+ * for the chosen view pages by what actually fits, not by the setting.
+ *
+ * Rigid columns (desktop-board.tsx sets --column-min == --column-max) bound
+ * `visibleCount` at roughly the view's day count — inflated a little by
+ * collapsed weekend strips — so Week/Month/Quarter can never quantize to the
+ * same distance.
+ */
+export function pageAlignedJump(base: number, page: number): number {
+  const p = Math.max(1, page);
+  return Math.max(p, Math.round(base / p) * p);
+}
+
 interface DateNavProps {
   /** Raw Dexie row, passed straight through to `ViewSettings`. */
   settings: Settings | undefined;
@@ -82,6 +103,13 @@ export function DateNav({
       ? formatShortDate(rangeStart)
       : `${formatShortDate(rangeStart)} – ${formatShortDate(rangeEnd)}`;
 
+  // Computed once and reused for both the availability check and the click
+  // handler below — canJumpBack/Forward must see the SAME quantized value
+  // the click will actually jump by, or a button can render and then no-op.
+  const weekStep = pageAlignedJump(WEEK, visibleCount);
+  const monthStep = pageAlignedJump(MONTH, visibleCount);
+  const quarterStep = pageAlignedJump(QUARTER, visibleCount);
+
   if (compact) {
     return (
       <div className="flex items-center gap-2 px-4 py-2">
@@ -118,14 +146,14 @@ export function DateNav({
       </div>
 
       <div className="flex min-w-0 flex-1 items-center justify-end gap-1">
-        {canJumpBack(QUARTER) && (
-          <JumpButton label="Quarter" direction="back" onClick={() => onJump(-QUARTER)} />
+        {canJumpBack(quarterStep) && (
+          <JumpButton label="Quarter" direction="back" onClick={() => onJump(-quarterStep)} />
         )}
-        {canJumpBack(MONTH) && (
-          <JumpButton label="Month" direction="back" onClick={() => onJump(-MONTH)} />
+        {canJumpBack(monthStep) && (
+          <JumpButton label="Month" direction="back" onClick={() => onJump(-monthStep)} />
         )}
-        {canJumpBack(WEEK) && (
-          <JumpButton label="Week" direction="back" onClick={() => onJump(-WEEK)} />
+        {canJumpBack(weekStep) && (
+          <JumpButton label="Week" direction="back" onClick={() => onJump(-weekStep)} />
         )}
 
         {anchorIndex > 0 && (
@@ -134,14 +162,14 @@ export function DateNav({
           </Button>
         )}
 
-        {canJumpForward(WEEK) && (
-          <JumpButton label="Week" direction="forward" onClick={() => onJump(WEEK)} />
+        {canJumpForward(weekStep) && (
+          <JumpButton label="Week" direction="forward" onClick={() => onJump(weekStep)} />
         )}
-        {canJumpForward(MONTH) && (
-          <JumpButton label="Month" direction="forward" onClick={() => onJump(MONTH)} />
+        {canJumpForward(monthStep) && (
+          <JumpButton label="Month" direction="forward" onClick={() => onJump(monthStep)} />
         )}
-        {canJumpForward(QUARTER) && (
-          <JumpButton label="Quarter" direction="forward" onClick={() => onJump(QUARTER)} />
+        {canJumpForward(quarterStep) && (
+          <JumpButton label="Quarter" direction="forward" onClick={() => onJump(quarterStep)} />
         )}
 
         <JumpToDatePicker today={today} onSelect={onJumpToDate} />
