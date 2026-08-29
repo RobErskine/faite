@@ -15,7 +15,7 @@ import {
 // that module pulls in Dexie, and this component has no other reason to.
 import { LOCAL_OWNER_ID } from "@/lib/store/owner";
 import { mutateSettings } from "@/lib/store/mutate";
-import type { Settings, TodoStatus } from "@/lib/schema";
+import { VISIBLE_DAY_OPTIONS, type Settings, type TodoStatus } from "@/lib/schema";
 import { cn } from "@/lib/utils";
 
 /**
@@ -36,9 +36,6 @@ const STATUS_OPTIONS: ReadonlyArray<{ value: TodoStatus; label: string }> = [
   { value: "done", label: "Completed" },
   { value: "dropped", label: "Marked as won't do" },
 ];
-
-/** The values the day-count control offers. `1` stays ⌘K-only — see below. */
-const DAY_OPTIONS = [3, 5, 7] as const;
 
 interface ViewSettingsProps {
   /** Raw Dexie row; undefined until the store has read it. */
@@ -132,14 +129,9 @@ export function ViewSettings({ settings }: ViewSettingsProps) {
               void mutateSettings(LOCAL_OWNER_ID, { visibleDays: Number(value) })
             }
           >
-            {/*
-              1 is deliberately absent, and stays reachable from ⌘K. It is a
-              real mode (one column, full width) but a rare one, and a fourth
-              entry here would push the common picks further from the pointer.
-            */}
-            {DAY_OPTIONS.map((days) => (
+            {VISIBLE_DAY_OPTIONS.map((days) => (
               <DropdownMenuRadioItem key={days} value={String(days)} className="nums">
-                {days} days
+                {days} day{days === 1 ? "" : "s"}
               </DropdownMenuRadioItem>
             ))}
           </DropdownMenuRadioGroup>

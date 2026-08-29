@@ -1,4 +1,4 @@
-import type { Settings, TodoStatus } from "./schema";
+import { VISIBLE_DAY_OPTIONS, type Settings, type TodoStatus } from "./schema";
 import { formatCombo, type Platform } from "./keyboard";
 
 /**
@@ -83,8 +83,6 @@ export interface PaletteCommand {
   run: (ctx: PaletteCommandCtx) => void | Promise<void>;
 }
 
-const VIEW_DAY_OPTIONS = [1, 3, 5, 7] as const;
-
 /**
  * Same vocabulary and order as the DateNav control's status checkboxes
  * (`view-settings.tsx`) — one wording for one setting, whichever surface you
@@ -146,7 +144,7 @@ const MANAGE_COMMANDS: PaletteCommand[] = [
   },
 ];
 
-const VIEW_DAYS_COMMANDS: PaletteCommand[] = VIEW_DAY_OPTIONS.map((days) => ({
+const VIEW_DAYS_COMMANDS: PaletteCommand[] = VISIBLE_DAY_OPTIONS.map((days) => ({
   id: `view-days-${days}`,
   group: "View",
   className: "nums",

@@ -201,4 +201,55 @@ describe("useDayTrack", () => {
     const { scrollTo } = setup();
     expect(scrollTo).not.toHaveBeenCalled();
   });
+
+  /**
+   * `visibleCount` is otherwise only recomputed by a `ResizeObserver` on the
+   * TRACK. Changing `pitchKey` (how `desktop-board.tsx` reports a column-
+   * width change from `settings.visibleDays`) resizes COLUMNS, not the
+   * track, so without this the anchor day would silently drift.
+   */
+  it("re-anchors the current day when pitchKey changes, even though the track itself never resized", () => {
+    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => {
+      cb(0);
+      return 0;
+    });
+    try {
+      const { ref, scrollTo } = stubTrack();
+      const onExtend = vi.fn();
+      const { rerender } = renderHook(
+        ({ pitchKey }) => useDayTrack({ trackRef: ref, cap: 365, onExtend, pitchKey }),
+        { initialProps: { pitchKey: 7 } },
+      );
+
+      // The only way anchorIndex becomes nonzero in this stub: `jumpToIndex`'s
+      // own `scrollTo` is mocked and fires no real "scroll" event, so it has to
+      // be simulated directly, as if the user had scrolled to day 5 themselves.
+      ref.current.scrollLeft = 5 * PITCH;
+      act(() => {
+        ref.current.dispatchEvent(new Event("scroll"));
+      });
+
+      const column = ref.current.querySelector<HTMLElement>("[data-day-column]")!;
+      const NEW_COLUMN_WIDTH = 280;
+      column.getBoundingClientRect = () => ({ width: NEW_COLUMN_WIDTH }) as unknown as DOMRect;
+
+      act(() => {
+        rerender({ pitchKey: 3 });
+      });
+
+      const newPitch = NEW_COLUMN_WIDTH + GAP;
+      expect(scrollTo).toHaveBeenLastCalledWith(
+        expect.objectContaining({ left: 5 * newPitch }),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("does not re-anchor on the initial pitchKey — there is no prior anchor to preserve", () => {
+    const { ref, scrollTo } = stubTrack();
+    const onExtend = vi.fn();
+    renderHook(() => useDayTrack({ trackRef: ref, cap: 365, onExtend, pitchKey: 7 }));
+    expect(scrollTo).not.toHaveBeenCalled();
+  });
 });

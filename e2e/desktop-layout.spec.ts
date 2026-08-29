@@ -78,6 +78,44 @@ test.describe("desktop board layout", () => {
     ).toBeVisible();
   });
 
+  test("resizes day columns to fill the track when the day-count view changes", async ({
+    page,
+  }) => {
+    // The track container's own width never changes when `visibleDays`
+    // changes — only the columns inside it do — so it's a stable reference
+    // for what "fill the track" should mean, measured before the picker
+    // touches anything. `.column-track` also matches the planning half's
+    // list track and the tab strip, so scope to the one holding a day
+    // column (`[data-day-column]`, set only on the calendar half).
+    const track = page.locator(".column-track").filter({ has: page.locator("[data-day-column]") });
+    const trackBox = await track.boundingBox();
+    expect(trackBox).not.toBeNull();
+
+    await page.getByRole("button", { name: "How many day columns to show" }).click();
+    await page.getByRole("menuitemradio", { name: "3 days" }).click();
+
+    // Frozen on a Tuesday (support/fixtures.ts), so this is still the
+    // leftmost day column after the resize.
+    const column = page.getByRole("region", { name: "Tuesday" }).first();
+
+    // 3 columns + 2 `gap-px` gaps fill the track exactly. `expect.poll`
+    // rather than a single `boundingBox()` read: the column carries
+    // `transition-all` (board-column.tsx), so a read straight after the
+    // click can catch the width mid-animation from the old 7-day size.
+    const expectedWidth = (trackBox!.width - 2) / 3;
+    await expect
+      .poll(async () => (await column.boundingBox())?.width)
+      .toBeGreaterThan(expectedWidth - 5);
+    const columnBox = await column.boundingBox();
+    expect(columnBox!.width).toBeLessThan(expectedWidth + 5);
+
+    // More than 3 days are still rendered (DEFAULT_RENDERED_DAYS), so the
+    // track now scrolls instead of shrinking to fit them all.
+    const scrollWidth = await track.evaluate((el) => el.scrollWidth);
+    const clientWidth = await track.evaluate((el) => el.clientWidth);
+    expect(scrollWidth).toBeGreaterThan(clientWidth);
+  });
+
   test("opens the todo sheet as a right-side panel", async ({ page }) => {
     await page.getByRole("region", { name: "Backlog" }).getByPlaceholder("Add a to-do").click();
     await page

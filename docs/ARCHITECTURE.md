@@ -812,11 +812,18 @@ so the day track has room to scroll from the very first render, and grows the
 rendered window (`contextFromSettings`'s `renderedDays` param, in
 lib/scheduling.ts) further to always cover the furthest-scheduled todo, up to
 `Board`'s `cap` state (starts at `DEFAULT_DAY_CAP`, 365 — about a year).
-`settings.visibleDays` still means something, but only as an explicit action:
-picking a smaller count from the ⌘K toggle collapses the window back down to
-exactly that many days (`Board`'s effect on `settings.visibleDays` changes),
-the same "show only N days" behaviour the toggle always had, just no longer
-what sizes the default view.
+`settings.visibleDays` still means something, but it no longer sizes the
+*rendered* window at all — it sizes the day track's PAGE. `DesktopBoard` sets
+`--column-min`/`--column-max` on the day track to `100% / visibleDays` (with
+a floor, `--column-floor` in globals.css), so exactly that many columns fill
+the track and the rest sit past the fold. Picking a smaller count widens the
+remaining columns rather than rendering fewer of them; `renderedDays` (still
+`horizon`/`cap`-driven, as above) is how many columns *exist* in the DOM, a
+number that only ever grows. The Week/Month/Quarter jump buttons
+(`pageAlignedJump` in `date-nav.tsx`) then step in whole multiples of the
+MEASURED page size (`useDayTrack`'s `visibleCount`), so a jump always lands
+on the same weekday grid the current view established — "Month" is 28 days
+in the default 7-day view, not the raw 30, and 30 in a 5-day view.
 
 `cap` is a floor, not a hard ceiling: it bounds ordinary scrolling and the
 Week/Month/Quarter buttons, but the date picker in `date-nav.tsx` has no

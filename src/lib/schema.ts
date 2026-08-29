@@ -482,6 +482,13 @@ export const attachmentSchema = z.object({
 export type Attachment = z.infer<typeof attachmentSchema>;
 
 /**
+ * The day-count values the UI offers for `Settings.visibleDays`. The schema
+ * field below stays a bounded int rather than a literal union so a legacy
+ * row storing some other value in [1, 7] still parses.
+ */
+export const VISIBLE_DAY_OPTIONS = [1, 3, 5, 7] as const;
+
+/**
  * Per-user settings.
  *
  * `timezone` is load-bearing: the overflow rule counts days, so the day
@@ -514,6 +521,11 @@ export const settingsSchema = z.object({
    * collapsed weekend strip is not a column, so 5 on a Friday means Fri, Mon,
    * Tue, Wed, Thu — five working columns spanning seven calendar days. The
    * span is derived by `calendarSpanFor` in components/board/weekend-runs.ts.
+   *
+   * Also the desktop board's page size: each day column is sized so exactly
+   * this many fill the track (`desktop-board.tsx`), and the Week/Month/
+   * Quarter jump buttons step in whole multiples of it (`pageAlignedJump` in
+   * `date-nav.tsx`).
    */
   visibleDays: z.number().int().min(1).max(7).default(7),
   /**

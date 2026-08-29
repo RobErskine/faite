@@ -132,6 +132,14 @@ describe("ViewSettings — day count", () => {
     const item = await screen.findByRole("menuitemradio", { name: "5 days" });
     expect(item.getAttribute("aria-checked")).toBe("true");
   });
+
+  it("offers a singular 1-day option and writes it as a number", async () => {
+    render(<ViewSettings settings={settings()} />);
+    openMenu(/how many day columns/i);
+    const item = await screen.findByRole("menuitemradio", { name: "1 day" });
+    fireEvent.click(item);
+    expect(lastPatch()).toEqual({ visibleDays: 1 });
+  });
 });
 
 describe("ViewSettings — weekends", () => {

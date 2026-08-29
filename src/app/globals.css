@@ -167,8 +167,15 @@
     longer part of this arithmetic: they render as fixed-width siblings outside
     the scrolling track (`pinned` on BoardColumn), so they stay reachable
     however far the track scrolls and do not count toward "columns that fit".
+
+    Named separately from --column-min: the day track (desktop-board.tsx)
+    overrides --column-min/--column-max inline per `visibleDays` so N columns
+    fill the track exactly, but the floor below which a column becomes
+    illegible doesn't change with N — --column-floor stays the one constant
+    both that override and the default below read from.
   */
-  --column-min: 10.5rem;
+  --column-floor: 10.5rem;
+  --column-min: var(--column-floor);
   --column-max: 18rem;
 
   /*

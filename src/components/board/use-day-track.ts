@@ -106,6 +106,18 @@ interface UseDayTrackOptions {
    * existing desktop caller.
    */
   indexOffset?: number;
+  /**
+   * Changing this re-measures the track and re-anchors the current day to
+   * the left edge.
+   *
+   * `visibleCount` is otherwise only recomputed by a `ResizeObserver` on the
+   * TRACK (below) — which does not fire when a caller changes COLUMN width
+   * (`desktop-board.tsx` sizing columns off `settings.visibleDays`) without
+   * changing the track's own width. Pass a value that changes exactly when
+   * that happens (`settings?.visibleDays` from the caller) so the range
+   * label and jump buttons, which both read `visibleCount`, don't go stale.
+   */
+  pitchKey?: unknown;
 }
 
 interface UseDayTrackResult {
@@ -188,6 +200,7 @@ export function useDayTrack({
   onExtend,
   trackReady = true,
   indexOffset = 0,
+  pitchKey,
 }: UseDayTrackOptions): UseDayTrackResult {
   const [anchorIndex, setAnchorIndex] = useState(0);
   const [visibleCount, setVisibleCount] = useState(1);
@@ -244,7 +257,12 @@ export function useDayTrack({
     });
   }, [trackRef, measurePitch, indexOffset]);
 
-  /** Recomputes `visibleCount` whenever the track's own width changes. */
+  /**
+   * Recomputes `visibleCount` whenever the track's own width changes, OR
+   * `pitchKey` changes — `ResizeObserver` fires once as soon as `observe` is
+   * called, so re-running this effect (by re-observing) is enough to pick up
+   * a column-width change that left the track's own width untouched.
+   */
   useEffect(() => {
     if (typeof ResizeObserver === "undefined") return;
     return whenTrackReady(trackRef, (track) => {
@@ -255,7 +273,31 @@ export function useDayTrack({
       observer.observe(track);
       return () => observer.disconnect();
     });
-  }, [trackRef, measurePitch]);
+  }, [trackRef, measurePitch, pitchKey]);
+
+  /**
+   * Keeps the current day at the left edge when `pitchKey` changes.
+   *
+   * `scrollLeft` is untouched by a column-width change, but PITCH is — so
+   * without this, switching from a 7-day to a 3-day view silently shifts
+   * which day sits at the left edge. Skips the first run: on mount there is
+   * no prior anchor to preserve. Reuses the `jump` request path rather than
+   * calling `track.scrollTo` directly so reduced-motion and the `handledSeq`
+   * idempotency guard above still apply.
+   *
+   * `anchorIndex` deliberately excluded from deps: it changes as a RESULT of
+   * this jump too (via the scroll listener), which would re-fire this effect
+   * right back at the value it just set. Only a `pitchKey` change should.
+   */
+  const skipNextPitchKeyAnchor = useRef(true);
+  useLayoutEffect(() => {
+    if (skipNextPitchKeyAnchor.current) {
+      skipNextPitchKeyAnchor.current = false;
+      return;
+    }
+    setJump((prev) => ({ target: anchorIndex, seq: (prev?.seq ?? 0) + 1 }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pitchKey]);
 
   /**
    * Runs after every commit that sets a pending target — including one where
