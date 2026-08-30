@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DesktopUpdateRow } from "./desktop-update-row";
 
 const LINKS = [
   { href: "/about", label: "About Faite" },
@@ -22,6 +23,11 @@ const LINKS = [
 export function AboutSection() {
   return (
     <nav aria-label="About Faite" className="flex flex-col gap-1">
+      {/* Desktop shell only — renders null in a browser tab. Above the links
+          because "am I running the current build?" is the question this
+          section gets asked in the app that can be stale. */}
+      <DesktopUpdateRow />
+
       {LINKS.map((link) => (
         <Link
           key={link.href}

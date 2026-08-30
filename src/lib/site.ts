@@ -108,6 +108,17 @@ export const SITE_PAGES: readonly SitePage[] = [
     footerGroup: "support",
   },
   {
+    path: "/download",
+    title: "Download",
+    description: "Faite for Mac — how to get a build, and how updating works.",
+    updated: "2026-08-30",
+    // No footer group, unlike every other public page: this exists as the
+    // Mac app's "Get the update" destination (EI-147), and advertising a
+    // download on every page of the site before there is a public artifact
+    // to hand over would be a promise the page then has to walk back.
+    footerGroup: null,
+  },
+  {
     // `title` is "Faite API", not "API Reference", because it has to match
     // the single real `<h1>` on this page verbatim — see the doc comment
     // on `DocsPage` for why that h1 belongs to Scalar, not to this table.

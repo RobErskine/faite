@@ -12,6 +12,7 @@ import { LOCAL_OWNER_ID } from "@/lib/store/repositories";
 import { mutateSettings } from "@/lib/store/mutate";
 import { AppHeader } from "./app-header";
 import { SignedOutBanner } from "@/components/auth/signed-out-banner";
+import { DesktopUpdateBanner } from "@/components/desktop/update-banner";
 import { BoardColumn } from "./board-column";
 import { BoardEmptyBanner } from "./board-empty-banner";
 import { CreateListColumn } from "./create-list-column";
@@ -198,6 +199,10 @@ export function DesktopBoard({
         splitRatio != null ? ({ "--split-top": String(splitRatio) } as CSSProperties) : undefined
       }
     >
+      {/* Both render null in a browser tab. The update bar sits above the
+          sign-in one because "this build no longer syncs" outranks "this
+          board is device-only" — see docs/DESKTOP.md §12. */}
+      <DesktopUpdateBanner />
       <SignedOutBanner hasUserData={todos.length > 0} />
 
       <AppHeader

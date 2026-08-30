@@ -994,3 +994,32 @@ supervisor) into a bigger one, check what each one starts as a side effect —
 not just its named purpose. The collision is never in the process you're
 thinking about; it's in the thing running alongside it that both scripts start
 identically.
+
+---
+
+## A module the Worker also compiles cannot touch `window` — even indirectly (EI-147)
+
+`src/lib/desktop/version.ts` was written as the shared client+server module
+(the `wire.ts` pattern: one shape, so the two halves cannot drift). It also
+held the `fetch` helper, which called `apiUrl()` — and `apiUrl()` reads
+`window.location.hostname`.
+
+Nothing failed at runtime. `tsc --noEmit` passed. The second half of
+`npm run typecheck` — `tsc -p tsconfig.worker.json` — failed with
+`Cannot find name 'window'` pointing at **`src/lib/api-origin.ts`**, a file
+that had not been edited and is correct as written. That config compiles
+`src/server/**` with `"types": ["@cloudflare/workers-types"]` and `lib:
+["esnext"]`, so importing one server-side test into a chain that ends at a DOM
+global drags an innocent file into a program that has no DOM.
+
+Fixed by moving the `fetch` to its only caller
+(`src/components/desktop/use-desktop-update.ts`) and leaving the shared module
+pure — which is what `wire.ts` already does, and the reason it does it.
+
+**Rule:** a module under `src/lib` that `src/server` imports must be pure data
+and pure functions. No `window`, no `document`, no `fetch` wrapper, and no
+import that reaches one transitively. Put the I/O beside its caller.
+
+**Corollary for reading the error:** when the worker typecheck names a file
+your diff never touched, do not start debugging that file. Ask what new import
+edge pulled it into that program.

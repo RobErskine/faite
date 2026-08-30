@@ -2,13 +2,15 @@ import { createAuth, getSessionSafe } from "../auth";
 import { DESKTOP_KEY_NAME, DESKTOP_KEY_PERMISSIONS } from "../auth-scopes";
 import { corsHeaders, handleOptions } from "../cors";
 import { decodeHandoffCode, encodeHandoffCode } from "./handoff-code";
+import { DESKTOP_VERSION_POLICY } from "./version";
 
 /**
- * `/api/desktop/*` — D2a's login handoff. Same seam as `/api/auth/*` and
- * `/api/sync/*` in `worker.ts`: not a Next.js Route Handler, for the same
- * `output: export` reason (see `worker.ts`'s file comment).
+ * `/api/desktop/*` — D2a's login handoff, plus EI-147's build-version check.
+ * Same seam as `/api/auth/*` and `/api/sync/*` in `worker.ts`: not a Next.js
+ * Route Handler, for the same `output: export` reason (see `worker.ts`'s file
+ * comment).
  *
- * Two endpoints, two different callers:
+ * Three endpoints, three different callers:
  *
  * - `/handoff` is called from the SYSTEM BROWSER (real `https://myfaite.app`
  *   origin, same-origin, cookie session already present) right after a
@@ -21,6 +23,12 @@ import { decodeHandoffCode, encodeHandoffCode } from "./handoff-code";
  *   key crosses the wire a second time, and it never touches a URL or
  *   browser history — see `docs/DESKTOP.md` §9 and `handoff-code.ts`'s file
  *   comment for why the indirection exists at all.
+ * - `/version` is called by the desktop app on launch and on a timer, and it
+ *   is the one route here with NO auth at all. That is the point: an app too
+ *   old to sync is very likely an app that cannot authenticate either, and
+ *   what it needs back ("you are obsolete, here is the download") is a public
+ *   fact about the product, not about the caller. See `./version.ts` and
+ *   `docs/DESKTOP.md` §12.
  */
 
 function json(body: unknown, status: number, headers: HeadersInit): Response {
@@ -39,6 +47,17 @@ export async function handleDesktopRequest(request: Request, env: CloudflareEnv)
 
   const headers = corsHeaders(request.headers.get("Origin"));
   const url = new URL(request.url);
+
+  // Before `createAuth`, and reached without a session on purpose (see the
+  // file comment). `max-age` is short because raising `minimum` is how an
+  // emergency block reaches the field: five minutes of edge cache is worth
+  // having, an hour of it is not.
+  if (url.pathname === "/api/desktop/version" && request.method === "GET") {
+    const response = json(DESKTOP_VERSION_POLICY, 200, headers);
+    response.headers.set("Cache-Control", "public, max-age=300");
+    return response;
+  }
+
   const auth = createAuth(env, request);
 
   if (url.pathname === "/api/desktop/handoff" && request.method === "POST") {

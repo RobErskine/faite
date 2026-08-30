@@ -18,6 +18,7 @@ past D1 exists yet.
 | D1.6 | Developer ID + notarization | ✅ Done — §8 |
 | D2a | Desktop login + sync — `TRUSTED_ORIGINS`, api-key bearer auth, OS-keychain token storage, WS auth | ✅ Done — §9 |
 | D2b (EI-145) | Background sync while the window is closed — Rust-driven timer into the hidden webview | ✅ Done — §10 |
+| D2c (EI-147) | Build-version check against the server + a "get the update" button (no auto-updater) | ✅ Done — §12 |
 | D3 | Feature A — menu bar popover (today/overdue to-dos, read-on-show) | Not started |
 | D4 | Feature B — global hotkey, always-on-top quick-capture window | Not started |
 | D5 | Swift sidecar — Accessibility-API context capture (decision #5), wired as an `externalBin` | Standalone prototype only — §3.5, not integrated |
@@ -1351,3 +1352,115 @@ display session next time:
 | `signed-out/page.test.tsx` | no `/login` link on the desktop path; the board escape hatch stays |
 | `clear-device.test.ts` | the wipe, the keep-list, cursor-before-tables, no network |
 | `use-reminders.test.tsx` | the cleared key does not come back on a re-render |
+
+---
+
+## 12. Build-version check + "get the update" (EI-147)
+
+The **cheap** half of desktop updates, shipped years ahead of the expensive
+half on purpose. It does not install anything. It asks the server how old
+this build is, says so when the answer is "too old", and opens the download
+page in the system browser. EI-134 (`plugin-updater` + minisign keypair) and
+EI-136 (tag → sign → notarize → publish) are still the real answer, and this
+is deliberately not a substitute for them.
+
+### 12.1 Why this can't wait for the updater
+
+The desktop bundle is a frozen static export (§2 decision #2). A web deploy
+cannot reach it. So the day a server change stops supporting an old client is
+the day that client breaks silently and forever — **unless it was already in
+the habit of asking**. A client shipped without the check can never be taught
+the check. Everything else here (which version is newest, which is the floor,
+where the download lives) is data the server sends, so it can change with no
+client release; the only irreversible decision is whether the field asks at
+all.
+
+### 12.2 The mechanism
+
+| Piece | File |
+|---|---|
+| The policy the server serves | `src/server/desktop/version.ts` |
+| `GET /api/desktop/version` — unauthenticated | `src/server/desktop/routes.ts` |
+| Compare + decide, shared by both halves | `src/lib/desktop/version.ts` |
+| `getVersion()` / `openUrl()` wrappers | `src/lib/desktop/bridge.ts` |
+| Check on launch, every 6h, and on demand | `src/components/desktop/use-desktop-update.ts` |
+| The bar across the top of the board | `src/components/desktop/update-banner.tsx` |
+| Settings → About: version + "Check for updates" | `src/components/settings/desktop-update-row.tsx` |
+| Where the button lands | `src/app/download/page.tsx` |
+
+Three states, from `evaluateUpdate(installed, policy)`:
+
+- **current** — silent.
+- **outdated** (`installed < latest`) — dismissible amber bar, plus the
+  Settings row offering the download.
+- **blocked** (`installed < minimum`) — non-dismissible red bar, `role="alert"`.
+  Sync is over for this copy until it is replaced by hand.
+
+`minimum` is the emergency lever and is set equal to `latest` today, so
+nothing is blocked and nothing is out of date: the check's whole job right
+now is to *exist in the field*.
+
+### 12.3 Three decisions worth not re-litigating
+
+**It fails towards "current", every time.** No shell, an unreadable version,
+an offline check, a 500, a malformed body, a version string this can't parse
+— all of them leave the app silent. The alternative failure mode is an app
+that tells a user it is obsolete because their wifi dropped, and whose only
+remedy is a download they also cannot do. `evaluateUpdate` refuses to block on
+a version it cannot read for the same reason: the inputs are hand-edited
+constants, and a typo must not brick every running copy.
+
+**`/api/desktop/version` takes no auth at all** — the only route under that
+prefix that doesn't. An app too old to sync is very likely an app that cannot
+authenticate either, and the answer it needs is a public fact about the
+product, not about the caller.
+
+**`downloadUrl` must stay on `SITE_ORIGIN`.** Checked twice: `parseVersionPolicy`
+drops a policy that points anywhere else, and Tauri's own
+`opener:allow-open-url` allow-list (`src-tauri/capabilities/default.json`)
+would refuse it regardless. Moving downloads to another host — a GitHub
+release, say — means widening both, deliberately. The client check exists so
+that mistake is a quiet no-op instead of a rejected `invoke` at click time.
+
+### 12.4 The 426 the server doesn't send yet
+
+`src/lib/sync/transport.ts` maps `426 Upgrade Required` from `/api/sync/*` to
+`SyncOutdatedError` and fires a `faite:client-outdated` window event, which
+makes `useDesktopUpdate` re-check immediately rather than waiting out its
+six-hour timer. **No server code sends a 426 today.** It is here for the same
+reverse-dependency reason as the rest of this section: the server can start
+sending it in any future deploy, but only clients that already know how to
+read it will do anything sensible when it arrives.
+
+An event rather than a new `SyncOutcome` status: nothing consumes a
+`SyncOutcome` for display today, so a status only this banner reads would mean
+widening `runSyncCycle`, `runOnce`, `createSyncRunner` and `SyncProvider` for
+one string.
+
+### 12.5 Releasing, until EI-136 exists
+
+Bumping the policy is the **last** step of a release, not the first:
+
+1. Bump `version` in `src-tauri/tauri.conf.json`.
+2. `npm run desktop:build`, sign, notarize (§8).
+3. Put the artifact where `downloadUrl` points.
+4. Only then bump `latest` in `src/server/desktop/version.ts` and deploy.
+
+`src/server/desktop/version.test.ts` fails if `latest` is above the version in
+`tauri.conf.json` (announcing a build nobody can install) or above `minimum`
+(locking everyone out with nothing to upgrade *to*).
+
+### 12.6 Verified
+
+- `npm run verify` — typecheck, lint, 2,252 unit tests, both Next builds.
+- Unit coverage: `version.test.ts` (comparison, the three states, the
+  never-block-on-a-parse-failure rule, the off-origin URL), the server policy
+  tripwires above, `update-banner.test.tsx` (all three states, dismissal, a
+  failed check staying silent, the 426 event, nothing at all in a browser
+  tab), `transport.test.ts` (426 → `SyncOutdatedError` + event), and
+  `bridge.test.ts` (`getShellVersion`).
+- **Not yet confirmed against a real signed build** — §4's standing caveat
+  applies. What a display session still has to show: the bar appearing after
+  `latest` is bumped server-side, and "Get the update" opening the system
+  browser at `/download` (the `opener` allow-list is the risk, and it is
+  already correct on paper).
