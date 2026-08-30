@@ -21,6 +21,7 @@
     "deploy": "NEXT_PUBLIC_TURNSTILE_SITE_KEY=0x4AAAAAAEW0aou3ZhT4nDu3 opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
     "auth:schema": "better-auth generate --config src/server/auth-cli.ts --output src/server/auth-schema.ts --yes && drizzle-kit generate",
+    "dev:bootstrap": "node scripts/dev-bootstrap.mjs",
     "auth:migrate:local": "wrangler d1 migrations apply AUTH_DB --local",
     "auth:migrate:remote": "wrangler d1 migrations apply AUTH_DB --remote",
     "deploy:with-migrations": "npm run auth:migrate:remote && npm run deploy",

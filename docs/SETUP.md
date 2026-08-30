@@ -452,6 +452,35 @@ Production-as-staging is a reasonable call while Faite has one user, but:
 
 ## Local development
 
+### First run in a new checkout or worktree
+
+```bash
+npm install
+npm run dev:bootstrap
+```
+
+`.wrangler/`, `.dev.vars` and `node_modules/` are all git-ignored, so **every
+new worktree starts with no local database and no secrets**. `dev:bootstrap`
+(`scripts/dev-bootstrap.mjs`, EI-249) closes that gap: it copies `.dev.vars`
+from your primary checkout if this directory has none, applies the auth
+migrations to this directory's local D1, and writes a test account that is
+already verified.
+
+    email     dev@example.com
+    password  faite-local-dev
+
+Override with `--email` / `--password`, or `FAITE_DEV_EMAIL` /
+`FAITE_DEV_PASSWORD`. Take `.dev.vars` from somewhere else with `--from <path>`.
+Re-running is safe and is the fix for a forgotten password — it re-verifies the
+account and rewrites the credential row in place.
+
+The account is written straight into local D1, so **no server needs to be
+running** and the verification email never enters the picture. That is the point
+of the script: local `wrangler dev` cannot deliver mail, so the verification
+link is only ever logged to the `npm run preview` terminal (see §6 and "What
+works locally"), and it is very easy to miss. The rest of this section explains
+what the script does by hand, for when you need to do it yourself.
+
 ### Two servers, and what each one can do
 
 `next dev` (:3000) never runs the worker entry (`src/server/worker.ts`), so

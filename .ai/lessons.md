@@ -935,3 +935,40 @@ mirror of `.github/workflows/ci.yml`. Before claiming a change is CI-clean,
 read the workflow's step list and check for steps the script omits. Here the
 `verify` JOB had six steps and the `verify` SCRIPT had five — the names being
 identical is exactly what makes this easy to miss.
+
+---
+
+## A Better Auth account can be seeded with plain SQL, because the hash is portable (EI-249)
+
+The manual local-setup dance — sign up through the app, hunt the verification
+link out of the `npm run preview` terminal, then
+`UPDATE user SET email_verified = 1` — existed because signing up looked like
+the only way to produce a valid password hash. It is not.
+
+Better Auth's default scrypt is exported: `hashPassword` from
+`better-auth/crypto` returns `"<saltHex>:<hashHex>"`, and that string is
+exactly what the running server's `verifyPassword` accepts. So
+`scripts/dev-bootstrap.mjs` writes the `user` row and the `credential`
+`account` row straight into local D1 with `wrangler d1 execute --local`, and no
+server has to be running at any point. Proved end to end: a purely
+SQL-seeded account signs in against a live `wrangler dev` with HTTP 200 and a
+real session token, and a wrong password still gets 401 — the hash is genuinely
+being checked, not bypassed.
+
+Two details that are easy to get wrong. The password lives on
+**`account.password`**, not on `user`, keyed by `provider_id = 'credential'`
+with `account_id` equal to the user id — there is no password column on `user`
+at all. And SQL goes through `--file`, not `--command`: an interpolated hash
+and email would otherwise have to survive both the shell and wrangler's own
+parsing.
+
+**Rule:** before building a workflow around "sign up through the UI to get a
+valid X", check whether the library exports the function that produces X.
+Better Auth exports its hashing, its JWT verification, and its session logic;
+treating the HTTP endpoint as the only door adds a running server to the
+dependency list of things that should not need one.
+
+**Corollary:** a seeding script that needs no server is testable in a fresh
+worktree in seconds, which is the whole reason this one is idempotent — re-run
+it and it re-verifies the account and rewrites the credential row, so "I forgot
+the dev password" stops being a debugging session.
