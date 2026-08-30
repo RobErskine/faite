@@ -452,13 +452,50 @@ Production-as-staging is a reasonable call while Faite has one user, but:
 
 ## Local development
 
+### First run in a new checkout or worktree
+
+```bash
+npm install
+npm run dev:bootstrap
+npm run dev:full
+```
+
+`.wrangler/`, `.dev.vars` and `node_modules/` are all git-ignored, so **every
+new worktree starts with no local database and no secrets**. `dev:bootstrap`
+(`scripts/dev-bootstrap.mjs`, EI-249) closes that gap: it copies `.dev.vars`
+from your primary checkout if this directory has none, applies the auth
+migrations to this directory's local D1, and writes a test account that is
+already verified.
+
+    email     dev@example.com
+    password  faite-local-dev
+
+Override with `--email` / `--password`, or `FAITE_DEV_EMAIL` /
+`FAITE_DEV_PASSWORD`. Take `.dev.vars` from somewhere else with `--from <path>`.
+Re-running is safe and is the fix for a forgotten password — it re-verifies the
+account and rewrites the credential row in place.
+
+The account is written straight into local D1, so **no server needs to be
+running** and the verification email never enters the picture. That is the point
+of the script: local `wrangler dev` cannot deliver mail, so the verification
+link is only ever logged to the `npm run preview` terminal (see §6 and "What
+works locally"), and it is very easy to miss. The rest of this section explains
+what the script does by hand, for when you need to do it yourself.
+
 ### Two servers, and what each one can do
 
 `next dev` (:3000) never runs the worker entry (`src/server/worker.ts`), so
 **all of `/api/*` is absent there** — it exists only under the real Workers
-runtime that `npm run preview` starts on :8787. Run both, in two terminals, and
-open :3000; `.env.local` points the auth client at :8787 so you get hot reload
-and a working login at once.
+runtime that `npm run preview` starts on :8787. Run both — `npm run dev:full`
+does it in one terminal, with labeled/colored output, using the `concurrently`
+already wired into `dev` and `preview` individually. It shares a single
+`agentation-mcp` companion process rather than starting it twice — running
+`npm run dev` and `npm run preview` side by side naively would collide on
+that server's fixed port. Two separate terminals (`npm run preview` +
+`npm run dev`) still work and are worth it when you want to bounce :8787 alone
+after a `src/server/` change without losing :3000's state. Either way, open
+:3000; `.env.local` points the auth client at :8787 so you get hot reload and a
+working login at once.
 
 | | `npm run dev` (:3000) | `npm run preview` (:8787) |
 |---|---|---|
