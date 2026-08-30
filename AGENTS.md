@@ -44,3 +44,43 @@ Any new keyboard shortcut — global or local — must be registered in
 §1. The `?` help sheet and the `⌘K` palette both read from `shortcuts.ts` —
 a shortcut left out of it is invisible to users who go looking for it. See
 `docs/KEYBOARD.md` §5 for the full recipe.
+
+# Issues live in Linear, not GitHub
+
+This project tracks work in **Linear**, not GitHub Issues. Workspace
+`rob-erskine`, team **Erskine Interactive**, project **Faite**, ticket prefix
+**`EI-`**. GitHub holds pull requests and CI, and nothing else — its issue
+tracker is empty and always will be.
+
+So any instruction to "search issues", "find related issues", or "check for
+tickets this fixes" means the **Linear MCP** (`list_issues` with
+`project: "Faite"`), never `gh issue list`. Running `gh issue list` here returns
+nothing and the honest-looking conclusion — "no open issues" — is false; there
+are 250+. If the Linear MCP is unavailable, **say that it is unavailable**.
+Never report an empty result you did not actually get.
+
+# Where the context lives
+
+- **`docs/README.md`** — index of every doc. Start there, not with a grep.
+- **`docs/ARCHITECTURE.md`** — the *why* behind the data model and sync.
+- **`docs/WORKFLOW.md`** — how a ticket becomes a merged PR, and how to hand a
+  session off to a worktree.
+- **`.ai/lessons.md`** — mistakes already made here, with the rule each one
+  produced. Read it before a non-trivial change; `docs/SYNC.md` calls it
+  "not optional".
+- **`.ai/todo.md`** — the append-only build log. Read it for history. **Never
+  write a plan into it** — a per-batch plan goes in `.ai/<slug>-runbook.md`.
+
+# Ticket → branch → PR → merge
+
+Branch name is Linear's own `gitBranchName`, verbatim (`rob/ei-249-…`). Commit
+subjects are Conventional Commits with the ticket as the scope —
+`feat(EI-242): …`, `fix(EI-238): …`, and `feat(EI-244/EI-245): …` when one PR
+closes two tickets.
+
+**Squash merge.** Older history has merge commits and one retrospective still
+recommends them; that is out of date, and PRs #43 onward are all squashes.
+
+`npm run e2e:ci` is the CI gate. `npm run verify` is a broader local check and
+is **not** the gate — passing it proves nothing about what CI will do. See
+`docs/WORKFLOW.md` for the full loop.

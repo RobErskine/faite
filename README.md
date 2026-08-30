@@ -20,7 +20,8 @@ no request is ever on the interaction path.
 
 ## Docs
 
-Everything is written down. The problem is knowing which file, so start here:
+Everything is written down. The problem is knowing which file, so start here —
+or read **[docs/README.md](docs/README.md)** for the complete index.
 
 | I want to… | Read |
 |---|---|
