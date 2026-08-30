@@ -101,8 +101,23 @@ with "no such table", which looks like a code bug.
 - `npm run typecheck` — and run it **again** after writing tests. Vitest's
   esbuild transform does not type-check, so a test file can pass while failing
   `tsc`.
-- `npm run e2e:ci` — the actual CI gate: `desktop` + `phone-iphone`.
-- `npm run verify` — broader, slower, and **not** the gate.
+- `npm run e2e:ci` — the actual CI gate: `desktop` + `phone-iphone`. Run bare,
+  it flakes badly and the failures are not real: locally Playwright uses
+  `next dev` with one worker per core, which starves a server that compiles on
+  demand. To reproduce what CI actually runs, serve a production build instead:
+
+  ```bash
+  npm run build
+  CI=1 E2E_PORT=3100 E2E_SERVER="npx next start -p 3100" npm run e2e:ci
+  ```
+
+  `E2E_PORT` matters because `CI=1` turns off `reuseExistingServer`, so a dev
+  server already on :3000 aborts the run. **Do not believe a local e2e failure
+  until it survives this command**, or `--workers=1`. `docs/E2E.md` §9 has the
+  measurements.
+- `npm run verify` — broader, slower, and **not** the gate. It is a convenience
+  script, not a mirror of `.github/workflows/ci.yml`; read the workflow's step
+  list before claiming a change is CI-clean.
 - A new `e2e/*.spec.ts` must be named by a `testMatch` in
   `playwright.config.ts` or it runs under zero projects and passes silently.
   See `AGENTS.md` and `docs/E2E.md` §8.
