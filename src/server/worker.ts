@@ -29,6 +29,7 @@ import { handleOptions, withCors } from "./cors";
 import { handleDesktopRequest } from "./desktop/routes";
 import { handleEmail } from "./email/ingest";
 import { handleEmailRequest } from "./email/routes";
+import { handleLinkPreviewRequest } from "./link-preview/routes";
 import { handleMcpRequest } from "./mcp/routes";
 import { handlePlacesRequest } from "./places/routes";
 import { handleSyncRequest } from "./sync/routes";
@@ -102,6 +103,12 @@ export default {
       // Same reasoning again (EI-206): TURNSTILE_SECRET_KEY is a Worker
       // secret and must never reach client JS. See ./contact/routes.ts.
       return handleContactRequest(request, env);
+    }
+    if (pathname.startsWith("/api/link-preview")) {
+      // Same reasoning again: a metadata-fetching proxy for the Notes-field
+      // card, and the only place `caches.default` is used for it. See
+      // ./link-preview/routes.ts and docs/LINK-PREVIEW.md.
+      return handleLinkPreviewRequest(request, env);
     }
     if (pathname.startsWith("/api/attachments")) {
       // The bytes half of todo attachments (EI-242). Same seam again, plus

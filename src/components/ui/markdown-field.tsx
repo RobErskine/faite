@@ -11,8 +11,15 @@ import { cn } from "@/lib/utils";
  * `todoSchema.description` and `dayNoteSchema.body` both declare markdown, the
  * command palette substring-searches descriptions (JSON would fill search with
  * structural noise), and markdown stays portable and readable if it is ever
- * exported. The conversion is lossy in principle but covers CommonMark + GFM,
- * and this app defines no custom blocks, so nothing we can author is lost.
+ * exported. The conversion is lossy in principle but covers CommonMark + GFM.
+ *
+ * One custom block now exists — `linkPreview` (link preview cards,
+ * `link-preview-block.tsx`) — and it does NOT round-trip through this lossy
+ * conversion the ordinary way a new custom block normally would. See
+ * `src/lib/link-preview-markdown.ts`'s header for why (short version:
+ * BlockNote's own `codeBlock` parsing would otherwise silently reclaim the
+ * fence a `linkPreview` block serializes to) and `docs/LINK-PREVIEW.md` for
+ * the full account.
  *
  * See `markdown-editor.tsx` for the seeding/commit contract — in particular why
  * it must not write back content the user did not type.

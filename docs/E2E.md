@@ -248,15 +248,18 @@ source of truth; there are no project guards inside specs any more (§7).
 | `reminders` (4) | ● | | ● | | |
 | `overdrive` (8) | ● | | ● | ● | |
 | `activity-timeline` (2) | ● | | ● | | |
+| `link-preview` (3) | ● | | ● | | |
 | `touch-affordances` (3) | | ● | ● | ● | ● |
 | `touch-smoke` (2) | | | ● | ● | ● |
 
-**129 tests.** Before, every project ran every spec — 36 x 5 = **180 runs**,
-of which 56 immediately hit a skip guard and exited.
+**126 tests** (plus `attachments`, added after this table was last
+recomputed — its own count is not reflected in these totals either). Before
+the original cut, every project ran every spec — 36 x 5 = **180 runs**, of
+which 56 immediately hit a skip guard and exited.
 
 This table is what `npm run e2e` runs, and it is the *full* matrix. A pull
 request runs a subset of it: the **`desktop` and `phone-iphone` columns
-only** (90 tests, `npm run e2e:ci`). The other three columns are deferred to
+only** (87 tests, `npm run e2e:ci`). The other three columns are deferred to
 a local run or a `workflow_dispatch` — see §8.5 for why those two, and what
 deferring the rest gives up.
 
@@ -315,6 +318,21 @@ deferring the rest gives up.
   **Risk accepted:** the same class of risk `reminders` accepts — a rendering
   regression specific to iPad Mini's width or Pixel's DPR that Tier A's
   structure-only assertions likely wouldn't have caught anyway.
+- **`link-preview` on `desktop` + `phone-iphone` only** (link preview
+  cards). *Traded away:* tablet, landscape and Pixel — same call as
+  `reminders`/`activity-timeline`. Not a hover-dependent spec despite living
+  in a link hover toolbar: the toggle is driven by clicking a link to move
+  the text cursor into it (`LinkToolbarController`'s `getLinkAtSelection()`
+  path), which is identical on every project — verified live against a real
+  browser, not assumed. The one genuinely viewport-specific finding while
+  writing this spec was unrelated to touch: typing a URL containing `//` as
+  discrete keystrokes garbled it on `phone-iphone` specifically (BlockNote's
+  slash-command menu mishandling a second `/` arriving while deciding
+  whether to open), fixed by `fill()`-ing the URL text instead of typing it
+  — see the spec file's own comment. **Risk accepted:** none specific to
+  this feature beyond what `reminders` already accepts; the card's own
+  visual layout (image/no-image, hostname fallback) has no cross-viewport
+  behaviour to lose by skipping tablet/landscape/Pixel.
 
 ### 8.3 The one change that wasn't a coverage trade
 

@@ -60,6 +60,7 @@ const SPECS = {
   overdrive: "**/overdrive.spec.ts",
   activityTimeline: "**/activity-timeline.spec.ts",
   attachments: "**/attachments.spec.ts",
+  linkPreview: "**/link-preview.spec.ts",
   touchAffordances: "**/touch-affordances.spec.ts",
   touchSmoke: "**/touch-smoke.spec.ts",
 } as const;
@@ -154,6 +155,7 @@ export default defineConfig({
         SPECS.overdrive,
         SPECS.activityTimeline,
         SPECS.attachments,
+        SPECS.linkPreview,
       ],
     },
     // Every touch/tablet project below forces `defaultBrowserType: "chromium"`
@@ -190,6 +192,10 @@ export default defineConfig({
         // the shared `TodoSheet`, above the desktop/phone branch, and "neither
         // shell needs its own copy" is the actual claim being tested.
         SPECS.attachments,
+        // Also both gate projects: the toggle is driven by clicking a link to
+        // move the text cursor into it (`getLinkAtSelection()`), not a real
+        // mouse hover, so it needs no touch-specific behaviour to verify here.
+        SPECS.linkPreview,
       ],
     },
     {
