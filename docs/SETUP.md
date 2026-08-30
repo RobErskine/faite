@@ -366,6 +366,10 @@ Against `https://myfaite.app`:
 - [ ] Sign up with email + password → verification email arrives
 - [ ] Click the link → `/verify-email` confirms
 - [ ] Sign in → header shows your email; Log out works
+- [ ] **Log out clears the device** → lands on `/` (not bounced back to
+      `/board`), IndexedDB empty, no `faite:bound-owner-id`. Sign back in →
+      the board returns from the server. See `docs/AUTH.md`
+      § What sign-out does
 - [ ] Forgot password → reset email arrives → new password works
 - [ ] Continue with GitHub → returns signed in
 - [ ] Continue with Google → returns signed in

@@ -1330,12 +1330,24 @@ rather than merely tolerable:
 No cross-window message, no Rust involvement, nothing added to
 `background_sync.rs`.
 
-### 11.4 Not verified on a real build
+### 11.4 Verified on a real build
 
-Everything above is unit-tested and confirmed against the static export
-(`signed-out.html` is emitted and contains the right copy), but **no
-`tauri build` has been run against it** — the desktop verification loop needs
-a display session (§4). Worth one pass: sign in, sign out, confirm the window
-shows the signed-out screen rather than an empty board, confirm "Sign in"
-opens the system browser and the `faite://auth-callback` round trip still
-lands, and confirm the board is genuinely empty afterwards.
+Confirmed by Rob against a real `tauri build`, in a real display session:
+signing out shows the signed-out screen rather than a board, "Sign in" opens
+the system browser, the `faite://auth-callback` round trip still lands, and
+the board is genuinely empty afterwards.
+
+This closes the one gap this section shipped with. It is also the first
+milestone in this document whose desktop behavior was confirmed by a human at
+a display session in the same pass that wrote it — §4's standing caveat did
+not have to be carried forward.
+
+Automated coverage that backs it up, so a regression is caught without a
+display session next time:
+
+| Test | Guards |
+|---|---|
+| `app-header.test.tsx` | app-shell sign-out targets `signed-out.html`, never a reload |
+| `signed-out/page.test.tsx` | no `/login` link on the desktop path; the board escape hatch stays |
+| `clear-device.test.ts` | the wipe, the keep-list, cursor-before-tables, no network |
+| `use-reminders.test.tsx` | the cleared key does not come back on a re-render |
