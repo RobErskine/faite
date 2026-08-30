@@ -90,6 +90,7 @@ git-ignored, so none of them cross over:
 ```bash
 npm install
 npm run dev:bootstrap     # local D1 + a verified test account (EI-249)
+npm run dev:full          # both servers, one terminal (EI-249)
 ```
 
 `docs/SETUP.md` §"First run in a new checkout or worktree" has the detail.

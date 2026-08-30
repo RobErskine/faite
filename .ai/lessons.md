@@ -972,3 +972,25 @@ dependency list of things that should not need one.
 worktree in seconds, which is the whole reason this one is idempotent — re-run
 it and it re-verifies the account and rewrites the credential row, so "I forgot
 the dev password" stops being a debugging session.
+
+---
+
+## Two `concurrently` scripts that each own a companion process cannot just run side by side (EI-249)
+
+`npm run dev` and `npm run preview` each independently start an
+`agentation-mcp` companion via `concurrently -k`. Naively running both at once
+— two terminals is fine, that's the documented workflow, but a naive combined
+script that just did `concurrently "npm:dev" "npm:preview"` — starts that
+companion twice, and the second instance fails to bind its fixed port.
+
+`dev:full` avoids it by not composing the two existing scripts at all: it lists
+the three *underlying* commands directly (`agentation`, `opennextjs-cloudflare
+preview`, `next dev`) in one `concurrently -k` call, so the shared process runs
+once. Verified by checking the port bound exactly once and that no
+`EADDRINUSE` appeared in the log.
+
+**Rule:** before composing two scripts that each wrap `concurrently` (or any
+supervisor) into a bigger one, check what each one starts as a side effect —
+not just its named purpose. The collision is never in the process you're
+thinking about; it's in the thing running alongside it that both scripts start
+identically.
