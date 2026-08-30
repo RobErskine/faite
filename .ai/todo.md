@@ -1838,3 +1838,66 @@ too, so it was asserting the harness. That undo coverage moved into
       more likely.
 - [ ] A list drag still has no keyboard path (§7 item 5a), and a collapsed
       weekend strip does not expand for one (§7 item 5b).
+
+---
+
+## Sign-out clears this device (PR #66)
+
+No Linear ticket — Linear was unauthorized in the session that did the work,
+so nothing here carries an `EI-` reference.
+
+**The bug.** `handleSignOut` cleared the Better Auth session and the desktop
+keychain token and no local data at all. `/board` is ungated by design
+(ARCHITECTURE §2.13) and `/` bounces to it on `faite:bound-owner-id` alone —
+neither consults the session — so the next person to open the browser landed
+on the previous user's board and could read all of it. Two doc comments
+(`cursor.ts`, `adopt-owner.ts`) actively asserted this was correct; the change
+reverses that rule.
+
+**Shape.** `clearDeviceData()` (`lib/store/clear-device.ts`) reuses
+`resetLocalDataForNewOwner()` rather than growing a second table list. Order:
+cursors → binding → the two local-only content keys → the Dexie transaction.
+Sign-out flushes the outbox first (while the cookie is valid), then
+`signOut()`, then the wipe, then a hard navigation. Full reasoning in
+`docs/AUTH.md` § What sign-out does; desktop specifics in `docs/DESKTOP.md`
+§11.
+
+**Two orderings that are not style.** `signOut()` before the wipe — wiping
+under a live session leaves a cursor of 0 and the mounted engine re-pulls the
+whole board on its next tick. Cursors before tables — a surviving watermark
+against an emptied IndexedDB makes the next sign-in ask `since=47`, get the
+tail, and stay half-empty forever with no error.
+
+**The bug the browser found and the unit tests could not.** `clearFiredReminders()`
+first cleared only localStorage. `useReminders` writes its in-memory set back
+on every effect re-run, and the wipe empties the `todos` table — which changes
+`todos` identity and re-runs the effect. The key reappeared holding the
+previous user's todo ids, milliseconds later, before the navigation. A unit
+test with no React tree mounted is structurally blind to this. Fixed by
+hoisting the set to module scope so it can be reset.
+
+**Habit kept: prove the old code fails.** Commented out the one-line
+in-memory reset and watched `use-reminders.test.tsx` go red reporting
+`'["todo-1:2099-01-01:09:00"]'` — the resurrected id — then restored it.
+
+**Desktop needed a second commit.** The data fix worked in the shell, but
+`NEXT_PUBLIC_APP_SHELL=1` makes `/` a redirect stub to `/board` and `main`
+opens `board.html` directly, so sign-out still landed on a board. App-shell
+builds now go to `signed-out.html`. Deliberately not `login.html` (the webview
+cannot hold a session cookie, so that form can never succeed) and deliberately
+not a gate (§2.13 holds in the shell too).
+
+**No new e2e spec**, on purpose: a sign-out spec needs a real D1 user, a
+session cookie and a live sync backend — a new fixture category, not a new
+file, and against AGENTS.md's metered-minutes rule that is out of proportion.
+
+### Open
+
+- [ ] `reminder-picker.test.tsx` flaked once in five full-suite runs
+      (`todo-reminder-input` missing after the preset-name confirm) and passes
+      in isolation. Pre-existing — it shares no import path with anything this
+      work touched — but it is a real cross-file ordering dependency and will
+      bite again.
+- [ ] `faite:saved-views` and `faite:reminders-fired` are now permanently lost
+      on sign-out, accepted as user content. If saved views ever sync, this
+      becomes a restore path rather than a deletion.

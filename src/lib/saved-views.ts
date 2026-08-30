@@ -74,6 +74,20 @@ function safeSet(value: string): void {
   }
 }
 
+/**
+ * Forget every saved view on this device. Called by `clearDeviceData()` on
+ * sign-out — view names are user-authored content, so they leak exactly like
+ * the board itself does, and there is no server copy to restore them from.
+ */
+export function clearSavedViews(): void {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // Same best-effort trade as `safeSet` above.
+  }
+}
+
 /** A row shaped wrong (older version, hand-edited storage) is dropped rather than crashing the read. */
 function isSavedView(value: unknown): value is SavedView {
   if (!value || typeof value !== "object") return false;

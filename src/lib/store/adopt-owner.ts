@@ -170,8 +170,9 @@ export async function resetLocalDataForNewOwner(): Promise<void> {
   );
   clearBoundOwnerId();
   // The old owner's pull cursor is meaningless against the new owner's DO —
-  // reusing it would silently skip the new owner's earliest rows. NOT called
-  // on a plain sign-out: a returning same-account sign-in should resume from
-  // where it left off, not re-pull everything.
+  // reusing it would silently skip the new owner's earliest rows. Sign-out
+  // needs the same guarantee for a different reason (an emptied database
+  // behind a live watermark), and reaches it through `clearDeviceData()`,
+  // which wraps this function rather than duplicating its table list.
   clearSyncCursors();
 }

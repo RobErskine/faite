@@ -43,9 +43,16 @@ export function setSyncCursor(ownerId: string, cursor: number): void {
   }
 }
 
-/** Called by `resetLocalDataForNewOwner()` on an account switch. Deliberately
- * NOT called on sign-out alone — a returning same-account sign-in should
- * resume from where it left off, not re-pull everything. */
+/**
+ * Called by `resetLocalDataForNewOwner()` on an account switch, and by
+ * `clearDeviceData()` on sign-out.
+ *
+ * Sign-out clearing the cursor is not an efficiency question, it is a
+ * correctness one: sign-out also empties IndexedDB, so a surviving watermark
+ * would make the next sign-in ask `since=47` against a local board of zero
+ * rows, receive only the tail, and stay permanently half-empty with no error
+ * anywhere. Re-pulling from 0 is the cheap half of that trade.
+ */
 export function clearSyncCursors(): void {
   if (!hasLocalStorage()) return;
   try {

@@ -61,6 +61,12 @@ export function SessionProvider() {
   // Fires on every dismissal path (Cancel button, Escape, overlay click) —
   // deliberately NOT wired to the Action button too, which closes the dialog
   // itself by clearing conflictUserId once the switch succeeds.
+  //
+  // Calls `signOut()` directly rather than the header's `handleSignOut`,
+  // which erases the device. Erasing is exactly wrong here: the local board
+  // belongs to the OTHER account, and the whole point of this path is to keep
+  // it. `handleSignOut`'s `boundToMe` guard encodes the same rule for the
+  // case where someone reaches the account menu before answering the dialog.
   const handleCancelSwitch = async () => {
     setConflictUserId(null);
     processedUserId.current = null;

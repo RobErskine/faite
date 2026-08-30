@@ -553,6 +553,20 @@ there is nothing behind it yet: all data lives in the visitor's own IndexedDB.
 Real enforcement arrives at P3, when the per-user Durable Object holds the data
 and authenticates every sync request server-side.
 
+**Which is why sign-out has to erase the device.** The two decisions above
+compose into a leak: `/board` is ungated, `/` bounces to it on the local
+marker, and neither one consults the session — so for as long as sign-out left
+IndexedDB and `faite:bound-owner-id` in place, the next person to open the
+browser landed directly on the previous user's board and could read all of it.
+Nothing was going to catch that at the route layer, because by design there is
+no route layer to catch it. The fix belongs at the only moment that knows the
+user is leaving: `clearDeviceData()` (`lib/store/clear-device.ts`), called from
+sign-out. It is local-only — the account's board stays in its Durable Object
+and comes back on the next sign-in. `docs/AUTH.md` has the step order and the
+one case that must *not* clear (a device bound to a different account than the
+one signed in). This is also what makes the shared-device story defensible
+without building the gate §2.13 argues against.
+
 ### 2.14 Derive unless the fact is historical
 
 §2.2 already says overflow is derived and never stored. That was always the

@@ -1,8 +1,19 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 import { CircleHelp, LogIn, LogOut, Search, Settings } from "lucide-react";
 import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -19,6 +30,9 @@ import { useIdentity } from "@/lib/use-identity";
 import { signOut, useSession } from "@/lib/auth-client";
 import { useShouldShowAuthNudges } from "@/lib/auth-nudge";
 import { clearStoredAuthToken, isDesktopShell, startDesktopLogin } from "@/lib/desktop/bridge";
+import { flushOutbox } from "@/components/sync/sync-provider";
+import { clearDeviceData } from "@/lib/store/clear-device";
+import { getBoundOwnerId } from "@/lib/store/owner";
 import type { Settings as SettingsRow } from "@/lib/schema";
 
 interface AppHeaderProps {
@@ -61,8 +75,48 @@ export function AppHeader({
   const identity = useIdentity();
   const avatar = resolveAvatar(settings, identity);
   const shouldShowAuthNudges = useShouldShowAuthNudges();
+  /** Non-null while the "you have unsynced changes" confirmation is open. */
+  const [unsyncedCount, setUnsyncedCount] = useState<number | null>(null);
+  const [signingOut, setSigningOut] = useState(false);
 
-  const handleSignOut = async () => {
+  /**
+   * Leave the board, hard.
+   *
+   * Not `router.push`: that keeps the SPA alive, so `useLiveQuery` caches, the
+   * undo stack, board UI state and the engine's timers would all survive the
+   * wipe still holding the previous user's values. A document navigation
+   * throws all of it away at once.
+   *
+   * `replace`, not `assign`, so `/board` leaves the history stack and Back
+   * cannot restore it from bfcache.
+   *
+   * App-shell builds (`NEXT_PUBLIC_APP_SHELL=1` — Tauri and Capacitor) go to
+   * `signed-out.html` instead of `/`. There, `/` is an unconditional redirect
+   * stub back to `/board` (`app/page.tsx` keys off the same flag) and the
+   * windows open on `board.html` directly (docs/DESKTOP.md §6.2), so `/` and
+   * a plain reload both land the user straight back on a board — which is the
+   * one thing signing out has to stop. A relative filename, because the
+   * export is flat `.html` files served from `tauri://localhost` and
+   * `capacitor://localhost` alike.
+   */
+  const leaveBoard = () => {
+    if (process.env.NEXT_PUBLIC_APP_SHELL === "1") {
+      window.location.replace("signed-out.html");
+    } else {
+      window.location.replace("/");
+    }
+  };
+
+  /**
+   * Sign out, then erase this device.
+   *
+   * The order is not cosmetic. `signOut()` runs BEFORE `clearDeviceData()`:
+   * wiping first would leave a live session against a cursor of 0, and the
+   * still-mounted sync engine's next tick would pull the whole board straight
+   * back down. Once signed out every request 401s into `SyncAuthError` and
+   * the engine writes nothing.
+   */
+  const finishSignOut = async () => {
     // The desktop shell's bearer token lives in the OS keychain, entirely
     // outside Better Auth's cookie-based session `signOut()` clears (D2a —
     // see docs/DESKTOP.md §9). Without this, "Log out" would clear the
@@ -70,7 +124,46 @@ export function AppHeader({
     // token still authenticating every subsequent request.
     if (isDesktopShell()) await clearStoredAuthToken();
     await signOut();
-    toast.success("Signed out");
+    await clearDeviceData();
+    leaveBoard();
+  };
+
+  const handleSignOut = async () => {
+    const userId = session?.user?.id;
+    // The same predicate as `SyncProvider`'s `isActive()`, and load-bearing
+    // for the same reason. A device bound to user A with user B momentarily
+    // signed in — the state `session-provider.tsx`'s "switch accounts?"
+    // dialog puts us in, before anyone answers it — must sign out and touch
+    // nothing else. Flushing would push A's board into B's Durable Object;
+    // wiping would destroy A's board to fix B's mistake.
+    if (!userId || getBoundOwnerId() !== userId) {
+      if (isDesktopShell()) await clearStoredAuthToken();
+      await signOut();
+      toast.success("Signed out");
+      return;
+    }
+
+    // While the cookie is still valid. Anything that fails to land here is
+    // work the wipe below would destroy with no way back.
+    const pending = await flushOutbox();
+    if (pending > 0) {
+      setUnsyncedCount(pending);
+      return;
+    }
+
+    await finishSignOut();
+  };
+
+  const handleConfirmDiscard = async () => {
+    setSigningOut(true);
+    try {
+      await finishSignOut();
+    } finally {
+      // `finishSignOut` ends in a document navigation, so this normally never
+      // runs. It matters when the navigation is stubbed (tests) or blocked.
+      setSigningOut(false);
+      setUnsyncedCount(null);
+    }
   };
 
   const handleDesktopSignIn = async (page: "login" | "signup" = "login") => {
@@ -211,6 +304,47 @@ export function AppHeader({
           </DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>
+
+      {/*
+        Only ever seen when `flushOutbox()` could not get everything to the
+        server — offline, or a server that is failing. A fully-synced sign-out
+        is silent. Erasing silently here would be unrecoverable, and worse
+        than the leak this whole change exists to close.
+
+        Cancel does nothing at all on purpose: staying signed in is the only
+        state from which those changes can still be saved.
+      */}
+      <AlertDialog
+        open={unsyncedCount !== null}
+        onOpenChange={(open) => {
+          if (!open && !signingOut) setUnsyncedCount(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Sign out with unsaved changes?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {unsyncedCount === 1
+                ? "1 change hasn't"
+                : `${unsyncedCount ?? 0} changes haven't`}{" "}
+              reached the server yet — you may be offline. Signing out erases
+              this device&apos;s board, including those changes.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={signingOut}>
+              Stay signed in
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={signingOut}
+              onClick={() => void handleConfirmDiscard()}
+            >
+              {signingOut ? "Signing out…" : "Sign out and erase"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </header>
   );
 }
