@@ -63,10 +63,17 @@ npm install
 
 ### Running locally
 
-**You need both servers, in two terminals.** `next dev` serves the UI with hot
-reload, but it never runs the worker entry (`src/server/worker.ts`) — so
-`/api/auth/*` and `/api/sync/*` simply do not exist on :3000. Those only live
-under the real Workers runtime.
+**You need both servers.** `next dev` serves the UI with hot reload, but it
+never runs the worker entry (`src/server/worker.ts`) — so `/api/auth/*` and
+`/api/sync/*` simply do not exist on :3000. Those only live under the real
+Workers runtime.
+
+```bash
+npm run dev:full   # one terminal — builds, then runs both, labeled output
+```
+
+Or in two terminals, if you want the logs and restarts kept apart (e.g. to
+bounce :8787 alone after a `src/server/` change, without losing :3000's state):
 
 ```bash
 npm run preview   # terminal 1 — builds, then serves the worker on :8787
@@ -74,7 +81,9 @@ npm run dev       # terminal 2 — UI with hot reload on :3000
 ```
 
 Then open **http://localhost:3000**. `.env.local` points the auth client at
-:8787, so you get hot reload *and* a working login.
+:8787, so you get hot reload *and* a working login. `dev:full` runs
+`concurrently -k`, so Ctrl-C — or any one of the three processes exiting —
+takes down all three.
 
 Three things that will bite, in the order they usually do:
 

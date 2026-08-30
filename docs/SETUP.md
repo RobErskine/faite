@@ -457,6 +457,7 @@ Production-as-staging is a reasonable call while Faite has one user, but:
 ```bash
 npm install
 npm run dev:bootstrap
+npm run dev:full
 ```
 
 `.wrangler/`, `.dev.vars` and `node_modules/` are all git-ignored, so **every
@@ -485,9 +486,16 @@ what the script does by hand, for when you need to do it yourself.
 
 `next dev` (:3000) never runs the worker entry (`src/server/worker.ts`), so
 **all of `/api/*` is absent there** — it exists only under the real Workers
-runtime that `npm run preview` starts on :8787. Run both, in two terminals, and
-open :3000; `.env.local` points the auth client at :8787 so you get hot reload
-and a working login at once.
+runtime that `npm run preview` starts on :8787. Run both — `npm run dev:full`
+does it in one terminal, with labeled/colored output, using the `concurrently`
+already wired into `dev` and `preview` individually. It shares a single
+`agentation-mcp` companion process rather than starting it twice — running
+`npm run dev` and `npm run preview` side by side naively would collide on
+that server's fixed port. Two separate terminals (`npm run preview` +
+`npm run dev`) still work and are worth it when you want to bounce :8787 alone
+after a `src/server/` change without losing :3000's state. Either way, open
+:3000; `.env.local` points the auth client at :8787 so you get hot reload and a
+working login at once.
 
 | | `npm run dev` (:3000) | `npm run preview` (:8787) |
 |---|---|---|
