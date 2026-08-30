@@ -35,6 +35,36 @@ export class SyncHttpError extends Error {
   }
 }
 
+/**
+ * The second half of EI-147's build check, and the half that only matters
+ * years from now.
+ *
+ * `426 Upgrade Required` from `/api/sync/*` means "this client is too old to
+ * talk to me at all". **No server code sends it today**, and that is fine —
+ * the point is the reverse dependency. A desktop bundle is frozen static
+ * files (docs/DESKTOP.md §2 decision #2), so the server can add the 426 to a
+ * future deploy whenever it needs to, but ONLY clients that already know how
+ * to read it will do anything sensible when it arrives. Teaching that now
+ * costs a branch; retrofitting it later is impossible for every copy already
+ * installed.
+ *
+ * The event, rather than a new `SyncOutcome` status threaded through the
+ * engine: nothing consumes a `SyncOutcome` for display today, and a status
+ * only the banner reads would mean widening `runSyncCycle`, `runOnce`,
+ * `createSyncRunner` and `SyncProvider` for one string. `useDesktopUpdate`
+ * listens for this and re-checks `/api/desktop/version` immediately, so a
+ * blocked client shows its bar within a sync cycle instead of waiting out
+ * the poll interval.
+ */
+export const CLIENT_OUTDATED_EVENT = "faite:client-outdated";
+
+export class SyncOutdatedError extends SyncHttpError {
+  constructor(path: string) {
+    super(426, `${path} refused this client version`);
+    this.name = "SyncOutdatedError";
+  }
+}
+
 async function authHeaders(): Promise<HeadersInit> {
   if (!isDesktopShell()) return {};
   const token = await getStoredAuthToken();
@@ -48,6 +78,12 @@ async function syncFetch(path: string, init?: RequestInit): Promise<Response> {
     headers: { ...(await authHeaders()), ...init?.headers },
   });
   if (response.status === 401) throw new SyncAuthError();
+  if (response.status === 426) {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent(CLIENT_OUTDATED_EVENT));
+    }
+    throw new SyncOutdatedError(path);
+  }
   if (!response.ok) throw new SyncHttpError(response.status, `${path} responded ${response.status}`);
   return response;
 }

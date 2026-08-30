@@ -1901,3 +1901,51 @@ file, and against AGENTS.md's metered-minutes rule that is out of proportion.
 - [ ] `faite:saved-views` and `faite:reminders-fired` are now permanently lost
       on sign-out, accepted as user content. If saved views ever sync, this
       becomes a restore path rather than a deletion.
+
+## EI-147 — desktop build-version check + "get the update"
+
+The cheap first step towards desktop updates, taken instead of EI-134's
+`plugin-updater` + minisign keypair and EI-136's publish pipeline. Nothing
+here installs anything: the app asks the server how old it is, says so, and
+opens `/download` in the system browser. Full writeup — the mechanism, the
+three decisions, the release order — is `docs/DESKTOP.md` §12.
+
+**Why it can't wait for the real updater.** A desktop bundle is frozen static
+files, so a client that never learned to ask can never be told. Everything
+that could later be wrong (which build is newest, which is the floor, where
+the download is) is server data, changeable with a web deploy. The one
+irreversible bit is whether the field asks at all — that is what this ships.
+
+**Fails towards "current", everywhere.** No shell, unreadable version, offline,
+500, malformed body, unparseable policy — all silent. An app that declares
+itself obsolete because the wifi dropped, and can only offer a download the
+user also can't make, is a worse failure than not checking.
+
+**The 426 nobody sends.** `transport.ts` now maps `426` from `/api/sync/*` to
+`SyncOutdatedError` and fires `faite:client-outdated`, which makes the check
+re-run at once. No server code sends it. It is there so a future deploy *can*
+— same reverse dependency as everything else in this ticket.
+
+**One scope call worth flagging.** The button needed somewhere to land, and
+nothing existed, so `/download` is new: a `SITE_PAGES` row with
+`footerGroup: null` and no version number on it (the page is also baked into
+the `.app`'s static export, where a number would freeze). It says plainly
+that public downloads aren't open yet and points at `/contact`. If the real
+destination should be a GitHub release instead, it is one constant
+(`src/server/desktop/version.ts`) plus the Tauri `opener` allow-list.
+
+### Verified
+
+`npm run verify` green — typecheck, lint, unit suite, both Next builds. New
+coverage: `src/lib/desktop/version.test.ts`, `src/server/desktop/version.test.ts`
+(tripwires: `latest` above the built version, or above `minimum`),
+`src/components/desktop/update-banner.test.tsx`, `src/lib/sync/transport.test.ts`,
+plus `getShellVersion` in `bridge.test.ts`.
+
+### Open
+
+- [ ] Not confirmed on a real signed build — the bar appearing after a
+      server-side `latest` bump, and "Get the update" clearing the `opener`
+      allow-list. Correct on paper (`https://myfaite.app/*` is allowed).
+- [ ] `/download` has nothing to download. It is honest about that, but the
+      page only stops being odd when EI-136 lands.

@@ -7,15 +7,19 @@ vi.mock("@tauri-apps/plugin-deep-link", () => ({
   onOpenUrl: (...args: unknown[]) => onOpenUrlMock(...args),
 }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: vi.fn() }));
+const getVersionMock = vi.fn();
+vi.mock("@tauri-apps/api/app", () => ({ getVersion: () => getVersionMock() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(), isTauri: () => Boolean((globalThis as { isTauri?: boolean }).isTauri) }));
 
-const { isDesktopShell, onDesktopAuthCallback, parseAuthCallbackUrl } = await import("./bridge");
+const { getShellVersion, isDesktopShell, onDesktopAuthCallback, parseAuthCallbackUrl } =
+  await import("./bridge");
 
 afterEach(() => {
   // `isTauri()` reads `globalThis.isTauri` — clean up whatever a test set.
   delete (globalThis as { isTauri?: boolean }).isTauri;
   getCurrentMock.mockReset();
   onOpenUrlMock.mockReset();
+  getVersionMock.mockReset();
 });
 
 describe("isDesktopShell", () => {
@@ -87,5 +91,27 @@ describe("onDesktopAuthCallback", () => {
     await onDesktopAuthCallback((url) => seen.push(url));
 
     expect(seen).toEqual([]);
+  });
+});
+
+describe("getShellVersion", () => {
+  it("returns the bundle version inside the desktop shell", async () => {
+    (globalThis as { isTauri?: boolean }).isTauri = true;
+    getVersionMock.mockResolvedValue("0.4.2");
+    await expect(getShellVersion()).resolves.toBe("0.4.2");
+  });
+
+  it("returns null in a browser tab without invoking anything", async () => {
+    await expect(getShellVersion()).resolves.toBeNull();
+    expect(getVersionMock).not.toHaveBeenCalled();
+  });
+
+  it("returns null rather than throwing when the invoke fails", async () => {
+    // The version check is a nice-to-have; nothing about the board should
+    // break because a core command was unavailable.
+    (globalThis as { isTauri?: boolean }).isTauri = true;
+    getVersionMock.mockRejectedValue(new Error("no ipc"));
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    await expect(getShellVersion()).resolves.toBeNull();
   });
 });

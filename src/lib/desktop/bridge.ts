@@ -1,3 +1,4 @@
+import { getVersion } from "@tauri-apps/api/app";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -106,4 +107,43 @@ export async function onDesktopAuthCallback(handler: (url: string) => void): Pro
   return onOpenUrl((urls) => {
     for (const url of urls) handler(url);
   });
+}
+
+/**
+ * The version baked into the running `.app` — `src-tauri/tauri.conf.json`'s
+ * `version`, which is also its `CFBundleShortVersionString`. EI-147's build
+ * check compares this against what the server calls the newest build.
+ *
+ * A core Tauri command, not a plugin: `core:default` already grants
+ * `core:app:allow-version` (`src-tauri/gen/schemas/acl-manifests.json`), so
+ * this needs no capability change.
+ *
+ * `null` off the desktop shell rather than a throw. `getVersion()` is an
+ * `invoke` under the hood, and in a plain browser tab there is nothing to
+ * invoke — every caller of this is desktop-only anyway, and a nullable
+ * return lets them stay a single code path instead of branching on
+ * `isDesktopShell()` twice.
+ */
+export async function getShellVersion(): Promise<string | null> {
+  if (!isDesktopShell()) return null;
+  try {
+    return await getVersion();
+  } catch (error) {
+    console.error("[faite] could not read the desktop app version", error);
+    return null;
+  }
+}
+
+/**
+ * Opens the download page in the SYSTEM browser — the same reason
+ * `startDesktopLogin` does: the embedded webview would navigate away from
+ * the board, and downloading a `.dmg` inside it leads nowhere useful.
+ *
+ * The URL is server-supplied (`/api/desktop/version`), so it is checked
+ * twice before it gets here: `parseVersionPolicy` requires the app's own
+ * origin, and Tauri's `opener:allow-open-url` allow-list
+ * (`src-tauri/capabilities/default.json`) refuses anything else regardless.
+ */
+export async function openDownloadPage(url: string): Promise<void> {
+  await openUrl(url);
 }
