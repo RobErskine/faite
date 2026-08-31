@@ -1484,8 +1484,15 @@ and without ever producing a copy that fails to boot?
 
 **So far: yes, on all three.** Ticket
 [EI-254](https://linear.app/rob-erskine/issue/EI-254/d-spike-hot-asset-bundle-a-web-deploy-reaches-installed-desktop-apps),
-runbook `.ai/ei-254-hot-assets-runbook.md`, probe `src-tauri/src/hot_assets.rs`
-(**deleted before this ships**, same rule `d0_probe.rs` got).
+runbook `.ai/ei-254-hot-assets-runbook.md`.
+
+**The probe is not on `main`.** It lives on
+`rob/ei-256-hot-assets-24-download-verify-whole-activate-atomically`, where
+EI-256 turns it into the real implementation — same rule `d0_probe.rs` got, and
+for a sharper reason than tidiness: the probe activates whatever directory it
+finds, with no signature and no manifest check. That was the right shape for
+answering a question on one machine. On `main` it would be an unverified
+asset-load path inside a signed, notarized app.
 
 ### 13.1 The mechanism, and why not the two obvious ones
 

@@ -4,7 +4,6 @@ use tauri::menu::PredefinedMenuItem;
 use tauri::{Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
 
 mod background_sync;
-mod hot_assets;
 mod keychain;
 
 /// Window label for the main, user-visible board. The only window a user
@@ -114,7 +113,7 @@ pub fn run() {
 
       Ok(())
     })
-    .build(hot_assets::apply(tauri::generate_context!()))
+    .build(tauri::generate_context!())
     .expect("error while building tauri application");
 
   app.run(|app_handle, event| {
