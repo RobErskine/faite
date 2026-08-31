@@ -43,6 +43,14 @@ describe("scopeGranted", () => {
     expect(scopeGranted(defaultPermissions, "sync")).toBe(false);
     expect(scopeGranted(defaultPermissions, "places")).toBe(false);
   });
+
+  it("EI-259: the 'read-write' user-key config (api: [\"read\", \"write\"]) grants both, but never sync/places", () => {
+    const readWritePermissions = { api: ["read", "write"] };
+    expect(scopeGranted(readWritePermissions, "read")).toBe(true);
+    expect(scopeGranted(readWritePermissions, "write")).toBe(true);
+    expect(scopeGranted(readWritePermissions, "sync")).toBe(false);
+    expect(scopeGranted(readWritePermissions, "places")).toBe(false);
+  });
 });
 
 describe("keyGrantsScope", () => {

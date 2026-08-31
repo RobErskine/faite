@@ -1,4 +1,4 @@
-import { apiKey } from "@better-auth/api-key";
+import { apiKey, type ApiKeyConfigurationOptions } from "@better-auth/api-key";
 import { extractBearerCredential } from "./bearer";
 
 /**
@@ -64,8 +64,59 @@ import { extractBearerCredential } from "./bearer";
  * auth") rather than introducing a second header convention. The default
  * `x-api-key` header still works too; `apiKeyHeaders` is left at its default
  * so nothing is removed, only added to.
+ *
+ * **Two named configurations (EI-259), not one.** The plugin accepts an
+ * array of configurations, each with its own `permissions.defaultPermissions`
+ * — and `configId` (which one applies) is a plain, CLIENT-settable field on
+ * `createApiKeyBodySchema`, deliberately absent from the plugin's
+ * server-only-property guard that blocks `permissions` itself from ever
+ * being set by a request carrying headers. So `authClient.apiKey.create({
+ * name, configId: "read-write" })` lets Settings' UI choose between two
+ * FIXED permission sets by name, without the browser ever touching
+ * `permissions` directly — the "Write" checkbox in `api-keys-section.tsx`
+ * is this and nothing more. One entry MUST be named `"default"`: every key
+ * issued before this ticket has `config_id = 'default'` stored
+ * (`drizzle/auth/0001_fast_venom.sql`), and `resolveConfiguration` falls
+ * back to that literal name and throws if no configuration has it.
+ *
+ * Every other option (`customAPIKeyGetter`, `enableSessionForAPIKeys`, …)
+ * must be identical across both entries — the session hook
+ * (`enableSessionForAPIKeys`) loops over EVERY configuration and validates
+ * each key against its OWN entry's settings, so a divergent one would make a
+ * `read-write` key behave differently just by which config resolved it.
+ * Built from one shared `baseConfig` object so that can't drift.
+ *
+ * **`npm run auth:schema` will propose a migration you should NOT take.**
+ * With more than one configuration, the CLI's own schema generator can no
+ * longer read a single `rateLimit` to seed `apikey`'s SQL column DEFAULTs,
+ * so it falls back to its own hardcoded 10 req / 24h instead of this file's
+ * 120 req / 60s. That is a DB-level column default only — every real insert
+ * (`index.mjs`'s `createApiKey` endpoint) writes `rateLimitMax`/
+ * `rateLimitTimeWindow` explicitly from the resolved config's own
+ * `rateLimit` (verified: `rateLimitMax ?? opts.rateLimit.maxRequests`, never
+ * left to fall through to the column default), so the generated migration
+ * is inert — and also pure noise, since nothing here asked for a rate-limit
+ * change. Confirmed by generating and reverting it while building EI-259.
+ * Do not commit whatever `auth:schema` proposes for the `apikey` table
+ * without checking it's an actual, intended change first.
  */
-export const apiTokenPlugin = apiKey({
+// SECONDS (see the `keyExpiration` comment inside `baseConfig` below for why
+// that unit matters here specifically) — 90 days.
+export const DEFAULT_KEY_EXPIRES_IN_SECONDS = 60 * 60 * 24 * 90;
+
+// The two — and only two — permission sets a user-generated key can ever
+// carry (EI-259). Exported so `api-keys-section.tsx`'s Write checkbox and
+// `auth-tokens.test.ts` both read the same values this file uses to build
+// `apiTokenPlugin`, rather than a second hardcoded copy drifting from it.
+// Never add `sync` or `places` here — those stay reachable only via the
+// desktop-handoff key's own explicit `DESKTOP_KEY_PERMISSIONS`
+// (`auth-scopes.ts`), which overrides whichever config resolves a key.
+export const USER_KEY_PERMISSIONS = {
+  default: { api: ["read"] },
+  "read-write": { api: ["read", "write"] },
+} satisfies Record<string, { api: string[] }>;
+
+const baseConfig: Omit<ApiKeyConfigurationOptions, "configId" | "permissions"> = {
   // A verified token reads "faite_xxxxxxxx…" instead of a bare hex blob —
   // legible in a `curl -H "Authorization: Bearer faite_…"`, and matches
   // Better Auth's own recommendation to suffix the prefix with `_`.
@@ -86,8 +137,17 @@ export const apiTokenPlugin = apiKey({
   // researched number; the D2 cutover should revisit it. `disableCustomExpiresTime`
   // is left `false` so a caller can request something shorter (never longer,
   // per `maxExpiresIn`).
+  //
+  // `defaultExpiresIn` is SECONDS — the plugin calls
+  // `getDate(defaultExpiresIn, "sec")` — while `minExpiresIn`/`maxExpiresIn`
+  // below are DAYS. Passing `1000 * 60 * 60 * 24 * 90` (milliseconds) here
+  // once shipped keys that expire in the year 2273: `maxExpiresIn` only
+  // checks a CALLER-supplied `expiresIn`, never the default, so nothing
+  // caught it (EI-260). Exported as a constant, not inlined, so a test can
+  // pin the value and catch a units regression without a live plugin
+  // instance — see `auth-tokens.test.ts`.
   keyExpiration: {
-    defaultExpiresIn: 1000 * 60 * 60 * 24 * 90,
+    defaultExpiresIn: DEFAULT_KEY_EXPIRES_IN_SECONDS,
     minExpiresIn: 1,
     maxExpiresIn: 365,
   },
@@ -110,18 +170,29 @@ export const apiTokenPlugin = apiKey({
   // retrofit onto already-issued keys later.
   enableMetadata: true,
 
-  // Scopes. Deliberately coarse (read/write on one "api" resource) rather
-  // than per-entity-kind — this is a starting shape to prove the plugin
-  // fits, not the final scope design. `defaultPermissions` is what a key
-  // gets when the caller doesn't ask for narrower ones at creation.
-  permissions: {
-    defaultPermissions: {
-      api: ["read"],
-    },
-  },
-
   // THE cutover flag. See the file-level comment for what "global" costs.
   enableSessionForAPIKeys: true,
-});
+};
+
+export const apiTokenPlugin = apiKey([
+  {
+    ...baseConfig,
+    configId: "default",
+    // The floor every OTHER key gets — `/api/v1` reads only, rejected by
+    // `authorizeScope` everywhere else. Never widen this default; widen by
+    // choosing the `read-write` configId instead (EI-259).
+    permissions: { defaultPermissions: USER_KEY_PERMISSIONS.default },
+  },
+  {
+    ...baseConfig,
+    configId: "read-write",
+    // What Settings' "Write" checkbox asks for. Still deliberately coarse —
+    // one "api" resource, not per-entity-kind — and still never `sync` or
+    // `places`: those stay reachable only by the desktop-handoff key's own
+    // explicit `permissions` (`auth-scopes.ts`'s `DESKTOP_KEY_PERMISSIONS`),
+    // which overrides whichever config resolves it.
+    permissions: { defaultPermissions: USER_KEY_PERMISSIONS["read-write"] },
+  },
+]);
 
 export { API_KEY_ERROR_CODES } from "@better-auth/api-key";

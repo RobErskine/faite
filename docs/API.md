@@ -101,12 +101,16 @@ session hook, would leave `useSession()` blind to a valid key, which is
 exactly the mistake D2a's own comment warns against. Scopes are enforced one
 layer up instead, in `src/server/auth-scopes.ts`:
 
-- **Two permission sets, not one.** A desktop-handoff key
+- **Three permission sets, not one (EI-259).** A desktop-handoff key
   (`/api/desktop/handoff`) is created with `DESKTOP_KEY_PERMISSIONS` — full
-  equivalence (`read`, `write`, `sync`, `places`), unchanged from before this
-  ticket: "this is me, on my own device." Any other key (A3's user-generated
-  keys) gets `auth-tokens.ts`'s `defaultPermissions` — `{ api: ["read"] }` —
-  unless a future UI asks for more.
+  equivalence (`read`, `write`, `sync`, `places`), unchanged from before A2:
+  "this is me, on my own device." A user-generated key (A3, Settings → API
+  Keys) gets one of `auth-tokens.ts`'s two named plugin configurations,
+  chosen by the create form's Write checkbox: `default` (`{ api: ["read"] }`)
+  or `read-write` (`{ api: ["read", "write"] }`). Both are `/api/v1`-only —
+  neither ever includes `sync` or `places`, and a key's scope is fixed at
+  creation (the plugin rejects `permissions` on `update` too — to change a
+  key's scope, create a new one and revoke the old).
 - **`authorizeScope(auth, request, scope)`** gates `/api/sync/*` (`scope:
   "sync"`), `/api/places/*` (`scope: "places"`), and `/api/v1/*` (`scope:
   "read"`). A cookie session is unaffected — full access, exactly as before
@@ -189,6 +193,7 @@ that have no REST equivalent:
 | `complete_todo` | write | Kept as its own tool rather than folded into `update_todo` — "mark done" is common enough to deserve a one-field call. |
 | `list_lists` | read | Includes each list's `description`, so a client can decide where a to-do belongs. |
 | `list_labels` | read | |
+| `list_attachments` | read | Metadata only, across every to-do; fetch bytes from `GET /api/attachments/{id}` with the same credentials. No REST equivalent — attaching a file still needs the app UI. |
 | `list_tabs` | read | |
 | `get_backlog` | read | To-dos whose list has `isBacklog: true`. No REST equivalent. |
 | `get_overflow` | read | Runs `@/lib/scheduling`'s `deriveColumn()` — the SAME pure function the board renders with — against this account's own Settings (`UserDurableObject.getSettings()`) instead of a client's in-memory copy. No REST equivalent. |

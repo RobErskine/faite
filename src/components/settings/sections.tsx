@@ -69,7 +69,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
   {
     id: "api-keys",
     label: "API Keys",
-    description: "Read-only tokens for scripts and other apps.",
+    description: "Tokens for scripts and other apps — read-only or read & write.",
     icon: KeyRound,
     Component: ApiKeysSection,
   },

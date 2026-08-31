@@ -12,9 +12,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { authClient, useSession } from "@/lib/auth-client";
+
+/** Mirrors the plugin's two named configurations (`src/server/auth-tokens.ts`,
+ * EI-259) — the only two values `configId` may take. A key's `configId`
+ * itself isn't part of what `apiKey.list()` returns, so scope is read back
+ * from `permissions` via `scopeSummary` below, not from this type. */
+type KeyConfigId = "default" | "read-write";
 
 /** Never changes within a page's life — same rationale as `useIsLocalDev`
  * in settings-sheet.tsx and `subscribeToNothing` in reminders-section.tsx. */
@@ -43,6 +50,7 @@ function scopeSummary(permissions: Record<string, string[]> | null): string {
   const actions = permissions?.api ?? [];
   if (actions.length === 0) return "No access";
   if (actions.includes("sync") || actions.includes("places")) return "Full access";
+  if (actions.includes("write")) return "Read & write";
   return "Read-only";
 }
 
@@ -161,11 +169,18 @@ function NewKeyDialog({ apiKey, onClose }: { apiKey: string | null; onClose: () 
  * (`auth-tokens.ts`'s `apiKey` plugin table), not the local-first Dexie
  * store every other section reads.
  *
- * Every key created here gets the plugin's narrow `defaultPermissions`
- * (`{ api: ["read"] }`) — `/api/v1` reads only, never `/api/sync/*` or
- * `/api/places/*` (A2, EI-227). The full-access key the desktop shell mints
- * for itself (`/api/desktop/handoff`) is not manageable from here on purpose:
- * it is bound to a device, not something a user creates by hand.
+ * Every key created here gets one of the plugin's two named configurations
+ * (`src/server/auth-tokens.ts`, EI-259) — `default`'s `{ api: ["read"] }`
+ * unless the Write checkbox is ticked, in which case `read-write`'s
+ * `{ api: ["read", "write"] }`. Either way it's `/api/v1` reads (plus writes,
+ * if chosen), never `/api/sync/*` or `/api/places/*` (A2, EI-227) — the
+ * checkbox only ever selects between two FIXED, server-defined permission
+ * sets; the client cannot request a scope outside them. A key's scope is
+ * fixed at creation and cannot be widened later (the plugin rejects
+ * `permissions` on `update` the same as on `create`) — to change it, make a
+ * new key and revoke the old one. The full-access key the desktop shell
+ * mints for itself (`/api/desktop/handoff`) is not manageable from here on
+ * purpose: it is bound to a device, not something a user creates by hand.
  */
 export function ApiKeysSection() {
   const { data: session, isPending, error: sessionError } = useSession();
@@ -174,6 +189,7 @@ export function ApiKeysSection() {
   const [keys, setKeys] = useState<ApiKeyRow[] | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [name, setName] = useState("");
+  const [write, setWrite] = useState(false);
   const [creating, setCreating] = useState(false);
   const [newKey, setNewKey] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
@@ -203,7 +219,11 @@ export function ApiKeysSection() {
     const trimmed = name.trim();
     if (!trimmed) return;
     setCreating(true);
-    const { data, error } = await authClient.apiKey.create({ name: trimmed });
+    // `configId` picks one of the two FIXED configurations in
+    // `auth-tokens.ts` by name — it's the only scope-related field the
+    // client is allowed to set at all (see this file's header comment).
+    const configId: KeyConfigId = write ? "read-write" : "default";
+    const { data, error } = await authClient.apiKey.create({ name: trimmed, configId });
     setCreating(false);
     if (error || !data) {
       toast.error("Couldn't create key", {
@@ -212,6 +232,7 @@ export function ApiKeysSection() {
       return;
     }
     setName("");
+    setWrite(false);
     setNewKey(data.key);
     refresh();
   };
@@ -242,12 +263,13 @@ export function ApiKeysSection() {
       <div className="space-y-3">
         <Label>Your API keys</Label>
         <p className="text-sm text-muted-foreground">
-          Scoped to read-only access to{" "}
+          Scoped to{" "}
           <a href="/api/v1" className="underline">
             /api/v1
           </a>{" "}
-          — never full account access. See the public API docs for what you
-          can do with one.
+          — never full account access. Choose read-only or read &amp; write
+          when you create one; see the public API docs for what you can do
+          with each.
         </p>
         {loadError ? (
           <p className="text-sm text-muted-foreground">
@@ -286,6 +308,25 @@ export function ApiKeysSection() {
           >
             {creating ? "Creating…" : "Create"}
           </Button>
+        </div>
+        {/* Scope is fixed once the key is created (see this file's header
+            comment) — these two are the entire choice. Read is always on:
+            there is no key with zero access, so showing it disabled rather
+            than omitting it is what tells the reader access is happening at
+            all. */}
+        <div className="flex flex-col gap-2 pt-1">
+          <div className="flex items-center gap-2">
+            <Checkbox id="api-key-scope-read" checked disabled />
+            <Label htmlFor="api-key-scope-read" className="font-normal text-muted-foreground">
+              Read — always included
+            </Label>
+          </div>
+          <div className="flex items-center gap-2">
+            <Checkbox id="api-key-scope-write" checked={write} onCheckedChange={setWrite} />
+            <Label htmlFor="api-key-scope-write" className="font-normal">
+              Write — create and update todos (needed for MCP tools)
+            </Label>
+          </div>
         </div>
       </div>
 

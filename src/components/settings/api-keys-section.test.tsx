@@ -39,6 +39,16 @@ const KEY_ROW = {
   permissions: { api: ["read"] },
 };
 
+const WRITE_KEY_ROW = {
+  id: "key-2",
+  name: "Gateway",
+  start: "wxyz",
+  prefix: "faite_",
+  createdAt: new Date("2026-08-01T00:00:00.000Z"),
+  expiresAt: null,
+  permissions: { api: ["read", "write"] },
+};
+
 function setOnline(value: boolean) {
   Object.defineProperty(navigator, "onLine", { value, configurable: true });
 }
@@ -89,6 +99,14 @@ describe("ApiKeysSection", () => {
     expect(screen.getByText("Read-only")).toBeTruthy();
   });
 
+  it("shows 'Read & write' for a key with the write scope", async () => {
+    list.mockResolvedValue({ data: { apiKeys: [WRITE_KEY_ROW], total: 1 }, error: null });
+    render(<ApiKeysSection />);
+    await flush();
+    expect(screen.getByText("Gateway")).toBeTruthy();
+    expect(screen.getByText("Read & write")).toBeTruthy();
+  });
+
   it("shows the empty state when there are no keys", async () => {
     list.mockResolvedValue({ data: { apiKeys: [], total: 0 }, error: null });
     render(<ApiKeysSection />);
@@ -103,6 +121,47 @@ describe("ApiKeysSection", () => {
     expect(screen.getByText(/couldn't load your keys/i)).toBeTruthy();
   });
 
+  it("Read is always checked and disabled; Write defaults to unchecked", async () => {
+    render(<ApiKeysSection />);
+    await flush();
+
+    const readCheckbox = screen.getByRole("checkbox", { name: /read — always included/i });
+    const writeCheckbox = screen.getByRole("checkbox", { name: /write — create and update todos/i });
+    expect(readCheckbox.getAttribute("aria-checked")).toBe("true");
+    expect(readCheckbox.getAttribute("aria-disabled")).toBe("true");
+    expect(writeCheckbox.getAttribute("aria-checked")).toBe("false");
+    expect(writeCheckbox.getAttribute("aria-disabled")).toBeNull();
+  });
+
+  it("creates a read-only key by default, sending configId: 'default'", async () => {
+    render(<ApiKeysSection />);
+    await flush();
+
+    fireEvent.change(screen.getByPlaceholderText(/Pointer, my script/i), {
+      target: { value: "my new key" },
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    });
+
+    expect(create).toHaveBeenCalledWith({ name: "my new key", configId: "default" });
+  });
+
+  it("creates a read-write key when Write is ticked, sending configId: 'read-write'", async () => {
+    render(<ApiKeysSection />);
+    await flush();
+
+    fireEvent.change(screen.getByPlaceholderText(/Pointer, my script/i), {
+      target: { value: "my new key" },
+    });
+    fireEvent.click(screen.getByRole("checkbox", { name: /write — create and update todos/i }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    });
+
+    expect(create).toHaveBeenCalledWith({ name: "my new key", configId: "read-write" });
+  });
+
   it("creates a key and reveals the raw secret exactly once, disabling Done until copied", async () => {
     render(<ApiKeysSection />);
     await flush();
@@ -114,7 +173,7 @@ describe("ApiKeysSection", () => {
       fireEvent.click(screen.getByRole("button", { name: "Create" }));
     });
 
-    expect(create).toHaveBeenCalledWith({ name: "my new key" });
+    expect(create).toHaveBeenCalledWith({ name: "my new key", configId: "default" });
     expect(screen.getByDisplayValue("faite_the-raw-secret-value")).toBeTruthy();
 
     const doneButton = screen.getByRole("button", { name: "Copy it first" }) as HTMLButtonElement;

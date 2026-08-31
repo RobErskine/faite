@@ -1023,3 +1023,49 @@ import that reaches one transitively. Put the I/O beside its caller.
 **Corollary for reading the error:** when the worker typecheck names a file
 your diff never touched, do not start debugging that file. Ask what new import
 edge pulled it into that program.
+
+---
+
+## Better Auth's api-key plugin: `defaultExpiresIn` is seconds, `min`/`maxExpiresIn` beside it are days (EI-260)
+
+`auth-tokens.ts` set `keyExpiration.defaultExpiresIn: 1000 * 60 * 60 * 24 * 90`
+— 90 days *in milliseconds*, matching the unit every other duration in this
+codebase uses. The plugin reads that specific field as **seconds**
+(`getDate(defaultExpiresIn, "sec")`), so every key ever issued expired around
+the year 2273. `maxExpiresIn: 365` sat right next to it and caught nothing,
+because that check only runs against a *caller-supplied* `expiresIn` — the
+default bypasses it entirely.
+
+**Rule:** when a library option sits next to sibling options that share a
+name-root and a unit, do not assume it shares their unit too. Grep the
+library's own source for how the field is actually consumed
+(`getDate(x, "sec")` vs `"ms"`) rather than pattern-matching off neighboring
+fields, especially for anything to do with "default" values, which are far
+less likely to be exercised by the library's own tests than an explicit
+caller-supplied value.
+
+## A multi-config Better Auth plugin can make its own CLI propose an unwanted migration (EI-259)
+
+Restructuring `apiTokenPlugin`'s single options object into an array of two
+named configurations (to let a client pick a permission set by `configId`) is
+purely additive — no new column is needed, since `config_id` already exists
+with a `'default'` fallback. But `npm run auth:schema` still proposed a real
+migration: with more than one configuration, the plugin's schema generator
+can no longer read one shared `rateLimit` to seed the `apikey` table's SQL
+column DEFAULTs, and silently falls back to its own hardcoded values (10
+req/24h instead of this repo's 120 req/60s).
+
+Traced it into the plugin's `createApiKey` endpoint before accepting or
+rejecting it: every real insert writes `rateLimitMax`/`rateLimitTimeWindow`
+explicitly from the resolved config's own `rateLimit`, so the column-level
+default is never actually read by the app — the proposed migration was inert,
+but also not a change anyone asked for. Reverted the generated schema and
+migration files rather than commit a migration whose only effect was
+replacing an unused default with a different unused default.
+
+**Rule:** after any change to a Better Auth plugin's option shape (not just
+adding a field — restructuring one into an array counts), run
+`npm run auth:schema` and read the diff before assuming "no new column" means
+"no migration." If a migration appears, trace whether the changed value is
+actually read at the call site that matters (here: the insert, not the
+column's static DEFAULT) before deciding whether to keep it.
