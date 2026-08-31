@@ -88,6 +88,7 @@ interface HarnessProps {
   onOpenInfo?: () => void;
   todos?: Todo[];
   collapsed?: boolean;
+  dueCount?: number;
   filter?: string;
   onFilterChange?: (query: string) => void;
   totalCount?: number;
@@ -255,6 +256,57 @@ describe("column heading", () => {
     render(<Harness />);
     expect(screen.queryByRole("button", { name: "Sunday" })).toBeNull();
     expect(screen.getByText("Sunday")).toBeTruthy();
+  });
+});
+
+describe("due banner", () => {
+  const banner = () => document.querySelector("[data-due-banner]");
+
+  it("renders nothing when dueCount is undefined", () => {
+    render(<Harness />);
+    expect(banner()).toBeNull();
+  });
+
+  it("renders nothing when dueCount is zero", () => {
+    render(<Harness dueCount={0} />);
+    expect(banner()).toBeNull();
+  });
+
+  it("is a button, gated on onOpenInfo, that fires it once on click", () => {
+    const onOpenInfo = vi.fn();
+    render(<Harness dueCount={3} onOpenInfo={onOpenInfo} />);
+    const el = banner()!;
+    expect(el.tagName).toBe("BUTTON");
+    expect(el.getAttribute("data-due-banner")).toBe("3");
+    fireEvent.click(el);
+    expect(onOpenInfo).toHaveBeenCalledTimes(1);
+  });
+
+  it("names the button with the count and the singular/plural to-do", () => {
+    render(<Harness dueCount={3} onOpenInfo={vi.fn()} />);
+    expect(
+      screen.getByRole("button", { name: "Show the 3 to-dos due on this day" }),
+    ).toBeTruthy();
+  });
+
+  it("reads as singular for a count of one", () => {
+    render(<Harness dueCount={1} onOpenInfo={vi.fn()} />);
+    expect(
+      screen.getByRole("button", { name: "Show the 1 to-do due on this day" }),
+    ).toBeTruthy();
+  });
+
+  it("stays inert text, not a button, without onOpenInfo — but still carries the marker", () => {
+    render(<Harness dueCount={3} />);
+    expect(screen.queryByRole("button", { name: /due on this day/ })).toBeNull();
+    const el = banner()!;
+    expect(el.tagName).toBe("DIV");
+    expect(el.getAttribute("data-due-banner")).toBe("3");
+  });
+
+  it("never renders when the column is collapsed", () => {
+    render(<Harness dueCount={3} onOpenInfo={vi.fn()} collapsed />);
+    expect(banner()).toBeNull();
   });
 });
 

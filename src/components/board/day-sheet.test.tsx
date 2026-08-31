@@ -153,12 +153,13 @@ interface HarnessProps {
   day?: string | null;
   settings?: Settings;
   todos?: Todo[];
+  due?: Todo[];
   note?: DayNote;
   onSaveNote?: (day: string, body: string) => void;
   onOpenTodo?: (todo: Todo) => void;
 }
 
-function Harness({ day = DAY, todos = [], ...rest }: HarnessProps) {
+function Harness({ day = DAY, todos = [], due = [], ...rest }: HarnessProps) {
   return (
     <TooltipProvider>
       {/*
@@ -172,6 +173,7 @@ function Harness({ day = DAY, todos = [], ...rest }: HarnessProps) {
         settings={rest.settings}
         note={rest.note}
         todos={todos}
+        due={due}
         timezone="UTC"
         labels={[]}
         listsById={new Map([[RED.id, RED]])}
@@ -216,6 +218,111 @@ describe("mounting", () => {
     render(<Harness />);
     expect(screen.getByText("Monday")).toBeTruthy();
     expect(screen.getByText("Aug 10, 2026")).toBeTruthy();
+  });
+});
+
+describe("due", () => {
+  it("renders no section, and no stray separator, when nothing is due", () => {
+    render(<Harness />);
+    expect(screen.queryByText(/due$/)).toBeNull();
+    expect(document.querySelectorAll("[data-slot=separator]")).toHaveLength(1);
+  });
+
+  it("renders a card per due item, above Notes in DOM order", () => {
+    render(
+      <Harness
+        due={[todo({ id: "renew passport", deadline: DAY }), todo({ id: "file taxes", deadline: DAY })]}
+      />,
+    );
+    expect(
+      screen.getByRole("heading", { name: "2 due", level: 3 }),
+    ).toBeTruthy();
+    const due = screen.getByText("renew passport").compareDocumentPosition(
+      screen.getByLabelText("Notes for Monday, Aug 10, 2026"),
+    );
+    expect(due & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("shows 'Not scheduled yet' for a due item with no scheduledDate", () => {
+    render(
+      <Harness
+        due={[
+          todo({
+            id: "a",
+            scheduledDate: null,
+            scheduledAt: null,
+            createdAt: "2026-08-01T09:00:00.000Z",
+          }),
+        ]}
+      />,
+    );
+    expect(
+      screen.getByText("Created Aug 1 · 9:00 AM · Not scheduled yet"),
+    ).toBeTruthy();
+  });
+
+  it("shows the assigned day AND the instant when scheduledAt is known", () => {
+    render(
+      <Harness
+        due={[
+          todo({
+            id: "a",
+            createdAt: "2026-08-01T09:00:00.000Z",
+            scheduledDate: "2026-08-13",
+            scheduledAt: "2026-08-11T14:00:00.000Z",
+          }),
+        ]}
+      />,
+    );
+    expect(
+      screen.getByText("Created Aug 1 · 9:00 AM · Assigned to Aug 13 on Aug 11 · 2:00 PM"),
+    ).toBeTruthy();
+  });
+
+  it("shows the assigned day only when scheduledAt is null — never falls back to createdAt", () => {
+    render(
+      <Harness
+        due={[
+          todo({
+            id: "a",
+            createdAt: "2026-08-01T09:00:00.000Z",
+            scheduledDate: "2026-08-13",
+            scheduledAt: null,
+          }),
+        ]}
+      />,
+    );
+    expect(
+      screen.getByText("Created Aug 1 · 9:00 AM · Assigned to Aug 13"),
+    ).toBeTruthy();
+  });
+
+  it("sorts an unscheduled item last", () => {
+    render(
+      <Harness
+        due={[
+          todo({ id: "no day", scheduledDate: null, scheduledAt: null }),
+          todo({ id: "aug 12", scheduledDate: "2026-08-12" }),
+          todo({ id: "aug 11", scheduledDate: "2026-08-11" }),
+        ]}
+      />,
+    );
+    const order = Array.from(document.querySelectorAll("ul > li")).map(
+      (li) => li.textContent?.match(/aug \d+|no day/i)?.[0],
+    );
+    expect(order).toEqual(["aug 11", "aug 12", "no day"]);
+  });
+
+  it("offers no drag affordance on a due card", () => {
+    render(<Harness due={[todo({ id: "a" })]} />);
+    expect(screen.queryByLabelText(/^Drag to reschedule/)).toBeNull();
+  });
+
+  it("opens a todo from the due section", () => {
+    const onOpenTodo = vi.fn();
+    render(<Harness due={[todo({ id: "a" })]} onOpenTodo={onOpenTodo} />);
+    fireEvent.click(screen.getByText("a"));
+    expect(onOpenTodo).toHaveBeenCalledWith(expect.objectContaining({ id: "a" }));
   });
 });
 

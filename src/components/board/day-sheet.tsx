@@ -27,7 +27,8 @@ import {
   type DayEvent,
   type DayEventKind,
 } from "@/lib/day-timeline";
-import { formatDay, type PlacementContext } from "@/lib/scheduling";
+import { formatEventStamp } from "@/lib/event-time";
+import { formatDay, formatShortDate, type PlacementContext } from "@/lib/scheduling";
 import { mutateSettings } from "@/lib/store/mutate";
 import { LOCAL_OWNER_ID } from "@/lib/store/owner";
 import type {
@@ -68,6 +69,13 @@ interface DaySheetProps {
   note: DayNote | undefined;
   /** Every live to-do — the timeline is derived here, not upstream. */
   todos: Todo[];
+  /**
+   * Open to-dos with a `deadline` on this day — `use-board-data.ts`'s
+   * `dueByDay`, the same array the column banner counts. Rendered above
+   * Notes so opening the sheet from the banner doesn't require scrolling
+   * past a half-viewport editor to find what you came for.
+   */
+  due: Todo[];
   timezone: string;
   labels: LabelRecord[];
   /** Named reminder times (EI-106 P5) — see `TodoMetaBadges`. */
@@ -133,6 +141,7 @@ function DaySheetContent({
   settings,
   note,
   todos,
+  due,
   timezone,
   labels,
   reminderPresets,
@@ -149,6 +158,22 @@ function DaySheetContent({
   const events = useMemo(
     () => buildDayTimeline(todos, day, timezone, ctx),
     [todos, day, timezone, ctx],
+  );
+
+  // Presentation-only sort: scheduled soonest first, an item with no day yet
+  // last — it has no position in the sequence, and is the most urgent thing
+  // to notice precisely because it hasn't been placed.
+  const sortedDue = useMemo(
+    () =>
+      [...due].sort((a, b) => {
+        if (a.scheduledDate !== b.scheduledDate) {
+          if (!a.scheduledDate) return 1;
+          if (!b.scheduledDate) return -1;
+          return a.scheduledDate < b.scheduledDate ? -1 : 1;
+        }
+        return a.title.localeCompare(b.title);
+      }),
+    [due],
   );
 
   const visibleKinds = settings?.visibleEventKinds ?? ALL_EVENT_KINDS;
@@ -192,6 +217,38 @@ function DaySheetContent({
         </SheetHeader>
 
         <div className="flex-1 space-y-5 overflow-y-auto px-4 pb-4">
+          {sortedDue.length > 0 && (
+            <>
+              <section className="space-y-1.5">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  <span className="num">{sortedDue.length}</span> due
+                </h3>
+                <ul
+                  className="space-y-3"
+                  aria-label={`To-dos due on ${weekday}, ${label}`}
+                >
+                  {sortedDue.map((todo) => (
+                    <DueItem
+                      key={todo.id}
+                      todo={todo}
+                      color={effectiveListColor(
+                        (todo.listId ? listsById.get(todo.listId) : undefined) ?? backlog,
+                        tabsById,
+                      )}
+                      labels={labels}
+                      reminderPresets={reminderPresets}
+                      ctx={ctx}
+                      timezone={timezone}
+                      onToggleTodo={onToggleTodo}
+                      onOpenTodo={onOpenTodo}
+                    />
+                  ))}
+                </ul>
+              </section>
+              <Separator />
+            </>
+          )}
+
           <div className="space-y-1.5">
             <Label>Notes</Label>
             <MarkdownField
@@ -283,6 +340,71 @@ function DaySheetContent({
         </div>
       </SheetContent>
     </Sheet>
+  );
+}
+
+/**
+ * "Assigned to <day>[, on <instant>]" — or "Not scheduled yet" for a to-do
+ * that carries a deadline but has never been placed on the board.
+ *
+ * `scheduledAt` is deliberately null whenever a to-do was quick-added
+ * straight onto a day rather than moved there (`schema.ts`) — so it is NOT a
+ * stand-in for "when was this placed" and must not fall back to `createdAt`,
+ * which the sibling "Created" line already shows.
+ */
+function assignedLabel(todo: Todo, timezone: string): string {
+  if (!todo.scheduledDate) return "Not scheduled yet";
+  const day = formatShortDate(todo.scheduledDate);
+  if (!todo.scheduledAt) return `Assigned to ${day}`;
+  return `Assigned to ${day} on ${formatEventStamp(todo.scheduledAt, timezone)}`;
+}
+
+interface DueItemProps {
+  todo: Todo;
+  /** Already resolved — the list's own color, or its tab's. */
+  color: string | null;
+  labels: LabelRecord[];
+  reminderPresets?: ReminderPreset[];
+  ctx: PlacementContext;
+  timezone: string;
+  onToggleTodo: (todo: Todo) => void;
+  onOpenTodo: (todo: Todo) => void;
+}
+
+function DueItem({
+  todo,
+  color,
+  labels,
+  reminderPresets,
+  ctx,
+  timezone,
+  onToggleTodo,
+  onOpenTodo,
+}: DueItemProps) {
+  return (
+    <li>
+      {/*
+        The list's wash goes BEHIND the card, never on it — see
+        `TimelineEntry` below for the same mechanism and reasoning.
+      */}
+      <div
+        className="overflow-hidden rounded-md border border-border/60"
+        style={{ backgroundColor: wash(color) }}
+      >
+        <TodoCard
+          todo={todo}
+          labels={labels}
+          reminderPresets={reminderPresets}
+          ctx={ctx}
+          draggable={false}
+          onToggle={onToggleTodo}
+          onOpen={onOpenTodo}
+        />
+      </div>
+      <p className="nums mt-1 px-1 text-2xs text-muted-foreground">
+        Created {formatEventStamp(todo.createdAt, timezone)} · {assignedLabel(todo, timezone)}
+      </p>
+    </li>
   );
 }
 

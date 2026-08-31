@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useCallback } from "react";
-import type { List, Tab, Todo } from "@/lib/schema";
+import type { CivilDate, List, Tab, Todo } from "@/lib/schema";
 import {
   buildBoard,
   filterComputedColumn,
@@ -688,25 +688,35 @@ export function useBoardData(params: UseBoardDataParams) {
   const dayIds = useMemo(() => board?.days.map((c) => c.id) ?? [], [board]);
 
   /**
-   * How many open to-dos are DUE on each date, keyed by civil date.
+   * The open to-dos DUE on each date, keyed by civil date.
    *
    * Built from every visible todo rather than per column, because a deadline is
    * independent of placement (`lib/scheduling.ts`): something due Friday is very
    * often scheduled for Tuesday, and the day column's job here is to warn before
    * Friday arrives. Done and dropped items are excluded — a met deadline is not
    * a warning.
+   *
+   * Grouped rather than counted so the day column's banner (its length) and the
+   * day sheet's Due section (its contents) read the same array — two separate
+   * filters over the same predicate could drift and show a count that doesn't
+   * match what the sheet lists.
    */
-  const deadlineCounts = useMemo(() => {
-    const counts = new Map<string, number>();
+  const dueByDay = useMemo(() => {
+    const byDay = new Map<CivilDate, Todo[]>();
     // `nonTemplateTodos`, not `visibleTodos`: a recurrence template must never
     // contribute a deadline badge that would otherwise repeat on every
     // occurrence's date. Occurrences never carry a deadline of their own
     // (`cloneOccurrence` nulls it), so this changes nothing else.
     for (const todo of nonTemplateTodos) {
       if (!todo.deadline || todo.status !== "open") continue;
-      counts.set(todo.deadline, (counts.get(todo.deadline) ?? 0) + 1);
+      const existing = byDay.get(todo.deadline);
+      if (existing) {
+        existing.push(todo);
+      } else {
+        byDay.set(todo.deadline, [todo]);
+      }
     }
-    return counts;
+    return byDay;
   }, [nonTemplateTodos]);
 
   /**
@@ -889,7 +899,7 @@ export function useBoardData(params: UseBoardDataParams) {
     mentionLists,
     navGrid,
     dayIds,
-    deadlineCounts,
+    dueByDay,
     overTodoId,
     overGroupId,
     columnDrop,

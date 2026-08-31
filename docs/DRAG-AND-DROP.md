@@ -1393,12 +1393,17 @@ All use `outline-offset-[-2px]` to draw inside the column bounds.
 
 **Deadlines due (`board-column.tsx`, day columns only)** — a destructive-tinted
 strip directly under the header, `CalendarCheck` + a count, carrying
-`data-due-banner`. The count comes from `board.tsx`'s `deadlineCounts` map, built
-over **every** visible open todo rather than the column's own contents: a deadline
-is independent of placement, so something due Friday is usually scheduled for
-Tuesday, and the banner's job is to warn before Friday arrives. Loud on purpose —
-it is the one thing on the board that a plan can be wrong about while everything
-else still looks right.
+`data-due-banner`. The count comes from `use-board-data.ts`'s `dueByDay` map
+(grouped, not merely counted, so the banner and the day sheet's Due section can
+never disagree), built over **every** visible open todo rather than the
+column's own contents: a deadline is independent of placement, so something
+due Friday is usually scheduled for Tuesday, and the banner's job is to warn
+before Friday arrives. Loud on purpose — it is the one thing on the board that
+a plan can be wrong about while everything else still looks right.
+
+It is also a button when the column has an `onOpenInfo` (every day column
+does), gated on that same prop rather than one of its own — opening the day
+sheet, which renders the due items above Notes. EI-252.
 
 Hovering a column but no specific card renders an end-of-column dot instead of
 a per-card line — but only for a **card** drag (`!isColumnDragActive`). Without

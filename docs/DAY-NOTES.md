@@ -155,6 +155,42 @@ relied on as a phantom dependency.
 
 ---
 
+## 5. Addendum (EI-252): a Due section above Notes
+
+The column's "N due" banner (`board-column.tsx`, `docs/DRAG-AND-DROP.md`) was
+inert text — it warned you something was due with no way to see what. Rather
+than build a second sheet, the banner now opens `DaySheet` (via the same
+`onOpenInfo` the header title already used) and the sheet grows a **Due**
+section listing that day's deadlines, rendered above Notes.
+
+**Above Notes, not between Notes and Timeline, even though it reads as a
+second timeline-like list.** Notes is a `min-h-[50vh]` field at the top of the
+scroll container (§3 above); anything below it is off-screen on open. A
+banner whose entire job is "here's what's due" cannot open onto a sheet where
+you still have to scroll to find it. The section only renders when
+`due.length > 0`, so an ordinary day's sheet is unchanged.
+
+**A `<ul>`, not `TimelineList`/`TimelineRow`.** `TimelineRow` requires one
+`at` instant for its `<time>` element; a due item has two distinct dates
+(created, assigned) and no single event instant to hang the row on. Reusing
+it would mean stretching an interface built for one timestamp per row.
+
+**The count lives in `use-board-data.ts`, grouped rather than counted.** What
+was `deadlineCounts: Map<CivilDate, number>` became `dueByDay: Map<CivilDate,
+Todo[]>` — the banner's count is now `array.length` from the same array the
+sheet renders, so the two can't drift apart the way two independent filters
+over "open + has a deadline on this date" could.
+
+**Assigned-date rendering has three cases, not one**, because `scheduledAt`
+(the instant the *current* `scheduledDate` was set) is deliberately null both
+when a to-do has never been scheduled and when it was quick-added straight
+onto a day rather than moved there (`schema.ts`). Falling back to `createdAt`
+in that second case would invent a placement decision that never happened —
+the "Created" half of the same metadata line already covers it. See
+`assignedLabel()` in `day-sheet.tsx`.
+
+---
+
 ## Files touched, if you need the full list
 
 Client: `src/lib/schema.ts`, `src/lib/day-timeline.ts`, `src/lib/sync/wire.ts`,
