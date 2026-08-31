@@ -1450,6 +1450,15 @@ Bumping the policy is the **last** step of a release, not the first:
 `tauri.conf.json` (announcing a build nobody can install) or above `minimum`
 (locking everyone out with nothing to upgrade *to*).
 
+**Getting your own machine current is a different thing, and is one command:**
+`npm run desktop:install` (`scripts/desktop-install.mjs`) rebuilds from the
+working tree, quits the running copy, replaces `/Applications/Faite.app`, and
+relaunches. It is deliberately not a release — it bumps no version and
+publishes nothing, so the update bar stays silent afterwards, which is correct.
+Reach for it after any merge whose work you want to see in the Mac app; the
+sync engine moves rows, not code, and will never carry a web change into an
+installed build.
+
 ### 12.6 Verified
 
 - `npm run verify` — typecheck, lint, 2,252 unit tests, both Next builds.
@@ -1464,3 +1473,84 @@ Bumping the policy is the **last** step of a release, not the first:
   `latest` is bumped server-side, and "Get the update" opening the system
   browser at `/download` (the `opener` allow-list is the risk, and it is
   already correct on paper).
+
+---
+
+## 13. EI-254 spike — hot asset bundle (in progress)
+
+Re-opens **decision #2** (§2). The question: can a web deploy reach an
+installed `.app` without a `cargo build`, without moving the webview's origin,
+and without ever producing a copy that fails to boot?
+
+**So far: yes, on all three.** Ticket
+[EI-254](https://linear.app/rob-erskine/issue/EI-254/d-spike-hot-asset-bundle-a-web-deploy-reaches-installed-desktop-apps),
+runbook `.ai/ei-254-hot-assets-runbook.md`, probe `src-tauri/src/hot_assets.rs`
+(**deleted before this ships**, same rule `d0_probe.rs` got).
+
+### 13.1 The mechanism, and why not the two obvious ones
+
+`Context::set_assets` (`tauri-2.11.5/src/lib.rs:423`) replaces the provider
+*behind* the existing `tauri://localhost` protocol, and hands back the embedded
+provider so it can be kept as a fallback. `trait Assets` is four methods
+(`setup`, `get`, `iter`, `csp_hashes`); `AssetKey` is a rooted unix path, so a
+disk provider is `root.join(key.trim_start_matches('/'))`.
+
+The two obvious alternatives both move the **origin** — a remote `frontendDist`,
+or a custom URI scheme. On WKWebView a new origin is a new IndexedDB, which
+would orphan the user's entire local board, and Tauri ships no migration for
+it. That is disqualifying on its own. Remote-load is *additionally* discouraged
+by Tauri's own docs, with two origin-matching CVEs behind the warning.
+
+One API wrinkle, worth not rediscovering: the replacement must *hold* the
+provider it replaces, so the extraction takes two calls with a throwaway
+(`NoAssets`) in between. There is no one-call form.
+
+### 13.2 Evidence
+
+Against a real ad-hoc-signed release build, launched from the terminal so
+stderr is readable:
+
+| Check | Result |
+|---|---|
+| Swap engages, serves the disk copy | **PASS** — `embedded=23511 bytes, serving=23773 bytes`; the second number is exactly the size of the file on disk, which carried an edit the binary had never seen |
+| A web change reaches the app with **no** `cargo build` | **PASS** — same binary, edited bundle, relaunch |
+| Bundle with no entry document (half-extracted) | **PASS** — gate refuses it, zero swap lines, app boots embedded |
+| A file deleted from an otherwise-valid bundle | **PASS** — that file falls back to the binary's copy, app boots |
+| Path traversal out of the bundle root | **PASS** — refused, falls back (unit test) |
+
+Seven unit tests in `hot_assets.rs` cover the provider's decision table
+directly (disk wins, nested paths, missing file, file deleted *after* startup,
+traversal, `iter` key shape, the entry-document gate). `cargo test --lib`, 7
+passed.
+
+**Numbers.** Export 14 MB raw, **3.8 MB gzipped** — the realistic download.
+Binary 13 MB, unchanged by the probe (the embedded copy still ships; it is the
+fallback).
+
+### 13.3 The finding that changes the design
+
+**Per-file fallback is a correctness hazard, not just a safety net.** It kept
+the app alive when a chunk was deleted — by serving *that chunk from the
+binary* alongside HTML from disk. Across two different builds that is a
+Frankenstein page: new markup, stale chunk, no error anywhere.
+
+So the production shape is **all-or-nothing**, decided before activation: the
+bundle carries a manifest, every file in it is verified present (and hashed) at
+startup, and a bundle that fails verification is rejected *whole* in favour of
+the embedded copy. Per-file fallback then only ever fires for paths the
+manifest never claimed. The probe deliberately has the weaker behaviour, which
+is how the hazard surfaced at all.
+
+### 13.4 Not yet answered
+
+- **Dexie contents across a swap** — the origin provably does not change, so
+  this holds by construction, but it has not been *observed*. §4's standing
+  caveat applies: needs a display session.
+- **Rendering under the shipped CSP** — the app boots and stays alive, but
+  nothing here has looked at the window. Expected fine (`script-src` already
+  carries `'unsafe-inline'`, so `csp_hashes` returning empty costs nothing).
+- **The D2b background webview** — answered by construction (the provider is
+  per-`App`, not per-window), not by test.
+- **Apply choreography** — swap-on-next-launch is what the probe does.
+  Whether the EI-147 bar should say "Restart to update" is a product call.
+- **Download, signature, manifest, server policy** — the build, not the spike.
