@@ -6,7 +6,7 @@ import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { effectiveListColor } from "@/lib/colors";
 import { NAV_LOAD_MORE, navKeyOf } from "@/lib/column-nav";
-import { formatDay } from "@/lib/scheduling";
+import { formatDay, OVERFLOW } from "@/lib/scheduling";
 import { OVERDRIVE_MIN_TODOS } from "@/lib/overdrive";
 import { AppHeader } from "./app-header";
 import { SignedOutBanner } from "@/components/auth/signed-out-banner";
@@ -14,7 +14,7 @@ import { BoardColumn } from "./board-column";
 import { BoardEmptyBanner } from "./board-empty-banner";
 import { CreateListColumn } from "./create-list-column";
 import { DateNav } from "./date-nav";
-import { OverdriveButton } from "./overdrive-button";
+import { DayOverdriveButton, OverdriveButton } from "./overdrive-button";
 import { TabStrip } from "./tab-strip";
 import { PhoneBottomBar } from "./phone-bottom-bar";
 import type { BoardUiState } from "./use-board-ui-state";
@@ -74,6 +74,7 @@ export function PhoneBoard({
     settings,
     ctx,
     board,
+    overdriveDayTodos,
     trackSlots,
     backlogColumn,
     otherListColumns,
@@ -121,7 +122,7 @@ export function PhoneBoard({
     setPaletteOpen,
     setSettingsOpen,
     setHelpSheetOpen,
-    setOverdriveOpen,
+    setOverdriveSource,
     phoneView,
     setPhoneView,
     dragging,
@@ -218,7 +219,7 @@ export function PhoneBoard({
                 <OverdriveButton
                   count={board.overflow.todos.length}
                   minTodos={settings?.overdriveMinTodos ?? OVERDRIVE_MIN_TODOS}
-                  onOpen={() => setOverdriveOpen(true)}
+                  onOpen={() => setOverdriveSource(OVERFLOW)}
                 />
               }
             />
@@ -264,6 +265,16 @@ export function PhoneBoard({
                     </span>
                   }
                   onOpenInfo={() => setOpenDay(column.day)}
+                  // EI-253: this day's own entry into Overdrive — see the
+                  // matching comment in desktop-board.tsx.
+                  actions={
+                    <DayOverdriveButton
+                      count={overdriveDayTodos.get(column.day)?.length ?? 0}
+                      label={`${weekday}, ${label}`}
+                      minTodos={settings?.overdriveMinTodos ?? OVERDRIVE_MIN_TODOS}
+                      onOpen={() => setOverdriveSource(column.day)}
+                    />
+                  }
                   todos={column.todos}
                   labels={labels}
                   ctx={ctx}

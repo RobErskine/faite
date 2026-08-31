@@ -24,7 +24,7 @@ const CLOSED: BoardOverlayState = {
   archivedOpen: false,
   settingsOpen: false,
   openDay: null,
-  overdriveOpen: false,
+  overdriveSource: null,
   helpSheetOpen: false,
   activityOpen: false,
 };

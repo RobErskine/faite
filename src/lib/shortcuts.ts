@@ -238,14 +238,14 @@ export const LOCAL_SHORTCUTS: ShortcutEntry[] = [
   {
     id: "overdrive-ramp",
     combo: "arrowright",
-    label: "Stage a schedule day, one day further each press",
+    label: "Stage a schedule day, one day further each press, counting from the column you entered from",
     scope: "Overdrive",
     source: "overdrive-overlay.tsx",
   },
   {
     id: "overdrive-ramp-week",
     combo: "shift+arrowright",
-    label: "Stage a schedule day, one week further each press",
+    label: "Stage a schedule day, one week further each press, counting from the column you entered from",
     scope: "Overdrive",
     source: "overdrive-overlay.tsx",
   },

@@ -1,9 +1,17 @@
 import type { CivilDate, Todo } from "./schema";
-import { daysBetween, formatDay, formatShortDate, type PlacementContext, rolloverTarget } from "./scheduling";
+import {
+  daysBetween,
+  formatDay,
+  formatShortDate,
+  OVERFLOW,
+  type PlacementContext,
+  rolloverTarget,
+} from "./scheduling";
 
 /**
- * Overdrive — the pure decision core for burning down the Overflow column
- * one card at a time. See docs/OVERDRIVE.md.
+ * Overdrive — the pure decision core for burning down a pile of to-dos one
+ * card at a time, either the Overflow column or a single day column (see
+ * `OverdriveSource`). See docs/OVERDRIVE.md.
  *
  * Everything here is pure: no store access, no DOM, no timers. The overlay
  * component owns the keydown listener and the actual writes; this module
@@ -43,6 +51,13 @@ export type Verdict =
   | { kind: "listed"; listId: string | null }
   | { kind: "scheduled"; date: CivilDate };
 
+/**
+ * What a session is triaging — the Overflow column, or one specific day.
+ * Reuses `scheduling.ts`'s `OVERFLOW` sentinel rather than inventing a
+ * second one, the same way `Placement`'s calendar half already does.
+ */
+export type OverdriveSource = CivilDate | typeof OVERFLOW;
+
 /** One committed card, in the order they were decided. `undoId` is the
  * `pushUndo` entry id the write registered — `⌫` replays it via `undoById`.
  * `label` is the same human-readable line `pushUndo` was given
@@ -57,11 +72,14 @@ export interface Decision {
 }
 
 export interface OverdriveSession {
+  /** What this session is triaging — Overflow, or one day. Frozen at open,
+   * same as `queue`; see `overdriveBase` for how it drives the ramp. */
+  source: OverdriveSource;
   /** Frozen at open — see `buildQueue`. Never reshuffled mid-session. */
   queue: string[];
   index: number;
-  /** Staged ramp offset, in eligible days from today (0 = today). Null =
-   * nothing staged. Mutually exclusive with `picked`. */
+  /** Staged ramp offset, in eligible days from `overdriveBase(source, ctx).base`
+   * (0 = that base). Null = nothing staged. Mutually exclusive with `picked`. */
   ramp: number | null;
   /** An explicit date from the picker. Wins over `ramp` when both are set,
    * though in practice `stageDate` always clears `ramp` when it sets this. */
@@ -115,8 +133,11 @@ export function buildQueue(todos: Pick<Todo, "id">[]): string[] {
   return todos.map((todo) => todo.id);
 }
 
-export function createSession(todos: Pick<Todo, "id">[]): OverdriveSession {
-  return { queue: buildQueue(todos), index: 0, ramp: null, picked: null, decided: [] };
+export function createSession(
+  todos: Pick<Todo, "id">[],
+  source: OverdriveSource = OVERFLOW,
+): OverdriveSession {
+  return { source, queue: buildQueue(todos), index: 0, ramp: null, picked: null, decided: [] };
 }
 
 /** The id of the card currently on screen, or null once the queue is spent. */
@@ -142,14 +163,36 @@ export function isComplete(session: OverdriveSession): boolean {
 export function rampDate(
   offset: number,
   ctx: Pick<PlacementContext, "today" | "workdaysOnly" | "workdays">,
+  base: CivilDate = ctx.today,
 ): CivilDate {
-  if (offset <= 0) return ctx.today;
+  if (offset <= 0) return base;
   const opts = { workdaysOnly: ctx.workdaysOnly, workdays: ctx.workdays };
-  let day = ctx.today;
+  let day = base;
   for (let i = 0; i < offset; i++) {
     day = rolloverTarget(day, opts);
   }
   return day;
+}
+
+/**
+ * Where a session's ramp counts from, and the smallest offset it may stage.
+ *
+ * Overflow ramps from today, and offset 0 (today itself) is a real move.
+ * A day session's card already sits on `source` — offset 0 there would
+ * confirm a write that puts the card exactly where it already is, so the
+ * floor is 1 and the first press always lands on the next eligible day.
+ *
+ * `source` is clamped forward to `ctx.today`: `usePlacementContext`
+ * (lib/store/hooks.ts) re-ticks every 60s, so a session opened late in the
+ * day can still be mounted once `today` moves past its own source day.
+ * Without the clamp the ramp would stage a date in the past.
+ */
+export function overdriveBase(
+  source: OverdriveSource,
+  ctx: Pick<PlacementContext, "today">,
+): { base: CivilDate; min: number } {
+  if (source === OVERFLOW) return { base: ctx.today, min: 0 };
+  return { base: source < ctx.today ? ctx.today : source, min: 1 };
 }
 
 /** "Today" / "Tomorrow" / "Fri, Aug 15" — the boundary cases worth naming
@@ -164,12 +207,12 @@ export function rampLabel(date: CivilDate, today: CivilDate): string {
 /** What `Enter` would commit right now, or null if nothing is staged. An
  * explicit `picked` date always wins over a ramp offset. */
 export function stagedDate(
-  session: Pick<OverdriveSession, "ramp" | "picked">,
+  session: Pick<OverdriveSession, "ramp" | "picked" | "source">,
   ctx: Pick<PlacementContext, "today" | "workdaysOnly" | "workdays">,
 ): CivilDate | null {
   if (session.picked) return session.picked;
-  if (session.ramp !== null) return rampDate(session.ramp, ctx);
-  return null;
+  if (session.ramp === null) return null;
+  return rampDate(session.ramp, ctx, overdriveBase(session.source, ctx).base);
 }
 
 /** Stage an explicit date from the day picker (`D`). Does NOT snap to an
@@ -189,6 +232,7 @@ export function reduce(
   ctx: Pick<PlacementContext, "today" | "workdaysOnly" | "workdays">,
   lists: ListContext,
 ): ReduceResult {
+  const { min } = overdriveBase(session.source, ctx);
   switch (action) {
     case "wontDo":
       // Stage-aware, symmetric with "ramp"/"rampWeek" staging forward: a
@@ -205,7 +249,7 @@ export function reduce(
       }
       if (session.ramp !== null) {
         return {
-          session: { ...session, ramp: session.ramp > 0 ? session.ramp - 1 : null },
+          session: { ...session, ramp: session.ramp > min ? session.ramp - 1 : null },
         };
       }
       return { session, commit: { kind: "dropped" } };
@@ -226,7 +270,7 @@ export function reduce(
       return {
         session: {
           ...session,
-          ramp: Math.min(session.ramp === null ? 0 : session.ramp + 1, RAMP_MAX),
+          ramp: Math.min(session.ramp === null ? min : session.ramp + 1, RAMP_MAX),
           picked: null,
         },
       };
@@ -235,7 +279,10 @@ export function reduce(
       return {
         session: {
           ...session,
-          ramp: Math.min(session.ramp === null ? WEEK_STEP : session.ramp + WEEK_STEP, RAMP_MAX),
+          ramp: Math.min(
+            session.ramp === null ? Math.max(WEEK_STEP, min) : session.ramp + WEEK_STEP,
+            RAMP_MAX,
+          ),
           picked: null,
         },
       };

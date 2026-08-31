@@ -49,8 +49,38 @@ async function seedOverflow(page: Page, count = 10): Promise<void> {
   // of every project's run (EI-187).
 }
 
-const overdriveButton = (page: Page) => page.getByRole("button", { name: /overdrive/i });
+/**
+ * Anchored to the `·` Overflow's own button always has ("Overdrive · 5") —
+ * EI-253 gave every day column its own "Overdrive {day label} — {count}
+ * to-dos" button, and a bare `/overdrive/i` would resolve to both the
+ * moment a day column also crosses the threshold, failing every test below
+ * on a Playwright strict-mode violation instead of the assertion it meant
+ * to make.
+ */
+const overdriveButton = (page: Page) => page.getByRole("button", { name: /^overdrive ·/i });
 const overlay = (page: Page) => page.getByRole("dialog", { name: /overdrive/i });
+/**
+ * Today's own day column — `buildWindow` (lib/scheduling.ts) always starts
+ * the track at `ctx.today`, so `.first()` needs no knowledge of the clock.
+ * `[data-day-column]` (not `getByRole("region")`) because a weekday name
+ * repeats every seven columns and is useless as a unique locator on its own.
+ */
+const todayColumn = (page: Page) => page.locator("[data-day-column]").first();
+const dayOverdriveButton = (page: Page) =>
+  todayColumn(page).getByRole("button", { name: /^overdrive \w/i });
+
+/** Seeds `count` to-dos onto TODAY's own day column via its own quick-add —
+ * a real user path, unlike `seedOverflow`'s backdated rows, which land in
+ * Overflow by construction and can never reach a day column at all. */
+async function seedDay(page: Page, count: number): Promise<void> {
+  const column = todayColumn(page);
+  await column.scrollIntoViewIfNeeded();
+  const input = column.getByLabel(/^Add a to-do to /);
+  for (let i = 0; i < count; i++) {
+    await input.fill(`Day task ${i}`);
+    await input.press("Enter");
+  }
+}
 /**
  * The exit ghost (round 2) is a full `OverdriveCard` clone of the card that
  * was just decided — same title, same "N of M" progress line — mounted
@@ -293,4 +323,53 @@ test("Esc part-way leaves the undecided remainder in Overflow", async ({ page })
   await expect(overlay(page)).toHaveCount(0);
 
   await expect(overdriveButton(page)).toHaveText(/overdrive.*8/i);
+});
+
+/**
+ * Day-column Overdrive (EI-253) — the same overlay, entered from a day's
+ * own header icon instead of the Overflow footer. `lib/overdrive.test.ts`
+ * covers the ramp math directly; these two exist to prove the on-screen
+ * wiring — the icon's threshold gate and the "never stage the day you're
+ * already on" rule — actually reaches a real board.
+ */
+test("a day column earns its own Overdrive entry once it crosses the threshold", async ({
+  page,
+}) => {
+  await expect(dayOverdriveButton(page)).toHaveCount(0);
+
+  await seedDay(page, 4); // below OVERDRIVE_MIN_TODOS (5)
+  await expect(dayOverdriveButton(page)).toHaveCount(0);
+
+  await seedDay(page, 1); // 4 + 1 = 5, exactly at threshold
+  await expect(dayOverdriveButton(page)).toBeVisible();
+  await expect(dayOverdriveButton(page)).toHaveAccessibleName(/5 to-dos/i);
+
+  await dayOverdriveButton(page).click();
+  await expect(overlay(page)).toBeVisible();
+  await expect(progress(page)).toHaveText("1 of 5");
+});
+
+test("→ Enter from a day session schedules onto the NEXT day, never the day itself", async ({
+  page,
+}) => {
+  await seedDay(page, 5);
+  await dayOverdriveButton(page).click();
+  await expect(overlay(page)).toBeVisible();
+
+  const title = await cardTitle(page).textContent();
+  expect(title).toBeTruthy();
+
+  // The card is already ON today — the first → must skip straight past it.
+  await page.keyboard.press("ArrowRight");
+  await expect(overlay(page).getByText("Tomorrow")).toBeVisible();
+  await expect(overlay(page).getByText("Today", { exact: true })).toHaveCount(0);
+  await page.keyboard.press("Enter");
+  await expect(progress(page)).toHaveText("2 of 5");
+  await page.keyboard.press("Escape"); // nothing staged on card 2 — exits
+  await expect(overlay(page)).toHaveCount(0);
+
+  // FROZEN_TIME (fixtures.ts) is 2026-08-11 — tomorrow is 2026-08-12.
+  const tomorrow = page.getByRole("region").filter({ has: page.getByText("Aug 12, 2026") });
+  await expect(tomorrow.getByText(title!, { exact: true })).toBeVisible();
+  await expect(todayColumn(page).getByText(title!, { exact: true })).toHaveCount(0);
 });

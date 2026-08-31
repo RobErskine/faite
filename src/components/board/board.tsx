@@ -5,6 +5,7 @@ import { DndContext, DragOverlay, MeasuringStrategy } from "@dnd-kit/core";
 import { GripVertical, MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useViewport } from "@/lib/use-viewport";
+import { OVERFLOW } from "@/lib/scheduling";
 import { LIFTED } from "@/lib/drop-animation";
 import { tint } from "@/lib/colors";
 import { priorityRail } from "@/lib/priority";
@@ -256,7 +257,7 @@ export function Board() {
       archivedOpen: ui.archivedOpen,
       settingsOpen: ui.settingsOpen,
       openDay: ui.openDay,
-      overdriveOpen: ui.overdriveOpen,
+      overdriveSource: ui.overdriveSource,
       helpSheetOpen: ui.helpSheetOpen,
       activityOpen: ui.activityOpen,
     }),
@@ -552,7 +553,7 @@ export function Board() {
         onSetTodoStatus={actions.handleSheetStatus}
         onDeleteTodo={actions.handleDelete}
         overflowCount={data.board.overflow.todos.length}
-        onOpenOverdrive={() => ui.setOverdriveOpen(true)}
+        onOpenOverdrive={() => ui.setOverdriveSource(OVERFLOW)}
         onOpenHelp={() => ui.setHelpSheetOpen(true)}
         onOpenActivity={() => ui.setActivityOpen(true)}
       />
@@ -612,15 +613,19 @@ export function Board() {
       this just keeps it consistent with every other full-board overlay.
     */}
     <OverdriveOverlay
-      open={ui.overdriveOpen}
-      todos={data.board.overflow.todos}
+      source={ui.overdriveSource}
+      todos={
+        ui.overdriveSource && ui.overdriveSource !== OVERFLOW
+          ? (data.overdriveDayTodos.get(ui.overdriveSource) ?? [])
+          : data.board.overflow.todos
+      }
       todosById={data.todosById}
       listsById={data.listsById}
       backlogListId={data.backlogList?.id ?? ""}
       labels={data.labels}
       reminderPresets={data.reminderPresets}
       ctx={data.ctx}
-      onClose={() => ui.setOverdriveOpen(false)}
+      onClose={() => ui.setOverdriveSource(null)}
       onVerdict={actions.handleOverdriveVerdict}
       autoConfirmMs={data.settings?.overdriveAutoConfirmMs ?? 0}
     />

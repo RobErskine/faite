@@ -420,6 +420,26 @@ export function useBoardData(params: UseBoardDataParams) {
   );
 
   /**
+   * Open to-dos per day, UNFILTERED by the in-column search — feeds both the
+   * day Overdrive entry icon's count and the queue the overlay opens with
+   * (EI-253), from ONE derivation so they can never disagree. Matches
+   * `board.overflow.todos.length`'s own unfiltered convention: narrowing a
+   * day's search can never hide its Overdrive icon.
+   *
+   * Open-only, unlike Overflow: `placeSettled` (lib/board.ts) can put a
+   * done/dropped todo back on its scheduled day when `settings.visibleStatuses`
+   * includes it, and Overdrive should never offer to triage a card that's
+   * already settled.
+   */
+  const overdriveDayTodos = useMemo(() => {
+    const map = new Map<CivilDate, Todo[]>();
+    for (const day of board?.days ?? []) {
+      map.set(day.day, day.todos.filter((t) => t.status === "open"));
+    }
+    return map;
+  }, [board]);
+
+  /**
    * Every id a card, drag, or sheet gesture might name — real rows, virtual
    * recurrence occurrences, and force-overflowed occurrences alike — so every
    * `todos.find(...)` call site that used to miss a virtual card can resolve
@@ -881,6 +901,7 @@ export function useBoardData(params: UseBoardDataParams) {
     hiddenLists,
     recurrenceExpansion,
     board,
+    overdriveDayTodos,
     todosById,
     rawTodoIds,
     openTodo,

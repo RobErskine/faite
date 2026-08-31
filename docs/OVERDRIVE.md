@@ -57,15 +57,49 @@ card, in normal flow — scroll far enough down a real pile and the one way
 out of it was the thing that had scrolled out of view; live use called this
 out directly.
 
+## 1a. A day column's own entry — EI-253
+
+Overdrive is not exclusive to Overflow. `DayOverdriveButton`
+(`overdrive-button.tsx`, same file as `OverdriveButton`) is passed as
+`BoardColumn`'s `actions` slot — the header's right-aligned spot
+Overflow/Backlog already use for `RailCollapseButton`, and day columns leave
+empty otherwise — from both `desktop-board.tsx` and `phone-board.tsx`'s day
+call sites. It renders nothing below the same `minTodos` threshold as the
+Overflow button (`settings.overdriveMinTodos`, no new setting), and every
+day past it gets one, not just today: rescheduling makes just as much sense
+on any visible day.
+
+**The count is open-only, unlike Overflow's.** `overdriveDayTodos`
+(`use-board-data.ts`) derives, per day, `board.days[n].todos.filter(t =>
+t.status === "open")` — from the **unfiltered** `board.days`, matching
+Overflow's own `board.overflow.todos.length` convention, so narrowing a
+day's search can never hide its icon either. The `status === "open"` filter
+is the one thing Overflow's button never needed: `placeSettled`
+(`lib/board.ts`) can put a done/dropped todo back on its own scheduled day
+when `settings.visibleStatuses` includes it, and Overdrive should never
+offer to triage a card that's already settled. The icon's count and the
+overlay's queue (`board.tsx`) both read this **same** memo — if they read
+two different derivations, the icon could say 7 while the session opened
+with 4, exactly the discrepancy a shared source of truth rules out.
+
+**Collapsed weekend runs have no `actions` slot at all** — `WeekendColumn`
+is a different, simpler component standing in for 1–2 folded day columns
+(desktop only; `useBoardData` forces `collapsingWeekends: false` on phone),
+and it has no header to put an icon in. Expanding the run restores it.
+
+No second ⌘K command was added for this ("Overdrive today") — see §12's
+note on `command-registry.ts` staying untouched, deliberately.
+
 ## 2. The queue
 
-`buildQueue()`/`createSession()` (`lib/overdrive.ts`) snapshot
-`board.overflow.todos` — **in board order**, the same flattened list-group
-order Overflow already renders — into a plain array of ids, once, at the
-moment the overlay opens. This is deliberate: `useLiveQuery` re-renders on
-every write, and a queue that re-sorted itself after each verdict would
-reshuffle under the user's hands mid-session. Entering Overdrive should feel
-like walking the pile you were just looking at.
+`buildQueue()`/`createSession(todos, source)` (`lib/overdrive.ts`) snapshot
+either `board.overflow.todos` or one day's open todos (`overdriveDayTodos`,
+§1a) — **in board order**, the same flattened list-group order the source
+column already renders — into a plain array of ids, once, at the moment the
+overlay opens. This is deliberate: `useLiveQuery` re-renders on every write,
+and a queue that re-sorted itself after each verdict would reshuffle under
+the user's hands mid-session. Entering Overdrive should feel like walking the
+pile you were just looking at.
 
 The **current card's data** stays live, though — `OverdriveOverlayContent`
 looks its id up in `todosById` on every render, so a concurrent edit (a label
@@ -77,23 +111,31 @@ silently — there's nothing left to write a verdict against.
 
 ### 2a. Fresh state on every open, via unmount rather than reset
 
-`OverdriveOverlay` (`overdrive-overlay.tsx`) is a thin gate: while `open` is
-false it renders `null`; the moment it's true it mounts a whole separate
-`OverdriveOverlayContent`, which is where `session`, `transitioning`, and
-every other piece of state actually live.
+`OverdriveOverlay` (`overdrive-overlay.tsx`) is a thin gate: while `source`
+is `null` it renders `null`; the moment it's non-null it mounts a whole
+separate `OverdriveOverlayContent`, which is where `session`,
+`transitioning`, and every other piece of state actually live.
 
 That split — rather than always mounting `OverdriveOverlayContent` and
 toggling a `hidden` class on it — is what makes "frozen at open" (above)
-true for free. `createSession(todos)` runs as `useState`'s lazy initializer,
-which only ever runs once **per mount**. Closing Overdrive unmounts
-`OverdriveOverlayContent` entirely, and React discards every hook's state
-along with it — `session`, `transitioning`, `pickerOpen`, all of it. Opening
-it again is a genuinely fresh mount, with a fresh `useState` call building a
-new snapshot from whatever `board.overflow.todos` looks like *now*. There is
-no explicit "reset the session" code path anywhere to get wrong or forget —
-the reset is just what mounting already does. `TodoSheet`'s `key={todo.id}`
-plays the identical trick for the identical reason, just keyed on identity
-rather than presence.
+true for free. `createSession(todos, source)` runs as `useState`'s lazy
+initializer, which only ever runs once **per mount**. Closing Overdrive
+unmounts `OverdriveOverlayContent` entirely, and React discards every hook's
+state along with it — `session`, `transitioning`, `pickerOpen`, all of it.
+Opening it again is a genuinely fresh mount, with a fresh `useState` call
+building a new snapshot from whatever the source column looks like *now*.
+There is no explicit "reset the session" code path anywhere to get wrong or
+forget — the reset is just what mounting already does. `TodoSheet`'s
+`key={todo.id}` plays the identical trick for the identical reason, just
+keyed on identity rather than presence.
+
+`OverdriveOverlay` itself additionally keys `OverdriveOverlayContent` on
+`source` (`key={source}`, EI-253) — the same trick, extended from
+open/closed to WHICH pile. Unreachable today (the dialog is modal, so
+nothing behind it can retarget `source` while it's open), but one attribute
+is cheaper than the bug class it forecloses: without it, a hypothetical
+future caller that swapped `source` without closing first would carry the
+old queue over into the new pile's session.
 
 ## 3. The verdicts
 
@@ -190,6 +232,50 @@ offsets at once. Ramping past `RAMP_MAX` (30) **clamps**, it does not wrap —
 silently landing back on today after enough presses would be the worst
 possible failure here, since nothing about the UI would tell you it happened.
 
+### 5a. `overdriveBase` — the ramp's floor on a day session (EI-253)
+
+Overflow's card isn't ON any particular day, so ramping from `ctx.today`
+with offset `0` = today is a real move — you're placing an undecided card
+somewhere for the first time. A day session's card is already sitting on
+`source`; offset `0` there would confirm a write that puts it exactly where
+it already is. `overdriveBase(source, ctx)` is the one place that
+distinction lives:
+
+```ts
+function overdriveBase(source, ctx): { base: CivilDate; min: number } {
+  if (source === OVERFLOW) return { base: ctx.today, min: 0 };
+  return { base: source < ctx.today ? ctx.today : source, min: 1 };
+}
+```
+
+`reduce`'s `ramp`/`rampWeek`/`wontDo`-unstage cases all read `min` off this
+at the top of the function and use it as the floor a staged ramp can never
+go below — so the first `→` on a day session always lands on the day
+**after** `source`, and `←` walking a ramp back down stops at `null`, never
+landing on `min - 1` (which would be `source` itself, wrapped through
+`rampDate`'s `offset <= 0 → base` branch, producing the exact no-op this
+exists to prevent). `←` at `ramp === min` is the sharpest case: it must
+reach `null`, not `min - 1`.
+
+**The forward clamp on `base` is not defensive padding.**
+`usePlacementContext` (`lib/store/hooks.ts`) re-ticks every 60 seconds, so a
+day session opened late in the day can still be mounted once `ctx.today`
+rolls past `source` itself. Without clamping `base` forward to `ctx.today`,
+a stale session's `→` would stage a date in the past, and `scheduleTodo`
+would write it — the card would then immediately roll or overflow on its
+next render. `rampLabel` stays relative to **real** `ctx.today` throughout
+(never to `source`), so "Tomorrow" always means tomorrow regardless of which
+day the session was opened from.
+
+**Why `source` lives on the session instead of being threaded as a
+parameter to `reduce`/`rampDate` on every call:** `base` and `min` always
+covary — there is no session where they can legitimately disagree — and the
+session's source cannot change mid-session anyway (`OverdriveOverlay`'s
+mount gate freezes it, see §2a). A single field read once at the top of
+`reduce`, rather than a parameter every call site has to keep in sync, is
+what makes it impossible for `stagedDate` and `reduce` to compute a
+different base from each other.
+
 ## 6. The date picker does NOT skip non-eligible days
 
 `D` (or clicking the calendar button) opens the same `Calendar`/`Popover`
@@ -200,6 +286,20 @@ explicitly chosen Saturday stays on Saturday, matching the rule
 `docs/FAITE-LOOP.md` §2 documents for `rolloverTarget`: only an *automatic*
 placement respects `workdaysOnly`; a deliberate human choice is never
 second-guessed.
+
+**On a day session (EI-253), the picker deliberately does not enforce §5a's
+`min: 1` floor either** — it will let you pick `source` itself, staging a
+no-op write if you confirm it. Consistent with the no-snap rule directly
+above: the ramp's floor exists to stop an *accidental* keypress from
+confirming a no-op, but an explicit pick through the calendar is, by
+definition, not accidental — the same "a deliberate human choice is never
+second-guessed" reasoning, just applied to the floor instead of the
+`workdaysOnly` snap. `defaultMonth` follows `overdriveBase(source,
+ctx).base` rather than always `ctx.today`, so opening the picker on a
+session sourced weeks out doesn't force navigating back from today's month
+first; `disabled={{ before: ctx.today }}` (not `before: base`) is
+unchanged — pulling a card forward from a future day's session to an
+earlier still-eligible day remains a normal move.
 
 ## 7. `⌫` / `⌘Z` — step back, not undo-everything
 
@@ -215,7 +315,7 @@ has no opinion about anything you did on the board before that.
 overlay's own `onKeyDown`, dispatching the identical `"stepBack"` action.
 Needed because the board's *global* `⌘Z` (the `Hotkeys` registry,
 `lib/keyboard.ts`) is correctly held off the whole time Overdrive is open —
-`overdriveOpen` sits in `computeModalOpen` (`use-board-ui-state.ts`,
+`overdriveSource` sits in `computeModalOpen` (`use-board-ui-state.ts`,
 `board-guards.test.ts`) specifically so a board-wide undo can never fire
 out from under a modal — so without a local binding, `⌘Z` would silently do
 nothing while the overlay owned the keyboard.
@@ -519,7 +619,7 @@ in the rail behind the dialog on the same frame, and a `→ Enter` puts the
 card on its day column while you watch.
 
 The trade is deliberate — a little less isolation for a lot more context.
-It stays **modal**: Base UI's focus trap still holds, and `overdriveOpen`
+It stays **modal**: Base UI's focus trap still holds, and `overdriveSource`
 still feeds `computeModalOpen` (below), so the board behind is *visible, not
 usable*. Nothing about the queue changes either; it's still frozen at open
 (§2), so a live-updating board can't reshuffle the pile under you.
@@ -687,14 +787,26 @@ syncs like anything else.
 | --- | --- |
 | `lib/overdrive.ts` | the pure decision core — `reduce`, `rampDate`, `stagedDate`, `applyDecision`, `summarize`, the tunables block |
 | `lib/dev-seed.ts` | `seedOverflow()` — the dev-only Overflow-pile generator |
-| `components/board/overdrive-button.tsx` | the Overflow column's entry point |
+| `components/board/overdrive-button.tsx` | `OverdriveButton` (Overflow's footer entry) + `DayOverdriveButton` (a day's header `actions` entry, EI-253) |
 | `components/board/overdrive-overlay.tsx` | the Dialog, the keydown handler, the date picker, the finish screen, the persistent toast, the blocking flick transition |
 | `components/board/overdrive-card.tsx` | the presentational card — progress readout, title, description, list/scheduled line, `TodoMetaBadges` (labels + `In Overflow N days`). No drag source, no checkbox, no nav stop — the whole reason it's not a reuse of `TodoCard` |
 | `components/board/use-board-actions.ts` | `handleOverdriveVerdict` — the one write path, returns `{ undoId, label }` |
-| `components/board/use-board-ui-state.ts` | `overdriveOpen` + `computeModalOpen` |
+| `components/board/use-board-ui-state.ts` | `overdriveSource: OverdriveSource \| null` + `computeModalOpen` |
+| `components/board/use-board-data.ts` | `overdriveDayTodos` — the day queue/count's one shared derivation (EI-253) |
 | `components/board/board-guards.test.ts` | the table-driven test that keeps a future overlay from forgetting the guard wiring above |
 | `components/settings/loop-section.tsx` | Settings → Faite Loop (EI-103) — entry threshold and auto-confirm delay preset chips, alongside the Loop's own settings |
 
-Tests: `overdrive.test.ts`, `overdrive-overlay.test.tsx`, `board-column.test.tsx`
-("footer" block), `board-guards.test.ts`, `developer-section.test.tsx`
-("Seed Overflow" block), `e2e/overdrive.spec.ts`.
+**`command-registry.ts` is deliberately untouched by EI-253.** `openOverdrive`
+stays a nullary callback and the `view-overdrive` command still only ever
+opens Overflow — no "Overdrive today" palette entry was added, since it
+would need a new `PaletteCommandCtx` field and a new gate for a capability
+the header icon (§1a) already covers. Noted here, in the doc rather than
+only in the ticket, so `docs/COMMAND-PALETTE.md` doesn't read like the
+omission was an oversight.
+
+Tests: `overdrive.test.ts` (includes the `overdriveBase`/day-session ramp
+cases, §5a), `overdrive-overlay.test.tsx` (includes a `"day sessions
+(EI-253)"` block), `overdrive-button.test.tsx` (`OverdriveButton` +
+`DayOverdriveButton`), `board-column.test.tsx` ("footer" and "actions"
+blocks), `board-guards.test.ts`, `developer-section.test.tsx` ("Seed
+Overflow" block), `e2e/overdrive.spec.ts`.
