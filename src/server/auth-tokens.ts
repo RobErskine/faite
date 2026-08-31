@@ -99,6 +99,15 @@ import { extractBearerCredential } from "./bearer";
  * change. Confirmed by generating and reverting it while building EI-259.
  * Do not commit whatever `auth:schema` proposes for the `apikey` table
  * without checking it's an actual, intended change first.
+ *
+ * The SAME fallback shows up in `npm run openapi:generate`'s output, but
+ * THIS one IS committed: `openapi/openapi.json` (the internal doc, not the
+ * public `openapi/v1.json`) documents `rateLimitTimeWindow`/`rateLimitMax`'s
+ * schema-level `default` as 86400000/10 for the identical reason — cosmetic
+ * only, since (as above) every real key write carries an explicit value —
+ * but EI-226's CI drift check compares against whatever is actually
+ * generated, so this one has to be regenerated and committed, unlike the
+ * migration.
  */
 // SECONDS (see the `keyExpiration` comment inside `baseConfig` below for why
 // that unit matters here specifically) — 90 days.
