@@ -58,6 +58,15 @@ const NO_SORTING: SortingStrategy = () => null;
 const CARDS_NOT_DROPPABLE = { draggable: false, droppable: true } as const;
 
 /**
+ * Shared between the due banner's button and inert-text branches below, so
+ * the two visual treatments can't drift apart from each other over time.
+ */
+const DUE_BANNER = cn(
+  "flex items-center gap-1 border-b border-destructive/20 bg-destructive/10",
+  "px-2 py-1 text-2xs font-medium text-destructive",
+);
+
+/**
  * How many to-dos a column needs before it earns a filter row.
  *
  * Below this you can see every row at a glance, so the input would be pure
@@ -805,29 +814,52 @@ export function BoardColumn({
         Counted across the whole board, not just this column: a to-do due Friday
         may well be scheduled for Tuesday, and the point of the banner is to warn
         you before Friday arrives. So it is a property of the *date*, not of the
-        column's contents, and `board.tsx` computes it from every todo.
+        column's contents, and `use-board-data.ts`'s `dueByDay` computes it from
+        every todo.
 
         Deliberately loud — destructive tint, full column width, directly under
         the header — because it is the one thing on the board that a plan can be
         wrong about without anything else looking wrong.
+
+        A button when `onOpenInfo` exists, gated on the same prop the header
+        title uses just above — both shells wire it to `setOpenDay(column.day)`
+        on the very column that receives `dueCount`, so this needs no prop of
+        its own. Opens the day sheet, which renders the due items in a section
+        above Notes.
       */}
       {!collapsed && dueCount !== undefined && dueCount > 0 && (
-        <div
-          data-due-banner={dueCount}
-          className={cn(
-            "flex items-center gap-1 border-b border-destructive/20 bg-destructive/10",
-            "px-2 py-0.5 text-2xs font-medium text-destructive",
-          )}
-        >
-          <CalendarCheck className="size-3 shrink-0" aria-hidden />
-          <span aria-hidden>
-            <span className="num">{dueCount}</span> due
-          </span>
-          <span className="sr-only">
-            {dueCount === 1 ? "1 to-do is" : `${dueCount} to-dos are`} due on this
-            day
-          </span>
-        </div>
+        onOpenInfo ? (
+          <button
+            type="button"
+            data-due-banner={dueCount}
+            onClick={onOpenInfo}
+            className={cn(
+              DUE_BANNER,
+              "w-full cursor-pointer text-left hover:bg-destructive/15",
+              "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
+            )}
+          >
+            <CalendarCheck className="size-3 shrink-0" aria-hidden />
+            <span aria-hidden>
+              <span className="num">{dueCount}</span> due
+            </span>
+            <span className="sr-only">
+              Show the {dueCount === 1 ? "1 to-do" : `${dueCount} to-dos`} due on
+              this day
+            </span>
+          </button>
+        ) : (
+          <div data-due-banner={dueCount} className={DUE_BANNER}>
+            <CalendarCheck className="size-3 shrink-0" aria-hidden />
+            <span aria-hidden>
+              <span className="num">{dueCount}</span> due
+            </span>
+            <span className="sr-only">
+              {dueCount === 1 ? "1 to-do is" : `${dueCount} to-dos are`} due on
+              this day
+            </span>
+          </div>
+        )
       )}
 
       {showsFilter && (

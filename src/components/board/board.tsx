@@ -585,6 +585,7 @@ export function Board() {
       // `nonTemplateTodos`: a day's timeline is a journal of what actually
       // happened, and nothing happens to a virtual occurrence or a template.
       todos={data.nonTemplateTodos}
+      due={ui.openDay ? (data.dueByDay.get(ui.openDay) ?? []) : []}
       timezone={data.settings?.timezone ?? "UTC"}
       labels={data.labels}
       reminderPresets={data.reminderPresets}

@@ -1,5 +1,5 @@
 import { test, expect } from "./support/fixtures";
-import { switchToLists } from "./support/phone";
+import { switchToDays, switchToLists } from "./support/phone";
 
 /**
  * Cross-viewport functional contract — runs on every project in
@@ -153,6 +153,43 @@ test("mod+k opens the palette from the keyboard", async ({ page }) => {
  * `playwright.config.ts` change and `e2e/config-coverage.test.ts` stays green
  * by construction. See `docs/E2E.md` §8.
  */
+/**
+ * EI-252. The column's "N due" banner opens the day sheet, which now shows
+ * the due items above Notes. Quick-add's "!" deadline marker (quick-add.ts)
+ * gets a to-do onto Thursday's deadline without ever setting `scheduledDate`
+ * — so this also exercises the "Not scheduled yet" assigned-date case, the
+ * one a naive implementation could wrongly fall back to `createdAt` for.
+ */
+test("the due banner opens the day sheet to an unscheduled due item", async ({ page }) => {
+  await switchToLists(page);
+  const backlog = page.getByRole("region", { name: "Backlog" });
+  const title = "Renew passport";
+
+  // FROZEN_TIME (support/fixtures.ts) is Tuesday 2026-08-11 → next Thursday
+  // is 2026-08-13.
+  await backlog.getByPlaceholder("Add a to-do").fill(`${title} !thursday`);
+  await page.keyboard.press("Enter");
+
+  await switchToDays(page);
+  // `.first()`: the rendered day track holds several weeks, so more than one
+  // Thursday column exists — the column's `aria-label` is just the weekday
+  // (board-column.tsx), with no date to disambiguate by.
+  const thursday = page.getByRole("region", { name: "Thursday" }).first();
+  await thursday
+    .getByRole("button", { name: "Show the 1 to-do due on this day" })
+    .click();
+
+  const sheet = page.locator('[data-slot="sheet-content"]');
+  await expect(sheet).toBeVisible();
+  await expect(sheet.getByRole("heading", { name: "1 due" })).toBeVisible();
+  // Not `exact: true`: the card's own upcoming-deadline marker
+  // (todo-row-parts.tsx) prepends "Due in N days: <date>." to its accessible
+  // name, so the title is a substring, not the whole name.
+  await expect(sheet.getByRole("button", { name: new RegExp(title) })).toBeVisible();
+  await expect(sheet.getByText(/^Created /)).toBeVisible();
+  await expect(sheet.getByText(/Not scheduled yet$/)).toBeVisible();
+});
+
 test("GOOD JOB mode throws confetti when a to-do is completed", async ({ page }) => {
   const confettiCanvas = page.locator("body > canvas");
   await expect(confettiCanvas).toHaveCount(0);

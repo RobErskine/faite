@@ -84,7 +84,7 @@ export function PhoneBoard({
     planningCount,
     tabCounts,
     mentionLists,
-    deadlineCounts,
+    dueByDay,
     overTodoId,
     overGroupId,
     columnDropTargetId,
@@ -268,7 +268,7 @@ export function PhoneBoard({
                   labels={labels}
                   ctx={ctx}
                   timezone={settings?.timezone ?? "UTC"}
-                  dueCount={deadlineCounts.get(column.day)}
+                  dueCount={dueByDay.get(column.day)?.length}
                   recurrenceSummaries={recurrenceSummaries}
                   subtaskCounts={subtaskCounts}
                   attachmentCounts={attachmentCounts}

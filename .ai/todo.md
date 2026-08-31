@@ -1949,3 +1949,51 @@ plus `getShellVersion` in `bridge.test.ts`.
       allow-list. Correct on paper (`https://myfaite.app/*` is allowed).
 - [ ] `/download` has nothing to download. It is honest about that, but the
       page only stops being odd when EI-136 lands.
+
+## EI-252 — due items in the day sheet, reached from the column's "N due" banner
+
+The banner (added earlier, see its own entry above) counted deadlines but was
+inert text — no way to see what was due. Closes that entry's open item
+("No test for the due banner") along the way, with real coverage instead of
+just the manual checklist.
+
+Went with a section inside the existing `DaySheet` rather than a new sheet
+component: `DaySheet` already opens from the same column header
+(`onOpenInfo`), already renders real `TodoCard`s, and a deadline is a
+property of the date rather than of what happened on it, which is the same
+reasoning the banner itself already rests on. The banner is now a `<button>`
+gated on the column's existing `onOpenInfo` prop — no new prop, no new sheet,
+no new `BoardOverlayState` field.
+
+**The count became a group.** `use-board-data.ts`'s `deadlineCounts: Map<CivilDate,
+number>` is now `dueByDay: Map<CivilDate, Todo[]>`. Two independent filters
+over "open + has a deadline on this date" — one for the badge, one for the
+sheet — could drift; a shared array can't.
+
+**Placed above Notes, not between Notes and Timeline.** Notes is a
+`min-h-[50vh]` field at the top of the scroll container, so anything below it
+is off-screen on open — a banner whose whole job is showing you what's due
+can't open onto a sheet where you still have to scroll to find it. Renders
+only when something is due, so an ordinary day's sheet is byte-for-byte
+unchanged.
+
+**Assigned-date rendering needed three cases, not one.** `scheduledAt` (when
+the *current* `scheduledDate` was set) is null both for a never-scheduled
+to-do and for one quick-added straight onto a day — falling back to
+`createdAt` in the second case would invent a placement decision that never
+happened. See `assignedLabel()` in `day-sheet.tsx`.
+
+Full rationale: `docs/DAY-NOTES.md` §5. Banner mechanics: `docs/DRAG-AND-DROP.md` §6.
+
+### Verified
+
+`npm run typecheck` and the full `npm test` (2267 tests, 148 files) green.
+New coverage: `board-column.test.tsx` (banner → button, singular/plural name,
+collapsed, no-handler fallback), `day-sheet.test.tsx` (Due section, all three
+assigned-date cases, sort order, DOM position above Notes). One e2e test
+appended to `core-flows.spec.ts` rather than a new spec file — avoids the
+`SPECS`/`testMatch`/`docs/E2E.md` churn `config-coverage.test.ts` would
+otherwise demand for one button and one section. `npm run e2e:ci`
+(`--project=desktop --project=phone-iphone`) verified green against a real
+production build (`CI=1` + `next start`) — the `next dev` path is locally
+flaky under full parallelism for reasons unrelated to this change (EI-187).
