@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import type { OverdriveSource } from "@/lib/overdrive";
 import { civilDateSchema, type CivilDate, type List, type Tab, type Todo } from "@/lib/schema";
 import { LOCAL_OWNER_ID } from "@/lib/store/repositories";
 import { mutateSettings } from "@/lib/store/mutate";
@@ -35,9 +36,11 @@ export interface BoardOverlayState {
   archivedOpen: boolean;
   settingsOpen: boolean;
   openDay: CivilDate | null;
-  /** Overdrive (EI-97). Its own keydown handler needs undo and every other
-   * board hotkey held off exactly like every sheet above it. */
-  overdriveOpen: boolean;
+  /** Overdrive (EI-97/EI-253). Its own keydown handler needs undo and every
+   * other board hotkey held off exactly like every sheet above it. Null when
+   * closed; otherwise the Overflow column or the one day being triaged —
+   * see `OverdriveSource`. */
+  overdriveSource: OverdriveSource | null;
   /** The keyboard-shortcut help sheet (EI-75). Same as every other sheet: a
    * board hotkey firing behind it would edit the board out of sight. */
   helpSheetOpen: boolean;
@@ -66,7 +69,7 @@ export function computeModalOpen(state: BoardOverlayState): boolean {
     // The day sheet holds a rich-text editor, so board hotkeys — undo
     // especially — must not fire while someone is typing a journal entry.
     !!state.openDay ||
-    state.overdriveOpen ||
+    state.overdriveSource !== null ||
     state.helpSheetOpen ||
     state.activityOpen
   );
@@ -164,8 +167,8 @@ export function useBoardUiState() {
   /** The day whose details sheet is open, if any. Same lazy-initializer
    * reasoning as `openTodoId` above — see `readDeepLinkParams`. */
   const [openDay, setOpenDay] = useState<CivilDate | null>(() => readDeepLinkParams().day);
-  /** Overdrive (EI-97). */
-  const [overdriveOpen, setOverdriveOpen] = useState(false);
+  /** Overdrive (EI-97/EI-253). See `BoardOverlayState.overdriveSource`. */
+  const [overdriveSource, setOverdriveSource] = useState<OverdriveSource | null>(null);
   /** The keyboard-shortcut help sheet (EI-75), opened by `?`. */
   const [helpSheetOpen, setHelpSheetOpen] = useState(false);
   /** The global activity feed, opened by `⌘⇧A`. */
@@ -529,8 +532,8 @@ export function useBoardUiState() {
     setSettingsOpen,
     openDay,
     setOpenDay,
-    overdriveOpen,
-    setOverdriveOpen,
+    overdriveSource,
+    setOverdriveSource,
     helpSheetOpen,
     setHelpSheetOpen,
     activityOpen,

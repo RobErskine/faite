@@ -115,7 +115,7 @@ At root, in render order:
 | | Activity feed | opens the global activity feed (`⌘⇧A`) — the whole-app event log, `activity-sheet.tsx` |
 | **View** | Show 1 / 3 / 5 / 7 days | writes `settings.visibleDays` |
 | | Roll over on workdays only ⇄ every day | writes `settings.workdaysOnly` — same setting also lives in Settings → Faite Loop (`loop-section.tsx`, EI-96), which additionally exposes `overflowAfterDays`; see [FAITE-LOOP.md](FAITE-LOOP.md) |
-| | Open Overdrive (N) | disabled when Overflow is empty; opens the same full-screen triage overlay as the button at the foot of the Overflow column (EI-97) — see [OVERDRIVE.md](OVERDRIVE.md) |
+| | Open Overdrive (N) | disabled when Overflow is empty; opens the same full-screen triage overlay as the button at the foot of the Overflow column (EI-97) — see [OVERDRIVE.md](OVERDRIVE.md). Overflow-only, deliberately: a day column's own Overdrive entry (EI-253) is a header icon, not a palette command — see OVERDRIVE.md §12 |
 
 Every mutating item routes through the shared undo helpers (`recordCreate`,
 `deleteListWithUndo`, `deleteTabWithUndo`) so palette actions and their

@@ -8,6 +8,7 @@ import {
   createSession,
   currentTodoId,
   isComplete,
+  overdriveBase,
   rampDate,
   rampLabel,
   reduce,
@@ -18,7 +19,7 @@ import {
   type ListContext,
   type OverdriveSession,
 } from "./overdrive";
-import { buildWindow, type PlacementContext } from "./scheduling";
+import { buildWindow, OVERFLOW, type PlacementContext } from "./scheduling";
 
 const WORKDAYS = [1, 2, 3, 4, 5];
 
@@ -37,6 +38,7 @@ const lists: ListContext = { currentListId: "list-brain-dump", backlogListId: "l
 
 function session(overrides: Partial<OverdriveSession> = {}): OverdriveSession {
   return {
+    source: overrides.source ?? OVERFLOW,
     queue: overrides.queue ?? ["t1", "t2", "t3"],
     index: overrides.index ?? 0,
     ramp: overrides.ramp ?? null,
@@ -52,7 +54,19 @@ describe("buildQueue / createSession", () => {
 
   it("createSession starts at index 0 with nothing staged or decided", () => {
     const s = createSession([{ id: "a" }, { id: "b" }]);
-    expect(s).toEqual({ queue: ["a", "b"], index: 0, ramp: null, picked: null, decided: [] });
+    expect(s).toEqual({
+      source: OVERFLOW,
+      queue: ["a", "b"],
+      index: 0,
+      ramp: null,
+      picked: null,
+      decided: [],
+    });
+  });
+
+  it("defaults source to OVERFLOW but accepts an explicit day", () => {
+    expect(createSession([{ id: "a" }]).source).toBe(OVERFLOW);
+    expect(createSession([{ id: "a" }], "2026-08-14").source).toBe("2026-08-14");
   });
 });
 
@@ -344,5 +358,92 @@ describe("summarize", () => {
       { todoId: "t5", verdict: { kind: "scheduled", date: "2026-08-04" }, undoId: "u5", label: "l5" },
     ];
     expect(summarize(decided)).toEqual({ dropped: 2, done: 1, listed: 1, scheduled: 1 });
+  });
+});
+
+describe("day sessions", () => {
+  const today = "2026-08-03"; // a Monday
+
+  it("first → on a day session stages the day AFTER the source, never the source itself", () => {
+    const s = session({ source: "2026-08-10" });
+    const { session: next } = reduce(s, "ramp", ctx({ today }), lists);
+    expect(next.ramp).toBe(1);
+    expect(stagedDate(next, ctx({ today }))).toBe("2026-08-11");
+  });
+
+  it("respects workdaysOnly: a Friday source ramps to Monday, not Saturday", () => {
+    const friday = "2026-08-07";
+    const s = session({ source: friday });
+    const c = ctx({ today, workdaysOnly: true });
+    const { session: next } = reduce(s, "ramp", c, lists);
+    expect(stagedDate(next, c)).toBe("2026-08-10"); // the following Monday
+  });
+
+  it("⇧→ from unstaged on a day session ramps a full week past the source", () => {
+    const s = session({ source: "2026-08-10" });
+    const { session: next } = reduce(s, "rampWeek", ctx({ today }), lists);
+    expect(next.ramp).toBe(WEEK_STEP);
+    expect(stagedDate(next, ctx({ today }))).toBe("2026-08-17");
+  });
+
+  it("← at ramp===1 on a day session unstages — does NOT commit, does NOT resolve to the source", () => {
+    const staged = session({ source: "2026-08-10", ramp: 1 });
+    const result = reduce(staged, "wontDo", ctx({ today }), lists);
+    expect(result.commit).toBeUndefined();
+    expect(result.session.ramp).toBeNull();
+  });
+
+  it("← twice from ramp===1 on a day session: first unstages, second commits dropped", () => {
+    const staged = session({ source: "2026-08-10", ramp: 1 });
+    const first = reduce(staged, "wontDo", ctx({ today }), lists);
+    expect(first.commit).toBeUndefined();
+    const second = reduce(first.session, "wontDo", ctx({ today }), lists);
+    expect(second.commit).toEqual({ kind: "dropped" });
+  });
+
+  it("regression: ← at ramp===0 on an OVERFLOW session still unstages to null (min=0 preserved)", () => {
+    const staged = session({ source: OVERFLOW, ramp: 0 });
+    const result = reduce(staged, "wontDo", ctx({ today }), lists);
+    expect(result.commit).toBeUndefined();
+    expect(result.session.ramp).toBeNull();
+  });
+
+  it("midnight clamp: a stale source never stages a date before today", () => {
+    // Session opened days ago and never closed — `today` has moved on.
+    const s = session({ source: "2026-07-25" });
+    const c = ctx({ today: "2026-08-03" });
+    const { session: next } = reduce(s, "ramp", c, lists);
+    const staged = stagedDate(next, c);
+    expect(staged).not.toBeNull();
+    expect(staged! >= c.today).toBe(true);
+    expect(staged).toBe("2026-08-04"); // clamped to today, then +1
+  });
+
+  it("rampDate with an explicit base chains from that base, not ctx.today", () => {
+    const c = ctx({ today });
+    expect(rampDate(2, c, "2026-08-20")).toBe("2026-08-22");
+    expect(rampDate(0, c, "2026-08-20")).toBe("2026-08-20"); // base, not today
+  });
+
+  it("RAMP_MAX still clamps a day session's ramp", () => {
+    const s = session({ source: "2026-08-10", ramp: RAMP_MAX });
+    const { session: next } = reduce(s, "ramp", ctx({ today }), lists);
+    expect(next.ramp).toBe(RAMP_MAX);
+  });
+
+  it("stagedDate prefers picked over the ramp on a day session, and picked MAY equal the source", () => {
+    const s = session({ source: "2026-08-10", ramp: 3, picked: "2026-08-10" });
+    expect(stagedDate(s, ctx({ today }))).toBe("2026-08-10");
+  });
+
+  it("overdriveBase: OVERFLOW bases at today with min 0; a future day bases at itself with min 1", () => {
+    const c = ctx({ today });
+    expect(overdriveBase(OVERFLOW, c)).toEqual({ base: today, min: 0 });
+    expect(overdriveBase("2026-08-10", c)).toEqual({ base: "2026-08-10", min: 1 });
+  });
+
+  it("overdriveBase clamps a past-dated source forward to today", () => {
+    const c = ctx({ today });
+    expect(overdriveBase("2026-07-01", c)).toEqual({ base: today, min: 1 });
   });
 });

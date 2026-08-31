@@ -94,6 +94,7 @@ interface HarnessProps {
   totalCount?: number;
   onQuickAdd?: (title: string, listId?: string, labelIds?: string[]) => void;
   footer?: React.ReactNode;
+  actions?: React.ReactNode;
   isColumnDragActive?: boolean;
   isColumnDropTarget?: boolean;
 }
@@ -592,5 +593,50 @@ describe("footer", () => {
     const wrapper = screen.getByTestId("overdrive-entry").parentElement;
     expect(wrapper?.className).toContain("sticky");
     expect(wrapper?.className).toContain("bottom-0");
+  });
+});
+
+/**
+ * `actions` — the header's right-aligned slot. Overflow/Backlog pass
+ * `RailCollapseButton` here; EI-253 is the first thing to pass it on a DAY
+ * column (`Harness`'s own header is already day-shaped: no `reorderListId`,
+ * so no drag chrome to potentially collide with). Board-column itself only
+ * has to place the node next to the title — whether it renders at all is
+ * `DayOverdriveButton`'s own concern (`overdrive-button.tsx`).
+ */
+describe("actions", () => {
+  it("renders the given node in the header, alongside the title", () => {
+    render(<Harness actions={<div data-testid="day-overdrive-entry">Overdrive · 7</div>} />);
+    expect(screen.getByTestId("day-overdrive-entry")).toBeTruthy();
+  });
+
+  it("is absent when no actions node is given", () => {
+    render(<Harness />);
+    expect(screen.queryByTestId("day-overdrive-entry")).toBeNull();
+  });
+
+  it("coexists with onOpenInfo — clicking the action does not open the day sheet", () => {
+    const onOpenInfo = vi.fn();
+    const onAction = vi.fn();
+    render(
+      <Harness
+        onOpenInfo={onOpenInfo}
+        actions={
+          <button type="button" data-testid="day-overdrive-entry" onClick={onAction}>
+            Overdrive
+          </button>
+        }
+      />,
+    );
+    fireEvent.click(screen.getByTestId("day-overdrive-entry"));
+    expect(onAction).toHaveBeenCalledTimes(1);
+    expect(onOpenInfo).not.toHaveBeenCalled();
+  });
+
+  it("never renders when the column is collapsed", () => {
+    render(
+      <Harness collapsed actions={<div data-testid="day-overdrive-entry">Overdrive · 7</div>} />,
+    );
+    expect(screen.queryByTestId("day-overdrive-entry")).toBeNull();
   });
 });

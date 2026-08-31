@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import type { Label as LabelRecord, List, ReminderPreset, Todo } from "@/lib/schema";
-import { toCivilDate, type PlacementContext } from "@/lib/scheduling";
+import { OVERFLOW, toCivilDate, type PlacementContext } from "@/lib/scheduling";
 import { isTextEntry, undoById } from "@/lib/undo";
 import { originOf, type ConfettiOrigin } from "@/lib/celebrate";
 import {
@@ -22,6 +22,7 @@ import {
   createSession,
   currentTodoId,
   isComplete,
+  overdriveBase,
   rampLabel,
   reduce,
   stageDate,
@@ -30,6 +31,7 @@ import {
   type KeyAction,
   type ListContext,
   type OverdriveSession,
+  type OverdriveSource,
   type Verdict,
 } from "@/lib/overdrive";
 import { civilDateToLocalDate } from "./date-nav";
@@ -129,8 +131,9 @@ function prefersReducedMotion(): boolean {
 }
 
 /**
- * Overdrive (EI-97) — a one-card-at-a-time overlay for burning down the
- * Overflow column. See docs/OVERDRIVE.md.
+ * Overdrive (EI-97, EI-253) — a one-card-at-a-time overlay for burning down
+ * either the Overflow column or a single day column (`source`).
+ * See docs/OVERDRIVE.md.
  *
  * Mounted once in `board.tsx`, OUTSIDE `DndContext`, next to `DaySheet` —
  * same reasoning as that sheet: `OverdriveCard` renders todo content but
@@ -140,11 +143,16 @@ function prefersReducedMotion(): boolean {
  * nothing to do with dragging.
  */
 export interface OverdriveOverlayProps {
-  open: boolean;
   /**
-   * The Overflow queue, unfiltered, in board order (decision #6). Read ONCE,
-   * at mount — see `OverdriveOverlay`'s wrapper below for how "at mount"
-   * lines up with "the moment `open` became true".
+   * What this session triages: `OVERFLOW`, or one day (EI-253). Null means
+   * closed. Doubles as the mount/unmount gate's key — see below.
+   */
+  source: OverdriveSource | null;
+  /**
+   * The queue for `source` — Overflow's todos, or one day's open todos,
+   * unfiltered, in board order (decision #6). Read ONCE, at mount — see
+   * `OverdriveOverlay`'s wrapper below for how "at mount" lines up with "the
+   * moment `source` became non-null".
    */
   todos: Todo[];
   /** Live — read every render, so a card's current data (a concurrent edit,
@@ -181,13 +189,20 @@ export interface OverdriveOverlayProps {
  * discards all component state on unmount, so there is no explicit "reset"
  * step to forget. Same trick `TodoSheet`'s `key={todo.id}` plays for the
  * same reason, just keyed on presence rather than identity.
+ *
+ * `key={source}` (EI-253) extends that rule from open/closed to WHICH
+ * pile: switching `source` without the overlay ever closing must not carry
+ * the old queue over. Unreachable today — the dialog is modal, so nothing
+ * behind it can retarget `source` while it's open — but one attribute is
+ * cheaper than the bug class.
  */
-export function OverdriveOverlay({ open, ...rest }: OverdriveOverlayProps) {
-  if (!open) return null;
-  return <OverdriveOverlayContent {...rest} />;
+export function OverdriveOverlay({ source, ...rest }: OverdriveOverlayProps) {
+  if (!source) return null;
+  return <OverdriveOverlayContent key={source} source={source} {...rest} />;
 }
 
 function OverdriveOverlayContent({
+  source,
   todos,
   todosById,
   listsById,
@@ -198,11 +213,11 @@ function OverdriveOverlayContent({
   onClose,
   onVerdict,
   autoConfirmMs = 0,
-}: Omit<OverdriveOverlayProps, "open">) {
+}: Omit<OverdriveOverlayProps, "source"> & { source: OverdriveSource }) {
   // Lazy initializer runs exactly once, at mount — this IS the "frozen at
   // open" snapshot (decision #7). `todosById` below stays live so the CURRENT
   // todo's own fields (title edits, label changes) are always what renders.
-  const [session, setSession] = useState<OverdriveSession>(() => createSession(todos));
+  const [session, setSession] = useState<OverdriveSession>(() => createSession(todos, source));
   const [pickerOpen, setPickerOpen] = useState(false);
 
   const currentId = currentTodoId(session);
@@ -214,6 +229,13 @@ function OverdriveOverlayContent({
    * plain "YYYY-MM-DD" string (`schema.ts`), so it's a stable, comparable
    * effect dependency on its own. */
   const staged = !done ? stagedDate(session, ctx) : null;
+  /**
+   * "Overflow" or the day's own label — with two kinds of session possible
+   * (EI-253), which pile this is is no longer inferable from the cards
+   * alone, so it's surfaced in both the dialog's a11y description and a
+   * visible line above the card.
+   */
+  const sourceLabel = source === OVERFLOW ? "Overflow" : rampLabel(source, ctx.today);
 
   /**
    * `onKeyDown` below lives on this element, so keyboard control of the
@@ -512,7 +534,7 @@ function OverdriveOverlayContent({
     }
     // `⌘Z`/`Ctrl+Z` — local, not the global registry: the board's own ⌘Z is
     // correctly held off while this overlay owns the keyboard
-    // (`overdriveOpen` in `computeModalOpen`, `use-board-ui-state.ts`), so
+    // (`overdriveSource` in `computeModalOpen`, `use-board-ui-state.ts`), so
     // without this ⌘Z would do nothing at all in here. Exactly one of
     // Ctrl/Meta, never both — same rule `hasExactModifiers` (`lib/keyboard.ts`)
     // enforces for the registry, hand-checked here because that helper only
@@ -569,7 +591,7 @@ function OverdriveOverlayContent({
 
         The trade is deliberate: a little less "focus mode" isolation for a
         lot more context. The dialog stays modal (Base UI focus trap, and
-        `overdriveOpen` still feeds `computeModalOpen`, §9), so nothing
+        `overdriveSource` still feeds `computeModalOpen`, §9), so nothing
         behind it is interactive — it's visible, not usable.
 
         `overlayClassName` drops the backdrop's `backdrop-blur-xs`, which
@@ -615,7 +637,9 @@ function OverdriveOverlayContent({
       >
         <DialogTitle className="sr-only">Overdrive</DialogTitle>
         <DialogDescription className="sr-only">
-          Triage the Overflow column one to-do at a time.
+          {source === OVERFLOW
+            ? "Triage the Overflow column one to-do at a time."
+            : `Triage ${sourceLabel} one to-do at a time.`}
         </DialogDescription>
 
         {/*
@@ -668,6 +692,11 @@ function OverdriveOverlayContent({
             </div>
           ) : (
             <>
+              {/* EI-253: with two kinds of session possible, which pile
+                  this is is no longer inferable from the cards alone. */}
+              <p className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+                Overdrive · {sourceLabel}
+              </p>
               {/*
                 One card, in normal flow — never two at once. While
                 `transitioning`, this IS the outgoing card, flicking away in
@@ -813,10 +842,17 @@ function OverdriveOverlayContent({
                   <PopoverContent align="center" className="w-auto p-0">
                     {/* Deliberately does NOT snap to an eligible day even
                         with workdaysOnly on — an explicitly chosen Saturday
-                        stays on Saturday (docs/FAITE-LOOP.md §2). */}
+                        stays on Saturday (docs/FAITE-LOOP.md §2). Also
+                        deliberately does NOT block picking `source` itself
+                        (EI-253) — unlike the ramp's `min: 1` floor, an
+                        explicit pick is an explicit choice, including the
+                        choice to leave a card where it already is. Only
+                        `defaultMonth` follows the clamped base, so opening
+                        the picker on a day far out doesn't force scrolling
+                        back from today's month. */}
                     <Calendar
                       mode="single"
-                      defaultMonth={civilDateToLocalDate(ctx.today)}
+                      defaultMonth={civilDateToLocalDate(overdriveBase(source, ctx).base)}
                       disabled={{ before: civilDateToLocalDate(ctx.today) }}
                       onSelect={(date) => {
                         if (!date) return;

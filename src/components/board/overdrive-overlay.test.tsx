@@ -3,8 +3,8 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { List, Todo } from "@/lib/schema";
-import type { PlacementContext } from "@/lib/scheduling";
-import type { Verdict } from "@/lib/overdrive";
+import { OVERFLOW, type PlacementContext } from "@/lib/scheduling";
+import type { OverdriveSource, Verdict } from "@/lib/overdrive";
 
 interface ToastCallOptions {
   id?: string;
@@ -106,9 +106,17 @@ interface HarnessOptions {
   /** EI-103 — omitted (undefined) exercises the component's own `= 0`
    * default, same as every caller that predates this prop. */
   autoConfirmMs?: number;
+  /** EI-253 — defaults to OVERFLOW so every pre-existing test keeps
+   * exercising an Overflow session exactly as before. */
+  source?: OverdriveSource;
 }
 
-function renderOverlay({ onClose = vi.fn(), onVerdict, autoConfirmMs }: HarnessOptions = {}) {
+function renderOverlay({
+  onClose = vi.fn(),
+  onVerdict,
+  autoConfirmMs,
+  source = OVERFLOW,
+}: HarnessOptions = {}) {
   const todosById = new Map(TODOS.map((t) => [t.id, t]));
   const listsById = new Map(LISTS.map((l) => [l.id, l]));
   const verdictSpy = onVerdict ?? vi.fn(() => ({ undoId: "undo-1", label: "Decided" }));
@@ -116,7 +124,7 @@ function renderOverlay({ onClose = vi.fn(), onVerdict, autoConfirmMs }: HarnessO
   render(
     <TooltipProvider>
       <OverdriveOverlay
-        open
+        source={source}
         todos={TODOS}
         todosById={todosById}
         listsById={listsById}
@@ -177,7 +185,7 @@ describe("OverdriveOverlay", () => {
     render(
       <TooltipProvider>
         <OverdriveOverlay
-          open={false}
+          source={null}
           todos={TODOS}
           todosById={new Map()}
           listsById={new Map()}
@@ -699,5 +707,102 @@ describe("the flick transition (round 3)", () => {
       expect(titleHeading("t2")).toBeTruthy();
       expect(verdictSpy).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+/**
+ * Day sessions (EI-253) — `source` is a `CivilDate` instead of `OVERFLOW`.
+ * The queue/verdict/keyboard machinery is exactly the same component; only
+ * the ramp's floor and the copy change (`lib/overdrive.ts`'s `overdriveBase`
+ * already has direct unit coverage for the ramp math itself). These tests
+ * exist to prove the OVERLAY wires that through correctly, not to re-derive it.
+ */
+describe("day sessions (EI-253)", () => {
+  it("→ on a day session opened FROM today stages Tomorrow, never Today", () => {
+    // ctx.today is 2026-08-10 — a session sourced from today must still
+    // never let the first → confirm a no-op write onto the day it's already on.
+    renderOverlay({ source: "2026-08-10" });
+    press("ArrowRight");
+    expect(screen.getByText("Tomorrow")).toBeTruthy();
+    expect(screen.queryByText("Today")).toBeNull();
+  });
+
+  it("→ on a day session opened from a FUTURE day stages the day after it", () => {
+    renderOverlay({ source: "2026-08-12" });
+    press("ArrowRight");
+    // Neither "Today" nor "Tomorrow" (relative to ctx.today) — a weekday+date.
+    expect(screen.getByText(/thu, aug 13/i)).toBeTruthy();
+  });
+
+  it("← after that first → unstages — does not commit dropped", () => {
+    const { verdictSpy } = renderOverlay({ source: "2026-08-10" });
+    press("ArrowRight");
+    expect(screen.getByText("Tomorrow")).toBeTruthy();
+    press("ArrowLeft");
+    expect(verdictSpy).not.toHaveBeenCalled();
+    expect(screen.queryByText(/schedule for/i)).toBeNull();
+  });
+
+  it("→ Enter on a day session schedules the day after the source", () => {
+    const { verdictSpy } = renderOverlay({ source: "2026-08-10" });
+    press("ArrowRight");
+    press("Enter");
+    expect(verdictSpy).toHaveBeenCalledWith(
+      TODOS[0],
+      { kind: "scheduled", date: "2026-08-11" },
+      null,
+    );
+  });
+
+  it("the dialog names the day session, not Overflow", () => {
+    renderOverlay({ source: "2026-08-12" });
+    expect(screen.getByText(/overdrive · wed, aug 12/i)).toBeTruthy();
+  });
+
+  it("the dialog names Overflow for an Overflow session", () => {
+    renderOverlay({ source: OVERFLOW });
+    expect(screen.getByText(/overdrive · overflow/i)).toBeTruthy();
+  });
+
+  it("switching source remounts with a fresh session (key={source})", () => {
+    const onVerdict = vi.fn(() => ({ undoId: "undo-1", label: "Decided" }));
+    const todosById = new Map(TODOS.map((t) => [t.id, t]));
+    const listsById = new Map(LISTS.map((l) => [l.id, l]));
+    const { rerender } = render(
+      <TooltipProvider>
+        <OverdriveOverlay
+          source="2026-08-10"
+          todos={TODOS}
+          todosById={todosById}
+          listsById={listsById}
+          backlogListId="list-backlog"
+          labels={[]}
+          ctx={ctx}
+          onClose={vi.fn()}
+          onVerdict={onVerdict}
+        />
+      </TooltipProvider>,
+    );
+    press("ArrowRight");
+    expect(screen.getByText("Tomorrow")).toBeTruthy(); // staged
+
+    rerender(
+      <TooltipProvider>
+        <OverdriveOverlay
+          source={OVERFLOW}
+          todos={TODOS}
+          todosById={todosById}
+          listsById={listsById}
+          backlogListId="list-backlog"
+          labels={[]}
+          ctx={ctx}
+          onClose={vi.fn()}
+          onVerdict={onVerdict}
+        />
+      </TooltipProvider>,
+    );
+    // Fresh session: nothing staged, back at card 1 of 2.
+    expect(screen.queryByText(/schedule for/i)).toBeNull();
+    expect(screen.getByText(/1 of 2/i)).toBeTruthy();
   });
 });

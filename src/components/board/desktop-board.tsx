@@ -6,7 +6,7 @@ import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { effectiveListColor } from "@/lib/colors";
 import { NAV_LOAD_MORE, navKeyOf } from "@/lib/column-nav";
-import { formatDay } from "@/lib/scheduling";
+import { formatDay, OVERFLOW } from "@/lib/scheduling";
 import { OVERDRIVE_MIN_TODOS } from "@/lib/overdrive";
 import { LOCAL_OWNER_ID } from "@/lib/store/repositories";
 import { mutateSettings } from "@/lib/store/mutate";
@@ -17,7 +17,7 @@ import { BoardColumn } from "./board-column";
 import { BoardEmptyBanner } from "./board-empty-banner";
 import { CreateListColumn } from "./create-list-column";
 import { DateNav } from "./date-nav";
-import { OverdriveButton } from "./overdrive-button";
+import { DayOverdriveButton, OverdriveButton } from "./overdrive-button";
 import { RailCollapseButton } from "./rail-collapse-button";
 import { RailHandle } from "./rail-handle";
 import { SplitHandle } from "./split-handle";
@@ -105,6 +105,7 @@ export function DesktopBoard({
     settings,
     ctx,
     board,
+    overdriveDayTodos,
     trackSlots,
     backlogColumn,
     otherListColumns,
@@ -318,7 +319,7 @@ export function DesktopBoard({
               <OverdriveButton
                 count={board.overflow.todos.length}
                 minTodos={settings?.overdriveMinTodos ?? OVERDRIVE_MIN_TODOS}
-                onOpen={() => ui.setOverdriveOpen(true)}
+                onOpen={() => ui.setOverdriveSource(OVERFLOW)}
               />
             }
           />
@@ -399,6 +400,21 @@ export function DesktopBoard({
                     </span>
                   }
                   onOpenInfo={() => setOpenDay(column.day)}
+                  // EI-253: this day's own entry into Overdrive, in the
+                  // header's `actions` slot — Overflow/Backlog use it for
+                  // `RailCollapseButton`; day columns leave it empty
+                  // otherwise. `count` comes from the SAME unfiltered,
+                  // open-only derivation the overlay's queue reads
+                  // (`overdriveDayTodos`, use-board-data.ts) so the icon and
+                  // the session it opens can never disagree.
+                  actions={
+                    <DayOverdriveButton
+                      count={overdriveDayTodos.get(column.day)?.length ?? 0}
+                      label={`${weekday}, ${label}`}
+                      minTodos={settings?.overdriveMinTodos ?? OVERDRIVE_MIN_TODOS}
+                      onOpen={() => ui.setOverdriveSource(column.day)}
+                    />
+                  }
                   todos={column.todos}
                   labels={labels}
                   ctx={ctx}

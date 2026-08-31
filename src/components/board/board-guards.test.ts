@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { isEligible, type GuardContext, type Hotkey } from "@/lib/keyboard";
+import { OVERFLOW } from "@/lib/scheduling";
 import { computeModalOpen, type BoardOverlayState } from "./use-board-ui-state";
 
 /**
@@ -23,7 +24,7 @@ const CLOSED: BoardOverlayState = {
   archivedOpen: false,
   settingsOpen: false,
   openDay: null,
-  overdriveOpen: false,
+  overdriveSource: null,
   helpSheetOpen: false,
   activityOpen: false,
 };
@@ -37,7 +38,7 @@ const OPEN_VALUE: { [K in keyof BoardOverlayState]: BoardOverlayState[K] } = {
   archivedOpen: true,
   settingsOpen: true,
   openDay: "2026-08-13",
-  overdriveOpen: true,
+  overdriveSource: OVERFLOW,
   helpSheetOpen: true,
   activityOpen: true,
 };
@@ -58,6 +59,13 @@ describe("computeModalOpen", () => {
     expect(computeModalOpen({ ...CLOSED, paletteOpen: true, settingsOpen: true })).toBe(
       true,
     );
+  });
+
+  // OPEN_VALUE only exercises one of overdriveSource's two "open" shapes
+  // (the OVERFLOW sentinel) — the mapped type can carry just one value per
+  // field. A day source is the other shape and needs its own assertion.
+  it("is true when overdriveSource is a day (not just OVERFLOW)", () => {
+    expect(computeModalOpen({ ...CLOSED, overdriveSource: "2026-08-13" })).toBe(true);
   });
 });
 
