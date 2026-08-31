@@ -52,3 +52,6 @@ next-env.d.ts
 
 # claude code worktrees (local scratch checkouts, never committed)
 /.claude/worktrees/
+
+# desktop hot-asset bundles (built artifacts, published to R2)
+/.desktop-assets/

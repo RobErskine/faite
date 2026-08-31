@@ -35,7 +35,8 @@
     "icons": "node scripts/icons/generate.mjs",
     "desktop:dev": "tauri dev",
     "desktop:build": "tauri build",
-    "desktop:install": "node scripts/desktop-install.mjs"
+    "desktop:install": "node scripts/desktop-install.mjs",
+    "desktop:bundle": "node scripts/desktop/bundle-assets.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
