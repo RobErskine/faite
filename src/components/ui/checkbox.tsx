@@ -11,9 +11,11 @@ function Checkbox({ className, ...props }: CheckboxPrimitive.Root.Props) {
       data-slot="checkbox"
       className={cn(
         /*
-          Two deviations from the shadcn base, both for the same reason — this
-          checkbox's only home is a to-do row (components/board/todo-card.tsx),
-          where it sits on a coloured group wash rather than on `background`:
+          Two deviations from the shadcn base, both tuned for this
+          checkbox's original home, a to-do row (components/board/todo-card.tsx),
+          where it sits on a coloured group wash rather than on `background`
+          (also used plainly in settings/api-keys-section.tsx, where both
+          deviations are harmless on a flat surface):
 
           `rounded-none`, because a 4px radius on a 16px box is mostly lost at
           this size and squares off against the card's own geometry.

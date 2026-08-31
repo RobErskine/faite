@@ -9198,12 +9198,12 @@
           },
           "rateLimitTimeWindow": {
             "type": "number",
-            "default": 60000,
+            "default": 86400000,
             "readOnly": true
           },
           "rateLimitMax": {
             "type": "number",
-            "default": 120,
+            "default": 10,
             "readOnly": true
           },
           "requestCount": {
