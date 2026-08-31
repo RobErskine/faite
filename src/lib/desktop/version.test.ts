@@ -95,3 +95,55 @@ describe("parseVersionPolicy", () => {
     expect(parseVersionPolicy({ ...POLICY, downloadUrl: "https://myfaite.app.evil.test/x" })).toBeNull();
   });
 });
+
+describe("parseVersionPolicy — the EI-255 assets block", () => {
+  const ASSETS = {
+    version: "fa1daf8e6f9c",
+    minShellVersion: "0.1.0",
+    manifestUrl: "https://myfaite.app/api/desktop/assets/manifest.json",
+    archiveUrl: "https://myfaite.app/api/desktop/assets/faite-assets-fa1daf8e6f9c.tar.gz",
+  };
+
+  it("reads a well-formed block", () => {
+    expect(parseVersionPolicy({ ...POLICY, assets: ASSETS })).toEqual({ ...POLICY, assets: ASSETS });
+  });
+
+  it("accepts a policy with no assets block at all", () => {
+    expect(parseVersionPolicy({ ...POLICY })).toEqual(POLICY);
+  });
+
+  // The point of the whole block being optional: a client that knows about
+  // bundles must still work against a server that has published none.
+  it("leaves `assets` undefined rather than inventing one", () => {
+    expect(parseVersionPolicy({ ...POLICY })?.assets).toBeUndefined();
+  });
+
+  /**
+   * The load-bearing test. `/api/desktop/version` does two jobs, and telling a
+   * genuinely obsolete client to stop syncing is the more important one. A typo
+   * in the asset fields must cost the bundle, never the version check.
+   */
+  it.each([
+    ["a missing version", { ...ASSETS, version: "" }],
+    ["a non-string version", { ...ASSETS, version: 7 }],
+    ["an unparseable minShellVersion", { ...ASSETS, minShellVersion: "latest" }],
+    ["an off-origin manifest", { ...ASSETS, manifestUrl: "https://evil.example/manifest.json" }],
+    ["an off-origin archive", { ...ASSETS, archiveUrl: "https://evil.example/bundle.tar.gz" }],
+    ["a non-object block", "nope"],
+    ["a null block", null],
+  ])("drops the bundle but keeps the policy given %s", (_label, assets) => {
+    const parsed = parseVersionPolicy({ ...POLICY, assets });
+    expect(parsed).toEqual(POLICY);
+    expect(parsed?.assets).toBeUndefined();
+  });
+
+  // Same reasoning as `downloadUrl`, only sharper: these bytes are fetched and
+  // then executed as the app's own frontend.
+  it("refuses a host that merely starts with the site origin", () => {
+    const parsed = parseVersionPolicy({
+      ...POLICY,
+      assets: { ...ASSETS, archiveUrl: "https://myfaite.app.evil.example/bundle.tar.gz" },
+    });
+    expect(parsed?.assets).toBeUndefined();
+  });
+});
