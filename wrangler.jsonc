@@ -165,6 +165,16 @@
     {
       "binding": "ATTACHMENTS",
       "bucket_name": "faite-attachments"
+    },
+    // Desktop hot-asset bundles (EI-255). A SEPARATE bucket from attachments
+    // on purpose: attachment bytes are per-user, private, and isolated on
+    // their own origin (EI-244/EI-245), while these are one public artifact
+    // served from SITE_ORIGIN to every desktop client. Mixing them would put
+    // world-readable objects in the bucket whose entire access story is
+    // "nothing here is readable without an ownership check".
+    {
+      "binding": "DESKTOP_ASSETS",
+      "bucket_name": "faite-desktop-assets"
     }
   ],
 

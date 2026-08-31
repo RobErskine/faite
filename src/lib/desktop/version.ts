@@ -27,6 +27,31 @@ import { SITE_ORIGIN } from "@/lib/site";
  * `fetch` lives with its one caller in `use-desktop-update.ts`.
  */
 
+/**
+ * The hot-asset bundle currently published (EI-255), if there is one.
+ *
+ * This is the half of updating that does NOT need a new build: the frontend
+ * ships as data, so a web deploy reaches an installed app. The shell around it
+ * still only changes on a real release, which is what `minShellVersion`
+ * guards — a bundle may call a Tauri command an older shell does not have, and
+ * that shell has to refuse the bundle rather than boot into a broken board.
+ *
+ * `version` is a content hash from `scripts/desktop/bundle-assets.mjs`, not a
+ * semver. It is compared for equality only, never ordered: "different from
+ * what I am running" is the entire question. Shell versions remain semver and
+ * remain ordered, which is why the two live in separate fields.
+ */
+export interface DesktopAssetBundle {
+  /** Content hash identifying the published bundle. Equality, never order. */
+  version: string;
+  /** Lowest shell version that may activate this bundle. Semver, ordered. */
+  minShellVersion: string;
+  /** The per-file hash manifest. Always on `SITE_ORIGIN`. */
+  manifestUrl: string;
+  /** The `.tar.gz` itself. Always on `SITE_ORIGIN`. */
+  archiveUrl: string;
+}
+
 export interface DesktopVersionPolicy {
   /** Newest published build. Below it → "an update is available". */
   latest: string;
@@ -34,6 +59,13 @@ export interface DesktopVersionPolicy {
   minimum: string;
   /** Where a human goes to get `latest`. Always on `SITE_ORIGIN` — see below. */
   downloadUrl: string;
+  /**
+   * Absent whenever there is no bundle, or the server could not read the one
+   * there is. Optional on purpose and in both directions: clients built before
+   * EI-255 ignore it, and a client built after it must treat its absence as
+   * "nothing to do" rather than an error.
+   */
+  assets?: DesktopAssetBundle;
 }
 
 export type DesktopUpdateState =
@@ -120,8 +152,34 @@ export function evaluateUpdate(
  */
 export function parseVersionPolicy(body: unknown): DesktopVersionPolicy | null {
   if (!body || typeof body !== "object") return null;
-  const { latest, minimum, downloadUrl } = body as Record<string, unknown>;
+  const { latest, minimum, downloadUrl, assets } = body as Record<string, unknown>;
   if (typeof latest !== "string" || typeof minimum !== "string") return null;
   if (typeof downloadUrl !== "string" || !downloadUrl.startsWith(`${SITE_ORIGIN}/`)) return null;
-  return { latest, minimum, downloadUrl };
+
+  const bundle = parseAssetBundle(assets);
+  return bundle ? { latest, minimum, downloadUrl, assets: bundle } : { latest, minimum, downloadUrl };
+}
+
+/**
+ * Reads the optional `assets` block, or `null` for anything malformed.
+ *
+ * **A bad block is dropped, not fatal.** The version check is the older and
+ * more important of the two jobs this response does: it is what tells a
+ * genuinely obsolete client to stop syncing. Letting a typo in the asset
+ * fields take that down would trade a working safety mechanism for a broken
+ * convenience, so the caller keeps the policy and simply sees no bundle.
+ *
+ * Both URLs are pinned to `SITE_ORIGIN` for the same reason `downloadUrl` is,
+ * only more so: these are fetched and then *executed* as the app's own
+ * frontend. An off-origin bundle URL is not a bundle from somewhere else, it
+ * is someone else's application wearing this one's name.
+ */
+function parseAssetBundle(value: unknown): DesktopAssetBundle | null {
+  if (!value || typeof value !== "object") return null;
+  const { version, minShellVersion, manifestUrl, archiveUrl } = value as Record<string, unknown>;
+  if (typeof version !== "string" || version.length === 0) return null;
+  if (typeof minShellVersion !== "string" || parseVersion(minShellVersion) === null) return null;
+  if (typeof manifestUrl !== "string" || !manifestUrl.startsWith(`${SITE_ORIGIN}/`)) return null;
+  if (typeof archiveUrl !== "string" || !archiveUrl.startsWith(`${SITE_ORIGIN}/`)) return null;
+  return { version, minShellVersion, manifestUrl, archiveUrl };
 }

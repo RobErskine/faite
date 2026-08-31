@@ -1,6 +1,7 @@
 import { createAuth, getSessionSafe } from "../auth";
 import { DESKTOP_KEY_NAME, DESKTOP_KEY_PERMISSIONS } from "../auth-scopes";
 import { corsHeaders, handleOptions } from "../cors";
+import { handleAssetRequest, publishedBundle } from "./assets";
 import { decodeHandoffCode, encodeHandoffCode } from "./handoff-code";
 import { DESKTOP_VERSION_POLICY } from "./version";
 
@@ -53,10 +54,21 @@ export async function handleDesktopRequest(request: Request, env: CloudflareEnv)
   // emergency block reaches the field: five minutes of edge cache is worth
   // having, an hour of it is not.
   if (url.pathname === "/api/desktop/version" && request.method === "GET") {
-    const response = json(DESKTOP_VERSION_POLICY, 200, headers);
+    // EI-255: the hot-asset block is read from R2 per request rather than
+    // baked in, so publishing a new frontend is an upload and not a deploy.
+    // `publishedBundle` resolves to `undefined` for every failure it can have,
+    // which leaves the response exactly as it was before EI-255 — the
+    // obsolete-client check keeps working even when the asset pipeline does
+    // not.
+    const assets = await publishedBundle(env);
+    const response = json(assets ? { ...DESKTOP_VERSION_POLICY, assets } : DESKTOP_VERSION_POLICY, 200, headers);
     response.headers.set("Cache-Control", "public, max-age=300");
     return response;
   }
+
+  // The bundle itself. Unauthenticated for the same reason `/version` is.
+  const assetResponse = await handleAssetRequest(request, env, headers);
+  if (assetResponse) return assetResponse;
 
   const auth = createAuth(env, request);
 
