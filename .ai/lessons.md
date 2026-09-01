@@ -1150,3 +1150,24 @@ renders on the board" is a UI fact; "it runs on every boot" is a system
 requirement, and the two only coincide by accident. Shell-wide jobs belong in
 the root layout (`DesktopShellTasks`), which renders on every route the shell
 can open — including the signed-out screen and the hidden background window.
+
+## A 5-minute edge cache looks exactly like a broken feature
+
+`/api/desktop/version` is served `Cache-Control: public, max-age=300`. Publish a
+new hot-asset bundle and check the desktop app immediately, and it does nothing
+— because it is being handed the previous policy from cache. That was mistaken
+three separate times for "the update check does not run", and once led to a
+code change (moving the check to the root layout) being credited with a fix it
+did not cause.
+
+The tell was available the whole time: `hot_assets_ready` fired normally on
+every one of those launches, which proves the frontend effect ran. A feature
+that is running and getting a stale answer looks identical, from the outside, to
+one that never ran.
+
+**Rule:** before concluding a polled feature is broken, check the cache headers
+on what it polls and wait out the TTL. And when a change "fixes" something,
+confirm the mechanism — a fix you cannot explain is usually a coincidence you
+have not measured. Isolate with an observable that distinguishes "did not run"
+from "ran and got nothing": here, a probation marker that only the frontend can
+delete.
