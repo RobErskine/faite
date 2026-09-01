@@ -51,7 +51,7 @@ reasoning — two copies drift, and the stale one always wins the argument.
 | [MOBILE.md](MOBILE.md) | Mobile responsiveness, phases M-1…M6. A separate axis from P0–P7. |
 | [GESTURES.md](GESTURES.md) | PhoneBoard's touch model, and why it is CSS scroll-snap rather than a JS carousel. |
 | [RESIZE-UI.md](RESIZE-UI.md) | The draggable seam between the calendar and planning halves. |
-| [DESKTOP.md](DESKTOP.md) | The Tauri v2 desktop shell, milestones D0–D6. |
+| [DESKTOP.md](DESKTOP.md) | The Tauri v2 desktop shell, milestones D0–D6 — including hot asset bundles (§14), which is how a web deploy reaches an installed `.app`. |
 | [DESKTOP-SYNC-TIMER-SPIKE.md](DESKTOP-SYNC-TIMER-SPIKE.md) | The D2 spike: hidden-webview `setInterval` death and three measured mitigations. |
 | [SITE.md](SITE.md) | Marketing, legal and support pages: the `SITE_PAGES` table, the metadata contract, static-export constraints. |
 
