@@ -59,10 +59,28 @@ jobs:
 
       - run: npm ci
 
+      # Prints the token's permission list before anything depends on it.
+      # Without this, an under-scoped token surfaces as a bare
+      # "403: Forbidden / Authentication error [code: 10000]" from the object
+      # PUT, which reads like a broken secret rather than a missing grant.
+      # `continue-on-error` because this is a diagnostic, not a gate.
+      - name: Show which permissions this token actually has
+        continue-on-error: true
+        run: npx wrangler whoami
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
       # Builds the export with NEXT_PUBLIC_AUTH_URL and refuses to package one
       # without an absolute API base (EI-262), then uploads archive-then-
       # manifest so a client never reads a pointer to a bundle that is not
       # there yet.
+      #
+      # If this fails with 403 / code 10000 on the object PUT, the token is
+      # under-scoped rather than wrong. `wrangler r2 object put` needs the
+      # ACCOUNT permission "Workers R2 Storage · Edit". An R2-page token with
+      # "Object Read & Write" is NOT enough — that is a known wrangler bug,
+      # cloudflare/workers-sdk#9235, where only "Admin Read & Write" works.
       - run: npm run desktop:ship
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
