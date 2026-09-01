@@ -72,6 +72,7 @@ pub fn run() {
       hot_assets::hot_assets_prepare,
       hot_assets::hot_assets_stage,
       hot_assets::hot_assets_ready,
+      hot_assets::hot_assets_restart,
     ])
     .manage(background_sync::BackgroundSyncState::default())
     .manage(hot_assets::PendingBundle::default())
@@ -138,8 +139,16 @@ pub fn run() {
       // destroyed, by the `CloseRequested` handler above) — this is the
       // documented mechanism Tauri provides for "stay running with no
       // visible windows".
-      RunEvent::ExitRequested { api, .. } => {
-        api.prevent_exit();
+      // `code` is `None` only when the user asked to quit, which for a
+      // dock-resident app means "the last window closed" — that is the case
+      // this prevents. A programmatic exit or restart carries a code, and
+      // EI-258's "restart to update" arrives here as exactly that: blocking
+      // it would leave the app running the old bundle forever, with a button
+      // that silently does nothing.
+      RunEvent::ExitRequested { api, code, .. } => {
+        if code.is_none() {
+          api.prevent_exit();
+        }
       }
       // Dock icon clicked while the app has no visible window. The
       // documented v2 hook for macOS's "reopen" AppKit event

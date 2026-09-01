@@ -252,3 +252,20 @@ export async function reportFrontendReady(): Promise<void> {
     // See above: silence is the correct behaviour, not an oversight.
   }
 }
+
+/**
+ * Relaunches the app so a staged bundle becomes the running one (EI-258).
+ *
+ * **The restart is the install.** A bundle is activated during startup, before
+ * any webview exists (`docs/DESKTOP.md` §14.3), so going through startup again
+ * is the only way to apply one — there is no in-place swap to offer instead.
+ *
+ * Nothing is lost: window geometry is restored by the window-state plugin, and
+ * the board lives in Dexie. It is closer to a page reload than to quitting.
+ *
+ * Does not resolve on success — the process is replaced.
+ */
+export async function restartForUpdate(): Promise<void> {
+  if (!isDesktopShell()) return;
+  await invoke("hot_assets_restart");
+}
