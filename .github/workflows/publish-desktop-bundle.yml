@@ -63,10 +63,19 @@ jobs:
       # without an absolute API base (EI-262), then uploads archive-then-
       # manifest so a client never reads a pointer to a bundle that is not
       # there yet.
+      #
+      # Uploads over R2's S3 API, NOT `wrangler r2 object put`. That is what
+      # lets this credential stay scoped to a single bucket: wrangler's REST
+      # path rejects a bucket-scoped token with 403 / code 10000
+      # (cloudflare/workers-sdk#9235), and the account-wide token that would
+      # satisfy it can also read and delete `faite-attachments` — users'
+      # uploaded files. Forty lines of signing is the cheaper side of that
+      # trade. See scripts/desktop/publish-assets.mjs.
       - run: npm run desktop:ship
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
 
       - name: Confirm the published bundle is actually reachable
         # The same rule EI-147 set for shell builds: never announce something
