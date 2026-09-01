@@ -1653,3 +1653,44 @@ path guard.
 
 `minShellVersion` is the join between them, and the reason a frontend cannot
 demand a Tauri command the installed shell does not have.
+
+### 14.7 Boot verification and rollback (EI-257)
+
+§14.2 proves a bundle is **intact**. It cannot prove the bundle **works** — a
+byte-perfect bundle can still white-screen on a bug that only appears in the
+desktop shell. Without a rollback, one bad deploy bricks the app on every
+machine that took it, and the only recovery is the manual rebuild this work
+exists to remove.
+
+So a newly activated bundle boots **on probation**. `DesktopFrontendReady`
+(root layout) calls `hot_assets_ready` once React has committed; a bundle that
+stays silent for `PROBATION_ATTEMPTS` launches is rolled back to `previous`
+and added to a refuse list it can never leave.
+
+Three decisions worth not re-litigating:
+
+- **The judgement happens at the next launch, in the shell.** It cannot be a
+  timer. The failure is "the frontend never came up", and asking that frontend
+  to notice its own absence — on a timer it also failed to start — is circular.
+  A file on disk is the one vantage point that survives whatever went wrong.
+- **Two launches of grace, not one.** The signal fires on hydration, but a user
+  who quits inside that second would otherwise condemn a good bundle. A version
+  is a content hash, so *condemned* means that exact frontend can never be
+  retried. The second chance removes the false positive and costs one bad
+  launch in the real-failure case.
+- **The signal lives in the root layout, not the board.** The desktop app can
+  legitimately boot to a signed-out screen, and a user who stayed signed out
+  across two launches would otherwise lose a working bundle. It is a
+  `useEffect`, so it fires after React commits — reporting at parse time would
+  confirm success for precisely the case that must fail.
+
+Verified in the real app, both directions. A deliberately dead bundle — intact
+and verifiable, no React, no signal — was activated, survived two silent
+launches, and then:
+
+```
+[hot-assets] bundle broken-test never signalled ready in 2 launches — rolling back
+[hot-assets] rolled back to bundle a93a9f56df7e
+```
+
+A good bundle activated and cleared its own probation on the first launch.

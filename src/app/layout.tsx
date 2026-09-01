@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Agentation } from "agentation";
+import { DesktopFrontendReady } from "@/components/desktop/frontend-ready";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
 import {
@@ -188,6 +189,10 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: applyTheme }} />
         <TooltipProvider>{children}</TooltipProvider>
         <Toaster />
+        {/* EI-257: clears a new bundle's probation once React has rendered.
+            Here rather than on the board because the desktop app can boot to
+            a signed-out screen, and that is still a frontend that came up. */}
+        <DesktopFrontendReady />
         {/*
           Gated on an explicit flag rather than `NODE_ENV === "development"`.
           Better Auth only works locally under `npm run preview`, and that

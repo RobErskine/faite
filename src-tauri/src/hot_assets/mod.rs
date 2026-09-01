@@ -55,6 +55,20 @@ const PREVIOUS: &str = "previous";
 /// from a crash is deleted on the next staging attempt.
 const INCOMING: &str = "incoming";
 
+/// Records that the active bundle has not yet proved it can boot (EI-257).
+const PROBATION: &str = "probation.json";
+/// Versions that failed probation. Never activated again.
+const REFUSED: &str = "refused.json";
+
+/// How many launches a new bundle gets to signal that it came up.
+///
+/// Two, not one. The frontend signals as soon as it hydrates, but a user who
+/// quits within that second would otherwise condemn a perfectly good bundle —
+/// and because a version is a content hash, "condemned" means that exact
+/// frontend can never be tried again. A second chance costs one bad launch in
+/// the genuine-failure case and removes the false positive entirely.
+const PROBATION_ATTEMPTS: u32 = 2;
+
 /// Holds the manifest between `hot_assets_prepare` and `hot_assets_stage`.
 ///
 /// Two calls rather than one because the manifest is ~40 KB of JSON and the
@@ -121,6 +135,50 @@ impl Layout {
     let entry = self.dir(name).join(manifest.entry.trim_start_matches('/'));
     entry.is_file().then_some(manifest)
   }
+
+  fn probation(&self) -> Option<Probation> {
+    let json = std::fs::read_to_string(self.root.join(PROBATION)).ok()?;
+    serde_json::from_str(&json).ok()
+  }
+
+  fn set_probation(&self, probation: &Probation) {
+    if let Ok(json) = serde_json::to_string(probation) {
+      let _ = std::fs::write(self.root.join(PROBATION), json);
+    }
+  }
+
+  fn clear_probation(&self) {
+    let _ = std::fs::remove_file(self.root.join(PROBATION));
+  }
+
+  fn refused(&self) -> Vec<String> {
+    std::fs::read_to_string(self.root.join(REFUSED))
+      .ok()
+      .and_then(|json| serde_json::from_str(&json).ok())
+      .unwrap_or_default()
+  }
+
+  fn refuse(&self, version: &str) {
+    let mut refused = self.refused();
+    if refused.iter().any(|known| known == version) {
+      return;
+    }
+    refused.push(version.to_string());
+    if let Ok(json) = serde_json::to_string(&refused) {
+      let _ = std::fs::write(self.root.join(REFUSED), json);
+    }
+  }
+
+  fn is_refused(&self, version: &str) -> bool {
+    self.refused().iter().any(|known| known == version)
+  }
+}
+
+/// A bundle that has been activated but has not yet reported that it booted.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Probation {
+  version: String,
+  attempts: u32,
 }
 
 /// Promotes a staged bundle, then points the context at whichever bundle is
@@ -131,6 +189,9 @@ pub fn apply<R: Runtime>(mut context: tauri::Context<R>) -> tauri::Context<R> {
     return context;
   };
 
+  // Order matters: judge the bundle that just ran BEFORE promoting a new
+  // one, or a rollback would discard the wrong thing.
+  enforce_probation(&layout);
   activate_staged(&layout);
 
   let Some(manifest) = layout.usable(CURRENT) else {
@@ -167,6 +228,14 @@ fn activate_staged(layout: &Layout) {
     return;
   };
 
+  // A bundle that already failed probation is never tried again, however it
+  // got back onto disk.
+  if layout.is_refused(&staged.version) {
+    eprintln!("[hot-assets] refusing previously-failed bundle {}", staged.version);
+    layout.remove(STAGING);
+    return;
+  }
+
   layout.remove(PREVIOUS);
   if layout.dir(CURRENT).exists() {
     let _ = layout.rename(CURRENT, PREVIOUS);
@@ -175,7 +244,69 @@ fn activate_staged(layout: &Layout) {
     eprintln!("[hot-assets] could not activate {}: {error}", staged.version);
     return;
   }
-  eprintln!("[hot-assets] activated bundle {}", staged.version);
+
+  // On probation until the frontend says it came up. See `enforce_probation`.
+  layout.set_probation(&Probation { version: staged.version.clone(), attempts: 1 });
+  eprintln!("[hot-assets] activated bundle {} (on probation)", staged.version);
+}
+
+/// Rolls back a bundle that was activated but never reported booting (EI-257).
+///
+/// ## Why this cannot be a timer
+///
+/// The failure being caught is "the frontend never came up". Asking that same
+/// frontend to notice its own absence, on a timer it would also have failed to
+/// start, is circular. So the judgement happens at the *next* launch, by the
+/// shell, from a file on disk — the one vantage point that survives whatever
+/// went wrong.
+///
+/// ## Why verification is not enough on its own
+///
+/// EI-256 proves a bundle is *intact*: hashes match, nothing missing, nothing
+/// extra. A bundle can be perfectly intact and still white-screen on a bug
+/// that only shows in the desktop shell. Without this, one bad deploy would
+/// brick the app on the user's machine, and the only recovery would be the
+/// manual rebuild this whole line of work exists to remove.
+fn enforce_probation(layout: &Layout) {
+  let Some(probation) = layout.probation() else {
+    return;
+  };
+
+  // Stale marker from a bundle that is no longer current — nothing to judge.
+  let Some(current) = layout.usable(CURRENT) else {
+    layout.clear_probation();
+    return;
+  };
+  if current.version != probation.version {
+    layout.clear_probation();
+    return;
+  }
+
+  if probation.attempts < PROBATION_ATTEMPTS {
+    layout.set_probation(&Probation {
+      version: probation.version,
+      attempts: probation.attempts + 1,
+    });
+    return;
+  }
+
+  eprintln!(
+    "[hot-assets] bundle {} never signalled ready in {PROBATION_ATTEMPTS} launches — rolling back",
+    probation.version
+  );
+  layout.refuse(&probation.version);
+  layout.clear_probation();
+  layout.remove(CURRENT);
+
+  // Back to the bundle that was working before, or — if there isn't one — to
+  // the copy inside the binary, which cannot be damaged by any of this.
+  if layout.dir(PREVIOUS).exists() {
+    let _ = layout.rename(PREVIOUS, CURRENT);
+  }
+  match layout.usable(CURRENT) {
+    Some(restored) => eprintln!("[hot-assets] rolled back to bundle {}", restored.version),
+    None => eprintln!("[hot-assets] rolled back to the built-in frontend"),
+  }
 }
 
 /// What the frontend needs to decide whether to download anything.
@@ -201,6 +332,27 @@ pub fn hot_assets_status<R: Runtime>(app: tauri::AppHandle<R>) -> HotAssetStatus
   }
 }
 
+/// Called by the frontend once it has actually rendered, which clears the
+/// active bundle's probation (EI-257).
+///
+/// **Must be called after hydration, not after parsing.** The failure this
+/// guards against is "the HTML arrived and the app never came up" — signalling
+/// on `DOMContentLoaded` would report success for exactly the case that needs
+/// to fail.
+///
+/// Harmless to call when no bundle is on probation, and when the app is
+/// running the built-in frontend: it deletes a file that is not there.
+#[tauri::command]
+pub fn hot_assets_ready<R: Runtime>(app: tauri::AppHandle<R>) {
+  let Some(layout) = Layout::new(&app.config().identifier) else {
+    return;
+  };
+  if layout.probation().is_some() {
+    eprintln!("[hot-assets] frontend reported ready; probation cleared");
+  }
+  layout.clear_probation();
+}
+
 /// Accepts a manifest and answers whether the archive is worth downloading.
 ///
 /// The decision lives here rather than in the webview because this is where
@@ -224,6 +376,9 @@ pub fn hot_assets_prepare<R: Runtime>(
   }
 
   let layout = Layout::new(&app.config().identifier).ok_or("no home directory")?;
+  if layout.is_refused(&manifest.version) {
+    return Ok(false);
+  }
   let already_here = |name: &str| {
     layout.usable(name).map(|other| other.version == manifest.version).unwrap_or(false)
   };
@@ -433,6 +588,110 @@ mod tests {
 
   /// The path guard, exercised directly. `..` is the oldest archive trick
   /// there is, and this bundle root sits next to the user's `current` bundle.
+  // ---- EI-257: boot verification and rollback ----
+
+  #[test]
+  fn activation_puts_the_new_bundle_on_probation() {
+    let layout = layout_for("probation-opens");
+    write_bundle(&layout, STAGING, "new", "NEW");
+
+    activate_staged(&layout);
+
+    let probation = layout.probation().expect("expected probation");
+    assert_eq!(probation.version, "new");
+    assert_eq!(probation.attempts, 1);
+  }
+
+  #[test]
+  fn reporting_ready_clears_probation() {
+    let layout = layout_for("probation-cleared");
+    write_bundle(&layout, STAGING, "new", "NEW");
+    activate_staged(&layout);
+
+    layout.clear_probation();
+    enforce_probation(&layout);
+
+    assert_eq!(layout.usable(CURRENT).unwrap().version, "new");
+    assert!(layout.refused().is_empty());
+  }
+
+  /// A user who quits within a second of launch must not condemn a good
+  /// bundle — the first silent launch only costs it a second chance.
+  #[test]
+  fn one_silent_launch_is_forgiven() {
+    let layout = layout_for("second-chance");
+    write_bundle(&layout, STAGING, "new", "NEW");
+    activate_staged(&layout);
+
+    enforce_probation(&layout);
+
+    assert_eq!(layout.usable(CURRENT).unwrap().version, "new");
+    assert_eq!(layout.probation().unwrap().attempts, 2);
+    assert!(layout.refused().is_empty());
+  }
+
+  /// The whole point of EI-257: a bundle that is intact but never comes up
+  /// gets replaced by the one that was working, without anybody intervening.
+  #[test]
+  fn a_bundle_that_never_reports_ready_is_rolled_back() {
+    let layout = layout_for("rollback");
+    write_bundle(&layout, CURRENT, "good", "GOOD");
+    write_bundle(&layout, STAGING, "broken", "BROKEN");
+    activate_staged(&layout);
+    assert_eq!(layout.usable(CURRENT).unwrap().version, "broken");
+
+    enforce_probation(&layout); // launch 2, still silent
+    enforce_probation(&layout); // launch 3 — out of chances
+
+    assert_eq!(layout.usable(CURRENT).unwrap().version, "good");
+    assert!(layout.refused().contains(&"broken".to_string()));
+    assert!(layout.probation().is_none());
+  }
+
+  /// With nothing to roll back TO, the binary's own copy is the floor.
+  #[test]
+  fn rollback_falls_through_to_the_embedded_copy() {
+    let layout = layout_for("rollback-floor");
+    write_bundle(&layout, STAGING, "broken", "BROKEN");
+    activate_staged(&layout);
+
+    enforce_probation(&layout);
+    enforce_probation(&layout);
+
+    assert!(layout.usable(CURRENT).is_none());
+    assert!(layout.refused().contains(&"broken".to_string()));
+  }
+
+  /// Because a version is a content hash, a condemned bundle is condemned for
+  /// good — re-offering it must not resurrect it.
+  #[test]
+  fn a_refused_bundle_is_never_activated_again() {
+    let layout = layout_for("refused-forever");
+    write_bundle(&layout, CURRENT, "good", "GOOD");
+    layout.refuse("broken");
+    write_bundle(&layout, STAGING, "broken", "BROKEN");
+
+    activate_staged(&layout);
+
+    assert_eq!(layout.usable(CURRENT).unwrap().version, "good");
+    assert!(!layout.dir(STAGING).exists());
+  }
+
+  /// A marker left over from a bundle that is no longer current describes
+  /// nothing, and must not roll back whatever happens to be there now.
+  #[test]
+  fn a_stale_probation_marker_is_discarded() {
+    let layout = layout_for("stale-marker");
+    write_bundle(&layout, CURRENT, "current", "CURRENT");
+    layout.set_probation(&Probation { version: "ancient".into(), attempts: 9 });
+
+    enforce_probation(&layout);
+
+    assert_eq!(layout.usable(CURRENT).unwrap().version, "current");
+    assert!(layout.probation().is_none());
+    assert!(layout.refused().is_empty());
+  }
+
   #[test]
   fn archive_paths_that_escape_the_bundle_are_refused() {
     for hostile in ["../escaped.txt", "a/../../escaped.txt", "/etc/passwd"] {

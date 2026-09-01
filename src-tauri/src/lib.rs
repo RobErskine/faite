@@ -71,6 +71,7 @@ pub fn run() {
       hot_assets::hot_assets_status,
       hot_assets::hot_assets_prepare,
       hot_assets::hot_assets_stage,
+      hot_assets::hot_assets_ready,
     ])
     .manage(background_sync::BackgroundSyncState::default())
     .manage(hot_assets::PendingBundle::default())
