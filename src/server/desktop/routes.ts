@@ -15,9 +15,12 @@ import { DESKTOP_VERSION_POLICY } from "./version";
  *
  * - `/handoff` is called from the SYSTEM BROWSER (real `https://myfaite.app`
  *   origin, same-origin, cookie session already present) right after a
- *   normal sign-in. It mints a real API key and hands back an encrypted,
+ *   normal sign-in. It mints a real API key — named per-device (EI-261) from
+ *   an optional `deviceName` in the body — and hands back an encrypted,
  *   short-lived code — never the key itself — for the browser to put in the
- *   `faite://auth-callback` redirect.
+ *   `faite://auth-callback` redirect. Every sign-in mints a NEW key; nothing
+ *   here revokes a previous one, so the same account can hold one live key
+ *   per device at once (a deliberate choice — see EI-261's ticket).
  * - `/exchange` is called from the DESKTOP APP (`tauri://localhost`,
  *   genuinely cross-origin, no cookie) once it receives that deep link. It
  *   trades the code for the real key. This is the only place the plaintext
@@ -41,6 +44,32 @@ async function readCode(request: Request): Promise<string | null> {
   if (!body || typeof body !== "object" || !("code" in body)) return null;
   const code = (body as { code: unknown }).code;
   return typeof code === "string" && code.length > 0 ? code : null;
+}
+
+// Capped well under `auth-tokens.ts`'s `maximumNameLength` (96), which also
+// has to fit the `"Faite desktop — "` prefix (16 chars) — leaves headroom
+// even for an unusually long hostname, and `createApiKey` would otherwise
+// reject the whole handoff with `INVALID_NAME_LENGTH` over one bad name.
+const MAX_DEVICE_NAME_LENGTH = 64;
+
+/** `deviceName` is optional and best-effort (EI-261): an old desktop build
+ * that predates this field, or a caller that doesn't send one, still gets a
+ * working — just unlabeled — key. Never throws on a malformed body; a
+ * device name is a display nicety, not something worth failing sign-in
+ * over. */
+export async function readDeviceName(request: Request): Promise<string | null> {
+  const body: unknown = await request.json().catch(() => null);
+  if (!body || typeof body !== "object" || !("deviceName" in body)) return null;
+  const deviceName = (body as { deviceName: unknown }).deviceName;
+  if (typeof deviceName !== "string") return null;
+  const trimmed = deviceName.trim().slice(0, MAX_DEVICE_NAME_LENGTH);
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+/** Display only — see the SECURITY note on `scopeGranted` (`auth-scopes.ts`)
+ * for why this name is never treated as anything more than a label. */
+export function desktopKeyName(deviceName: string | null): string {
+  return deviceName ? `${DESKTOP_KEY_NAME} — ${deviceName}` : DESKTOP_KEY_NAME;
 }
 
 export async function handleDesktopRequest(request: Request, env: CloudflareEnv): Promise<Response> {
@@ -95,9 +124,22 @@ export async function handleDesktopRequest(request: Request, env: CloudflareEnv)
     // public client request, and silently threw `SERVER_ONLY_PROPERTY` the
     // moment `permissions` was added. `session` is already resolved above
     // via `getSessionSafe`, so this call supplies its id directly instead
-    // and needs nothing from the request itself.
+    // and needs the request only for the optional device name below.
+    //
+    // `deviceName` (EI-261) rides in the POST body, put there by
+    // `desktop-handoff/page.tsx` from its own `?device=` query param, which
+    // in turn came from `bridge.ts`'s `startDesktopLogin()` reading the
+    // Tauri shell's OS hostname before ever opening the system browser —
+    // this route never talks to Tauri directly. It is a LABEL ONLY: see
+    // `desktopKeyName`'s doc comment and `scopeGranted`'s SECURITY note for
+    // why it plays no part in the actual access grant below.
+    const deviceName = await readDeviceName(request);
     const created = await auth.api.createApiKey({
-      body: { name: DESKTOP_KEY_NAME, permissions: DESKTOP_KEY_PERMISSIONS, userId: session.user.id },
+      body: {
+        name: desktopKeyName(deviceName),
+        permissions: DESKTOP_KEY_PERMISSIONS,
+        userId: session.user.id,
+      },
     });
 
     const code = await encodeHandoffCode(created.key, env.BETTER_AUTH_SECRET);

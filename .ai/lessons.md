@@ -1069,3 +1069,38 @@ adding a field — restructuring one into an array counts), run
 "no migration." If a migration appears, trace whether the changed value is
 actually read at the call site that matters (here: the insert, not the
 column's static DEFAULT) before deciding whether to keep it.
+
+---
+
+## A "server-only" guard has to be checked field-by-field, not assumed by category (EI-261)
+
+`keyGrantsScope` trusted a key's `name` as an unforgeable identity marker,
+reasoning "`permissions` and `name` are both server-only-settable" — stated
+as fact in a comment, never verified against the actual guard. It was wrong:
+`@better-auth/api-key`'s `SERVER_ONLY_PROPERTY` check, on both `create` and
+`update`, blocks `permissions`, `refillAmount`/`refillInterval`, and the
+rate-limit fields — `name` was never in that list. Any signed-in user could
+mint or rename a key to `"Faite desktop"` and the fallback granted it full
+`read`/`write`/`sync`/`places` access, no `permissions` change required.
+
+Found while designing an unrelated feature (per-device key naming) that
+happened to touch the same code path — not by a security review going
+looking for it. `metadata` has the identical hole and was never used as an
+identity marker only because nothing had gotten there yet.
+
+**Rule:** when a comment claims a field is "server-only" or "can't be
+forged by a client," grep the actual guard condition and check that
+specific field name is in it — do not infer it from a sibling field's
+protection ("permissions is server-only, and name is right next to it, so
+probably also"). A library's own server-only list is exactly the kind of
+thing that's both load-bearing and effortless to grep, and a wrong
+assumption here is a privilege-escalation bug, not a cosmetic one. Do this
+for every field a security decision reads, not just the one the current
+change happens to touch.
+
+**Corollary:** a "migration-safety fallback" that special-cases identity by
+name/label is a smell on its own — a label field is displayed to users and
+is exactly the kind of thing a client-facing API lets you set or change.
+Prefer letting the narrow case be temporarily broken (here: 2 real keys
+needing a one-time re-sign-in) over adding a second, less-audited path to
+the same grant.

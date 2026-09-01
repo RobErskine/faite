@@ -53,6 +53,12 @@ pub fn run() {
   // meaningful widening of what this app can already do.
   builder = builder.plugin(tauri_plugin_opener::init());
 
+  // EI-261: `hostname()`, read by `bridge.ts`'s `startDesktopLogin` before
+  // it opens the browser above, so the minted API key can be named per
+  // device. Read-only OS info, nothing this app doesn't already implicitly
+  // reveal by existing on the machine.
+  builder = builder.plugin(tauri_plugin_os::init());
+
   let app = builder
     .invoke_handler(tauri::generate_handler![
       keychain::get_auth_token,

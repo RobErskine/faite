@@ -15,7 +15,7 @@ import {
 import { contextFromSettings, deriveColumn, OVERFLOW } from "@/lib/scheduling";
 import type { ServiceContext } from "@/lib/service/context";
 import { createAuth } from "../auth";
-import { keyGrantsScope, type ApiScope } from "../auth-scopes";
+import { scopeGranted, type ApiScope } from "../auth-scopes";
 import { extractBearerCredential } from "../bearer";
 import { corsHeaders, handleOptions } from "../cors";
 import { durableHlcQueue } from "../service/hlc";
@@ -80,7 +80,7 @@ export { withEventStreamAccept } from "./accept";
  * `authorizeScope()` — on every single one of those requests; a revoked key
  * fails on the very next call. Per-TOOL scope (`read`/`write`) is then
  * checked ENTIRELY LOCALLY inside each tool handler via the pure
- * `keyGrantsScope()`, so a request touching multiple tools never pays for a
+ * `scopeGranted()`, so a request touching multiple tools never pays for a
  * second `verifyApiKey` round trip.
  *
  * MCP has no cookie story — a client here is an agent/script, not a
@@ -112,7 +112,6 @@ export { withEventStreamAccept } from "./accept";
 
 interface McpIdentity {
   userId: string;
-  keyName: string | null;
   permissions: Record<string, string[]> | null;
 }
 
@@ -126,7 +125,6 @@ async function resolveIdentity(request: Request, env: CloudflareEnv): Promise<Mc
 
   return {
     userId: result.key.referenceId,
-    keyName: result.key.name,
     permissions: result.key.permissions ?? null,
   };
 }
@@ -135,7 +133,7 @@ async function resolveIdentity(request: Request, env: CloudflareEnv): Promise<Mc
  * check this should fail loudly (a 500-shaped tool error the client sees),
  * not silently proceed unauthorized. */
 function requireScope(identity: McpIdentity, scope: ApiScope): void {
-  if (!keyGrantsScope({ name: identity.keyName, permissions: identity.permissions }, scope)) {
+  if (!scopeGranted(identity.permissions, scope)) {
     throw new Error(`This API key does not have the "${scope}" scope required for this tool.`);
   }
 }

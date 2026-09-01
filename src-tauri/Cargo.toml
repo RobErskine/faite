@@ -28,6 +28,10 @@ tauri-plugin-log = "2"
 tauri-plugin-deep-link = "2"
 # D2a: opens the system browser for login (`bridge.ts`'s `startDesktopLogin`).
 tauri-plugin-opener = "2"
+# EI-261: `hostname()` for `startDesktopLogin`'s per-device API key naming —
+# nothing else in this app reads OS info, so this plugin exists for exactly
+# one call site.
+tauri-plugin-os = "2"
 # D2b: the background-sync tick timer (`background_sync.rs`). Tauri's own
 # `tauri::async_runtime::spawn` schedules onto this exact runtime already
 # (Tauri depends on tokio internally) — adding it directly only exposes

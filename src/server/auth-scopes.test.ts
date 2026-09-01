@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DESKTOP_KEY_NAME, DESKTOP_KEY_PERMISSIONS, keyGrantsScope, scopeGranted } from "./auth-scopes";
+import { DESKTOP_KEY_NAME, DESKTOP_KEY_PERMISSIONS, scopeGranted } from "./auth-scopes";
 
 /**
  * `scopeGranted` is the one function standing between a narrow,
@@ -53,28 +53,38 @@ describe("scopeGranted", () => {
   });
 });
 
-describe("keyGrantsScope", () => {
-  it("a narrow user key with no desktop name is gated purely by its permissions", () => {
-    const key = { name: "my personal key", permissions: { api: ["read"] } };
-    expect(keyGrantsScope(key, "read")).toBe(true);
-    expect(keyGrantsScope(key, "sync")).toBe(false);
-  });
-
-  it("REGRESSION: a pre-A2 desktop key (name matches, but permissions are still the old narrow default) is granted every scope anyway", () => {
-    // Exactly the shape of a key minted by /api/desktop/handoff BEFORE this
-    // ticket started passing DESKTOP_KEY_PERMISSIONS at creation time — it
-    // only ever got the plugin's global `defaultPermissions`. Without the
-    // name fallback, this key would 403 on /api/sync/* the moment A2
-    // deployed, which is exactly the "desktop shell still signs in and
-    // syncs" regression the ticket names as the primary risk.
-    const preA2DesktopKey = { name: DESKTOP_KEY_NAME, permissions: { api: ["read"] } };
-    for (const scope of ["read", "write", "sync", "places"] as const) {
-      expect(keyGrantsScope(preA2DesktopKey, scope)).toBe(true);
+/**
+ * SECURITY (EI-261): `scopeGranted` used to have a `keyGrantsScope` wrapper
+ * that also granted every scope to any key named exactly `DESKTOP_KEY_NAME`
+ * — removed because `name` turned out to be fully client-settable (see the
+ * SECURITY note on `scopeGranted` in `auth-scopes.ts`). These pin that the
+ * name is now inert: a key named `DESKTOP_KEY_NAME` with narrow permissions
+ * gets exactly what its `permissions` say, nothing more — the two concrete
+ * exploits (`apiKey.create({ name: "Faite desktop" })` and
+ * `apiKey.update({ ..., name: "Faite desktop" })`) both collapse to this
+ * shape, so proving it here proves both are closed.
+ */
+describe("scopeGranted ignores name entirely (EI-261 regression)", () => {
+  it("a key named exactly DESKTOP_KEY_NAME with only read gets only read", () => {
+    // Would have been the direct `apiKey.create({ name: DESKTOP_KEY_NAME })`
+    // exploit: mint a brand-new key with the desktop name and the plugin's
+    // ordinary narrow default permissions.
+    expect(DESKTOP_KEY_NAME).toBe("Faite desktop");
+    expect(scopeGranted({ api: ["read"] }, "read")).toBe(true);
+    for (const scope of ["write", "sync", "places"] as const) {
+      expect(scopeGranted({ api: ["read"] }, scope)).toBe(false);
     }
   });
 
-  it("a desktop-named key with null permissions is still granted every scope", () => {
-    const key = { name: DESKTOP_KEY_NAME, permissions: null };
-    expect(keyGrantsScope(key, "sync")).toBe(true);
+  it("null permissions grant nothing, regardless of what the key is named", () => {
+    // Would have been the fallback's most permissive case — a desktop-named
+    // key with no permissions row at all still got full access before.
+    expect(scopeGranted(null, "sync")).toBe(false);
+  });
+
+  it("DESKTOP_KEY_PERMISSIONS still grants full access on its own merits — not because of the name", () => {
+    for (const scope of ["read", "write", "sync", "places"] as const) {
+      expect(scopeGranted(DESKTOP_KEY_PERMISSIONS, scope)).toBe(true);
+    }
   });
 });

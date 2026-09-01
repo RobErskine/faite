@@ -1,6 +1,7 @@
 import { getVersion } from "@tauri-apps/api/app";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
+import { hostname } from "@tauri-apps/plugin-os";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { apiUrl } from "@/lib/api-origin";
 
@@ -46,9 +47,26 @@ export function isDesktopShell(): boolean {
  * against whatever `NEXT_PUBLIC_AUTH_URL` this build was baked with — the
  * same mechanism `auth-client.ts` already uses, not a second copy of that
  * decision (see the `.env.local` lesson in `.ai/lessons.md`).
+ *
+ * EI-261: reads the OS hostname and folds it into `callbackURL`'s own query
+ * string — `?device=<hostname>` — rather than a second top-level param,
+ * because `callbackURL` is the one value Better Auth's post-sign-in
+ * redirect and `login/page.tsx`'s `router.push(callbackURL)` both carry
+ * through VERBATIM as an opaque string; a sibling param would not survive
+ * that hop. `desktop-handoff/page.tsx` reads it back out and sends it on to
+ * `/api/desktop/handoff`, which uses it only as a display label for the
+ * minted key (`desktopKeyName` in `desktop/routes.ts`) — never anything
+ * more, see that function's doc comment. `hostname()` failing (no
+ * `os:allow-hostname` grant, or the plugin genuinely has nothing to report)
+ * degrades to the unlabeled handoff this flow always used, rather than
+ * blocking sign-in over a display nicety.
  */
 export async function startDesktopLogin(page: "login" | "signup" = "login"): Promise<void> {
-  await openUrl(apiUrl(`/${page}?callbackURL=%2Fdesktop-handoff`));
+  const deviceName = await hostname().catch(() => null);
+  const callbackPath = deviceName
+    ? `/desktop-handoff?device=${encodeURIComponent(deviceName)}`
+    : "/desktop-handoff";
+  await openUrl(apiUrl(`/${page}?callbackURL=${encodeURIComponent(callbackPath)}`));
 }
 
 /** OS-keychain read (`src-tauri/src/keychain.rs`) — never `localStorage`

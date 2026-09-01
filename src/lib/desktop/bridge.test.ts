@@ -6,12 +6,15 @@ vi.mock("@tauri-apps/plugin-deep-link", () => ({
   getCurrent: (...args: unknown[]) => getCurrentMock(...args),
   onOpenUrl: (...args: unknown[]) => onOpenUrlMock(...args),
 }));
-vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: vi.fn() }));
+const openUrlMock = vi.fn();
+vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: (...args: unknown[]) => openUrlMock(...args) }));
+const hostnameMock = vi.fn();
+vi.mock("@tauri-apps/plugin-os", () => ({ hostname: () => hostnameMock() }));
 const getVersionMock = vi.fn();
 vi.mock("@tauri-apps/api/app", () => ({ getVersion: () => getVersionMock() }));
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn(), isTauri: () => Boolean((globalThis as { isTauri?: boolean }).isTauri) }));
 
-const { getShellVersion, isDesktopShell, onDesktopAuthCallback, parseAuthCallbackUrl } =
+const { getShellVersion, isDesktopShell, onDesktopAuthCallback, parseAuthCallbackUrl, startDesktopLogin } =
   await import("./bridge");
 
 afterEach(() => {
@@ -19,6 +22,8 @@ afterEach(() => {
   delete (globalThis as { isTauri?: boolean }).isTauri;
   getCurrentMock.mockReset();
   onOpenUrlMock.mockReset();
+  openUrlMock.mockReset();
+  hostnameMock.mockReset();
   getVersionMock.mockReset();
 });
 
@@ -91,6 +96,34 @@ describe("onDesktopAuthCallback", () => {
     await onDesktopAuthCallback((url) => seen.push(url));
 
     expect(seen).toEqual([]);
+  });
+});
+
+describe("startDesktopLogin", () => {
+  it("folds the OS hostname into callbackURL's own query string (EI-261)", async () => {
+    hostnameMock.mockResolvedValue("Robs-MacBook-Pro.local");
+
+    await startDesktopLogin("login");
+
+    expect(openUrlMock).toHaveBeenCalledWith(
+      "/login?callbackURL=%2Fdesktop-handoff%3Fdevice%3DRobs-MacBook-Pro.local",
+    );
+  });
+
+  it("falls back to the unlabeled handoff when hostname() rejects", async () => {
+    hostnameMock.mockRejectedValue(new Error("no os:allow-hostname grant"));
+
+    await startDesktopLogin("login");
+
+    expect(openUrlMock).toHaveBeenCalledWith("/login?callbackURL=%2Fdesktop-handoff");
+  });
+
+  it("falls back to the unlabeled handoff when hostname() resolves null", async () => {
+    hostnameMock.mockResolvedValue(null);
+
+    await startDesktopLogin("signup");
+
+    expect(openUrlMock).toHaveBeenCalledWith("/signup?callbackURL=%2Fdesktop-handoff");
   });
 });
 
