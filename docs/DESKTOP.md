@@ -1788,9 +1788,20 @@ ready, fetch the newest bundle — live in `DesktopShellTasks`, mounted once in
 the root layout, and the bar reads back what the shell has staged rather than
 staging anything itself.
 
-One honest caveat: during EI-258 development the dev machine repeatedly failed
-to stage a published bundle, and moving the check is what preceded it working.
-That correlation was **not** isolated to a cause — a later run differed only by
-an added `eprintln!`, which changes no behaviour. Something timing- or
-window-state-related is still unexplained; see D0 §3.4 on hidden windows and
-their timers.
+#### The "it did not stage" mystery, resolved
+
+During EI-258 the dev machine repeatedly appeared not to stage a freshly
+published bundle, and moving the check merely *preceded* it working. That was
+never a fix, and it was recorded here as unexplained. It has since been
+isolated, and the answer is dull: **`/api/desktop/version` is served with
+`Cache-Control: public, max-age=300`.**
+
+So for up to five minutes after a publish, a client that had already asked
+keeps being told about the previous bundle. Every "failure" was a check inside
+that window. Given room, the app stages in **about twelve seconds**.
+
+The 300s cache is deliberate and stays (§12.2: an emergency `minimum` should
+reach the field in minutes, not hours). What changes is how to test it: after
+publishing, wait out the cache before concluding anything. The tell that this
+is what you are looking at is that `hot_assets_ready` fires normally — the
+frontend is running fine, it is simply being handed a stale answer.
