@@ -230,3 +230,25 @@ export async function stageHotAssetBundle(archive: ArrayBuffer): Promise<string 
     return null;
   }
 }
+
+/**
+ * Tells the shell this frontend actually came up, clearing a newly activated
+ * bundle's probation (EI-257).
+ *
+ * **Call after the board has rendered, not on load.** The failure being
+ * guarded against is "the HTML arrived and the app never started" — reporting
+ * any earlier would confirm success for precisely the case that must fail, and
+ * a broken bundle would never be rolled back.
+ *
+ * Deliberately swallows everything. A shell that cannot record this will retry
+ * the bundle next launch and, if it keeps hearing nothing, roll it back — the
+ * safe direction. Nothing here is worth surfacing to a user.
+ */
+export async function reportFrontendReady(): Promise<void> {
+  if (!isDesktopShell()) return;
+  try {
+    await invoke("hot_assets_ready");
+  } catch {
+    // See above: silence is the correct behaviour, not an oversight.
+  }
+}
