@@ -1,33 +1,20 @@
-//! EI-254 spike — serve the frontend from a directory on disk instead of the
-//! copy baked into this binary, so a web deploy can reach an installed app.
+//! The `Assets` implementation that serves a bundle from disk (EI-254/EI-256).
 //!
-//! **This is spike code. It is not the feature.** There is no download here,
-//! no signature check, and no server manifest — the directory is assumed to
-//! already exist and to be trustworthy. Its only job is to answer the
-//! questions in `.ai/ei-254-hot-assets-runbook.md` against a real build, and
-//! then be deleted like `d0_probe.rs` was (docs/DESKTOP.md §3).
+//! `Context::set_assets` replaces the provider *behind* `tauri://localhost`,
+//! so swapping the frontend never moves the page's origin — Dexie, auth,
+//! capabilities and CSP all behave exactly as a stock build. The two obvious
+//! alternatives (a remote `frontendDist`, or a custom URI scheme) both change
+//! the origin, and on WKWebView a new origin means a new IndexedDB, which
+//! would orphan the user's entire local board.
 //!
-//! ## Why this mechanism and not the obvious ones
+//! ## Per-file fallback is a last resort, not the design
 //!
-//! `docs/DESKTOP.md` §2 decision #2 bakes the static export into the binary,
-//! and the sync engine moves rows rather than code, so nothing that ships to
-//! the web can reach an installed `.app`. The two obvious fixes both change
-//! the page's **origin** — a remote `frontendDist`, or a custom URI scheme —
-//! and on WKWebView an origin change means a different IndexedDB. That would
-//! orphan the user's entire local board, which is the one thing this app
-//! cannot do. Tauri offers no storage migration for it.
-//!
-//! `Context::set_assets` avoids the problem completely: it replaces the
-//! provider *behind* the existing `tauri://localhost` protocol. The origin,
-//! and therefore Dexie, auth, capabilities and CSP injection, are untouched.
-//!
-//! ## The fallback is the point
-//!
-//! Decision #2's real defence was "the app boots offline, always". This
-//! preserves that literally: anything unexpected — no directory, an empty
-//! one, a file that disappeared mid-session, a traversal attempt — falls
-//! through to the embedded assets this binary already carries. The same
-//! fail-towards-working rule EI-147's `evaluateUpdate` follows.
+//! `get` falls back to the embedded copy for anything it cannot read, so a
+//! damaged bundle still boots. That is a safety net for the unexpected, NOT
+//! the activation policy: serving one file from the binary beside the rest
+//! from disk mixes two builds, which `docs/DESKTOP.md` §13.3 records as a real
+//! hazard. `mod.rs` verifies a bundle whole before it is ever activated, so in
+//! practice this path should never fire.
 
 use std::borrow::Cow;
 use std::path::{Path, PathBuf};
@@ -37,64 +24,6 @@ use std::path::{Path, PathBuf};
 // with the `tauri` this is implementing a trait for.
 use tauri::utils::assets::{AssetKey, AssetsIter, CspHash};
 use tauri::{Assets, Runtime};
-
-/// Marks a directory as a real, fully-extracted bundle. The app's entry
-/// document, so a directory that lacks it is by definition unusable and we
-/// keep the embedded copy instead. A real implementation would check a
-/// manifest and its signature; this is the spike's stand-in for that gate.
-const SENTINEL: &str = "board.html";
-
-/// Where a downloaded bundle would live. macOS-only, and derived by hand
-/// rather than through `app.path()` because `set_assets` has to run *before*
-/// the `App` exists — there is no `AppHandle` to ask yet.
-pub fn bundle_dir(identifier: &str) -> Option<PathBuf> {
-  let home = std::env::var_os("HOME")?;
-  let dir = PathBuf::from(home)
-    .join("Library/Application Support")
-    .join(identifier)
-    .join("hot-assets/current");
-
-  // Sanity gate. A directory that exists but has no entry document is a
-  // half-extracted or hand-broken bundle, and booting from it would show a
-  // blank window with no way back.
-  dir.join(SENTINEL).is_file().then_some(dir)
-}
-
-/// Points the context's asset provider at a downloaded bundle when one is
-/// present, and returns the context unchanged when it is not.
-///
-/// Called with the freshly generated context, immediately before `build`. The
-/// two-step swap is forced by the API: `set_assets` hands back the provider it
-/// replaced, and the replacement needs to *hold* that provider as its
-/// fallback, so the embedded assets are extracted with a throwaway first.
-pub fn apply<R: Runtime>(mut context: tauri::Context<R>) -> tauri::Context<R> {
-  let Some(dir) = bundle_dir(&context.config().identifier) else {
-    return context;
-  };
-
-  let embedded = context.set_assets(Box::new(NoAssets));
-
-  // SPIKE PROBE (S3/Q1) — measured before the swap so the two numbers below
-  // come from different providers. Proving "the swap took" needs evidence
-  // about the bytes the webview will actually receive, not just that a
-  // directory was found: a fallback that silently answers every request would
-  // look identical from the outside.
-  let key = AssetKey::from(SENTINEL);
-  let embedded_len = embedded.get(&key).map(|bytes| bytes.len());
-
-  context.set_assets(Box::new(DirAssets::new(dir.clone(), embedded)));
-  let served_len = context.assets().get(&key).map(|bytes| bytes.len());
-
-  // `eprintln!` rather than the log plugin: this runs before the `App` (and
-  // therefore before any plugin) exists. Which copy of the frontend a build
-  // is serving is the first question any bug report about this will need
-  // answered, so it is not conditional on a debug build.
-  eprintln!("[hot-assets] serving frontend from {}", dir.display());
-  eprintln!(
-    "[hot-assets] /{SENTINEL}: embedded={embedded_len:?} bytes, serving={served_len:?} bytes"
-  );
-  context
-}
 
 /// Reads assets from `root`, falling back to `fallback` (the embedded assets
 /// this binary shipped with) for anything it cannot serve.
@@ -322,34 +251,4 @@ mod tests {
     assert_eq!(keys, vec!["/_next/app.js", "/board.html"]);
   }
 
-  /// The directory existing is not enough. A half-extracted bundle has no
-  /// entry document, and booting from it would show a blank window with no
-  /// way back — so `bundle_dir` must refuse it and leave the binary's own
-  /// copy in charge.
-  #[test]
-  fn bundle_dir_refuses_a_directory_without_the_entry_document() {
-    let home = temp_root("sentinel-home");
-    let current =
-      home.join("Library/Application Support/app.test.identifier/hot-assets/current");
-    std::fs::create_dir_all(&current).unwrap();
-
-    let saved = std::env::var_os("HOME");
-    // SAFETY: single-threaded assertion around a process-global; restored
-    // immediately below.
-    unsafe { std::env::set_var("HOME", &home) };
-
-    let without = bundle_dir("app.test.identifier");
-    std::fs::write(current.join(SENTINEL), "<html></html>").unwrap();
-    let with = bundle_dir("app.test.identifier");
-
-    if let Some(saved) = saved {
-      unsafe { std::env::set_var("HOME", saved) };
-    }
-
-    assert_eq!(
-      without, None,
-      "a bundle with no entry document was accepted"
-    );
-    assert_eq!(with, Some(current));
-  }
 }
