@@ -1104,3 +1104,49 @@ is exactly the kind of thing a client-facing API lets you set or change.
 Prefer letting the narrow case be temporarily broken (here: 2 real keys
 needing a one-time re-sign-in) over adding a second, less-audited path to
 the same grant.
+
+## A guard that derives its expectation from the same source it is guarding cannot fail
+
+EI-262's tripwire asserts a desktop bundle was built with
+`NEXT_PUBLIC_AUTH_URL` inlined. The first version of the *test* for it changed
+`API_BASE` — the constant used BOTH to set the env var for the build AND to
+assert against the output. The build dutifully inlined the new value, the
+assertion found it, and the guard passed while proving nothing.
+
+The real failure mode was never "a different value". It was **absence** — the
+variable not reaching the build at all. Testing that (removing the env from the
+spawn, leaving the assertion alone) failed correctly on the first try.
+
+**Rule:** when testing a guard, change the thing that actually breaks in
+production, not the guard's own inputs. If a single constant feeds both the
+action and its verification, ask what a real failure looks like: if it is
+*absence* the guard still works, but the test must simulate absence. A guard
+that passes under every mutation you can think of is not proven — it may simply
+be unfalsifiable.
+
+## `cargo fmt` reformats the whole crate, and this one is 2-space
+
+`src-tauri/` is written with 2-space indentation (Tauri's own house style).
+`cargo fmt`'s default is 4, and there is no `rustfmt.toml`. Running it once
+rewrote 185 lines across five files nobody had touched, burying a two-line
+change in an unreviewable diff.
+
+**Rule:** don't run `cargo fmt` in this repo. Match the surrounding
+indentation by hand, and if the churn ever becomes worth solving, add a
+`rustfmt.toml` with `tab_spaces = 2` in its own commit — never mixed with
+behaviour.
+
+## The desktop update check only runs where it is mounted — and that was the board
+
+`useDesktopUpdate` lived in `desktop-board.tsx` and was harmless there while it
+only coloured a bar. The moment it also drove downloading (EI-256) and boot
+verification (EI-257), its mount point became load-bearing: a signed-out app
+never checked for updates at all, and a perfectly good bundle was rolled back
+because nothing ever reported it had rendered. Both were live, on a real
+machine, and neither showed up in any test.
+
+**Rule:** when a display hook grows a side effect, re-ask where it mounts. "It
+renders on the board" is a UI fact; "it runs on every boot" is a system
+requirement, and the two only coincide by accident. Shell-wide jobs belong in
+the root layout (`DesktopShellTasks`), which renders on every route the shell
+can open — including the signed-out screen and the hidden background window.
