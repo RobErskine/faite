@@ -132,6 +132,47 @@ layer up instead, in `src/server/auth-scopes.ts`:
   permission," making 401 vs 403 impossible to tell apart from outside. See
   `auth-scopes.ts`'s doc comments for the full reasoning.
 
+### SECURITY: the name-based scope fallback was removed (EI-261)
+
+From A2 through EI-260, `scopeGranted` had a `keyGrantsScope` wrapper that
+granted every scope to any key named exactly `"Faite desktop"`, regardless
+of its stored `permissions` — a migration-safety net for keys minted before
+A2 started passing `DESKTOP_KEY_PERMISSIONS` at creation, on the assumption
+that `name`, like `permissions`, was a server-only-settable field a client
+couldn't forge.
+
+**That assumption was wrong, and the fallback was a live privilege
+escalation.** `@better-auth/api-key`'s `SERVER_ONLY_PROPERTY` guard, on both
+`create` and `update`, covers `permissions`, `refillAmount`/`refillInterval`,
+and the rate-limit fields — `name` was never in that list on either
+endpoint. Two exploits followed directly:
+
+- `authClient.apiKey.create({ name: "Faite desktop" })` — any signed-in user
+  could mint a brand-new key with that literal name and the plugin's
+  ordinary narrow default permissions, and the fallback granted it full
+  `read`/`write`/`sync`/`places` access anyway.
+- `authClient.apiKey.update({ keyId: <a key you already own>, name: "Faite
+  desktop" })` — the same escalation against an EXISTING key, including one
+  whose plaintext had already been handed to a third-party integration.
+
+Neither required the Settings UI (which never exposed a rename control) —
+both are plain calls against endpoints the client already talks to.
+
+**The fix: `scopeGranted` is now the only function that decides scope, and
+it looks at `permissions` alone.** No replacement fallback (an exact match
+on a different string, `startsWith`, a `metadata` flag) was substituted —
+`metadata` has the identical hole (also absent from the `update` guard), so
+there is no field left that's actually protected except `permissions`
+itself. `keyGrantsScope` and the `keyName` field on `mcp/routes.ts`'s
+`McpIdentity` were both deleted rather than kept unused.
+
+**Verified before removing it** against live production D1 data: 2 of 5
+"Faite desktop"-named keys still carried only `{"api":["read"]}` — genuine
+pre-A2 keys the fallback was still covering. Removing it narrowed those two
+specific keys to read-only until their device re-signs-in, which mints a
+correctly-scoped replacement (now also named per-device — see EI-261's
+ticket for the desktop-key-naming half of that work).
+
 ## Write endpoints and parity gaps (A5, EI-230)
 
 `POST /api/v1/todos` and `PATCH /api/v1/todos/{id}` are the first writes:

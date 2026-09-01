@@ -17,11 +17,13 @@ import { extractBearerCredential } from "./bearer";
 
 export type ApiScope = "read" | "write" | "sync" | "places";
 
-/** The literal name `/api/desktop/handoff` gives every key it mints —
- * `requireName: true` (`auth-tokens.ts`) makes this the one stable identity
- * marker a key carries that a caller cannot forge (`permissions` and `name`
- * are both server-only-settable; see `createApiKey`'s guard). Shared so
- * `desktop/routes.ts` and this file's name-based fallback below can't drift. */
+/**
+ * The display-name prefix every desktop-handoff key gets — `"Faite desktop
+ * — <hostname>"` (EI-261) once a device name is available, or the bare
+ * prefix otherwise. Display only. It is NOT a security boundary and must
+ * never be treated as one — see the SECURITY note on `scopeGranted` below
+ * for why a name-based scope check was removed rather than added to.
+ */
 export const DESKTOP_KEY_NAME = "Faite desktop";
 
 /**
@@ -42,36 +44,33 @@ export const DESKTOP_KEY_PERMISSIONS: Record<string, ApiScope[]> = {
  * Reuses `better-auth/plugins/access`'s own `role().authorize()`, the exact
  * function `@better-auth/api-key`'s `validateApiKey` calls internally when a
  * caller passes a `permissions` argument — same semantics, no reimplementation.
+ *
+ * **SECURITY (EI-261): `permissions` is the ONLY field this module may ever
+ * trust for a scope decision.** A name-based fallback (`key.name ===
+ * DESKTOP_KEY_NAME`) lived here from A2 through EI-260, on the belief that
+ * `name` — like `permissions` — was a server-only-settable field a client
+ * couldn't forge. That belief was wrong: `@better-auth/api-key`'s
+ * `SERVER_ONLY_PROPERTY` guard on both `create` and `update` covers
+ * `permissions`, `refillAmount`/`refillInterval`, and the rate-limit fields
+ * — `name` was never in that list on either endpoint. Two live exploits
+ * followed directly from that: `authClient.apiKey.create({ name: "Faite
+ * desktop" })` mints a brand-new key with that literal name and only the
+ * narrow default `permissions`, or `authClient.apiKey.update({ keyId:
+ * <any key you already own>, name: "Faite desktop" })` retroactively
+ * upgrades one — either way the fallback then granted it full `read`/
+ * `write`/`sync`/`places` access, including `/api/sync/reset`, with no
+ * `permissions` change at all. Confirmed against live production data
+ * before removing it: of 5 "Faite desktop"-named rows, 2 genuinely
+ * depended on the fallback (real pre-A2 keys with only `{"api":["read"]}"`
+ * stored) — those needed a re-sign-in to mint a correctly-scoped
+ * replacement once this shipped. Do not reintroduce any variant of this
+ * (an exact match, a `startsWith`, a stored `metadata` flag) — `metadata`
+ * has the identical hole (also missing from the update guard). `permissions`
+ * is the one field the plugin actually protects; there is no substitute.
  */
 export function scopeGranted(permissions: Record<string, string[]> | null | undefined, scope: ApiScope): boolean {
   if (!permissions) return false;
   return role(permissions).authorize({ api: [scope] }).success;
-}
-
-/**
- * Pure: the full grant decision for a verified key, including the
- * migration-safety name fallback — split out for the same reason
- * `scopeGranted` is, and unit-tested directly rather than only through
- * `authorizeScope` (which needs a live Better Auth + D1 instance to call).
- *
- * A key named exactly `DESKTOP_KEY_NAME` is granted every scope regardless
- * of its stored `permissions` — the migration-safety net for every desktop
- * key minted BEFORE this ticket shipped `DESKTOP_KEY_PERMISSIONS` at
- * creation time. Without this, an already-installed desktop app's existing
- * key (created with only the old global `defaultPermissions`, `{ api:
- * ["read"] }`) would start getting 403'd on `/api/sync/*` the moment this
- * deployed — the exact "desktop shell still signs in and syncs" regression
- * the ticket calls out as the primary risk — until the user happened to log
- * out and back in. `name` is not user-suppliable data an attacker can spoof
- * to gain scope: both `name` and `permissions` are server-only properties
- * `createApiKey` rejects from a client request, and only
- * `/api/desktop/handoff` ever sets this name.
- */
-export function keyGrantsScope(
-  key: { name: string | null; permissions?: Record<string, string[]> | null },
-  scope: ApiScope,
-): boolean {
-  return key.name === DESKTOP_KEY_NAME || scopeGranted(key.permissions, scope);
 }
 
 export type ScopeResult =
@@ -105,8 +104,9 @@ export type ScopeResult =
  *   can tell "bad key" (401) apart from "valid key, wrong scope" (403),
  *   which the ticket's "Done when" list requires as two different statuses.
  *
- * The actual grant decision (including the desktop-name migration fallback)
- * is `keyGrantsScope`, above.
+ * The actual grant decision is `scopeGranted`, above — see its SECURITY
+ * note for why this calls it directly rather than through a wrapper that
+ * also considers the key's name.
  */
 export async function authorizeScope(auth: Auth, request: Request, scope: ApiScope): Promise<ScopeResult> {
   const bearer = extractBearerCredential(request.headers);
@@ -120,7 +120,7 @@ export async function authorizeScope(auth: Auth, request: Request, scope: ApiSco
   const result = await auth.api.verifyApiKey({ body: { key: bearer } });
   if (!result.valid || !result.key) return { ok: false, status: 401, error: "unauthenticated" };
 
-  if (!keyGrantsScope(result.key, scope)) return { ok: false, status: 403, error: "insufficient-scope" };
+  if (!scopeGranted(result.key.permissions, scope)) return { ok: false, status: 403, error: "insufficient-scope" };
 
   return { ok: true, userId: result.key.referenceId };
 }

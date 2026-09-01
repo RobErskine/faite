@@ -16,6 +16,7 @@
         { "url": "https://myfaite.app/*" },
         { "url": "http://localhost:*/*" }
       ]
-    }
+    },
+    "os:allow-hostname"
   ]
 }

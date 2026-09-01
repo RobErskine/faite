@@ -136,6 +136,14 @@ const baseConfig: Omit<ApiKeyConfigurationOptions, "configId" | "permissions"> =
   // later — same reasoning `todoSchema.title` requires a value.
   requireName: true,
 
+  // The plugin's own default (32) is too tight for a per-device desktop
+  // name (EI-261): `"Faite desktop — "` alone is 16 characters, and a real
+  // hostname (`Robs-MacBook-Pro.local`) can run another 20+. `desktop/
+  // routes.ts` additionally caps the raw device name it accepts well under
+  // this, so a hostile or unusually long hostname still can't overflow it —
+  // this is a generous ceiling, not the enforcement point.
+  maximumNameLength: 96,
+
   // `ctx.headers`, NOT `ctx.request?.headers` — see `extractBearerCredential`'s
   // own doc comment (`bearer.ts`) for why the two are not interchangeable
   // here, found live against a real Durable Object rather than by a unit test.

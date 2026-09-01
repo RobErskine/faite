@@ -1112,6 +1112,16 @@ it.
   a SECOND api-key consumer (EI-50's scoped external API token), since
   `permissions` are declared but enforced nowhere today.
 - **CI signing** (§8.4) — local-keychain flow only.
+- **EI-261 (later)** — every sign-in described here mints a brand-new
+  full-access key and never revokes the previous one; the account can
+  accumulate an unbounded number of `"Faite desktop"` keys. Fixed by naming
+  each one per-device (`hostname()` via `@tauri-apps/plugin-os`, threaded
+  through `callbackURL`'s own query string into `/api/desktop/handoff`) so
+  multiple devices are distinguishable and individually revocable, rather
+  than by revoking on next sign-in. That work also found and closed a real
+  security hole in the scope-check fallback this section's `permissions`
+  design relied on — see `docs/API.md`'s "SECURITY: the name-based scope
+  fallback was removed" for the full account.
 
 ---
 
