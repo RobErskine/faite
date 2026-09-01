@@ -1805,3 +1805,39 @@ reach the field in minutes, not hours). What changes is how to test it: after
 publishing, wait out the cache before concluding anything. The tell that this
 is what you are looking at is that `hot_assets_ready` fires normally — the
 frontend is running fine, it is simply being handed a stale answer.
+
+### 14.11 The escape hatch (EI-264)
+
+**Faite → Reset to Built-in Version.** Discards every downloaded bundle and
+relaunches onto the copy compiled into the binary.
+
+It exists because §14.7's probation asks one question — *did the frontend
+render?* — and there is a failure it cannot see: a bundle that renders
+perfectly but cannot reach the server. EI-262 was exactly that. Such a bundle
+passes probation, looks healthy, and **cannot fetch its own replacement**,
+because the code that would do the fetching is the code that is broken. Before
+this, recovery meant deleting a directory from a terminal.
+
+Three small decisions:
+
+- **It clears the refuse-list too.** That list is the shell's judgement about a
+  bad bundle, and someone reaching for this menu item is overriding that
+  judgement. Starting completely clean is more predictable than starting
+  clean-except-for-one-file.
+- **No keyboard shortcut.** This is used once in a blue moon, and a shortcut
+  for it is a shortcut for throwing away a working update by accident. It is
+  therefore *not* in `src/lib/shortcuts.ts` — AGENTS.md's rule is about
+  shortcuts, and this deliberately is not one.
+- **No confirmation dialog.** It would mean adding the dialog plugin for an
+  action that destroys nothing: no board data is touched (to-dos are in Dexie,
+  the token is in the keychain), and the app re-downloads the current bundle
+  within six hours.
+
+What it does *not* solve is detection — the app still cannot tell on its own
+that it has gone deaf. EI-264 records the remaining options, including one
+worth noting here because it was considered and rejected: rolling back a bundle
+that has not reached the server in N launches. It cannot distinguish a deaf
+bundle from a user on a plane, and it degrades badly — offline for a few
+launches rolls back to `previous`, which also cannot phone home, which rolls
+back again. "Work offline for a week and your app silently reverts" is a poor
+property for a local-first app.

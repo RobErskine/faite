@@ -1,4 +1,4 @@
-use tauri::menu::{Menu, MenuBuilder, SubmenuBuilder};
+use tauri::menu::{Menu, MenuBuilder, MenuItem, SubmenuBuilder};
 #[cfg(not(target_os = "macos"))]
 use tauri::menu::PredefinedMenuItem;
 use tauri::{Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
@@ -10,6 +10,9 @@ mod keychain;
 /// Window label for the main, user-visible board. The only window a user
 /// ever sees at launch.
 const MAIN_WINDOW: &str = "main";
+
+/// Menu id for "Reset to Built-in Version" (EI-264).
+const RESET_HOT_ASSETS: &str = "reset-hot-assets";
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -73,6 +76,7 @@ pub fn run() {
       hot_assets::hot_assets_stage,
       hot_assets::hot_assets_ready,
       hot_assets::hot_assets_restart,
+      hot_assets::hot_assets_reset,
     ])
     .manage(background_sync::BackgroundSyncState::default())
     .manage(hot_assets::PendingBundle::default())
@@ -127,6 +131,15 @@ pub fn run() {
       // default without noticing.
       app.set_menu(app_menu(app)?)?;
 
+      // EI-264: the one menu item that does something, so it needs a handler.
+      // Everything else in the menu is a `PredefinedMenuItem`, which macOS
+      // routes itself.
+      app.on_menu_event(|app, event| {
+        if event.id() == RESET_HOT_ASSETS {
+          hot_assets::reset_and_restart(app);
+        }
+      });
+
       Ok(())
     })
     .build(hot_assets::apply(tauri::generate_context!()))
@@ -179,9 +192,28 @@ fn app_menu(app: &tauri::App) -> tauri::Result<Menu<tauri::Wry>> {
     .version(Some(pkg_info.version.to_string()))
     .build();
 
+  // EI-264: the escape hatch for a bundle that renders but cannot reach the
+  // server. Such a bundle passes §14.7's probation — it came up, it just
+  // cannot phone home — and it cannot fetch its own replacement, because the
+  // code that would do the fetching is the code that is broken. Without this,
+  // recovery meant deleting a directory from a terminal.
+  //
+  // No accelerator, deliberately: this is used once in a blue moon, and a
+  // shortcut for it is a shortcut for throwing away a working update by
+  // accident.
+  let reset_item = MenuItem::with_id(
+    app,
+    RESET_HOT_ASSETS,
+    "Reset to Built-in Version",
+    true,
+    None::<&str>,
+  )?;
+
   #[cfg(target_os = "macos")]
   let app_submenu = SubmenuBuilder::new(app, pkg_info.name.clone())
     .about(Some(about_metadata))
+    .separator()
+    .item(&reset_item)
     .separator()
     .services()
     .separator()
@@ -223,7 +255,7 @@ fn app_menu(app: &tauri::App) -> tauri::Result<Menu<tauri::Wry>> {
     // here only so a non-mac `cargo build` still compiles a sane menu.
     let about = PredefinedMenuItem::about(app, None, Some(about_metadata))?;
     let quit = PredefinedMenuItem::quit(app, None)?;
-    builder = builder.item(&about).item(&quit);
+    builder = builder.item(&about).item(&reset_item).item(&quit);
   }
 
   builder
