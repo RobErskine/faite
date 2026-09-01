@@ -19,6 +19,7 @@ past D1 exists yet.
 | D2a | Desktop login + sync — `TRUSTED_ORIGINS`, api-key bearer auth, OS-keychain token storage, WS auth | ✅ Done — §9 |
 | D2b (EI-145) | Background sync while the window is closed — Rust-driven timer into the hidden webview | ✅ Done — §10 |
 | D2c (EI-147) | Build-version check against the server + a "get the update" button (no auto-updater) | ✅ Done — §12 |
+| D2d (EI-254…EI-264) | **Hot asset bundles** — a web deploy reaches an installed `.app`: publish, verify whole, activate at startup, roll back, restart-to-update, escape hatch | ✅ Done — §13 (spike), §14 (shipped) |
 | D3 | Feature A — menu bar popover (today/overdue to-dos, read-on-show) | Not started |
 | D4 | Feature B — global hotkey, always-on-top quick-capture window | Not started |
 | D5 | Swift sidecar — Accessibility-API context capture (decision #5), wired as an `externalBin` | Standalone prototype only — §3.5, not integrated |
@@ -57,6 +58,15 @@ build, not to re-litigate them.
    baked into the `.app`. Rejected: loading `myfaite.app` directly (no offline
    boot, a web deploy could break desktop with no per-platform rollback) and
    load-remote-with-bundled-fallback (two non-deterministic code paths).
+
+   > **Amended by D2d (§13, §14), not overturned.** The binary still ships a
+   > complete export and still boots from it with no network — that guarantee
+   > is untouched, and is now the bottom of a fallback ladder. What changed is
+   > that a *verified* downloaded bundle can take precedence, swapped in behind
+   > the same `tauri://localhost` origin via `Context::set_assets`. Remote-load
+   > itself stays rejected, and for a sharper reason than in D0: it moves the
+   > page's origin, and on WKWebView a new origin means a new IndexedDB — which
+   > would orphan the user's entire local board.
 3. **Bearer tokens, not cookies**, for the desktop shell's auth. Token in the
    OS keychain via the `keyring` Rust crate, never in `localStorage`. D0 §7
    below is why this is closer to mandatory than merely-better. **Confirmed
@@ -1447,9 +1457,16 @@ An event rather than a new `SyncOutcome` status: nothing consumes a
 widening `runSyncCycle`, `runOnce`, `createSyncRunner` and `SyncProvider` for
 one string.
 
-### 12.5 Releasing, until EI-136 exists
+### 12.5 Releasing
 
-Bumping the policy is the **last** step of a release, not the first:
+> **Read §14 first.** Since D2d, this section describes the **rare** path. A
+> frontend change no longer needs any of it: publishing a hot-asset bundle
+> reaches every installed app on its own (§14.12), and users apply it with the
+> restart button (§14.10). What follows is only for a change to the **Rust
+> shell** — a new Tauri command, a new plugin, a new capability — which is a
+> few times a year.
+
+Bumping the policy is the **last** step of a shell release, not the first:
 
 1. Bump `version` in `src-tauri/tauri.conf.json`.
 2. `npm run desktop:build`, sign, notarize (§8).
@@ -1460,14 +1477,17 @@ Bumping the policy is the **last** step of a release, not the first:
 `tauri.conf.json` (announcing a build nobody can install) or above `minimum`
 (locking everyone out with nothing to upgrade *to*).
 
+A shell release also needs `minShellVersion` in
+`scripts/desktop/bundle-assets.mjs` bumped, **if and only if** the JS↔Rust
+contract grew — see §14.6. Forgetting that is how an old shell ends up
+activating a frontend that calls a command it does not have.
+
 **Getting your own machine current is a different thing, and is one command:**
 `npm run desktop:install` (`scripts/desktop-install.mjs`) rebuilds from the
 working tree, quits the running copy, replaces `/Applications/Faite.app`, and
 relaunches. It is deliberately not a release — it bumps no version and
-publishes nothing, so the update bar stays silent afterwards, which is correct.
-Reach for it after any merge whose work you want to see in the Mac app; the
-sync engine moves rows, not code, and will never carry a web change into an
-installed build.
+publishes nothing. Since D2d it is needed only for **shell** changes; a
+frontend change reaches the installed app by itself.
 
 ### 12.6 Verified
 
@@ -1486,13 +1506,14 @@ installed build.
 
 ---
 
-## 13. EI-254 spike — hot asset bundle (in progress)
+## 13. EI-254 spike — hot asset bundle
 
 Re-opens **decision #2** (§2). The question: can a web deploy reach an
 installed `.app` without a `cargo build`, without moving the webview's origin,
 and without ever producing a copy that fails to boot?
 
-**So far: yes, on all three.** Ticket
+**Yes, on all three — and it shipped.** §14 is what was actually built;
+this section is the spike that decided it. Ticket
 [EI-254](https://linear.app/rob-erskine/issue/EI-254/d-spike-hot-asset-bundle-a-web-deploy-reaches-installed-desktop-apps),
 runbook `.ai/ei-254-hot-assets-runbook.md`.
 
@@ -1579,6 +1600,10 @@ is how the hazard surfaced at all.
 §13 proved the swap was sound. This is what actually ships. A web deploy now
 reaches an installed `.app`: publish a bundle, and every desktop client picks
 it up on its next update check and runs it from the following launch.
+
+**If you are here to operate this rather than understand it, read §14.12
+(publishing, and the credential) and §14.11 (the escape hatch when something
+goes wrong).**
 
 ### 14.1 The split, and why the shell has no HTTP client
 
@@ -1841,3 +1866,68 @@ bundle from a user on a plane, and it degrades badly — offline for a few
 launches rolls back to `previous`, which also cannot phone home, which rolls
 back again. "Work offline for a week and your app silently reverts" is a poor
 property for a local-first app.
+
+### 14.12 Publishing, and the credential it needs (EI-263)
+
+Publishing is automatic. `.github/workflows/publish-desktop-bundle.yml` runs
+`npm run desktop:ship` on every push to `main` that touches the frontend, then
+fetches the announced archive back to prove it is reachable — the same rule
+EI-147 set for shell builds: never announce something nobody can install.
+
+By hand, when needed: `npm run desktop:ship` (bundle + publish), or
+`npm run desktop:publish -- --dry-run`, which needs no credentials at all.
+
+**The `paths` filter is load-bearing, not an optimisation.** A bundle's version
+comes from the build, and the build id is the commit SHA (`next.config.ts`'s
+`generateBuildId`), so *every* commit — a docs-only one included — would
+otherwise mint a "new" bundle and push 3.8 MB to every desktop client for a
+byte-identical frontend.
+
+The workflow is gated on a repository **variable**, `PUBLISH_DESKTOP_BUNDLE`,
+so it is inert until deliberately switched on rather than red on every merge
+before the credential exists.
+
+#### Why the S3 API and not `wrangler r2 object put`
+
+Because it lets the credential stay scoped to one bucket.
+
+Wrangler uploads through Cloudflare's REST endpoint, which **rejects a
+bucket-scoped R2 token** with `403 / code 10000`
+([cloudflare/workers-sdk#9235](https://github.com/cloudflare/workers-sdk/issues/9235)).
+Satisfying it would mean an account-level `Workers R2 Storage · Edit` token —
+and that grants read *and delete* on every bucket on the account,
+`faite-attachments` included. That bucket holds users' uploaded files behind
+ownership checks (EI-244/EI-245). Trading that blast radius for not writing an
+upload is the wrong way round.
+
+Bucket-scoped R2 tokens are built for the S3 API: the Access Key ID is the
+token's id, and the Secret Access Key is the SHA-256 of its value. So this is
+the supported use of the narrower credential, not a workaround.
+
+#### The credential
+
+An R2 API token with **Object Read & Write**, applied to
+`faite-desktop-assets` only. Cloudflare shows both values **once**, at
+creation. Repository secrets:
+
+| Secret | Where it comes from |
+|---|---|
+| `R2_ACCESS_KEY_ID` | shown when the R2 token is created |
+| `R2_SECRET_ACCESS_KEY` | shown when the R2 token is created |
+| `CLOUDFLARE_ACCOUNT_ID` | `npx wrangler whoami` |
+
+`CLOUDFLARE_API_TOKEN` is **not** used by this workflow and should not exist
+for it.
+
+#### Testing after a publish, and the trap
+
+`/api/desktop/version` is served `Cache-Control: public, max-age=300`. **For up
+to five minutes after publishing, a client that already asked keeps being told
+about the previous bundle.** Check sooner than that and the feature looks
+broken; it is not. Given room, the app stages in about twelve seconds and
+applies on the next launch.
+
+That cache is deliberate and stays — §12.2 wants an emergency `minimum` to
+reach the field in minutes, not hours. See §14.10 for how this was mistaken
+three times for a bug, including once for a code change that was credited with
+a fix it did not cause.
