@@ -1768,18 +1768,29 @@ condition.
 
 #### Where the check runs, which was a live defect
 
-`useDesktopUpdate` mounts only on the board. That was survivable when it did
-nothing but colour a bar. Once it also drove downloading and probation, it
-meant:
+`useDesktopUpdate` mounts only on the board, and EI-256 put the bundle
+download inside it. So the check — and only the check — did not run on any
+route that is not the board: the signed-out screen, `/capture`,
+`/background-sync`.
 
-- a signed-out desktop app **never updated**, because nothing ever checked; and
-- a good bundle was **rolled back after two launches**, because nothing ever
-  reported that it had rendered.
+**How much that mattered is worth stating accurately, because it was first
+written down here overstated.** EI-257's ready signal was *already* in the
+root layout, so probation was never at risk; the claim that good bundles were
+being rolled back was wrong. And a signed-out app not updating costs little —
+nobody is using it, and signing in mounts the board, which checks within
+seconds.
 
-Both were real: a corrected bundle sat published while the dev machine could
-not see it. So the two shell-side jobs — report ready, fetch the newest bundle
-— now live in `DesktopShellTasks`, mounted in the **root layout**, which
-renders on every route the shell can open. `useDesktopUpdate` went back to
-being display state, and the bar reads what the shell has staged rather than
-staging anything itself. That split also stops the duplicate-mount problem
-becoming a duplicate 3.8 MB download.
+The move is still right, for a plainer reason: fetching a bundle is a
+shell-wide job and `useDesktopUpdate` is display state that is deliberately
+mounted more than once. A duplicated version check is one small cached GET; a
+duplicated *download* is 3.8 MB twice. So the two shell-side jobs — report
+ready, fetch the newest bundle — live in `DesktopShellTasks`, mounted once in
+the root layout, and the bar reads back what the shell has staged rather than
+staging anything itself.
+
+One honest caveat: during EI-258 development the dev machine repeatedly failed
+to stage a published bundle, and moving the check is what preceded it working.
+That correlation was **not** isolated to a cause — a later run differed only by
+an added `eprintln!`, which changes no behaviour. Something timing- or
+window-state-related is still unexplained; see D0 §3.4 on hidden windows and
+their timers.

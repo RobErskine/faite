@@ -1,0 +1,82 @@
+# Publishes a hot-asset bundle to R2 whenever the frontend changes on `main`
+# (EI-263), so an installed desktop app picks the change up on its own.
+#
+# Deliberately NOT part of ci.yml: that workflow is the merge gate, and a
+# publish is a post-merge side effect. Keeping them separate means a publish
+# failure cannot look like a failing gate, and the gate's timings stay honest.
+#
+# Cost, in billed runner-minutes (AGENTS.md asks for this before adding a job):
+# ~4 minutes of ubuntu-latest per qualifying merge. The `paths` filter is what
+# keeps that number honest — see below.
+name: Publish desktop bundle
+
+on:
+  push:
+    branches: [main]
+    # A bundle's version is derived from the build, and the build id is the
+    # commit SHA — so EVERY commit would otherwise mint a "new" bundle and
+    # push 3.8MB to every desktop client, including for a docs-only change.
+    # This list is therefore not an optimisation, it is the thing that stops
+    # the fleet re-downloading an identical frontend.
+    paths:
+      - "src/**"
+      - "public/**"
+      - "package.json"
+      - "package-lock.json"
+      - "next.config.ts"
+      - "scripts/desktop/**"
+      - ".github/workflows/publish-desktop-bundle.yml"
+  # So a bundle can be republished by hand without an empty commit — useful
+  # after rotating the token, or to recover from a failed run.
+  workflow_dispatch:
+
+# One publish at a time. Two overlapping runs would race to write
+# `manifest.json`, and the loser could leave it pointing at the older archive.
+# Not cancel-in-progress: a half-finished publish is worse than a slow one.
+concurrency:
+  group: publish-desktop-bundle
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Inert until the credential exists, rather than a wall of red on every
+    # merge. Remove nothing when you add the secret — this simply starts
+    # passing.
+    if: ${{ vars.PUBLISH_DESKTOP_BUNDLE == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+        # `generateBuildId` reads HEAD, and a shallow clone still has it.
+        # Depth 1 is enough and keeps the checkout quick.
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Builds the export with NEXT_PUBLIC_AUTH_URL and refuses to package one
+      # without an absolute API base (EI-262), then uploads archive-then-
+      # manifest so a client never reads a pointer to a bundle that is not
+      # there yet.
+      - run: npm run desktop:ship
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Confirm the published bundle is actually reachable
+        # The same rule EI-147 set for shell builds: never announce something
+        # nobody can install. A publish that uploaded a manifest pointing at a
+        # missing archive should fail loudly here, not silently on a user's
+        # machine six hours later.
+        run: |
+          set -euo pipefail
+          POLICY=$(curl -fsS https://myfaite.app/api/desktop/version)
+          echo "$POLICY"
+          ARCHIVE=$(echo "$POLICY" | node -e "process.stdin.on('data',d=>{const a=JSON.parse(d).assets;if(!a){console.error('no assets block');process.exit(1)}console.log(a.archiveUrl)})")
+          curl -fsS -o /dev/null "$ARCHIVE"
+          echo "Published bundle is reachable at $ARCHIVE"
