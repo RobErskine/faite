@@ -2,7 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiUrl } from "@/lib/api-origin";
-import { getShellVersion, isDesktopShell, openDownloadPage } from "@/lib/desktop/bridge";
+import {
+  getShellVersion,
+  isDesktopShell,
+  openDownloadPage,
+  prepareHotAssetBundle,
+  stageHotAssetBundle,
+} from "@/lib/desktop/bridge";
 import {
   evaluateUpdate,
   parseVersionPolicy,
@@ -28,6 +34,42 @@ async function fetchDesktopVersionPolicy(): Promise<DesktopVersionPolicy | null>
     return parseVersionPolicy(await response.json());
   } catch {
     return null;
+  }
+}
+
+/**
+ * Fetches a published bundle and hands it to the shell to verify and stage
+ * (EI-256).
+ *
+ * Rides the check that already exists rather than adding a timer of its own:
+ * by the time this runs, `/api/desktop/version` has been fetched anyway, and
+ * `policy.assets` either names a bundle or does not.
+ *
+ * **Deliberately silent, and deliberately unawaited by the UI.** Every exit
+ * here — no bundle published, the shell declining it, an offline download, a
+ * failed verification — leaves the app running the frontend it already has,
+ * which is a completely acceptable outcome. Nothing about it is worth
+ * interrupting someone's board over. The one thing that must not happen is a
+ * half-applied update, and that is structurally impossible: the shell only
+ * ever activates at startup.
+ */
+async function stageBundleIfNew(policy: DesktopVersionPolicy): Promise<void> {
+  if (!policy.assets) return;
+
+  const manifestResponse = await fetch(policy.assets.manifestUrl);
+  if (!manifestResponse.ok) return;
+  // Passed as text, not re-serialised: the shell hashes what the server
+  // actually sent, and a round-trip through JSON.parse could change it.
+  const manifestJson = await manifestResponse.text();
+
+  if (!(await prepareHotAssetBundle(manifestJson))) return;
+
+  const archiveResponse = await fetch(policy.assets.archiveUrl);
+  if (!archiveResponse.ok) return;
+
+  const staged = await stageHotAssetBundle(await archiveResponse.arrayBuffer());
+  if (staged) {
+    console.info(`[faite] hot-asset bundle ${staged} staged; it applies on the next launch`);
   }
 }
 
@@ -105,6 +147,13 @@ export function useDesktopUpdate(): DesktopUpdate {
         if (!policy) return;
         setState(evaluateUpdate(version, policy));
         setChecked(true);
+
+        // Not awaited into the state above: a 3.8MB download must not hold
+        // the version bar's answer, and its outcome changes nothing on
+        // screen until the app next launches.
+        void stageBundleIfNew(policy).catch((error: unknown) => {
+          console.error("[faite] could not stage a hot-asset bundle", error);
+        });
       } finally {
         inFlightRef.current = false;
         setChecking(false);

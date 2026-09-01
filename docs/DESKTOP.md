@@ -1571,3 +1571,85 @@ is how the hazard surfaced at all.
 - **Apply choreography** — swap-on-next-launch is what the probe does.
   Whether the EI-147 bar should say "Restart to update" is a product call.
 - **Download, signature, manifest, server policy** — the build, not the spike.
+
+---
+
+## 14. Hot asset bundles, shipped (EI-255/EI-256)
+
+§13 proved the swap was sound. This is what actually ships. A web deploy now
+reaches an installed `.app`: publish a bundle, and every desktop client picks
+it up on its next update check and runs it from the following launch.
+
+### 14.1 The split, and why the shell has no HTTP client
+
+| Half | Does | Lives |
+|---|---|---|
+| Webview | Fetches the manifest and the archive | `use-desktop-update.ts`, `bridge.ts` |
+| Shell | Verifies everything, writes to disk, activates | `src-tauri/src/hot_assets/` |
+
+The webview already talks to `myfaite.app` on every sync, its CSP already
+allows exactly that origin, and `parseVersionPolicy` already pins both bundle
+URLs to `SITE_ORIGIN` under test. Putting an HTTP client in the shell would
+have meant a **second TLS stack in the binary** and a second, unshared copy of
+those origin rules. So the webview fetches.
+
+It is trusted for nothing in return. The archive is hashed against the
+manifest, every extracted file is hashed against the manifest, the file count
+must match exactly, and every archive path is checked before it is written.
+
+### 14.2 All-or-nothing, because §13.3
+
+`manifest.rs`'s `verify` rejects three separate things, and they are not the
+same failure:
+
+- **missing** — would fall through to the binary's copy and mix two builds;
+- **changed** — corruption or tampering;
+- **extra** — a file the publisher never described, served from our origin.
+
+Any of them rejects the whole bundle and leaves the active one in charge.
+
+### 14.3 Activation only ever happens at startup
+
+Downloading happens whenever. Activation happens in `apply()`, before
+`set_assets`, when no webview exists — so a half-applied update is not a state
+the app can be observed in. A bundle verified at 3pm is staged, and applies at
+the next launch.
+
+The promotion order is `previous` ← `current` ← `staging`, and it is chosen so
+every crash point still boots. The gap between retiring `current` and
+promoting `staging` has no active bundle at all — which is safe, because the
+embedded copy answers, and the next launch simply retries.
+
+### 14.4 The failure ladder
+
+1. A verified staged bundle, if one is waiting.
+2. Otherwise the active bundle.
+3. Otherwise the copy compiled into the binary, which is always intact.
+
+A shell older than `minShellVersion` declines silently and keeps what it has —
+EI-147's bar is what tells a user their *shell* is too old, and that path is
+unchanged.
+
+### 14.5 Verified end to end
+
+Against production, on a real signed build, from an empty state:
+
+```
+[hot-assets] activated bundle a93a9f56df7e
+[hot-assets] serving bundle a93a9f56df7e
+```
+
+First launch fetched and staged; second launch activated and served. A
+subsequent check re-downloaded nothing, because the version already matched.
+24 Rust tests cover the provider, the manifest rules, activation, and the
+path guard.
+
+### 14.6 Two versions, two meanings
+
+| | Changes | Compared |
+|---|---|---|
+| Shell (`tauri.conf.json`) | On a real release, a few times a year | Ordered — semver |
+| Bundle (content hash) | Every publish | Equality only |
+
+`minShellVersion` is the join between them, and the reason a frontend cannot
+demand a Tauri command the installed shell does not have.

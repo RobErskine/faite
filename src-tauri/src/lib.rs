@@ -4,6 +4,7 @@ use tauri::menu::PredefinedMenuItem;
 use tauri::{Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
 
 mod background_sync;
+mod hot_assets;
 mod keychain;
 
 /// Window label for the main, user-visible board. The only window a user
@@ -64,8 +65,15 @@ pub fn run() {
       keychain::get_auth_token,
       keychain::set_auth_token,
       keychain::clear_auth_token,
+      // EI-256: the webview fetches a hot-asset bundle, the shell verifies
+      // and stages it. See hot_assets/mod.rs for why the download lives on
+      // that side of the boundary.
+      hot_assets::hot_assets_status,
+      hot_assets::hot_assets_prepare,
+      hot_assets::hot_assets_stage,
     ])
     .manage(background_sync::BackgroundSyncState::default())
+    .manage(hot_assets::PendingBundle::default())
     .setup(|app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(
@@ -119,7 +127,7 @@ pub fn run() {
 
       Ok(())
     })
-    .build(tauri::generate_context!())
+    .build(hot_assets::apply(tauri::generate_context!()))
     .expect("error while building tauri application");
 
   app.run(|app_handle, event| {

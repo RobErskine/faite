@@ -165,3 +165,68 @@ export async function getShellVersion(): Promise<string | null> {
 export async function openDownloadPage(url: string): Promise<void> {
   await openUrl(url);
 }
+
+/** What the shell is serving right now, and what it will serve next launch. */
+export interface HotAssetStatus {
+  /** Active bundle version, or `null` when running the copy inside the binary. */
+  active: string | null;
+  /** Bundle verified and waiting for the next launch. */
+  staged: string | null;
+  /** The shell's own version, for `minShellVersion` decisions. */
+  shell: string;
+}
+
+export async function getHotAssetStatus(): Promise<HotAssetStatus | null> {
+  if (!isDesktopShell()) return null;
+  try {
+    return await invoke<HotAssetStatus>("hot_assets_status");
+  } catch (error) {
+    console.error("[faite] could not read hot-asset status", error);
+    return null;
+  }
+}
+
+/**
+ * Offers a manifest to the shell and asks whether the archive is worth
+ * fetching (EI-256).
+ *
+ * **The shell decides, not this side.** It is what activates bundles, so it
+ * owns the questions of whether the version is new, whether an equal bundle is
+ * already staged, and whether `minShellVersion` outranks it. Answering here
+ * would put that policy in two places, and the copy that mattered would be
+ * whichever one was wrong.
+ *
+ * `false` is the ordinary answer — most checks find nothing new — and never an
+ * error worth surfacing.
+ */
+export async function prepareHotAssetBundle(manifestJson: string): Promise<boolean> {
+  if (!isDesktopShell()) return false;
+  try {
+    return await invoke<boolean>("hot_assets_prepare", { manifest: manifestJson });
+  } catch (error) {
+    console.error("[faite] could not prepare a hot-asset bundle", error);
+    return false;
+  }
+}
+
+/**
+ * Hands the downloaded archive to the shell, which verifies it whole before
+ * anything becomes activatable — see `hot_assets/manifest.rs`.
+ *
+ * The bytes are sent as a plain number array because that is what Tauri's IPC
+ * serialises reliably across versions. It is ~3.8 MB, a few times a week at
+ * most, on a path the user is not waiting on.
+ *
+ * Resolves to the staged version, or `null` if the shell rejected it. A
+ * rejection is not an error to show anyone: the app keeps running the bundle
+ * it already has, which is exactly the intended outcome.
+ */
+export async function stageHotAssetBundle(archive: ArrayBuffer): Promise<string | null> {
+  if (!isDesktopShell()) return null;
+  try {
+    return await invoke<string>("hot_assets_stage", { archive: Array.from(new Uint8Array(archive)) });
+  } catch (error) {
+    console.error("[faite] could not stage a hot-asset bundle", error);
+    return null;
+  }
+}

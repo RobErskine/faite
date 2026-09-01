@@ -37,6 +37,14 @@ tauri-plugin-os = "2"
 # (Tauri depends on tokio internally) — adding it directly only exposes
 # `tokio::time::interval`, which `async_runtime` does not re-export.
 tokio = { version = "1", features = ["time"] }
+# EI-256: verifying and unpacking a downloaded hot-asset bundle. All three are
+# small and pure Rust — `flate2`'s default backend is `miniz_oxide`, so no C
+# toolchain. Deliberately NO http client here: the webview does the fetching
+# (see `hot_assets/mod.rs`), which keeps a whole TLS stack out of this binary
+# and reuses the origin checks already tested in `src/lib/desktop/version.ts`.
+sha2 = "0.10"
+flate2 = "1"
+tar = "0.4"
 
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
 tauri-plugin-window-state = "2"
