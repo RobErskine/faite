@@ -309,6 +309,53 @@ fn enforce_probation(layout: &Layout) {
   }
 }
 
+/// Discards every downloaded bundle, so the next launch serves the copy
+/// compiled into this binary (EI-264).
+///
+/// ## Why this exists at all
+///
+/// §14.7's rollback asks "did the frontend render?", and a bundle can render
+/// perfectly while being unable to reach the server — the EI-262 class. Such a
+/// bundle passes probation, looks healthy, and cannot fetch its own
+/// replacement, because the code that would fetch it is the code that is
+/// broken. Before this, the only way out was deleting a directory from a
+/// terminal.
+///
+/// Deliberately blunt: it removes the refuse-list too. That list exists to
+/// stop a known-bad bundle coming back, but if the user has reached for this,
+/// the shell's own judgement is what they are overriding. Starting completely
+/// clean is more predictable than starting clean-except-for-one-file.
+///
+/// **No board data is touched.** Bundles are downloaded frontend code; the
+/// user's to-dos live in Dexie, and the auth token in the keychain. The app
+/// re-downloads the current bundle within six hours, or on the next check.
+fn reset(layout_root: &Layout) {
+  for name in [CURRENT, STAGING, PREVIOUS, INCOMING] {
+    layout_root.remove(name);
+  }
+  layout_root.clear_probation();
+  let _ = std::fs::remove_file(layout_root.root.join(REFUSED));
+}
+
+/// Discards downloaded bundles and relaunches onto the built-in frontend.
+///
+/// Wired to the app menu rather than a keyboard shortcut on purpose: it is a
+/// recovery action taken once in a blue moon, and a shortcut for it would be a
+/// shortcut to accidentally throw away a working update.
+#[tauri::command]
+pub fn hot_assets_reset<R: Runtime>(app: tauri::AppHandle<R>) {
+  reset_and_restart(&app);
+}
+
+/// Shared by the command and the menu item.
+pub fn reset_and_restart<R: Runtime>(app: &tauri::AppHandle<R>) {
+  if let Some(layout) = Layout::new(&app.config().identifier) {
+    eprintln!("[hot-assets] discarding downloaded bundles at the user's request");
+    reset(&layout);
+  }
+  app.restart();
+}
+
 /// What the frontend needs to decide whether to download anything.
 #[derive(serde::Serialize)]
 pub struct HotAssetStatus {
@@ -602,6 +649,49 @@ mod tests {
 
   /// The path guard, exercised directly. `..` is the oldest archive trick
   /// there is, and this bundle root sits next to the user's `current` bundle.
+  // ---- EI-264: the escape hatch ----
+
+  /// The whole point: after a reset there is nothing left to serve, so the
+  /// next launch falls through to the copy inside the binary.
+  #[test]
+  fn reset_clears_every_downloaded_bundle() {
+    let layout = layout_for("reset-all");
+    write_bundle(&layout, CURRENT, "current", "C");
+    write_bundle(&layout, PREVIOUS, "previous", "P");
+    write_bundle(&layout, STAGING, "staged", "S");
+    std::fs::create_dir_all(layout.dir(INCOMING)).unwrap();
+
+    reset(&layout);
+
+    for name in [CURRENT, PREVIOUS, STAGING, INCOMING] {
+      assert!(!layout.dir(name).exists(), "{name} survived the reset");
+      assert!(!layout.manifest(name).exists(), "{name}'s manifest survived");
+    }
+  }
+
+  /// Deliberately blunt. The refuse-list is the shell's own judgement about a
+  /// bad bundle, and reaching for this menu item is the user overriding that —
+  /// starting completely clean beats clean-except-for-one-file.
+  #[test]
+  fn reset_also_forgets_which_bundles_were_refused() {
+    let layout = layout_for("reset-refused");
+    layout.refuse("broken");
+    layout.set_probation(&Probation { version: "current".into(), attempts: 1 });
+    assert!(layout.is_refused("broken"));
+
+    reset(&layout);
+
+    assert!(layout.refused().is_empty());
+    assert!(layout.probation().is_none());
+  }
+
+  #[test]
+  fn reset_is_harmless_when_there_is_nothing_to_reset() {
+    let layout = layout_for("reset-empty");
+    reset(&layout);
+    assert!(layout.usable(CURRENT).is_none());
+  }
+
   // ---- EI-257: boot verification and rollback ----
 
   #[test]
