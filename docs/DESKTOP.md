@@ -1694,3 +1694,46 @@ launches, and then:
 ```
 
 A good bundle activated and cleared its own probation on the first launch.
+
+### 14.8 The bundle must be built the way the shell builds (EI-262)
+
+`NEXT_PUBLIC_*` is inlined at build time, and the shell's baked export is built
+through `tauri.conf.json`'s `beforeBuildCommand` with
+`NEXT_PUBLIC_AUTH_URL=https://myfaite.app`. A bundle built without it has no
+absolute API base, so `apiUrl()` returns a bare path — correct in a browser,
+fatal in the shell, where `tauri://localhost/api/sync/…` does not exist.
+
+**It is a trap door, not merely a bug.** The mechanism that fetches a
+*replacement* bundle uses the same `apiUrl()`, so a client that activates one
+of these can never be reached again — only a hand reinstall recovers it.
+§14.7's rollback does not help: React renders, the frontend reports ready, and
+the app is simply deaf.
+
+Two changes close it:
+
+- **`desktop:bundle` builds the export itself**, with the right environment,
+  instead of packaging whatever `.next-static` happened to be on disk. The
+  ambient directory was the footgun.
+- **A tripwire refuses to package an export without an absolute API base.** It
+  finds the chunk carrying `api-origin.ts`'s own "Ignoring
+  NEXT_PUBLIC_AUTH_URL" warning and asserts the origin was inlined *into that
+  chunk*. Searching the whole export would pass on any incidental mention of
+  the domain — `SITE_ORIGIN` appears in metadata however the build was run,
+  and that false pass is what let this ship.
+
+The origin is read from `src/lib/site.ts` rather than repeated in the script: a
+second copy of that string is exactly how this would come back.
+
+### 14.9 Retention: nothing is deleted, deliberately
+
+Wrangler has no object-listing command, so pruning would mean paging the S3 API
+by hand. An archive is ~3.8 MB, so a year of daily bundles is ~1.4 GB — about
+two cents a month, inside R2's free tier.
+
+A lifecycle rule would expire them server-side and is the right tool if this
+ever matters. It is deliberately not enabled: age-based expiry would eventually
+delete the *current* archive during a long gap between deploys, leaving the
+manifest pointing at a 404. That trades two cents for a broken pipeline.
+
+Rollback does not depend on any of this — §14.7 restores the previous bundle
+from the client's own disk, never by re-downloading.

@@ -37,7 +37,8 @@
     "desktop:build": "tauri build",
     "desktop:install": "node scripts/desktop-install.mjs",
     "desktop:bundle": "node scripts/desktop/bundle-assets.mjs",
-    "desktop:publish": "node scripts/desktop/publish-assets.mjs"
+    "desktop:publish": "node scripts/desktop/publish-assets.mjs",
+    "desktop:ship": "npm run desktop:bundle && npm run desktop:publish"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

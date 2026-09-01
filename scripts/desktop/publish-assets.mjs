@@ -20,11 +20,21 @@
  * leaves the previous manifest in place, pointing at a bundle that still
  * exists.
  *
- * ## Old archives are kept
+ * ## Retention: nothing is deleted, and that is the decision
  *
- * Nothing here deletes. Archives are named by content hash and cost ~3.8 MB
- * each, and EI-257's rollback needs a previous bundle to still be fetchable.
- * Pruning is a deliberate later decision, not a side effect of publishing.
+ * Wrangler has no object-listing command, so a prune here would have to page
+ * the S3 API by hand. It is not worth it. An archive is ~3.8 MB, so a year of
+ * daily bundles is about 1.4 GB — roughly two cents a month, inside R2's free
+ * tier.
+ *
+ * A lifecycle rule (`wrangler r2 bucket lifecycle`) would expire them
+ * server-side, and is the right tool IF this ever matters. It is not enabled,
+ * because age-based expiry would eventually delete the *current* archive
+ * during any long gap between deploys, leaving the manifest pointing at a
+ * 404 — trading two cents for a broken pipeline.
+ *
+ * Note that EI-257's rollback does not depend on any of this: it restores the
+ * previous bundle from the client's own disk, never by re-downloading.
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";

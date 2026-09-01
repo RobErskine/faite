@@ -28,6 +28,24 @@
  * from `tauri.conf.json`'s `version`, which still describes the Rust shell and
  * still moves by hand a few times a year.
  *
+ * ## Why this builds, instead of packaging whatever is lying around (EI-262)
+ *
+ * `NEXT_PUBLIC_*` is inlined at build time, and the desktop shell's own export
+ * is built with `NEXT_PUBLIC_AUTH_URL=https://myfaite.app` (`tauri.conf.json`'s
+ * `beforeBuildCommand`). Without it, `apiUrl()` returns a bare path — correct
+ * in a browser, fatal in the shell, where `tauri://localhost/api/sync/...`
+ * does not exist.
+ *
+ * That failure is a trap door: the mechanism that fetches a *replacement*
+ * bundle uses the same `apiUrl()`, so a client that activates a bundle built
+ * the wrong way can never be reached again. EI-257's rollback does not save it
+ * either — React renders, the frontend reports ready, and the app is simply
+ * deaf.
+ *
+ * So this script owns the build rather than trusting an ambient `.next-static`,
+ * and `assertDesktopBuild` refuses to package an export that lacks an absolute
+ * API base.
+ *
  * ## `minShellVersion`
  *
  * The frontend can be newer than the shell around it, because the shell only
@@ -49,6 +67,25 @@ const OUT_DIR = ".desktop-assets";
 /** The app's entry document. A bundle without it is not a bundle. */
 const ENTRY = "board.html";
 
+/**
+ * The API origin baked into a desktop bundle, read from `src/lib/site.ts`
+ * rather than repeated here.
+ *
+ * A second copy of this string is exactly how EI-262 would come back: the
+ * value has to match `tauri.conf.json`'s `beforeBuildCommand` AND the server's
+ * own `SITE_ORIGIN`, and a literal sitting in a build script is the copy that
+ * would be forgotten.
+ */
+const API_BASE = (() => {
+  const source = readFileSync("src/lib/site.ts", "utf8");
+  const match = /export const SITE_ORIGIN = "([^"]+)"/.exec(source);
+  if (!match) {
+    console.error("Could not read SITE_ORIGIN from src/lib/site.ts.");
+    process.exit(1);
+  }
+  return match[1];
+})();
+
 /** Lowest shell version that can run this frontend. See the doc comment. */
 const MIN_SHELL_VERSION = "0.1.0";
 
@@ -64,13 +101,57 @@ function walk(dir, base = dir, out = []) {
 
 const sha256 = (buffer) => createHash("sha256").update(buffer).digest("hex");
 
+/**
+ * Fails unless the export was built for the desktop shell.
+ *
+ * The check is narrow on purpose: it finds the chunk carrying `api-origin.ts`'s
+ * own warning string, then asserts the absolute API base was inlined into that
+ * same chunk. Searching the whole export would pass on any incidental mention
+ * of the domain — `SITE_ORIGIN` appears in metadata regardless of how the
+ * build was run, which is exactly the false pass that let EI-262 ship.
+ */
+function assertDesktopBuild(paths) {
+  const marker = "Ignoring NEXT_PUBLIC_AUTH_URL";
+  const chunk = paths
+    .map((path) => join(EXPORT_DIR, path.slice(1)))
+    .filter((file) => file.endsWith(".js"))
+    .find((file) => readFileSync(file, "utf8").includes(marker));
+
+  if (!chunk) {
+    console.error(
+      `Could not find api-origin.ts in the export (looked for ${JSON.stringify(marker)}).\n` +
+        "If that warning was reworded, update this check — do not delete it: it is\n" +
+        "the only thing standing between a reworded string and EI-262 shipping again.",
+    );
+    process.exit(1);
+  }
+  if (!readFileSync(chunk, "utf8").includes(API_BASE)) {
+    console.error(
+      `This export has no absolute API base. It was built without\n` +
+        `NEXT_PUBLIC_AUTH_URL=${API_BASE}, so in the desktop shell every /api/* call\n` +
+        `would resolve against tauri://localhost and fail — including the one that\n` +
+        `fetches a replacement bundle. Refusing to package it (EI-262).`,
+    );
+    process.exit(1);
+  }
+}
+
 function main() {
+  // Built here rather than assumed, so a stale or dev-flavoured `.next-static`
+  // cannot become a published bundle. See EI-262 in the doc comment.
+  console.log(`→ Building the static export with NEXT_PUBLIC_AUTH_URL=${API_BASE}…`);
+  execFileSync("npm", ["run", "build:static"], {
+    env: { ...process.env, NEXT_PUBLIC_AUTH_URL: API_BASE },
+    stdio: "inherit",
+  });
+
   if (!statSync(EXPORT_DIR, { throwIfNoEntry: false })?.isDirectory()) {
-    console.error(`No ${EXPORT_DIR}/. Run \`npm run build:static\` first.`);
+    console.error(`Build reported success but ${EXPORT_DIR}/ is missing.`);
     process.exit(1);
   }
 
   const paths = walk(EXPORT_DIR);
+  assertDesktopBuild(paths);
   if (!paths.includes(`/${ENTRY}`)) {
     console.error(`${EXPORT_DIR}/ has no ${ENTRY} — refusing to publish a bundle nothing can boot.`);
     process.exit(1);
