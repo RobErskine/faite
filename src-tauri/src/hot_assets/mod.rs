@@ -353,6 +353,20 @@ pub fn hot_assets_ready<R: Runtime>(app: tauri::AppHandle<R>) {
   layout.clear_probation();
 }
 
+/// Relaunches the app so a staged bundle becomes the running one (EI-258).
+///
+/// The restart IS the install. Activation happens in `apply()` before any
+/// webview exists (§14.3), so the only way to apply a staged bundle is to go
+/// through startup again — there is no in-place swap to offer instead, by
+/// design.
+///
+/// Window geometry survives via the window-state plugin, and the board's data
+/// is in Dexie, so this is closer to a page reload than to losing anything.
+#[tauri::command]
+pub fn hot_assets_restart<R: Runtime>(app: tauri::AppHandle<R>) {
+  app.restart();
+}
+
 /// Accepts a manifest and answers whether the archive is worth downloading.
 ///
 /// The decision lives here rather than in the webview because this is where

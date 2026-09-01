@@ -5,9 +5,9 @@ import { apiUrl } from "@/lib/api-origin";
 import {
   getShellVersion,
   isDesktopShell,
+  getHotAssetStatus,
   openDownloadPage,
-  prepareHotAssetBundle,
-  stageHotAssetBundle,
+  restartForUpdate,
 } from "@/lib/desktop/bridge";
 import {
   evaluateUpdate,
@@ -38,42 +38,6 @@ async function fetchDesktopVersionPolicy(): Promise<DesktopVersionPolicy | null>
 }
 
 /**
- * Fetches a published bundle and hands it to the shell to verify and stage
- * (EI-256).
- *
- * Rides the check that already exists rather than adding a timer of its own:
- * by the time this runs, `/api/desktop/version` has been fetched anyway, and
- * `policy.assets` either names a bundle or does not.
- *
- * **Deliberately silent, and deliberately unawaited by the UI.** Every exit
- * here — no bundle published, the shell declining it, an offline download, a
- * failed verification — leaves the app running the frontend it already has,
- * which is a completely acceptable outcome. Nothing about it is worth
- * interrupting someone's board over. The one thing that must not happen is a
- * half-applied update, and that is structurally impossible: the shell only
- * ever activates at startup.
- */
-async function stageBundleIfNew(policy: DesktopVersionPolicy): Promise<void> {
-  if (!policy.assets) return;
-
-  const manifestResponse = await fetch(policy.assets.manifestUrl);
-  if (!manifestResponse.ok) return;
-  // Passed as text, not re-serialised: the shell hashes what the server
-  // actually sent, and a round-trip through JSON.parse could change it.
-  const manifestJson = await manifestResponse.text();
-
-  if (!(await prepareHotAssetBundle(manifestJson))) return;
-
-  const archiveResponse = await fetch(policy.assets.archiveUrl);
-  if (!archiveResponse.ok) return;
-
-  const staged = await stageHotAssetBundle(await archiveResponse.arrayBuffer());
-  if (staged) {
-    console.info(`[faite] hot-asset bundle ${staged} staged; it applies on the next launch`);
-  }
-}
-
-/**
  * Six hours. The desktop app is dock-resident and effectively never restarts
  * (D1.5 — closing the window hides it), so "check on launch" alone would
  * mean a copy that has been running since March has never asked. Six hours
@@ -84,6 +48,16 @@ async function stageBundleIfNew(policy: DesktopVersionPolicy): Promise<void> {
 export const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 export interface DesktopUpdate {
+  /**
+   * A verified bundle waiting for the next launch (EI-258), or `null`.
+   *
+   * Independent of `state`, which is about the SHELL's version. A shell can be
+   * perfectly current and still have a new frontend staged — that is the
+   * ordinary case now, and the reason these are two fields rather than one.
+   */
+  stagedBundle: string | null;
+  /** Relaunches to apply `stagedBundle`. The restart is the install. */
+  restart: () => void;
   /** `current` until a check proves otherwise — see `useDesktopUpdate`. */
   state: DesktopUpdateState;
   /** The running build, or `null` outside the desktop shell. */
@@ -122,6 +96,7 @@ export interface DesktopUpdate {
  */
 export function useDesktopUpdate(): DesktopUpdate {
   const [state, setState] = useState<DesktopUpdateState>({ status: "current" });
+  const [stagedBundle, setStagedBundle] = useState<string | null>(null);
   const [installed, setInstalled] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
   const [checked, setChecked] = useState(false);
@@ -151,9 +126,11 @@ export function useDesktopUpdate(): DesktopUpdate {
         // Not awaited into the state above: a 3.8MB download must not hold
         // the version bar's answer, and its outcome changes nothing on
         // screen until the app next launches.
-        void stageBundleIfNew(policy).catch((error: unknown) => {
-          console.error("[faite] could not stage a hot-asset bundle", error);
-        });
+        // Display only. Downloading belongs to `DesktopShellTasks`, which
+        // mounts in the root layout and therefore runs even when this board
+        // is not on screen — see that component for why that matters.
+        const status = await getHotAssetStatus();
+        setStagedBundle(status?.staged ?? null);
       } finally {
         inFlightRef.current = false;
         setChecking(false);
@@ -183,5 +160,11 @@ export function useDesktopUpdate(): DesktopUpdate {
     });
   }, [state]);
 
-  return { state, installed, checking, checked, check, openDownload };
+  const restart = useCallback(() => {
+    void restartForUpdate().catch((error: unknown) => {
+      console.error("[faite] could not restart to apply the update", error);
+    });
+  }, []);
+
+  return { state, installed, checking, checked, check, openDownload, stagedBundle, restart };
 }

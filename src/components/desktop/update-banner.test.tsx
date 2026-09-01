@@ -10,12 +10,20 @@ import { CLIENT_OUTDATED_EVENT } from "@/lib/sync/transport";
  * response, because that path is the actual subject: "server says X, the bar
  * says Y".
  */
-const shell = vi.hoisted(() => ({ isDesktop: true, version: "0.1.0" }));
+const shell = vi.hoisted(() => ({ isDesktop: true, version: "0.1.0", staged: null as string | null }));
 const openDownloadPage = vi.hoisted(() => vi.fn((url: string) => Promise.resolve(url)));
+const restartForUpdate = vi.hoisted(() => vi.fn(() => Promise.resolve()));
 vi.mock("@/lib/desktop/bridge", () => ({
   isDesktopShell: () => shell.isDesktop,
   getShellVersion: () => Promise.resolve(shell.isDesktop ? shell.version : null),
   openDownloadPage: (url: string) => openDownloadPage(url),
+  // EI-256/EI-258. `getHotAssetStatus` is the one that matters here: the hook
+  // reads staged state back from the shell rather than from what it just sent,
+  // because a bundle staged in an earlier session counts too.
+  getHotAssetStatus: () => Promise.resolve({ active: null, staged: shell.staged, shell: shell.version }),
+  prepareHotAssetBundle: () => Promise.resolve(false),
+  stageHotAssetBundle: () => Promise.resolve(null),
+  restartForUpdate: () => restartForUpdate(),
 }));
 
 const DOWNLOAD_URL = "https://myfaite.app/download";
@@ -34,11 +42,13 @@ function serverSays(policy: Record<string, string> | null): void {
 beforeEach(() => {
   shell.isDesktop = true;
   shell.version = "0.1.0";
+  shell.staged = null;
 });
 
 afterEach(() => {
   cleanup();
   openDownloadPage.mockClear();
+  restartForUpdate.mockClear();
   vi.unstubAllGlobals();
 });
 
@@ -110,5 +120,51 @@ describe("DesktopUpdateBanner", () => {
     window.dispatchEvent(new CustomEvent(CLIENT_OUTDATED_EVENT));
 
     expect(await screen.findByRole("alert")).toBeTruthy();
+  });
+
+  // ---- EI-258: a staged frontend, on a shell that is perfectly current ----
+
+  it("offers a restart when a bundle is staged and the shell is current", async () => {
+    shell.staged = "ecaf9e1389e7";
+    serverSays({ latest: "0.1.0", minimum: "0.1.0", downloadUrl: DOWNLOAD_URL });
+    render(<DesktopUpdateBanner />);
+
+    expect(await screen.findByRole("button", { name: "Restart" })).toBeTruthy();
+    expect(screen.getByText(/Restart Faite to pick it up/)).toBeTruthy();
+  });
+
+  it("restarts rather than opening a download page", async () => {
+    shell.staged = "ecaf9e1389e7";
+    serverSays({ latest: "0.1.0", minimum: "0.1.0", downloadUrl: DOWNLOAD_URL });
+    render(<DesktopUpdateBanner />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Restart" }));
+
+    expect(restartForUpdate).toHaveBeenCalled();
+    expect(openDownloadPage).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The priority rule. A shell below `minimum` cannot sync at all, so telling
+   * the user a restart will fix it would be a lie — the staged frontend is
+   * real, and irrelevant.
+   */
+  it("lets a blocked shell win over a staged bundle", async () => {
+    shell.staged = "ecaf9e1389e7";
+    shell.version = "0.1.0";
+    serverSays({ latest: "0.3.0", minimum: "0.2.0", downloadUrl: DOWNLOAD_URL });
+    render(<DesktopUpdateBanner />);
+
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Get the update" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Restart" })).toBeNull();
+  });
+
+  it("stays silent when nothing is staged and the shell is current", async () => {
+    serverSays({ latest: "0.1.0", minimum: "0.1.0", downloadUrl: DOWNLOAD_URL });
+    const { container } = render(<DesktopUpdateBanner />);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(container.textContent).toBe("");
   });
 });

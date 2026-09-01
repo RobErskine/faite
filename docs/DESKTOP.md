@@ -1737,3 +1737,49 @@ manifest pointing at a 404. That trades two cents for a broken pipeline.
 
 Rollback does not depend on any of this — §14.7 restores the previous bundle
 from the client's own disk, never by re-downloading.
+
+### 14.10 "Restart to update", and where the check actually runs (EI-258)
+
+The EI-147 bar gains a third state. Priority order matters and is strict:
+
+| State | About | Action |
+|---|---|---|
+| **blocked** | the SHELL is below `minimum` | Download a build. Not dismissible |
+| **outdated** | a newer SHELL exists | Download a build |
+| **staged** | a new FRONTEND is verified and waiting | **Restart** |
+
+Shell and bundle are separate axes, which is why "you're up to date" and
+"restart to update" are not a contradiction: the shell moves a few times a
+year, the frontend on every deploy. A blocked shell outranks a staged bundle,
+because a restart would not fix it and saying otherwise would be a lie.
+
+**The restart is the install.** A bundle is activated during startup, before
+any webview exists (§14.3), so going through startup again is the only way to
+apply one. `AppHandle::restart()` does it; the window-state plugin restores
+geometry and the board lives in Dexie, so it is closer to a page reload than to
+quitting.
+
+One trap, found by reading rather than by breaking: this app calls
+`api.prevent_exit()` on `ExitRequested` so that closing the last window only
+hides it (D1.5). A restart arrives as *exactly that event*, so the unguarded
+handler would have swallowed it and left a Restart button that silently did
+nothing. `code` is `None` only for user-initiated quits, so that is now the
+condition.
+
+#### Where the check runs, which was a live defect
+
+`useDesktopUpdate` mounts only on the board. That was survivable when it did
+nothing but colour a bar. Once it also drove downloading and probation, it
+meant:
+
+- a signed-out desktop app **never updated**, because nothing ever checked; and
+- a good bundle was **rolled back after two launches**, because nothing ever
+  reported that it had rendered.
+
+Both were real: a corrected bundle sat published while the dev machine could
+not see it. So the two shell-side jobs — report ready, fetch the newest bundle
+— now live in `DesktopShellTasks`, mounted in the **root layout**, which
+renders on every route the shell can open. `useDesktopUpdate` went back to
+being display state, and the bar reads what the shell has staged rather than
+staging anything itself. That split also stops the duplicate-mount problem
+becoming a duplicate 3.8 MB download.

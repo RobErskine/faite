@@ -17,11 +17,15 @@ import { isDesktopShell } from "@/lib/desktop/bridge";
  * and a reload is the whole update story.
  */
 export function DesktopUpdateRow() {
-  const { state, installed, checking, checked, check, openDownload } = useDesktopUpdate();
+  const { state, installed, checking, checked, check, openDownload, stagedBundle, restart } =
+    useDesktopUpdate();
 
   if (!isDesktopShell()) return null;
 
   const behind = state.status !== "current";
+  // Same priority rule as the bar: a shell that cannot sync is the bigger
+  // problem, and a restart would not fix it (EI-258).
+  const staged = !behind && stagedBundle !== null;
 
   return (
     <div className="mb-4 rounded-md border p-3">
@@ -39,6 +43,10 @@ export function DesktopUpdateRow() {
           <Button size="sm" onClick={openDownload}>
             Get the update
           </Button>
+        ) : staged ? (
+          <Button size="sm" onClick={restart}>
+            Restart to update
+          </Button>
         ) : (
           <Button variant="outline" size="sm" onClick={check} disabled={checking}>
             {checking ? "Checking…" : "Check for updates"}
@@ -53,7 +61,14 @@ export function DesktopUpdateRow() {
         </p>
       ) : null}
 
-      {state.status === "current" && checked ? (
+      {staged ? (
+        <p className="mt-2 text-xs text-muted-foreground">
+          A new version of the app&apos;s interface is ready and will load when you
+          restart. Your board is unaffected.
+        </p>
+      ) : null}
+
+      {state.status === "current" && !staged && checked ? (
         <p className="mt-2 text-xs text-muted-foreground">You&apos;re up to date.</p>
       ) : null}
     </div>
