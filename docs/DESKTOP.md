@@ -1489,6 +1489,43 @@ relaunches. It is deliberately not a release — it bumps no version and
 publishes nothing. Since D2d it is needed only for **shell** changes; a
 frontend change reaches the installed app by itself.
 
+### 12.5.1 Ad-hoc signing re-asks for the keychain, every rebuild
+
+A symptom worth recognising, because it looks like a bug in the app and is not:
+
+> *Faite wants to use your confidential information stored in
+> "app.myfaite.desktop" in your keychain.*
+
+macOS stores a keychain ACL against an application's **designated
+requirement**. For an ad-hoc build that requirement is the binary's own hash:
+
+```
+designated => cdhash H"4d15c9d0cccaf3b3b80970857b43160010a24e1b"
+```
+
+So every rebuild is a different application as far as the keychain is
+concerned, and the grant does not carry over. **"Always Allow" cannot fix it** —
+it grants access to the one build that was running when it was clicked.
+
+A Developer ID signature's requirement is the bundle id and team id:
+
+```
+designated => identifier "app.myfaite.desktop" and anchor apple generic
+  and ... certificate leaf[subject.OU] = "48XAK39593"
+```
+
+which survives rebuilds, so the grant sticks.
+
+`tauri.conf.json` keeps `signingIdentity: "-"` and `~/.zshrc` exports
+`APPLE_SIGNING_IDENTITY` over it (§8) — but **a non-interactive shell does not
+source `.zshrc`**, so a build started from anything other than a terminal
+silently fell back to ad-hoc. `scripts/desktop-install.mjs` now resolves the
+identity itself via `security find-identity` rather than trusting the
+environment, and warns loudly when it cannot find one.
+
+Note this only ever affects **shell rebuilds**. A hot-asset update does not
+touch the binary, so it can never trigger this.
+
 ### 12.6 Verified
 
 - `npm run verify` — typecheck, lint, 2,252 unit tests, both Next builds.

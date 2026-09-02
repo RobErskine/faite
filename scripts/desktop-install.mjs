@@ -17,6 +17,25 @@
  * build survives unless the target is removed first, and copying over a running
  * app leaves the old process on a binary that is no longer there.
  *
+ * ## Why it signs with Developer ID when it can
+ *
+ * `tauri.conf.json` sets `signingIdentity: "-"` (ad-hoc), and `~/.zshrc`
+ * exports `APPLE_SIGNING_IDENTITY` to override it (docs/DESKTOP.md §8). A
+ * non-interactive shell does not source `.zshrc`, so a build launched from
+ * anything but a terminal silently falls back to ad-hoc — and that has a
+ * consequence nobody expects:
+ *
+ * **An ad-hoc app's designated requirement is its own binary hash**
+ * (`designated => cdhash H"..."`). macOS keychain ACLs are stored against that
+ * requirement, so every rebuild is a DIFFERENT application as far as the
+ * keychain is concerned, and the "Faite wants to use your confidential
+ * information" prompt returns on every launch after every rebuild. "Always
+ * Allow" cannot help: it grants access to the one build that was running.
+ *
+ * A Developer ID signature's requirement is the team id and bundle id, which
+ * survive rebuilds — so the grant sticks. This resolves the identity itself
+ * rather than trusting the environment, and says so loudly when it cannot.
+ *
  * ## What this is NOT
  *
  * Not a release. It does not bump `version` in `src-tauri/tauri.conf.json`, it
@@ -36,22 +55,55 @@ import { existsSync, rmSync } from "node:fs";
 const BUILT = "src-tauri/target/release/bundle/macos/Faite.app";
 const INSTALLED = "/Applications/Faite.app";
 
-const run = (cmd, args) =>
-  execFileSync(cmd, args, { stdio: "inherit", encoding: "utf8" });
+const run = (cmd, args, env = {}) =>
+  execFileSync(cmd, args, { stdio: "inherit", encoding: "utf8", env: { ...process.env, ...env } });
+
+/**
+ * The Developer ID identity to sign with, or `null` for ad-hoc.
+ *
+ * Prefers an explicit `APPLE_SIGNING_IDENTITY`, then asks the keychain. Asking
+ * matters because `~/.zshrc` is not sourced by non-interactive shells, so the
+ * env var is present when a human runs this and absent when a script does.
+ */
+function signingIdentity() {
+  if (process.env.APPLE_SIGNING_IDENTITY) return process.env.APPLE_SIGNING_IDENTITY;
+  try {
+    const found = execFileSync("security", ["find-identity", "-v", "-p", "codesigning"], {
+      encoding: "utf8",
+    });
+    return /"(Developer ID Application: [^"]+)"/.exec(found)?.[1] ?? null;
+  } catch {
+    return null;
+  }
+}
 
 if (process.platform !== "darwin") {
   console.error("This script installs a macOS bundle. Nothing to do here.");
   process.exit(1);
 }
 
+const identity = signingIdentity();
+if (identity) {
+  console.log(`→ Signing as ${identity}`);
+} else {
+  console.warn(
+    "→ No Developer ID identity found; falling back to ad-hoc signing.\n" +
+      "  Expect macOS to ask for keychain access again after every rebuild —\n" +
+      "  an ad-hoc app is identified by its binary hash, so each build is a\n" +
+      "  new application to the keychain. See this file's doc comment.",
+  );
+}
+
 // `--bundles app` builds ONLY the .app, skipping the .dmg entirely. Not just
-// a speed-up: the dmg step is the failure-prone one (it shells out to
-// hdiutil via bundle_dmg.sh, which fails on a stale mount and leaves a ~38MB
-// `rw.*.dmg` scratch file behind each time), and it produced an installer
-// this script then ignored in favour of the .app sitting next to it. A local
+// a speed-up: the dmg step is the failure-prone one (it shells out to hdiutil
+// via bundle_dmg.sh, which fails on a stale mount and leaves a ~38MB
+// `rw.*.dmg` scratch file behind each time), and it produced an installer this
+// script then ignored in favour of the .app sitting next to it. A local
 // install has no use for a disk image.
 console.log("→ Building (static export + tauri release .app)…");
-run("npm", ["run", "desktop:build", "--", "--bundles", "app"]);
+run("npm", ["run", "desktop:build", "--", "--bundles", "app"], {
+  ...(identity ? { APPLE_SIGNING_IDENTITY: identity } : {}),
+});
 
 if (!existsSync(BUILT)) {
   console.error(`Build reported success but ${BUILT} is missing.`);

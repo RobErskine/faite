@@ -1171,3 +1171,26 @@ confirm the mechanism — a fix you cannot explain is usually a coincidence you
 have not measured. Isolate with an observable that distinguishes "did not run"
 from "ran and got nothing": here, a probation marker that only the frontend can
 delete.
+
+## An ad-hoc signed macOS app is a new application on every rebuild
+
+Rob kept getting "Faite wants to use your confidential information stored in
+app.myfaite.desktop in your keychain", and clicking "Always Allow" never made
+it stop. Nothing was wrong with the app: every `npm run desktop:install` I ran
+produced an **ad-hoc** build, whose designated requirement is its own binary
+hash (`designated => cdhash H"..."`). macOS stores keychain ACLs against that
+requirement, so each rebuild was a different application to the keychain and
+the grant never carried over.
+
+The cause was environmental, not intentional: `tauri.conf.json` sets
+`signingIdentity: "-"` and `~/.zshrc` exports `APPLE_SIGNING_IDENTITY` over it,
+but **a non-interactive shell does not source `.zshrc`** — so every build I
+launched in the background silently signed ad-hoc while Rob's own terminal
+builds signed with Developer ID.
+
+**Rule:** when a build's behaviour differs between a human's terminal and an
+agent's shell, suspect profile-sourced environment before suspecting the code.
+And when a tool's correctness depends on an env var, have the tool resolve the
+value itself (`security find-identity`) rather than trusting that whoever
+invoked it had the right shell — an env var that is usually present is worse
+than one that is always absent, because it fails silently and only sometimes.
