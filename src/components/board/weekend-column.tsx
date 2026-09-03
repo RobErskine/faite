@@ -91,7 +91,7 @@ export function WeekendColumn({
       )}
       <h2
         className={cn(
-          "truncate font-heading text-lg font-bold uppercase tracking-tight",
+          "truncate type-column-title text-lg",
           "text-muted-foreground [writing-mode:vertical-rl] rotate-180",
         )}
       >

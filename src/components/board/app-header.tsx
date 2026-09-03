@@ -179,7 +179,10 @@ export function AppHeader({
     <header className="flex h-12 shrink-0 items-center gap-3 border-b px-4">
       <Link
         href="/board"
-        className="font-heading text-sm font-semibold tracking-tight"
+        // The wordmark is the F mark's home in the header. Hover and focus
+        // reveal the spectrum through the letterforms — one of its four
+        // allowed places (docs/DESIGN.md §1). Colour changes, nothing moves.
+        className="rounded font-heading text-sm font-semibold tracking-tight outline-none transition-colors hover:text-spectrum focus-visible:text-spectrum focus-visible:ring-2 focus-visible:ring-ring/50"
       >
         Faite
       </Link>
@@ -199,7 +202,7 @@ export function AppHeader({
             type="button"
             onClick={onOpenPalette}
             aria-keyshortcuts="Meta+K Control+K"
-            className="flex h-8 w-full max-w-md items-center gap-2 rounded-lg border bg-muted/40 px-2.5 text-left transition-colors outline-none hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            className="flex h-8 w-full max-w-md items-center gap-2 rounded-lg border bg-surface-sunken px-2.5 text-left transition-colors outline-none hover:bg-muted focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
           >
             <Search className="size-3.5 text-muted-foreground" aria-hidden />
             <span className="text-xs text-muted-foreground">

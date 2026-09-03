@@ -86,7 +86,7 @@ export function CreateListColumn({
           )}
         >
           <Plus className="size-4" aria-hidden />
-          <span className="font-heading text-sm font-bold uppercase tracking-tight">
+          <span className="type-column-title text-sm">
             Create list
           </span>
         </button>
@@ -116,7 +116,7 @@ export function CreateListColumn({
             aria-label="New list name"
             className={cn(
               "w-full bg-transparent text-sm outline-none",
-              "font-heading font-bold uppercase tracking-tight",
+              "type-column-title",
               "placeholder:font-sans placeholder:font-normal placeholder:normal-case",
               "placeholder:tracking-normal placeholder:text-muted-foreground/60",
             )}

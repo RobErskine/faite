@@ -38,7 +38,7 @@ export function SplitStrip({ label, count, direction, onExpand }: SplitStripProp
       )}
     >
       <Chevron className="size-3.5 text-muted-foreground/70" aria-hidden />
-      <span className="font-heading text-sm font-bold uppercase tracking-tight">{label}</span>
+      <span className="type-column-title text-sm">{label}</span>
       {count > 0 && (
         <span className="num text-2xs font-medium text-muted-foreground">{count}</span>
       )}

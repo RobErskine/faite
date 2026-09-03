@@ -1997,3 +1997,64 @@ otherwise demand for one button and one section. `npm run e2e:ci`
 (`--project=desktop --project=phone-iphone`) verified green against a real
 production build (`CI=1` + `next start`) — the `next dev` path is locally
 flaky under full parallelism for reasons unrelated to this change (EI-187).
+
+---
+
+## V milestone, V0–V4 in one PR — design system foundation (EI-265…EI-269)
+
+**docs/DESIGN.md is now the spec of record** (V0): colour grammar (one meaning
+per channel), type roles, surface tiers, motion policy, a marketing-site
+section, and the decisions log (A–D, 2026-09-03). Linked from docs/README.md
+and TODO-ITEM-DESIGN.md §10.
+
+**The semantic token layer** (V1) sits on top of the untouched shadcn names in
+globals.css: surfaces (sunken/0/1/2), lines (faint/line/strong), the spectrum
+gradient + solid stop, urgent (= destructive under an honest name),
+warning/info/success with -soft fills, three shadows, and the motion tokens
+with check/strike/settle keyframes (consumed by V5, not yet wired). The three
+hardcoded banner palettes (signed-out amber, desktop update red/amber/sky,
+update-row red) migrated onto status tokens. Label chips now go through
+tint()/edge() instead of a hand-rolled alpha suffix. The stray shadcn-default
+sidebar blue is neutralised. `--ring` is now `--spectrum-solid` — focus is one
+of the spectrum's four allowed places.
+
+**Type roles + the pairing cut** (V2): `type-column-title` (no font-size — the
+caller keeps `text-lg`/`text-sm`, so the utility never fights a size class
+through tailwind-merge) and `type-eyebrow` replaced ~12 inline sites.
+FONT_PAIRINGS is down to editorial (new default) + hyperlegible;
+`normalizeFontPairing()` maps removed/unknown ids to the default at READ time,
+`settingsSchema.fontPairing` gained `.catch()` so a synced `"precision"` row
+parses instead of killing the board, and the board's data-font effect + the
+design section both normalize. app/fonts.ts loads five families instead of
+eight; Editorial preloads, Atkinson is on-demand. New fonts.test.ts covers the
+normalize + schema paths.
+
+**Board structure** (V3): halves and list track on `bg-surface-sunken`; pinned
+rails on `bg-surface-1`; today = `bg-surface-1` + `hairline-spectrum` on the
+header, other days `bg-surface-0` with `text-muted-foreground` titles (today
+and Overflow keep full ink — `emphasis && text-primary` is gone); Overflow gets
+`tone="urgent"` (rule under the title + tinted count) and Backlog an
+"Unscheduled" eyebrow; active tab pill = `bg-surface-2 shadow-card`; the third
+tab count number carries an inline ↑ glyph; the wordmark reveals the spectrum
+on hover/focus (`text-spectrum` utility); the ⌘K field sits on the sunken
+surface.
+
+**Row + badges** (V4): PRIORITY_RAILS is achromatic — width 3/2/1/1 +
+opacity 1/.7/.5/.5, P4 dotted (repeating-gradient, since the rail is a span,
+not a border); the drag-overlay chip mirrors it via color-mix. The invariant
+test now guards "no two levels share width+opacity+style" and "no `color`
+field creeps back". Badge destructive variant, DUE banner, and the
+drop-refusal outlines read through `--urgent`. Row/group hover is
+`bg-foreground/5` (one class, both themes) — todo-card.test.tsx asserts the
+old `bg-accent/50` is GONE, not just that the new class is present.
+
+### Verified
+
+`npm run typecheck`, `npm run lint`, full `npm test` (2347 green after the
+hover-class guard was updated), and the CI-faithful e2e gate — `npm run build`
+then `CI=1 E2E_PORT=3100 E2E_SERVER="npx next start -p 3100" npm run e2e:ci` —
+104/104. Visual pass via Chrome DevTools against the prod build on :3100:
+both themes at 1440×900, hairline/tiers/urgent rule/banner tokens all read;
+only five font families ship on <html>.
+
+V5 (motion) and V6 (audit) are the milestone's remaining tickets.

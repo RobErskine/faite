@@ -330,7 +330,7 @@ export function TodoCard({
         // background, so naming both properties loses nothing over
         // `transition-colors`.
         "transition-[background-color,opacity] duration-100",
-        "hover:bg-accent/50 focus-within:bg-accent/50",
+        "hover:bg-foreground/5 focus-within:bg-foreground/5",
         // The dragged row stays in place as a faint ghost so the list does not
         // visibly collapse out from under the cursor.
         /*

@@ -62,8 +62,8 @@ const CARDS_NOT_DROPPABLE = { draggable: false, droppable: true } as const;
  * the two visual treatments can't drift apart from each other over time.
  */
 const DUE_BANNER = cn(
-  "flex items-center gap-1 border-b border-destructive/20 bg-destructive/10",
-  "px-2 py-1 text-2xs font-medium text-destructive",
+  "flex items-center gap-1 border-b border-urgent/20 bg-urgent/10",
+  "px-2 py-1 text-2xs font-medium text-urgent",
 );
 
 /**
@@ -132,6 +132,13 @@ interface BoardColumnProps {
   /** The group a release would land in — highlight and drop indicator. */
   overGroupId?: string | null;
   emphasis?: boolean;
+  /**
+   * `"urgent"` dresses the header in the urgency channel (docs/DESIGN.md §1):
+   * an `--urgent` rule under the title and a tinted count beside it, so the
+   * column reads as a queue with pressure rather than as one more list. Only
+   * Overflow passes it.
+   */
+  tone?: "urgent";
   /** Rendered in the column header — list rename/delete menus, etc. */
   actions?: React.ReactNode;
   onToggle: (todo: Todo) => void;
@@ -321,6 +328,7 @@ export function BoardColumn({
   onToggleGroup,
   overGroupId,
   emphasis,
+  tone,
   actions,
   onToggle,
   onOpen,
@@ -644,6 +652,13 @@ export function BoardColumn({
       }
       className={cn(
         "group/column relative flex flex-col rounded-md transition-all",
+        /*
+          Surface tiers (docs/DESIGN.md §3). Today sits one step above its
+          neighbours; the half's floor under all of them is `--surface-sunken`
+          (desktop-board.tsx), so the eye reads floor → day → today without a
+          single extra border.
+        */
+        dayTrackColumn && !collapsed && (emphasis ? "bg-surface-1" : "bg-surface-0"),
         collapsed && "w-10 min-h-0 flex-1 shrink-0 cursor-pointer items-center",
         pinned && !collapsed
           ? // Fixed-width child of PINNED_PANEL's flex column, not of the
@@ -674,9 +689,9 @@ export function BoardColumn({
           (isColumnDragActive && isColumnDropTarget)) &&
           "bg-primary/5 outline outline-2 outline-offset-[-2px] outline-primary",
         isDragActive && rejectsDrop && !isOver &&
-          "outline-dashed outline-1 outline-offset-[-2px] outline-destructive/30",
+          "outline-dashed outline-1 outline-offset-[-2px] outline-urgent/30",
         isOver && rejectsDrop && !isColumnDragActive &&
-          "bg-destructive/5 outline outline-2 outline-offset-[-2px] outline-destructive/60",
+          "bg-urgent/5 outline outline-2 outline-offset-[-2px] outline-urgent/60",
         className,
       )}
       data-drop-indicator={isColumnDragActive && isColumnDropTarget ? "" : undefined}
@@ -712,6 +727,13 @@ export function BoardColumn({
           // Only drawn when the tab has a color, so an uncolored tab keeps
           // the original headers rather than gaining a grey rule.
           accentColor && !collapsed && "border-b-2",
+          // Overflow: the urgency channel's rule, so the queue reads as
+          // pressure. Same 2px as a tab accent, different meaning.
+          tone === "urgent" && !collapsed && "border-b-2 border-urgent/40",
+          // Today: the spectrum's one hairline on the board (docs/DESIGN.md
+          // §1). On the header, not the section, so the section's rounded
+          // corners and outline states stay untouched.
+          dayTrackColumn && emphasis && !collapsed && "hairline-spectrum",
         )}
         style={accentColor && !collapsed ? { borderColor: edge(accentColor) } : undefined}
       >
@@ -724,9 +746,11 @@ export function BoardColumn({
             )}
             <h2
               className={cn(
-                "truncate font-heading text-lg font-bold uppercase tracking-tight",
+                "truncate type-column-title text-lg",
                 "[writing-mode:vertical-rl] rotate-180",
-                emphasis && "text-primary",
+                // Today and Overflow keep the full ink; the other days recede
+                // so the one that matters now is the one the eye lands on.
+                dayTrackColumn && !emphasis && "text-muted-foreground",
               )}
             >
               {title}
@@ -736,7 +760,7 @@ export function BoardColumn({
           <>
             <div className="min-w-0">
               {subtitle && (
-                <p className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+                <p className="type-eyebrow">
                   {subtitle}
                 </p>
               )}
@@ -785,8 +809,10 @@ export function BoardColumn({
                 */}
                 <h2
                   className={cn(
-                    "min-w-0 truncate font-heading text-lg font-bold uppercase tracking-tight",
-                    emphasis && "text-primary",
+                    "min-w-0 truncate type-column-title text-lg",
+                    // Today and Overflow keep the full ink; the other days recede
+                // so the one that matters now is the one the eye lands on.
+                dayTrackColumn && !emphasis && "text-muted-foreground",
                   )}
                 >
                   {onOpenInfo ? (
@@ -801,6 +827,20 @@ export function BoardColumn({
                     title
                   )}
                 </h2>
+                {/*
+                  The queue's size, in the urgency tint. `aria-hidden`: the
+                  section is already named by its title, and every row inside
+                  is reachable — a count in the name would just be noise read
+                  twice. The collapsed strip shows the same number.
+                */}
+                {tone === "urgent" && todos.length > 0 && (
+                  <span
+                    aria-hidden
+                    className="num shrink-0 rounded-4xl bg-urgent/10 px-1.5 text-2xs font-medium text-urgent"
+                  >
+                    {todos.length}
+                  </span>
+                )}
               </div>
             </div>
             {actions}
@@ -835,7 +875,7 @@ export function BoardColumn({
             onClick={onOpenInfo}
             className={cn(
               DUE_BANNER,
-              "w-full cursor-pointer text-left hover:bg-destructive/15",
+              "w-full cursor-pointer text-left hover:bg-urgent/15",
               "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
             )}
           >
@@ -966,7 +1006,7 @@ export function BoardColumn({
           </SortableContext>
 
           {showsNoMatches && (
-            <p className="border-b border-border/40 px-2 py-1.5 text-2xs text-muted-foreground">
+            <p className="border-b border-line-faint px-2 py-1.5 text-2xs text-muted-foreground">
               No matches
             </p>
           )}
@@ -1112,13 +1152,13 @@ export function BoardColumn({
 
           {/* Ruled filler lines. Decorative only. */}
           {Array.from({ length: fillerRows }, (_, i) => (
-            <div key={i} className="h-8 border-b border-border/40" aria-hidden />
+            <div key={i} className="h-8 border-b border-line-faint" aria-hidden />
           ))}
         </div>
       )}
 
       {!collapsed && footer && (
-        <div className="sticky bottom-0 z-10 bg-card shadow-[0_-2px_6px_-2px_rgb(0_0_0/0.08)]">
+        <div className="sticky bottom-0 z-10 bg-surface-1 shadow-[0_-2px_6px_-2px_rgb(0_0_0/0.08)]">
           {footer}
         </div>
       )}
@@ -1207,8 +1247,8 @@ function TodoGroupSection({
         }}
         className={cn(
           "flex w-full items-center gap-1 border-b px-2 py-0.5 text-left",
-          "text-2xs font-medium uppercase tracking-wide text-muted-foreground",
-          "cursor-pointer transition-colors hover:bg-accent/50",
+          "type-eyebrow",
+          "cursor-pointer transition-colors hover:bg-foreground/5",
           "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring",
           // An uncolored list keeps the ordinary rule rather than gaining a grey
           // one — the same rule the column header's tab accent follows.

@@ -88,7 +88,7 @@ export function TimelineRow({ icon: Icon, label, at, when, accent, isLast, child
         <Icon className="size-3" aria-hidden />
       </span>
 
-      <p className="flex items-center gap-1 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+      <p className="flex items-center gap-1 type-eyebrow">
         {label}
         <span aria-hidden>·</span>
         <time dateTime={at} className="num">

@@ -281,13 +281,19 @@ describe("deadlines", () => {
 describe("the list wash stays off the card", () => {
   /*
     The wash lives on a wrapper behind each group's run of cards
-    (board-column.tsx). Moving it onto the row would beat `hover:bg-accent/50`
+    (board-column.tsx). Moving it onto the row would beat the hover class
     outright — inline styles always win — and kill the hover state on every
     grouped card. This is the guard against that being "tidied up" later.
+
+    The hover is ink at 5% (`bg-foreground/5`, docs/DESIGN.md §3), not the
+    old `bg-accent/50`: one class that darkens in light and lifts in dark.
+    Asserting the old class is GONE, not just that the new one is present —
+    both surviving would mean tailwind-merge saw two different groups.
   */
   it("keeps the hover class and no inline background", () => {
     render(<Harness />);
-    expect(row().className).toContain("hover:bg-accent/50");
+    expect(row().className).toContain("hover:bg-foreground/5");
+    expect(row().className).not.toContain("hover:bg-accent/50");
     expect(row().style.backgroundColor).toBe("");
   });
 });

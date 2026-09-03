@@ -5,7 +5,6 @@ import {
   priorityRail,
   priorityRank,
 } from "./priority";
-import { isTintableColor } from "./colors";
 import type { Priority, Todo } from "./schema";
 
 const LEVELS: Priority[] = [1, 2, 3, 4];
@@ -23,28 +22,44 @@ describe("priorityRail", () => {
 
 describe("the encoding", () => {
   /*
-    The whole point of the rail is that thickness and hue are two channels. If a
-    future palette edit made two levels identical on both, the design would
-    silently stop encoding anything — so the invariant is a test, not a comment.
+    The whole point of the rail is that thickness and form are two channels. If
+    a future edit made two levels identical on width, opacity AND line style,
+    the design would silently stop encoding anything — so the invariant is a
+    test, not a comment.
   */
-  it("never lets two levels share both width and colour", () => {
+  it("never lets two levels share width, opacity and line style", () => {
     const keys = LEVELS.map((p) => {
       const rail = PRIORITY_RAILS[p];
-      return `${rail.width}:${rail.color}`;
+      return `${rail.width}:${rail.opacity}:${rail.dotted}`;
     });
     expect(new Set(keys).size).toBe(LEVELS.length);
   });
 
-  it("gives every level its own colour", () => {
-    const colors = LEVELS.map((p) => PRIORITY_RAILS[p].color);
-    expect(new Set(colors).size).toBe(LEVELS.length);
+  // Decision A (docs/DESIGN.md §7): the rail carries no hue, so red can mean
+  // urgency alone. A `color` field creeping back in is the regression to catch.
+  it("is achromatic — no level carries a colour", () => {
+    for (const p of LEVELS) {
+      expect(PRIORITY_RAILS[p]).not.toHaveProperty("color");
+    }
   });
 
-  // Six-digit hex is what the rest of the app can tint; shorthand or oklch here
-  // would quietly break anything that later wants `tint()` on a rail colour.
-  it("stores colours in the house format", () => {
+  it("steps down in weight from P1 to P4", () => {
+    const weights = LEVELS.map((p) => PRIORITY_RAILS[p].width * PRIORITY_RAILS[p].opacity);
+    for (let i = 1; i < weights.length; i++) {
+      expect(weights[i]).toBeLessThanOrEqual(weights[i - 1]);
+    }
+  });
+
+  // The 1px pair shares a thickness; the dotted line is what tells them apart,
+  // in every theme and for every colour-vision deficiency, because it is form.
+  it("dots only the lowest level", () => {
+    expect(LEVELS.map((p) => PRIORITY_RAILS[p].dotted)).toEqual([false, false, false, true]);
+  });
+
+  it("keeps every opacity legible", () => {
     for (const p of LEVELS) {
-      expect(isTintableColor(PRIORITY_RAILS[p].color)).toBe(true);
+      expect(PRIORITY_RAILS[p].opacity).toBeGreaterThanOrEqual(0.5);
+      expect(PRIORITY_RAILS[p].opacity).toBeLessThanOrEqual(1);
     }
   });
 

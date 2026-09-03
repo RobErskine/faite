@@ -9,7 +9,7 @@ import { OVERFLOW } from "@/lib/scheduling";
 import { LIFTED } from "@/lib/drop-animation";
 import { tint } from "@/lib/colors";
 import { priorityRail } from "@/lib/priority";
-import { FONT_STORAGE_KEY } from "@/lib/fonts";
+import { FONT_STORAGE_KEY, normalizeFontPairing } from "@/lib/fonts";
 import {
   DARK_CLASS,
   PREFERS_DARK,
@@ -117,15 +117,17 @@ export function Board() {
    * would flash the default pairing before settling.
    */
   useEffect(() => {
-    const pairing = settings?.fontPairing;
-    if (!pairing) return;
+    if (!settings) return;
+    // Normalised: a row synced from an older build can still name a pairing
+    // this build no longer ships (docs/DESIGN.md §2). Read-time only.
+    const pairing = normalizeFontPairing(settings.fontPairing);
     document.documentElement.dataset.font = pairing;
     try {
       localStorage.setItem(FONT_STORAGE_KEY, pairing);
     } catch {
       // Private modes can refuse writes. Costs a flash next load, nothing more.
     }
-  }, [settings?.fontPairing]);
+  }, [settings, settings?.fontPairing]);
 
   /**
    * Push the stored appearance onto <html>, mirror it to localStorage, and —
@@ -391,10 +393,15 @@ export function Board() {
               // The card's rail, but riding the chip's existing border rather
               // than an absolutely positioned span: a standalone rounded box has
               // no column edge to keep true and no layout to shift, so a border
-              // is simply the right form here. Both surfaces read their width
-              // and colour from PRIORITY_RAILS, so they cannot drift in value.
+              // is simply the right form here. Both surfaces read their width,
+              // opacity and line style from PRIORITY_RAILS, so they cannot
+              // drift in value. Opacity rides the colour via color-mix here
+              // because the chip's own opacity is the lift animation's.
               borderLeftWidth: activeRail?.width,
-              borderLeftColor: activeRail?.color,
+              borderLeftStyle: activeRail?.dotted ? "dotted" : undefined,
+              borderLeftColor: activeRail
+                ? `color-mix(in oklch, var(--foreground) ${Math.round(activeRail.opacity * 100)}%, transparent)`
+                : undefined,
             }}
             className={cn(
               "flex max-w-xs cursor-grabbing items-center gap-1 rounded-md border",
@@ -433,7 +440,7 @@ export function Board() {
             )}
           >
             <GripVertical className="size-3 shrink-0 text-muted-foreground" aria-hidden />
-            <span className="truncate font-heading text-sm font-bold uppercase tracking-tight">
+            <span className="truncate type-column-title text-sm">
               {ui.activeList.name}
             </span>
           </div>

@@ -326,10 +326,15 @@ changed, the bootstrap fingerprint should **not** move and no
 
 ## 10. Presentation
 
+The spec of record for colour, type, surfaces and motion is
+[`docs/DESIGN.md`](docs/DESIGN.md). The notes below are the card-specific
+decisions it builds on.
+
 - Priority is a **rail**, not a chip — a chip cost a whole badge row in a 168px
-  column. Two channels (thickness + hue) arranged so no two levels share both,
-  and the pair sharing a thickness sits far apart on the blue axis that survives
-  red-green colour blindness. See `src/lib/priority.ts`.
+  column. Since the V milestone the rail is achromatic: thickness (3/2/1/1px)
+  and opacity carry the four levels, and P4 is dotted. Hue was dropped so red
+  can mean urgency alone — `docs/DESIGN.md` §7, decision A. See
+  `src/lib/priority.ts`.
 - `done` is struck through; `dropped` is dimmed only.
 - The unchecked checkbox uses `border-muted-foreground`, not `border-input`.
   `--input` is `oklch(0.922 0 0)` in the light theme — near-white, fine on a

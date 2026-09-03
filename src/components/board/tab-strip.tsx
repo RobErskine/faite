@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
-import { Archive, Info, Plus } from "lucide-react";
+import { Archive, ArrowUp, Info, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { tabDragId, tabDropId, type TabCount } from "@/lib/board";
@@ -302,7 +302,9 @@ function TabPill({
         // invisible padding around a small tap target, the same trick native
         // mobile UIs use.
         "pointer-coarse:min-h-11",
-        isActive ? "bg-background shadow-xs" : "hover:bg-background/60",
+        // The raised tier (docs/DESIGN.md §3): a pill that sits above the
+        // strip, with the shadow that says so in both themes.
+        isActive ? "bg-surface-2 shadow-card" : "hover:bg-surface-2/60",
         isFocusCandidate && "ring-2 ring-primary ring-offset-1 ring-offset-muted",
       )}
       style={
@@ -347,7 +349,14 @@ function TabPill({
           bargain as the deadline/location markers in todo-row-parts.tsx.
         */}
         <span aria-hidden className="num shrink-0 text-2xs font-normal text-muted-foreground/70">
-          {count.lists}/{count.items}/{count.assigned}
+          {count.lists}/{count.items}/
+          {/*
+            The third number is the one that confuses: a tab can read `3/0/1`
+            while every list in it looks empty, because that item has moved UP
+            to a day. The arrow says "above" without the tooltip.
+          */}
+          <ArrowUp className="inline size-2.5 align-[-0.05em]" aria-hidden />
+          {count.assigned}
         </span>
         <span className="sr-only">, {countLabel}</span>
       </button>

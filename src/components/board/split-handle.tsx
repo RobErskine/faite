@@ -45,7 +45,7 @@ export function SplitHandle({
     <div
       {...separatorProps}
       className={cn(
-        "relative z-20 h-1.5 shrink-0 touch-none border-b border-border",
+        "relative z-20 h-1.5 shrink-0 touch-none border-b border-line-strong",
         // Same trade as RailHandle: `touch-none` stays (a genuine drag
         // surface), the hit area grows on a coarse pointer via `::after`
         // instead of the visible 6px bar itself.

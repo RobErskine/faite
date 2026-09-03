@@ -48,6 +48,7 @@ reasoning — two copies drift, and the stale one always wins the argument.
 
 | Doc | Covers |
 |---|---|
+| [DESIGN.md](DESIGN.md) | The spec of record for how Faite looks and moves: colour grammar (one meaning per channel), type roles and the two pairings, surface tiers, motion policy, what the marketing site may reuse, and the decisions log. |
 | [MOBILE.md](MOBILE.md) | Mobile responsiveness, phases M-1…M6. A separate axis from P0–P7. |
 | [GESTURES.md](GESTURES.md) | PhoneBoard's touch model, and why it is CSS scroll-snap rather than a JS carousel. |
 | [RESIZE-UI.md](RESIZE-UI.md) | The draggable seam between the calendar and planning halves. |

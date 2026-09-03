@@ -74,7 +74,7 @@ interface DesktopBoardProps {
 }
 
 const PINNED_PANEL = cn(
-  "relative z-10 flex shrink-0 flex-col bg-card px-4",
+  "relative z-10 flex shrink-0 flex-col bg-surface-1 px-4",
   "border-r border-border shadow-[2px_0_6px_-2px_rgb(0_0_0/0.08)]",
   "[--column-min:var(--list-column-min)]",
 );
@@ -258,7 +258,8 @@ export function DesktopBoard({
       <div
         ref={calendarHalfRef}
         className={cn(
-          "flex min-h-0 basis-0 bg-border/40",
+          // The sunken floor (docs/DESIGN.md §3); the columns tier up from it.
+          "flex min-h-0 basis-0 bg-surface-sunken",
           splitCollapsed === "planning" ? "flex-1" : "grow-(--split-top)",
         )}
       >
@@ -274,6 +275,9 @@ export function DesktopBoard({
           <BoardColumn
             id={board.overflow.id}
             title="Overflow"
+            // The urgency channel (docs/DESIGN.md §1): a rule under the title
+            // and a tinted count, so the queue reads as pressure, not as a list.
+            tone="urgent"
             subtitle="Put off too long"
             todos={filteredOverflow.todos}
             labels={labels}
@@ -505,7 +509,7 @@ export function DesktopBoard({
       <div
         ref={planningHalfRef}
         className={cn(
-          "flex min-h-0 basis-0 bg-muted/30",
+          "flex min-h-0 basis-0 bg-surface-sunken",
           splitCollapsed === "calendar" ? "flex-1" : "grow-[calc(100_-_var(--split-top))]",
         )}
       >
@@ -543,6 +547,9 @@ export function DesktopBoard({
               filter={columnFilters.get(filteredBacklogColumn.id)}
               onFilterChange={(query) => setColumnFilter(filteredBacklogColumn.id, query)}
               totalCount={backlogColumn?.todos.length}
+              // Quiet intake, by contrast with Overflow's pressure: an eyebrow
+              // and no accent (docs/DESIGN.md §3).
+              subtitle="Unscheduled"
               minRows={5}
               isDragActive={!!activeTodo}
               overTodoId={overTodoId}
@@ -610,7 +617,7 @@ export function DesktopBoard({
             PINNED_PANEL, so it lands at this width too even though it now
             sits in its own panel rather than this row.
           */}
-          <div className="flex flex-1 gap-px bg-border/40 px-4 pt-3 [--column-min:var(--list-column-min)]">
+          <div className="flex flex-1 gap-px bg-surface-sunken px-4 pt-3 [--column-min:var(--list-column-min)]">
             <div className="column-track flex flex-1 gap-px">
               {/*
                 Index-zipped with `otherListColumns`, not a second `.find`:

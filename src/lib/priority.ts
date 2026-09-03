@@ -8,43 +8,42 @@ import type { Priority, Todo } from "./schema";
  * pill's width — in a column whose floor is 168px. The rail spends nothing: it
  * lives inside the row's existing left padding.
  *
- * **Two channels, arranged so no level shares both.** Thickness is a coarse
- * three-step signal; hue carries the four-step read. The pair that shares a
- * thickness (P3/P4) sits far apart in hue *and* on the blue axis that survives
- * red-green colour blindness; the pair adjacent in hue (P1/P2) is separated by
- * thickness. A four-step width ramp would need either 4px, which shouts at the
- * column floor, or a 1.5px step, which rounds to 1 or 2 device pixels depending
- * on the display — a rail that changes thickness when you move the window to
- * another monitor.
+ * **Achromatic, since the V milestone** (docs/DESIGN.md §7, decision A). The
+ * rail used to carry a hue per level — red, orange, blue, cyan — and every one
+ * of them was also a list preset in `lib/colors.ts`, and the red was also the
+ * urgency red. A Tomato "VIP" list beside a red "In Overflow" badge beside a
+ * red P1 rail could not be told apart. Now hue on the board means exactly two
+ * things — "belongs to this list" and "needs a verdict" — and importance is
+ * carried by form alone.
  *
- * Colours are Radix step 9 as plain hex, the convention `lib/colors.ts` sets
- * out: step 9 is the solid-fill step, tuned to hold roughly equal weight
- * against a light and a dark backdrop, so one value serves both themes in an
- * app whose palette is otherwise `oklch(L 0 0)`. Deliberately *not* run through
- * `tint()` or `edge()` — a 12% or 35% wash of a 1px line is invisible in either
- * theme. The rail is a fill, which is what step 9 is for.
+ * **Two channels, arranged so no level shares both.** Thickness is the coarse
+ * signal (3 / 2 / 1 / 1px); opacity and line style carry the rest. A four-step
+ * width ramp was rejected: 4px shouts at the column floor, and a 1.5px step
+ * rounds to 1 or 2 device pixels depending on the display — a rail that
+ * changes thickness when you move the window to another monitor. The pair that
+ * shares a thickness (P3/P4) is told apart by P4 being dotted, which survives
+ * every colour-vision deficiency and both themes because it is not a colour.
  *
- * Overlap with `ACCENT_COLORS` is accepted rather than worked around: all ten
- * accents are step 9 too, so any legible pick collides with one of them. What
- * separates the two ideas is form and place — an accent is a wash behind a tab
- * or a rule under a column header, a priority is an opaque spine on a card, and
- * a card never carries a tab accent.
+ * The rail is drawn in `--foreground`, so it inverts with the theme and always
+ * holds full contrast against its column. `opacity` below is applied to the
+ * span, not baked into a colour, so the same values serve both themes.
  */
 export interface PriorityRail {
   /** Rail thickness in px. */
   width: number;
-  color: string;
+  /** 0–1. Applied to the rail span; the colour is always `--foreground`. */
+  opacity: number;
+  /** Dotted rather than solid — the second channel for the 1px pair. */
+  dotted: boolean;
   /** What a screen reader hears in place of the old `P1` chip. */
   label: string;
 }
 
 export const PRIORITY_RAILS: Record<Priority, PriorityRail> = {
-  1: { width: 3, color: "#e5484d", label: "Priority 1, highest" },
-  2: { width: 2, color: "#f76b15", label: "Priority 2" },
-  3: { width: 1, color: "#3e63dd", label: "Priority 3" },
-  // Amber (#ffb224) reads at roughly 1.7:1 on white, so a thin amber line looks
-  // like a rendering artefact rather than a signal. Cyan holds in both themes.
-  4: { width: 1, color: "#00a2c7", label: "Priority 4, lowest" },
+  1: { width: 3, opacity: 1, dotted: false, label: "Priority 1, highest" },
+  2: { width: 2, opacity: 0.7, dotted: false, label: "Priority 2" },
+  3: { width: 1, opacity: 0.5, dotted: false, label: "Priority 3" },
+  4: { width: 1, opacity: 0.5, dotted: true, label: "Priority 4, lowest" },
 };
 
 /** `undefined` for an unprioritised to-do, so callers can render nothing. */

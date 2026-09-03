@@ -694,7 +694,7 @@ function OverdriveOverlayContent({
             <>
               {/* EI-253: with two kinds of session possible, which pile
                   this is is no longer inferable from the cards alone. */}
-              <p className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+              <p className="type-eyebrow">
                 Overdrive · {sourceLabel}
               </p>
               {/*

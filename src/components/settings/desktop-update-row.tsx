@@ -55,7 +55,7 @@ export function DesktopUpdateRow() {
       </div>
 
       {state.status === "blocked" ? (
-        <p className="mt-2 text-xs text-red-700 dark:text-red-300">
+        <p className="mt-2 text-xs text-urgent">
           This version can no longer sync. Install the update to pick your board
           back up on this Mac.
         </p>

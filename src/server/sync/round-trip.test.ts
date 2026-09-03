@@ -351,16 +351,16 @@ describe("round trip: two devices editing different fields", () => {
 
       const pull = server.pull(0, 100);
       const fontChange = pull.changes.find((c) => "fontPairing" in c.patch);
-      expect(fontChange?.patch.fontPairing).toBe("hyperlegible"); // confirms synthesis fired
+      expect(fontChange?.patch.fontPairing).toBe("editorial"); // confirms synthesis fired
 
       // Device A already has a real font choice, fully synced.
-      let local: Record<string, unknown> = { ownerId: "local-user", fontPairing: "editorial" };
+      let local: Record<string, unknown> = { ownerId: "local-user", fontPairing: "hyperlegible" };
       for (const change of pull.changes) {
         const result = mergeRecord(local, [], change);
         local = { ...local, ...result.apply };
       }
 
-      expect(local.fontPairing).toBe("editorial");
+      expect(local.fontPairing).toBe("hyperlegible");
       expect(local.theme).toBe("dark"); // the real edit still applies
     },
   );
