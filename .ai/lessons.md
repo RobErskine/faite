@@ -1213,3 +1213,47 @@ test suite — the suite cannot see a grey moat.
 
 **Rule:** the day-track column arithmetic couples to the track gap
 (`desktop-board.tsx` dayTrackStyle). Change `gap-*` and the `calc()` together.
+
+## `build:static` prunes `.next`, so bundle numbers taken after `verify` lie
+
+Measuring EI-272's lazily-loaded three.js chunk, the same script reported
+227.7 KB gzipped one minute and 0.0 KB the next. The 0.0 KB reading came
+straight after `npm run verify`, and it looked like a spectacular win.
+
+It was an artefact. `npm run verify` runs `build` and then `build:static`, and
+**`build:static` prunes `.next/static/chunks` even though `next.config.ts`
+points it at a separate `distDir` (`.next-static`)**. Proved by bisecting it:
+fresh `build` → chunk present; `build:static` → chunk gone from `.next`;
+`build` again → chunk back.
+
+A missing file and a tree-shaken dependency are indistinguishable to any
+measurement that works by looking for the file.
+
+**Rule:** run `npm run build` immediately before measuring anything in
+`.next`, never after `npm run verify`. And when a measurement suddenly reports
+zero, first prove the artefact still exists — a metric that improves to
+*exactly* nothing is usually absent, not optimised.
+
+## The app-shell build will happily ship a library it can never run
+
+EI-272 put three.js behind `next/dynamic` and confirmed it cost 0 bytes before
+paint on the web. `npm run build:static` still emitted **864.8 KB raw of it into
+`.next-static`** — the payload that becomes the desktop app's hot-asset bundle
+— in a build where `/` returns only a redirect script, so the canvas can never
+mount. Dead weight, re-downloaded by every installed client.
+
+`next/dynamic` defers *fetching*; it does not remove the module from the graph.
+The fix is to make the branch statically dead:
+
+```ts
+const IS_APP_SHELL = process.env.NEXT_PUBLIC_APP_SHELL === "1";
+const Scene = IS_APP_SHELL ? () => null : dynamic(() => import("./scene"), { ssr: false });
+```
+
+`NEXT_PUBLIC_*` is inlined at build time, so the comparison folds to a literal
+and the bundler drops the `import()`. `.next-static` went 15M → 14M.
+
+**Rule:** "lazy" is a claim about the web build only. Any dependency the
+app-shell target cannot use has to be excluded by a build-time constant, and
+the exclusion needs an asserted test — grep the export for the library and fail
+if it is there. Nobody notices 800 KB of dead code by reading a diff.
