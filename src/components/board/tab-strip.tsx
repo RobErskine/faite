@@ -131,7 +131,7 @@ export function TabStrip({
   }, [activeTabId]);
 
   return (
-    <div className="flex shrink-0 items-center gap-1 px-4 py-1.5">
+    <div className="flex shrink-0 items-center gap-1 px-3 py-2">
       {/*
         Scrolls on its own rather than pushing Archived off the bar. `min-w-0`
         is what lets it actually shrink inside the flex row.
@@ -295,7 +295,7 @@ function TabPill({
       ref={setNodeRef}
       data-tab-pill={tab.id}
       className={cn(
-        "group/tab relative flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1",
+        "group/tab relative flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-1.5",
         "transition-colors",
         // `items-center` centers the (small) grip/label/info row within the
         // taller box on a coarse pointer, rather than stretching them —
@@ -348,7 +348,7 @@ function TabPill({
           by letter, so `sr-only` below carries the real sentence — the same
           bargain as the deadline/location markers in todo-row-parts.tsx.
         */}
-        <span aria-hidden className="num shrink-0 text-2xs font-normal text-muted-foreground/70">
+        <span aria-hidden className="num shrink-0 text-2xs font-normal text-muted-foreground/60">
           {count.lists}/{count.items}/
           {/*
             The third number is the one that confuses: a tab can read `3/0/1`

@@ -79,7 +79,7 @@ export function CreateListColumn({
             if (key && onNavigate?.(NAV_CREATE_LIST, key)) e.preventDefault();
           }}
           className={cn(
-            "flex flex-1 flex-col items-center justify-center gap-1.5 rounded-md",
+            "flex flex-1 flex-col items-center justify-center gap-1.5 rounded-lg",
             "border border-dashed border-border text-muted-foreground",
             "transition-colors hover:border-foreground/30 hover:bg-background/60",
             "hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring",
@@ -93,7 +93,7 @@ export function CreateListColumn({
       ) : (
         <div
           className={cn(
-            "flex flex-1 flex-col rounded-md border border-dashed",
+            "flex flex-1 flex-col rounded-lg border border-dashed",
             "border-foreground/30 bg-background/60 px-2 pt-2",
           )}
         >

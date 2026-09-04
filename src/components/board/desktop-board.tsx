@@ -2,7 +2,6 @@
 
 import { useRef, type CSSProperties } from "react";
 import { StickyNote } from "lucide-react";
-import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { effectiveListColor } from "@/lib/colors";
 import { NAV_LOAD_MORE, navKeyOf } from "@/lib/column-nav";
@@ -74,8 +73,8 @@ interface DesktopBoardProps {
 }
 
 const PINNED_PANEL = cn(
-  "relative z-10 flex shrink-0 flex-col bg-surface-1 px-4",
-  "border-r border-border shadow-[2px_0_6px_-2px_rgb(0_0_0/0.08)]",
+  "relative z-10 flex shrink-0 flex-col bg-surface-sunken px-3 py-3",
+  "border-r border-line-strong",
   "[--column-min:var(--list-column-min)]",
 );
 
@@ -164,7 +163,7 @@ export function DesktopBoard({
   const visibleDays = settings?.visibleDays ?? 7;
   /*
     Makes `visibleDays` the day track's page size: N columns fill the track
-    exactly (accounting for the `gap-px` between them), so choosing 3 widens
+    exactly (accounting for the 6px `gap-1.5` between them), so choosing 3 widens
     each column rather than merely widening a floor that `renderedDays`
     already exceeds. `max()` with the shared floor keeps a narrow viewport
     scrolling instead of squeezing columns into slivers, same as the default.
@@ -173,8 +172,8 @@ export function DesktopBoard({
     boundary.
   */
   const dayTrackStyle = {
-    "--column-min": `max(var(--column-floor), calc((100% - ${visibleDays - 1}px) / ${visibleDays}))`,
-    "--column-max": `max(var(--column-floor), calc((100% - ${visibleDays - 1}px) / ${visibleDays}))`,
+    "--column-min": `max(var(--column-floor), calc((100% - ${(visibleDays - 1) * 6}px) / ${visibleDays}))`,
+    "--column-max": `max(var(--column-floor), calc((100% - ${(visibleDays - 1) * 6}px) / ${visibleDays}))`,
   } as CSSProperties;
   // Resizing mid-drag would invalidate every droppable rect dnd-kit cached at
   // drag start (§4.2 of DRAG-AND-DROP.md) — same reasoning as `rejectsDrop`.
@@ -265,7 +264,7 @@ export function DesktopBoard({
       >
         <div
           ref={overflowPanelRef}
-          className={cn(PINNED_PANEL, "pt-4")}
+          className={PINNED_PANEL}
           style={
             overflowWidth != null
               ? ({ "--column-min": `${overflowWidth}px` } as CSSProperties)
@@ -275,6 +274,7 @@ export function DesktopBoard({
           <BoardColumn
             id={board.overflow.id}
             title="Overflow"
+            className="rounded-lg border border-line/60 bg-surface-1"
             // The urgency channel (docs/DESIGN.md §1): a rule under the title
             // and a tinted count, so the queue reads as pressure, not as a list.
             tone="urgent"
@@ -342,10 +342,10 @@ export function DesktopBoard({
             />
           )}
         </div>
-        <div className="flex min-w-0 flex-1 gap-px px-4 pt-4">
+        <div className="flex min-w-0 flex-1 gap-1.5 px-3 py-3">
           <div
             ref={dayTrackRef}
-            className="column-track flex flex-1 gap-px"
+            className="column-track flex flex-1 gap-1.5"
             style={dayTrackStyle}
           >
             {trackSlots.map((slot) => {
@@ -432,6 +432,12 @@ export function DesktopBoard({
                   onToggleGroup={toggleGroup}
                   overGroupId={overGroupId}
                   emphasis={isToday}
+                  className={cn(
+                    "rounded-lg border",
+                    // Today gets the raised tier: a real edge and the card
+                    // shadow, so it reads nearer than its neighbours.
+                    isToday ? "border-line/80 shadow-card" : "border-line/60",
+                  )}
                   onToggle={handleToggle}
                   onOpen={(todo) => openTodoSheet(todo.id)}
                   onQuickAdd={(title, listId, labelIds) =>
@@ -516,7 +522,7 @@ export function DesktopBoard({
         {filteredBacklogColumn && (
           <div
             ref={backlogPanelRef}
-            className={cn(PINNED_PANEL, "pt-3")}
+            className={PINNED_PANEL}
             style={
               backlogWidth != null
                 ? ({ "--column-min": `${backlogWidth}px` } as CSSProperties)
@@ -526,6 +532,7 @@ export function DesktopBoard({
             <BoardColumn
               id={filteredBacklogColumn.id}
               title={filteredBacklogColumn.list.name}
+              className="rounded-lg border border-line/60 bg-surface-1"
               todos={filteredBacklogColumn.todos}
               labels={labels}
               ctx={ctx}
@@ -550,7 +557,6 @@ export function DesktopBoard({
               // Quiet intake, by contrast with Overflow's pressure: an eyebrow
               // and no accent (docs/DESIGN.md §3).
               subtitle="Unscheduled"
-              minRows={5}
               isDragActive={!!activeTodo}
               overTodoId={overTodoId}
               landingTodoIds={landingTodoIds}
@@ -608,7 +614,6 @@ export function DesktopBoard({
             onCreate={(name) => void handleCreateTab(name)}
             onOpenArchive={() => setArchivedOpen(true)}
           />
-          <Separator />
           {/*
             The wider floor is set on the outer row, not on each column:
             every column inside reads `--column-min`, so overriding it here
@@ -617,8 +622,8 @@ export function DesktopBoard({
             PINNED_PANEL, so it lands at this width too even though it now
             sits in its own panel rather than this row.
           */}
-          <div className="flex flex-1 gap-px bg-surface-sunken px-4 pt-3 [--column-min:var(--list-column-min)]">
-            <div className="column-track flex flex-1 gap-px">
+          <div className="flex flex-1 gap-1.5 bg-surface-sunken px-3 py-3 [--column-min:var(--list-column-min)]">
+            <div className="column-track flex flex-1 gap-1.5">
               {/*
                 Index-zipped with `otherListColumns`, not a second `.find`:
                 both arrays come from the same `.map` in use-board-data.ts, so
@@ -645,7 +650,6 @@ export function DesktopBoard({
                   filter={columnFilters.get(column.id)}
                   onFilterChange={(query) => setColumnFilter(column.id, query)}
                   totalCount={otherListColumns[i]?.todos.length}
-                  minRows={5}
                   isDragActive={!!activeTodo}
                   overTodoId={overTodoId}
                   landingTodoIds={landingTodoIds}
@@ -656,6 +660,7 @@ export function DesktopBoard({
                   subtaskCounts={subtaskCounts}
                   attachmentCounts={attachmentCounts}
                   reorderListId={column.list.id}
+                  className="rounded-lg border border-line/60 bg-surface-0"
                   reservesGripSlot
                   onOpenInfo={() => setInfoListId(column.list.id)}
                   isColumnDropTarget={columnDropTargetId === column.list.id}

@@ -77,7 +77,7 @@ export function WeekendColumn({
         // leaves the rest of the row to the real day columns, which keep their
         // --column-min floor. Matching the collapsed rail in board-column.tsx.
         "group/weekend relative flex w-10 min-h-0 shrink-0 cursor-pointer flex-col items-center",
-        "gap-1 rounded-md bg-muted/40 py-2 transition-all",
+        "gap-1 rounded-lg border border-line/60 bg-surface-0 py-2 transition-all",
         "hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring",
         // The CANDIDATE outline, not `rejectsDrop`'s destructive one. Hovering
         // here with a card is productive — it opens the days — so dressing it

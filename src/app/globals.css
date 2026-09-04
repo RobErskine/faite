@@ -513,7 +513,7 @@
   &::before {
     content: "";
     position: absolute;
-    inset: 0 0 auto 0;
+    inset: 0 10px auto 10px;
     height: 2px;
     border-radius: 1px;
     background: var(--spectrum);

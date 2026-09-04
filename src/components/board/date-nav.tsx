@@ -136,11 +136,11 @@ export function DateNav({
       label truncate instead of pushing the centre off-axis.
     */
     <div className="flex items-center gap-2 px-4 py-2">
-      <span className="num min-w-0 flex-1 truncate text-xs text-muted-foreground">
+      <span className="num min-w-0 flex-1 truncate text-sm text-foreground">
         {range}
       </span>
 
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-0.5 rounded-lg border border-line/60 bg-surface-0 p-0.5">
         <ViewSettings settings={settings} />
         <SavedViewsMenu settings={settings} />
       </div>

@@ -1194,3 +1194,22 @@ And when a tool's correctness depends on an env var, have the tool resolve the
 value itself (`security find-identity`) rather than trusting that whoever
 invoked it had the right shell — an env var that is usually present is worse
 than one that is always absent, because it fails silently and only sometimes.
+
+---
+
+## A design milestone sequenced plumbing-first reads as "nothing changed"
+
+V0–V4 of the V milestone shipped tokens, utilities, and a doc before any
+visible change. Rob burned two hourly limits and saw "some colors changed" —
+and the one bold visual move (surface tiers) exposed spacing that was designed
+to be invisible (`gap-px`, a `px-4 pt-4` frame), which read as a regression,
+not a design.
+
+**Rule:** in a visual milestone, lead with the change the user can see and let
+the tokens land in the same PR serving it. Never re-colour a surface without
+re-designing the spacing that the old colour was hiding. Verify with
+before/after screenshots (prod build + Chrome DevTools MCP), not with a green
+test suite — the suite cannot see a grey moat.
+
+**Rule:** the day-track column arithmetic couples to the track gap
+(`desktop-board.tsx` dayTrackStyle). Change `gap-*` and the `calc()` together.

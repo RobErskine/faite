@@ -322,7 +322,7 @@ export function TodoCard({
           `pl-3` is the grip's 12px gutter; the checkbox sits at `left-3`,
           immediately after it.
         */
-        "group relative block border-b border-border/60 py-1.5 pl-3 pr-2",
+        "group relative block py-2 pl-3 pr-2",
         draggable && "cursor-grab active:cursor-grabbing",
         "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring",
         // Opacity transitions alongside the background so the row fades in when
@@ -416,7 +416,7 @@ export function TodoCard({
         className={cn(
           // `top-2.5` centres a 12px glyph on the first line of `text-sm
           // leading-snug` inside `py-1.5`.
-          "absolute left-0 top-2.5",
+          "absolute left-0 top-3",
           // Full strength rather than DragGrip's resting /30: at rest it is not
           // visible at all, so there is nothing left for a faint state to do.
           "text-muted-foreground opacity-0 transition-opacity",
@@ -487,7 +487,7 @@ export function TodoCard({
               checkbox, so its rect IS the checkbox's rect. GOOD JOB mode
               measures it at click time — see `onCheckedChange` below.
             */
-            <span ref={checkboxRef} className="absolute left-3 top-2 inline-flex" />
+            <span ref={checkboxRef} className="absolute left-3 top-2.5 inline-flex" />
           }
         >
           <Checkbox

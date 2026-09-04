@@ -249,7 +249,7 @@ export function TodoMetaBadges({
   if (!hasContent) return null;
 
   return (
-    <span className="mt-1 flex flex-wrap items-center gap-1">
+    <span className="mt-1.5 flex flex-wrap items-center gap-1">
       {showScheduledDate && todo.scheduledDate && (
         <Badge variant="outline" className="num gap-1 text-2xs font-normal">
           <CalendarClock className="size-2.5" aria-hidden />

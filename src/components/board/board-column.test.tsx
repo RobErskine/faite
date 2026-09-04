@@ -84,7 +84,6 @@ interface HarnessProps {
   collapsedGroups?: ReadonlySet<string>;
   onToggleGroup?: (key: string) => void;
   overGroupId?: string | null;
-  minRows?: number;
   onOpenInfo?: () => void;
   todos?: Todo[];
   collapsed?: boolean;
@@ -226,18 +225,9 @@ describe("drop indicators", () => {
   });
 });
 
-describe("filler rows", () => {
-  it("counts headers as occupied space", () => {
-    const rows = (props: HarnessProps) => {
-      const { unmount } = render(<Harness {...props} />);
-      const count = document.querySelectorAll(".h-8").length;
-      unmount();
-      return count;
-    };
-    // Two groups of three cards total: 8 - 3 - 2 headers = 3.
-    expect(rows({ groups: [ADMIN, BUY], minRows: 8 })).toBe(3);
-  });
-});
+// Ruled filler rows were removed in the V3.5 pass (docs/DESIGN.md §3): with
+// columns as bordered panels and no row dividers, empty space is just the
+// panel — decorative rules would fight the cleaner surface.
 
 describe("column heading", () => {
   it("fires onOpenInfo when the heading is activated", () => {

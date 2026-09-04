@@ -85,6 +85,13 @@ these sit on top and say what a region *is*.
 | `--shadow-raised` | 2–8px | same, deeper | popovers, menus |
 | `--shadow-overlay` | 12–32px | same, deeper | dialogs, sheets |
 
+Columns are **panels** since the V3.5 pass: `rounded-lg border border-line/60`
+floating in the sunken floor with 6px gaps (`gap-1.5`) and an even `p-3` frame
+on all four sides. Today is the raised panel: `border-line/80 shadow-card` plus
+the spectrum hairline. Rows inside a panel have **no dividers** — separation is
+spacing (36px rhythm, `py-2`) and the hover wash, not rules. The ruled filler
+lines are gone with them.
+
 Hierarchy comes from tiering, not from more borders. Today is `--surface-1`
 with a spectrum hairline on top; its neighbours are `--surface-0`; the floor
 under all of them is `--surface-sunken`. Overflow carries an `--urgent` edge

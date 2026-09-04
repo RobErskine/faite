@@ -62,8 +62,8 @@ const CARDS_NOT_DROPPABLE = { draggable: false, droppable: true } as const;
  * the two visual treatments can't drift apart from each other over time.
  */
 const DUE_BANNER = cn(
-  "flex items-center gap-1 border-b border-urgent/20 bg-urgent/10",
-  "px-2 py-1 text-2xs font-medium text-urgent",
+  "flex items-center gap-1 border-b border-urgent/20 bg-urgent/10 px-3",
+  "py-1 text-2xs font-medium text-urgent",
 );
 
 /**
@@ -174,8 +174,6 @@ interface BoardColumnProps {
    * true when focus moved. See docs/KEYBOARD.md §11.
    */
   onNavigate?: (fromStopId: string, key: NavKey) => boolean;
-  /** Ruled lines fill the empty space, matching the reference UI's paper feel. */
-  minRows?: number;
   /**
    * In-column filter text. `todos`/`groups` above must already be narrowed to
    * it — this prop only drives the row's own UI (the input's value, the
@@ -336,7 +334,6 @@ export function BoardColumn({
   lists,
   reminderPresets,
   onNavigate,
-  minRows = 8,
   filter,
   onFilterChange,
   totalCount,
@@ -571,14 +568,6 @@ export function BoardColumn({
   // structural change is needed here beyond making room for the message row.
   const showsNoMatches = filterActive && todos.length === 0;
 
-  // Group headers occupy vertical space the filler arithmetic did not know
-  // about. A header is ~19px against a 32px filler row, so counting them 1:1
-  // slightly under-fills — the safe direction.
-  const fillerRows = Math.max(
-    0,
-    minRows - todos.length - (groups?.length ?? 0) - (showsNoMatches ? 1 : 0),
-  );
-
   /**
    * The card rows, so the markup exists once whether or not the column groups.
    *
@@ -720,7 +709,7 @@ export function BoardColumn({
           "relative",
           collapsed
             ? "flex flex-1 flex-col items-center gap-2 px-1 py-2"
-            : "flex items-baseline justify-between gap-2 px-2 pb-1",
+            : "flex items-start justify-between gap-2 px-3 pt-2.5 pb-2",
           // Stated rather than inherited, so the header advertises the gesture
           // across its whole width and not just over the grip.
           dragListName !== null && "cursor-grab active:cursor-grabbing",
@@ -809,7 +798,10 @@ export function BoardColumn({
                 */}
                 <h2
                   className={cn(
-                    "min-w-0 truncate type-column-title text-lg",
+                    "min-w-0 truncate type-column-title",
+                    // Days are the stage, lists are containers: today text-xl,
+                    // other days and the rails text-lg, list columns text-base.
+                    dayTrackColumn && emphasis ? "text-xl" : dayTrackColumn || pinned ? "text-lg" : "text-base",
                     // Today and Overflow keep the full ink; the other days recede
                 // so the one that matters now is the one the eye lands on.
                 dayTrackColumn && !emphasis && "text-muted-foreground",
@@ -1006,7 +998,7 @@ export function BoardColumn({
           </SortableContext>
 
           {showsNoMatches && (
-            <p className="border-b border-line-faint px-2 py-1.5 text-2xs text-muted-foreground">
+            <p className="px-3 py-1.5 text-2xs text-muted-foreground">
               No matches
             </p>
           )}
@@ -1039,10 +1031,10 @@ export function BoardColumn({
 
           {/* Quick add sits directly under the last item, like the reference UI. */}
           {onQuickAdd && (
-            <div className="group border-b border-border/60">
+            <div className="group">
               <div className="relative flex items-center">
                 <Plus
-                  className="pointer-events-none absolute left-2 size-3 text-muted-foreground/40 opacity-0 group-focus-within:opacity-100"
+                  className="pointer-events-none absolute left-2 size-3 text-muted-foreground/40 opacity-0 group-hover/column:opacity-100 group-focus-within:opacity-100"
                   aria-hidden
                 />
                 <input
@@ -1130,8 +1122,8 @@ export function BoardColumn({
                     typeof title === "string" ? `Add a to-do to ${title}` : "Add a to-do"
                   }
                   className={cn(
-                    "w-full bg-transparent px-2 py-1.5 text-sm outline-none",
-                    "placeholder:text-transparent focus:placeholder:text-muted-foreground/60",
+                    "w-full bg-transparent px-3 py-2 text-sm outline-none",
+                    "placeholder:text-transparent group-hover/column:placeholder:text-muted-foreground/40 focus:placeholder:text-muted-foreground/60",
                     "group-focus-within:pl-6",
                   )}
                 />
@@ -1150,10 +1142,6 @@ export function BoardColumn({
             </div>
           )}
 
-          {/* Ruled filler lines. Decorative only. */}
-          {Array.from({ length: fillerRows }, (_, i) => (
-            <div key={i} className="h-8 border-b border-line-faint" aria-hidden />
-          ))}
         </div>
       )}
 
@@ -1246,7 +1234,7 @@ function TodoGroupSection({
           if (key && onNavigate?.(groupStop(group.id), key)) e.preventDefault();
         }}
         className={cn(
-          "flex w-full items-center gap-1 border-b px-2 py-0.5 text-left",
+          "flex w-full items-center gap-1 border-b px-3 py-1 text-left",
           "type-eyebrow",
           "cursor-pointer transition-colors hover:bg-foreground/5",
           "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring",
