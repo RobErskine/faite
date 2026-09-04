@@ -163,6 +163,11 @@ export const PRIVATE_ROUTES: readonly string[] = [
   // indexable for the same reason as the two above: on the web this route is
   // never navigated to at all — sign-out goes to `/` there.
   "/signed-out",
+  // EI-272 spike route, throwaway. Never indexed and never linked: it exists
+  // to measure one beat of the homepage story before committing to WebGL.
+  // Listed here rather than in SITE_PAGES because `site.test.ts` asserts the
+  // two lists together account for every route under `src/app`.
+  "/spike-3d",
 ];
 
 /** Throws on an unknown path — a missing table row is a build failure, not a silent gap. */
