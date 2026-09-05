@@ -83,14 +83,26 @@ export function RoomStage({ children }: { children: ReactNode }) {
   }, [enabled]);
 
   return (
-    <div ref={section} className="relative grid gap-8 md:grid-cols-2">
-      <div className="top-0 h-[60vh] md:sticky md:h-dvh md:py-8">
-        <div className="relative h-full w-full overflow-hidden rounded-xl border bg-muted/30">
-          {enabled ? <RoomScene progress={progress} /> : <StaticStage />}
-        </div>
+    <div ref={section} className="relative grid md:grid-cols-2">
+      {/*
+        Full bleed: no gap, no padding, no border, no radius. The stage owns
+        exactly half the viewport and meets its left and bottom edges. A card
+        with a rounded border reads as a component demo; an edge-to-edge stage
+        reads as a place.
+      */}
+      <div className="top-0 h-[60vh] bg-muted/30 md:sticky md:h-dvh">
+        {enabled ? <RoomScene progress={progress} /> : <StaticStage />}
       </div>
 
-      <div className="flex flex-col">{children}</div>
+      {/*
+        The measure constraint moved off the page and onto the text. At 50% of
+        a 27" display this column is ~120 characters wide, which is unreadable
+        - so the copy keeps a max-width and its own padding while the canvas
+        beside it does not.
+      */}
+      <div className="flex flex-col px-6 sm:px-10 lg:px-16">
+        <div className="flex w-full max-w-xl flex-col">{children}</div>
+      </div>
     </div>
   );
 }

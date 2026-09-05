@@ -442,6 +442,90 @@
 }
 
 /* ---------------------------------------------------------------------------
+   The room palette (EI-272)
+
+   Colours for the homepage story's 3D scene. Named for what they ARE in the
+   room — wood, plant, couch — not for a UI role, because that is how the
+   source models name their materials: the whole asset library shares a
+   31-name semantic palette and carries no textures at all. `room-materials.ts`
+   maps those names onto these properties and re-tints the loaded scene.
+
+   Deliberately NOT derived from the app's `--background`/`--foreground` scale.
+   That scale is achromatic by design, and a room rendered in greys reads as a
+   wireframe. These are the one place in the app allowed real hue — but they
+   still live here, as tokens, so the scene follows the theme and survives
+   EI-265/EI-267 rather than hard-coding hex into a scene graph.
+
+   HEX, not OKLCH, and that is not an oversight. These are the only tokens in
+   the app read by JavaScript rather than by CSS, and a custom property is
+   SUBSTITUTION-ONLY: `getPropertyValue()` hands back the literal text, never a
+   resolved colour. three.js's `Color.setStyle()` parses hex, `rgb()` and
+   `hsl()` — give it `oklch()` or `light-dark()` and it throws, the catch in
+   `room-materials.ts` keeps the baked colour, and the whole token system
+   silently does nothing while looking like it works. Hex is what survives the
+   round trip.
+
+   For the same reason light and dark are two blocks rather than one
+   `light-dark()` call. The room does not invert at night, it dims: same hue,
+   lower lightness.
+   --------------------------------------------------------------------------- */
+:root {
+  --room-white: #ece9e3;
+  --room-grey: #b8b4ad;
+  --room-black: #2e2b28;
+  --room-brown: #8a6f52;
+  --room-wood: #b1874f;
+  --room-wood-dark: #6f5436;
+  --room-wood-light: #d8b98a;
+  --room-metal: #a8adb4;
+  --room-metal-dark: #6f757c;
+  --room-metal-light: #ced3d8;
+  --room-glass: #cfe0e6;
+  --room-light: #fbf1cf;
+  --room-marble: #e6e7ea;
+  --room-gold: #d4a94e;
+  --room-mirror: #cddbe2;
+  --room-plant: #6f9e5c;
+  --room-plant-dark: #4c7040;
+  --room-accent-red: #a2503f;
+  --room-accent-orange: #d9955a;
+  --room-cushion: #c3a58c;
+  --room-couch: #7d90b5;
+  --room-couch-beige: #d6c3a5;
+  --room-couch-beige-dark: #b39d7f;
+  --room-couch-mustard: #cfa04a;
+  --room-couch-green: #6f9077;
+}
+
+.dark {
+  --room-white: #a9a59d;
+  --room-grey: #85817a;
+  --room-black: #232120;
+  --room-brown: #64513c;
+  --room-wood: #82633a;
+  --room-wood-dark: #513d27;
+  --room-wood-light: #a08862;
+  --room-metal: #7b8087;
+  --room-metal-dark: #52575d;
+  --room-metal-light: #979ca2;
+  --room-glass: #8fa3aa;
+  --room-light: #e8d9a4;
+  --room-marble: #a6a8ab;
+  --room-gold: #9c7c39;
+  --room-mirror: #93a2a9;
+  --room-plant: #547a45;
+  --room-plant-dark: #3a5631;
+  --room-accent-red: #7a3d30;
+  --room-accent-orange: #a06f43;
+  --room-cushion: #917a68;
+  --room-couch: #5c6b87;
+  --room-couch-beige: #9e8f79;
+  --room-couch-beige-dark: #83725c;
+  --room-couch-mustard: #9a7838;
+  --room-couch-green: #526b58;
+}
+
+/* ---------------------------------------------------------------------------
    Font pairings
 
    One block per pairing, selected by `data-font` on <html>. `:root` carries the

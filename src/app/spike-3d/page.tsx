@@ -50,20 +50,27 @@ const BEATS = [
 
 export default function Spike3D() {
   return (
-    <div className="mx-auto max-w-6xl px-4 py-16">
-      <header className="mb-12 max-w-2xl">
-        <p className="text-xs uppercase tracking-widest text-muted-foreground">
-          EI-272 spike
-        </p>
-        <h1 className="mt-3 font-heading text-4xl font-semibold tracking-tight sm:text-5xl">
-          One room, one list, three honest endings.
-        </h1>
-        <p className="mt-4 text-lg text-muted-foreground">
-          Control your fate by getting things done.
-        </p>
-      </header>
-
+    // No max-width and no page padding: the stage is half the viewport, edge
+    // to edge, at every size. Padding belongs to the copy column alone.
+    <div>
       <RoomStage>
+        {/*
+          The header is beat 0, inside the copy column, so the stage is pinned
+          from the very first pixel. A full-width masthead above the split
+          would push the room below the fold on a laptop.
+        */}
+        <header className="flex min-h-dvh flex-col justify-center py-16">
+          <p className="text-xs uppercase tracking-widest text-muted-foreground">
+            EI-272 spike
+          </p>
+          <h1 className="mt-3 font-heading text-4xl font-semibold tracking-tight sm:text-5xl">
+            One room, one list, three honest endings.
+          </h1>
+          <p className="mt-4 text-lg text-muted-foreground">
+            Control your fate by getting things done.
+          </p>
+        </header>
+
         {BEATS.map((beat) => (
           <section
             key={beat.headline}

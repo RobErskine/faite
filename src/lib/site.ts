@@ -129,6 +129,17 @@ export const SITE_PAGES: readonly SitePage[] = [
     footerGroup: "product",
     footerLabel: "API",
   },
+  {
+    // Not a nicety. Two of the 3D scene's models are CC-BY, and attribution is
+    // a CONDITION of that licence — without a page a user can actually reach,
+    // Faite is not licensed to ship them at all. `assets/scene/CREDITS.md` is
+    // the record; this is the obligation.
+    path: "/colophon",
+    title: "Colophon",
+    description: "The people whose work Faite is built on.",
+    updated: "2026-09-05",
+    footerGroup: "product",
+  },
 ];
 
 /**

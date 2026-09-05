@@ -33,6 +33,7 @@
     "schema:reset": "node scripts/schema/reset.mjs",
     "openapi:generate": "vite-node -c vitest.config.ts scripts/openapi/generate.ts",
     "icons": "node scripts/icons/generate.mjs",
+    "scene": "node scripts/scene/build-room.mjs",
     "desktop:dev": "tauri dev",
     "desktop:build": "tauri build",
     "desktop:install": "node scripts/desktop-install.mjs",
