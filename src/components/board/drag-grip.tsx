@@ -49,7 +49,7 @@ export function DragGrip({ className, ...props }: ComponentProps<"button">) {
         */
         "before:absolute before:-inset-x-1.5 before:-inset-y-1.5 before:content-['']",
         "hover:text-foreground",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "focus-ring",
         className,
       )}
       {...props}

@@ -13,6 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { prefersReducedMotion } from "@/lib/reduced-motion";
 import type { Label as LabelRecord, List, ReminderPreset, Todo } from "@/lib/schema";
 import { OVERFLOW, toCivilDate, type PlacementContext } from "@/lib/scheduling";
 import { isTextEntry, undoById } from "@/lib/undo";
@@ -122,13 +123,6 @@ const FLICK_CLASS: Record<Direction, string> = {
   up: "slide-out-to-top-[150vh] tall:slide-out-to-top-[150%]",
   down: "slide-out-to-bottom-[150vh] tall:slide-out-to-bottom-[150%]",
 };
-
-/** Read fresh each flick rather than cached — the OS setting (or a test)
- * can change between one verdict and the next. */
-function prefersReducedMotion(): boolean {
-  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-}
 
 /**
  * Overdrive (EI-97, EI-253) — a one-card-at-a-time overlay for burning down
@@ -618,7 +612,7 @@ function OverdriveOverlayContent({
       <DialogContent
         ref={popupRef}
         showCloseButton={false}
-        overlayClassName="bg-black/10 dark:bg-black/40 supports-backdrop-filter:backdrop-blur-none"
+        overlayClassName="bg-black/10 dark:bg-black/50 supports-backdrop-filter:backdrop-blur-none"
         className={cn(
           "flex flex-col gap-0 overflow-hidden p-0",
           // Short viewports: full-bleed, exactly as before round 5. The
@@ -730,10 +724,14 @@ function OverdriveOverlayContent({
                 className={
                   transitioning
                     ? cn(
-                        "animate-out fade-out duration-320 ease-in fill-mode-forwards",
+                        // Both flick edges land on --dur-slow (260ms), the
+                        // motion budget's own ceiling (globals.css) — this
+                        // used to run 320ms out and 220ms in, two ungoverned
+                        // values that happened to straddle it.
+                        "animate-out fade-out duration-260 ease-in fill-mode-forwards",
                         FLICK_CLASS[transitioning.direction],
                       )
-                    : "animate-in fade-in duration-220 ease-out motion-reduce:animate-none"
+                    : "animate-in fade-in duration-260 ease-out motion-reduce:animate-none"
                 }
               >
                 <OverdriveCard

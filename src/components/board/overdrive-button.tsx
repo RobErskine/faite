@@ -83,7 +83,7 @@ export function DayOverdriveButton({
       className={cn(
         "shrink-0 self-center rounded text-muted-foreground transition-colors",
         "-m-1.5 p-1.5 pointer-coarse:-m-2.5 pointer-coarse:p-2.5",
-        "hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+        "hover:text-foreground focus-ring",
       )}
     >
       <Zap className="size-3.5" aria-hidden />

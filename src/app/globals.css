@@ -258,7 +258,12 @@
     oklch(0.8 0.09 300),
     oklch(0.82 0.08 230)
   );
-  --spectrum-solid: oklch(0.7 0.1 300);
+  /*
+    Darker than the gradient's own lavender stop (0.8 0.09 300) on purpose: at
+    0.7 the ring measured 2.76:1 against white, short of the 3:1 WCAG
+    non-text floor. 0.55 clears it (5.12:1) while staying the same hue.
+  */
+  --spectrum-solid: oklch(0.55 0.13 300);
 
   /* Urgency is the destructive red under a name that says what it means. */
   --urgent: var(--destructive);
@@ -276,7 +281,16 @@
   --success-foreground: oklch(0.33 0.09 150);
   --success-soft: oklch(0.965 0.035 150);
 
-  --shadow-card: 0 1px 2px oklch(0 0 0 / 6%), 0 1px 1px oklch(0 0 0 / 4%);
+  /*
+    -1px spread on the primary layer, matching --shadow-raised/--shadow-
+    overlay below (both already do this; this was the one shadow in the
+    ladder without it). Box-shadow blur spreads sideways as much as it does
+    down — on a TALL element (today's column) or a WIDE one (the active tab
+    pill), that sideways bleed read as an unwanted vertical border on either
+    edge. The spread pulls the shadow's source box in before blurring it,
+    so the visible result stays weighted toward "below", not "beside".
+  */
+  --shadow-card: 0 1px 2px -1px oklch(0 0 0 / 10%), 0 1px 1px oklch(0 0 0 / 4%);
   --shadow-raised: 0 2px 8px -2px oklch(0 0 0 / 12%), 0 1px 2px oklch(0 0 0 / 6%);
   --shadow-overlay: 0 12px 32px -8px oklch(0 0 0 / 25%), 0 2px 6px oklch(0 0 0 / 8%);
 
@@ -421,7 +435,8 @@
   --success-foreground: oklch(0.88 0.08 150);
   --success-soft: oklch(0.26 0.05 150);
 
-  --shadow-card: 0 1px 2px oklch(0 0 0 / 40%), inset 0 1px 0 oklch(1 0 0 / 5%);
+  /* Same -1px spread fix as the light theme above. */
+  --shadow-card: 0 1px 2px -1px oklch(0 0 0 / 45%), inset 0 1px 0 oklch(1 0 0 / 5%);
   --shadow-raised: 0 2px 8px -2px oklch(0 0 0 / 50%), inset 0 1px 0 oklch(1 0 0 / 6%);
   --shadow-overlay: 0 12px 32px -8px oklch(0 0 0 / 60%), inset 0 1px 0 oklch(1 0 0 / 6%);
 }
@@ -501,6 +516,35 @@
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--muted-foreground);
+}
+
+/*
+  One focus treatment for the whole board (docs/DESIGN.md §1: focus is the
+  spectrum's solid stop). Every component that hand-rolled its own
+  `focus-visible:outline-*`/`focus-visible:ring-*` combination now applies
+  this instead.
+*/
+@utility focus-ring {
+  outline: none;
+  &:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: -2px;
+  }
+}
+
+/*
+  The 8px dot at the start of a drop-indicator line, centered on it —
+  repeated identically at three drop sites (a card's own indicator, the
+  group-boundary indicator, the end-of-column indicator) before this existed.
+*/
+@utility drop-indicator-dot {
+  position: absolute;
+  left: -0.125rem;
+  top: -3px;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 9999px;
+  background: var(--primary);
 }
 
 /*

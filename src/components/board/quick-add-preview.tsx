@@ -48,7 +48,7 @@ export function QuickAddPreview({
           ? { backgroundColor: tint(chip.color), borderColor: edge(chip.color), color: chip.color }
           : undefined;
         const classes = cn(
-          "rounded-full border px-1.5 py-0.5 text-[10px] font-medium leading-none",
+          "rounded-full border px-1.5 py-0.5 text-2xs font-medium leading-none",
           !chip.color && "border-border/60 bg-muted/60 text-muted-foreground",
         );
         if (!chip.onRemove) {

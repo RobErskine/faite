@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { prefersReducedMotion } from "@/lib/reduced-motion";
 
 /**
  * Pure scroll math for the day track, exported separately so it is testable
@@ -54,12 +55,7 @@ export function canJumpForward(anchorIndex: number, delta: number, cap: number):
  * under reduced motion.
  */
 function scrollBehaviorFor(distanceDays: number): ScrollBehavior {
-  if (
-    typeof window !== "undefined" &&
-    window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
-  ) {
-    return "auto";
-  }
+  if (prefersReducedMotion()) return "auto";
   return Math.abs(distanceDays) <= 14 ? "smooth" : "auto";
 }
 

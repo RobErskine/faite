@@ -92,7 +92,7 @@ function AttachmentRow({ attachment, online, onRemove, onPreview }: AttachmentRo
         <button
           type="button"
           onClick={() => onPreview(attachment)}
-          className="shrink-0 rounded focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          className="focus-ring shrink-0 rounded"
           // The filename button beside this one carries the accessible name
           // for the same action; a second identical label would just be two
           // stops on the same destination for a screen-reader user.
@@ -122,7 +122,7 @@ function AttachmentRow({ attachment, online, onRemove, onPreview }: AttachmentRo
         <button
           type="button"
           onClick={() => onPreview(attachment)}
-          className="min-w-0 flex-1 rounded-sm text-left hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          className="focus-ring min-w-0 flex-1 rounded-sm text-left hover:underline"
           aria-label={`Preview ${attachment.filename}`}
         >
           <span className="block truncate text-sm">{attachment.filename}</span>

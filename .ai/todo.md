@@ -2058,3 +2058,129 @@ both themes at 1440×900, hairline/tiers/urgent rule/banner tokens all read;
 only five font families ship on <html>.
 
 V5 (motion) and V6 (audit) are the milestone's remaining tickets.
+
+## 2026-09-05 — The Air pass (+ Better Interface floor), design-system worktree
+
+Two passes in one session, both on `rob/ei-265-…` toward PR #88.
+
+**The quality floor** (better-interface review, 15 findings): light-theme
+`--spectrum-solid` darkened 0.7→0.55 L so the focus ring measures 5.12:1
+(was 2.76:1, under the 3:1 non-text floor; dark already passed);
+`motion-reduce:animate-none`/`transition-none` swept across every overlay
+primitive + one shared `prefersReducedMotion()` in `src/lib/reduced-motion.ts`
+(replaced 4 ad-hoc copies); bootstrap failure no longer fakes an empty board
+and no-IndexedDB no longer spins forever — `useBootstrap` returns
+`{ready, error}`, `BoardFallback`/`BoardErrorFallback` + `app/board/error.tsx`;
+quick-add placeholder visible at rest in Backlog only (`quickAddPlaceholderVisible`),
+day columns reveal at full contrast on hover/focus/touch; one `focus-ring`
+utility replaced 5 competing idioms; `--shadow-raised/overlay` wired into
+popover/menu/select/dialog/sheet; `animate-check` wired (spectrum flash on
+completion, `justCompleted` ref-transition in todo-card.tsx); copy: to-dos
+everywhere, filter-empty names the query + "Clear filter" button. Strike/settle
+animations and the overlay serif restyle deliberately deferred.
+
+**The Air pass** (user: "lots of borders … busy → airy-er, zen"): retired
+V3.5's panels. No column borders/backgrounds, no sunken floor, no
+`border-line-strong` rail divider; one `--background` paper; whitespace is the
+only separator — `gap-3` (12px), mirrored by `DAY_GAP_PX` in desktop-board.tsx
+AND the width math in e2e/desktop-layout.spec.ts (all three must move
+together). Today = the board's only card (surface-1 + shadow-card + hairline,
+borderless). Day eyebrows drop the year (`formatShortDate`); the two
+overdrive.spec.ts locators that anchored on "Aug 12, 2026" now use
+`getByText("Aug 12", { exact: true })`. Split handle rests on `line-faint`,
+strengthens on hover/drag. Dashed Create-list/Load-more boxes → text
+affordances. Collapsed rails + weekend strip keep a `surface-0` tint (still
+controls). Archived hides "(0)". Archived button's tooltip RESTORED — 
+completion-tooltip.spec.ts's CONTROL test hovers it to prove the tooltip
+harness works; its removal in the floor pass would have broken the gate.
+Tab counts untouched (user said leave them).
+
+### Verified
+
+`npm run typecheck`, lint clean on every touched file, full `npm test`
+(2347 green; two deliberate assertion updates: tab-strip "(0)" hidden,
+board-column "to-dos" copy), then `npm run build` +
+`CI=1 E2E_PORT=3100 E2E_SERVER="npx next start -p 3100" npm run e2e:ci` —
+104/104 after updating desktop-layout.spec.ts's gap math to 12px.
+docs/DESIGN.md §3 rewritten for the Air pass + 3 decisions-log rows.
+
+## 2026-09-05 — Overlays join the board's language, design-system worktree
+
+User: "I don't want the app to feel like stock shadcn or tailwind" — scoped
+down from a broader wishlist to just this. Touched the five shared UI
+primitives every overlay in the app is built on, so the fix propagates
+everywhere without touching each sheet/dialog individually:
+
+- `ui/button.tsx`: the base `buttonVariants` focus treatment
+  (`border-ring ring-3 ring-ring/50`, shadcn's default) → the board's own
+  `focus-ring` utility. One focus ring for every control, inside an overlay
+  or out.
+- `ui/dialog.tsx` + `ui/alert-dialog.tsx`: `DialogTitle`/`AlertDialogTitle`
+  `text-base font-medium` → `text-lg font-semibold tracking-tight` (still
+  `font-heading`) — was indistinguishable from body text at a glance.
+  Content `rounded-xl p-4` → `rounded-3xl p-5`, concentric with inner
+  buttons' `--radius-md` per better-ui's outer=inner+padding rule. Footer's
+  filled `bg-muted/50` bar → a `border-line-faint` hairline, matching the Air
+  pass's "no filled panel-within-a-panel" rule.
+- `ui/sheet.tsx`: `SheetTitle` gets the same size step; header/footer padding
+  `p-4`→`p-5`; footer gains the same hairline border.
+- `ui/command.tsx` (⌘K): radius matched to `rounded-3xl`; group headings now
+  spell out `type-eyebrow`'s exact properties (`**:` can't apply a custom
+  `@utility` through cmdk's markup); input surface `bg-input/30` →
+  `bg-surface-sunken`, the same recessed surface the header's own ⌘K trigger
+  sits on.
+
+day-sheet.tsx/activity-sheet.tsx already override SheetTitle with their own
+uppercase treatment — untouched, the new default size composes cleanly under
+it. todo-sheet.tsx's title is `sr-only` (the visible "title" is the editable
+title field) — unaffected.
+
+### Verified
+
+`npm run typecheck`, lint clean on all 5 touched files, full `npm test`
+(2347/2347, no assertion changes needed), `npm run build` +
+`CI=1 E2E_PORT=3100 E2E_SERVER="npx next start -p 3100" npm run e2e:ci` —
+104/104. docs/DESIGN.md §3 gained an "Overlays" paragraph + a decisions-log
+row.
+
+## 2026-09-05 — Follow-up feedback on the Air pass + overlays, design-system worktree
+
+Real usage feedback (a screenshot + 4 Agentation-collected annotations),
+mapped to root causes rather than patched at the symptom:
+
+- **Overflow/Backlog resize edges invisible** ("difficult to see the edges to
+  grab"): the REAL cause wasn't the missing column background the user
+  suggested — it was `rail-handle.tsx`, fully transparent at rest (0 opacity
+  until hover), a case the Air pass's own `split-handle.tsx` fix had already
+  covered but this sibling component was missed. Gave it the same resting
+  `border-line-faint` hairline. Also restored `bg-surface-0` on both rails
+  per the literal ask — legitimate on its own: a resizable region benefits
+  from reading as its own region, not just from having a visible edge.
+- **"Today has a border-right" / "the tab pill has borders left and right"**
+  (two independently reported symptoms, one cause): `--shadow-card` was the
+  only shadow token in the ladder with no negative spread — box-shadow blur
+  spreads sideways exactly as much as down, so on a tall element (today's
+  column) or a wide one (the active tab pill) the un-spread 2px blur read as
+  a vertical line on either edge. Added `-1px` spread, matching
+  `--shadow-raised`/`--shadow-overlay`, which already had it. One token fix
+  closed both reports.
+- **Overflow's empty state was blank**: no quick-add row there (nothing
+  schedules INTO Overflow), so zero items meant zero pixels — no cue it
+  wasn't a loading gap. New `overflow-empty-state.tsx`, wired through a new
+  `BoardColumn.emptyState` prop (`filterCount === 0 && !filterActive`):
+  "No items", a working Collapse button on desktop (omitted on phone — no
+  rail to collapse there), and an (i) tooltip explaining what Overflow is,
+  reusing the welcome dialog's own framing ("missed to-dos roll forward a
+  few times, then land here").
+- **⌘K opened a third of the way down the viewport**: moved to `top-20`,
+  just under the header, so it reads as the search field growing open.
+
+### Verified
+
+Live-checked on the dev server (localhost:3000, Chrome DevTools MCP) —
+confirmed the rail tint + handle hairline render, the palette opens near the
+header. `npm run typecheck`, lint clean on every touched file, full
+`npm test` (2348/2348), `npm run build` +
+`CI=1 E2E_PORT=3100 E2E_SERVER="npx next start -p 3100" npm run e2e:ci` —
+104/104. docs/DESIGN.md updated (§3 shadow-card row + Overflow/Backlog
+paragraph, 4 new decisions-log rows).

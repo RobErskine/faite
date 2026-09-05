@@ -44,7 +44,7 @@ Components reference roles, never families.
 | Role | Token / utility | Use |
 |---|---|---|
 | `font-sans` | `--font-sans` → `--app-sans` | body |
-| `font-heading` | `--font-heading` → `--app-heading` | titles, sheet headings |
+| `font-heading` | `--font-heading` → `--app-heading` | titles, sheet/dialog headings |
 | `font-mono` | `--font-mono` → `--app-mono` | code, `kbd` |
 | `num` | utility, `--app-numeric` + tabular figures | a number that stands alone: a date, a count, a time |
 | `nums` | utility, tabular figures only | a number inside a sentence |
@@ -74,30 +74,42 @@ these sit on top and say what a region *is*.
 
 | Token | Light | Dark | Region |
 |---|---|---|---|
-| `--surface-sunken` | `oklch(0.955 0 0)` | `oklch(0.165 0 0)` | the two halves' floor, behind the columns |
-| `--surface-0` | `oklch(0.985 0 0)` | `oklch(0.19 0 0)` | a day column that is not today |
-| `--surface-1` | `oklch(1 0 0)` | `oklch(0.225 0 0)` | today; a card; a rail |
+| `--surface-sunken` | `oklch(0.955 0 0)` | `oklch(0.165 0 0)` | inset form controls (the header search); retired as a board floor |
+| `--surface-0` | `oklch(0.985 0 0)` | `oklch(0.19 0 0)` | a control that must read as one: the weekend strip, a collapsed rail |
+| `--surface-1` | `oklch(1 0 0)` | `oklch(0.225 0 0)` | today — the board's only card |
 | `--surface-2` | `oklch(1 0 0)` + `shadow-card` | `oklch(0.27 0 0)` | raised: the active tab pill, a popover |
-| `--line-faint` | `oklch(0.945 0 0)` | `oklch(1 0 0 / 6%)` | ruled filler rows, "no matches" |
+| `--line-faint` | `oklch(0.945 0 0)` | `oklch(1 0 0 / 6%)` | the split handle at rest, "no matches" |
 | `--line` | = `--border` | = `--border` | ordinary rules |
-| `--line-strong` | `oklch(0.85 0 0)` | `oklch(1 0 0 / 18%)` | the seam, a column title's rule |
-| `--shadow-card` | soft 1px | 1px + inset light hairline | a raised pill |
+| `--line-strong` | `oklch(0.85 0 0)` | `oklch(1 0 0 / 18%)` | reserved for intent states (the split handle on hover/drag) |
+| `--shadow-card` | soft 1px, `-1px` spread | 1px + inset light hairline, `-1px` spread | today's card, a raised pill |
 | `--shadow-raised` | 2–8px | same, deeper | popovers, menus |
 | `--shadow-overlay` | 12–32px | same, deeper | dialogs, sheets |
 
-Columns are **panels** since the V3.5 pass: `rounded-lg border border-line/60`
-floating in the sunken floor with 6px gaps (`gap-1.5`) and an even `p-3` frame
-on all four sides. Today is the raised panel: `border-line/80 shadow-card` plus
-the spectrum hairline. Rows inside a panel have **no dividers** — separation is
-spacing (36px rhythm, `py-2`) and the hover wash, not rules. The ruled filler
-lines are gone with them.
+Columns are **air** since the Air pass (which retired V3.5's panels — see the
+decisions log): no borders, no backgrounds, one continuous `--background`
+paper under both halves. Whitespace is the only column separator — a 12px
+`gap-3` (mirrored by `DAY_GAP_PX` in desktop-board.tsx, which the rigid
+column-width calc must keep in step with) — and a column is held together by
+its own header and left alignment edge. Rows inside a column have **no
+dividers** — separation is spacing (36px rhythm, `py-2`) and the hover wash,
+not rules.
 
-Hierarchy comes from tiering, not from more borders. Today is `--surface-1`
-with a spectrum hairline on top; its neighbours are `--surface-0`; the floor
-under all of them is `--surface-sunken`. Overflow carries an `--urgent` edge
-rule and its count, so it reads as a queue with pressure. Backlog carries an
-eyebrow and no accent, so it reads as quiet intake. The titles of days that
-are not today sit in `--muted-foreground`; today's and Overflow's keep full ink.
+**Today is the board's only card**: `--surface-1` + `shadow-card` + the
+spectrum hairline, and no border — the shadow carries the edge (in dark, via
+its inset hairline). Overflow carries an `--urgent` edge rule and its count,
+so it reads as a queue with pressure. Backlog carries an eyebrow, no accent,
+and the one always-visible quick-add placeholder, so it reads as quiet
+intake. The titles of days that are not today sit in `--muted-foreground`;
+today's and Overflow's keep full ink. Day eyebrows use the short date with
+no year ("Sep 5"); the full date lives in the day sheet and aria labels.
+
+Overflow and Backlog are the two exceptions to "columns are air": both carry
+`bg-surface-0` even though neither is `emphasis`. Both are resizable rails
+(`RailHandle`), and with no fill at all their whole region — not just the
+1.5px drag handle — was hard to register as "an adjustable width," not just
+"a column." `RailHandle` itself also carries a `border-line-faint` hairline
+at rest now, matching `SplitHandle`'s treatment; it used to be fully
+invisible until hovered.
 
 Two states that no surface token can express, because they must go the
 opposite way in each theme:
@@ -107,6 +119,21 @@ opposite way in each theme:
   and still composites over a 5% identity wash.
 - **Focus ring** is `--ring`, which is `--spectrum-solid`. Focus is "here,
   now", which is what the spectrum means. This is one of its four places.
+
+**Overlays** (`ui/dialog.tsx`, `ui/sheet.tsx`, `ui/alert-dialog.tsx`,
+`ui/command.tsx`) speak the board's language, not shadcn's defaults:
+`DialogTitle`/`SheetTitle`/`AlertDialogTitle` are a real heading step
+(`text-lg font-semibold tracking-tight`, still `font-heading`), not a label
+that happens to sit in the serif face. Footers are a `border-line-faint`
+hairline, never a filled `bg-muted` bar — the Air pass left exactly one
+filled panel-within-a-panel in the app, and this was it. Radius is
+`rounded-3xl` on every overlay's outer popup, concentric with its buttons'
+`--radius-md`: outer = inner + the `p-5` padding between them, per
+`better-ui`'s rule. The `⌘K` palette's input sits on `--surface-sunken`, the
+same recessed surface its header trigger button does, so opening it reads as
+the same field growing rather than a handoff to a different component. Every
+button on the board — inside an overlay or out — shares one `focus-ring`
+utility (`ui/button.tsx`), not shadcn's `border-ring ring-3 ring-ring/50`.
 
 ## 4. Motion policy
 
@@ -175,3 +202,11 @@ Reuse, do not invent:
 | 2026-09-03 | Users keep full control of list colours, Tomato included. | A list colour is the user's, not the app's. The app keeps its own red out of the presets' way by owning only urgency. |
 | 2026-09-03 | Backlog and Overflow keep their names. | Both are e2e names and both are understood. |
 | 2026-09-03 | Tab counts stay `lists/items/assigned`. | The third number exists because a tab can read `3/0/1` while its lists all look empty. A glyph on the third number says "above" without the tooltip. |
+| 2026-09-05 | `--spectrum-solid` darkened in light theme: `oklch(0.7 0.1 300)` → `oklch(0.55 0.13 300)`. | The focus ring is this token, and at 0.7 it measured 2.76:1 on white — under WCAG's 3:1 non-text floor. 0.55 measures 5.12:1, same hue. Dark theme already passed (8.29:1) and is unchanged. |
+| 2026-09-05 | **The Air pass** retires V3.5's panels: no column borders or backgrounds, no sunken floor, no rail divider; whitespace (12px `gap-3`) is the only column separator, and today is the board's only card (`--surface-1` + `shadow-card` + hairline, borderless). | The panel treatment put ~15 bordered boxes on one screen — the user read it as busy, twice. Space groups first, background shapes second, separator lines last; the board now runs that ladder in order. |
+| 2026-09-05 | Day eyebrows drop the year: `formatShortDate` ("Sep 5"), not "Sep 5, 2026". | The year, stamped across eight columns, was the loudest repeated text on the board and is almost never the information being sought. The full date stays in the day sheet and aria labels. |
+| 2026-09-05 | Overlays (dialog, sheet, alert-dialog, command palette) join the board's own language: real heading-weight titles, hairline footers instead of filled bars, concentric `rounded-3xl`, one shared `focus-ring`, the palette's input on `--surface-sunken`. | User: "I don't want the app to feel like stock shadcn or tailwind." The board had already left shadcn's defaults behind; its overlays hadn't. |
+| 2026-09-05 | `--shadow-card` gains a `-1px` spread on its primary layer, matching `--shadow-raised`/`--shadow-overlay`. | Box-shadow blur spreads sideways as much as down. On today's column (tall) and the active tab pill (wide), the un-spread blur read as an unwanted vertical border on either edge — reported independently as "today has a border-right" and "the tab pill has left/right borders." One token fix for both. |
+| 2026-09-05 | Overflow and Backlog get `bg-surface-0` back, and `RailHandle` gets a resting `border-line-faint` hairline. | The Air pass made both rails' resize edges invisible until hover — "difficult to see the edges to grab in order to resize them." A tinted region plus a hairline handle restores discoverability without reintroducing a bordered panel. |
+| 2026-09-05 | Overflow gets a real empty state (`OverflowEmptyState`): "No items", a Collapse button on desktop, an (i) tooltip explaining what Overflow is. | Overflow has no quick-add row, so an empty Overflow rendered nothing at all — no cue it was the empty state and not a loading gap. |
+| 2026-09-05 | The `⌘K` palette opens at `top-20`, not `top-1/3`. | It should read as the header's own search field growing open, not as an unrelated dialog appearing mid-page. |

@@ -185,6 +185,14 @@ interface BoardColumnProps {
   /** Unfiltered count, for the reveal threshold and the `n of m` readout. */
   totalCount?: number;
   /**
+   * Shown in place of the (otherwise blank) body when the column is
+   * genuinely empty — `totalCount ?? todos.length` is 0 — and no filter is
+   * active. Most columns don't need one: their quick-add row is itself the
+   * empty-state affordance. Overflow has no quick-add (nothing schedules
+   * INTO it), so an empty Overflow rendered nothing at all until this.
+   */
+  emptyState?: React.ReactNode;
+  /**
    * Opens this column's detail surface — the list settings dialog for a list
    * column, the day details sheet for a day column. A single click on the
    * heading triggers it.
@@ -241,6 +249,13 @@ interface BoardColumnProps {
    * shares the track that provided one.
    */
   pinned?: boolean;
+  /**
+   * Shows the quick-add placeholder ("Add a to-do") at rest instead of only
+   * on hover/focus/touch. Backlog is the one column that sets this — it's the
+   * board's always-open intake, so its entry point stays visible; every day
+   * column stays quiet until you show intent (docs/DESIGN.md).
+   */
+  quickAddPlaceholderVisible?: boolean;
   /**
    * Shrinks to a 40px strip with a vertical label and a count, in place of
    * the ordinary body — only meaningful alongside `pinned`. Stays a real
@@ -337,6 +352,7 @@ export function BoardColumn({
   filter,
   onFilterChange,
   totalCount,
+  emptyState,
   onOpenInfo,
   isDragActive,
   overTodoId,
@@ -351,6 +367,7 @@ export function BoardColumn({
   isColumnDropTarget,
   accentColor,
   pinned,
+  quickAddPlaceholderVisible = false,
   collapsed,
   onExpand,
   dayTrackColumn,
@@ -379,7 +396,7 @@ export function BoardColumn({
   // anything — `totalCount` rather than `todos.length`, which is already
   // narrowed by an active filter (see the prop doc above).
   const filterCount = totalCount ?? todos.length;
-  const filterPlaceholder = `Filter ${filterCount} item${filterCount === 1 ? "" : "s"}`;
+  const filterPlaceholder = `Filter ${filterCount} to-do${filterCount === 1 ? "" : "s"}`;
 
   /**
    * The list name when this column can be reordered, null when it cannot.
@@ -642,13 +659,17 @@ export function BoardColumn({
       className={cn(
         "group/column relative flex flex-col rounded-md transition-all",
         /*
-          Surface tiers (docs/DESIGN.md §3). Today sits one step above its
-          neighbours; the half's floor under all of them is `--surface-sunken`
-          (desktop-board.tsx), so the eye reads floor → day → today without a
-          single extra border.
+          The Air pass: today is the one surface that steps up from the page
+          (paired with `shadow-card` from desktop-board.tsx). Every other day
+          column is transparent — open air on one continuous paper, separated
+          from its neighbours by the track's gap and its own header alone.
         */
-        dayTrackColumn && !collapsed && (emphasis ? "bg-surface-1" : "bg-surface-0"),
-        collapsed && "w-10 min-h-0 flex-1 shrink-0 cursor-pointer items-center",
+        dayTrackColumn && !collapsed && emphasis && "bg-surface-1",
+        // The collapsed strip is a click target and has to read as one — the
+        // same subtle tint the weekend strip carries, now that the panel
+        // box it used to inherit from the shells is gone.
+        collapsed &&
+          "w-10 min-h-0 flex-1 shrink-0 cursor-pointer items-center rounded-lg bg-surface-0",
         pinned && !collapsed
           ? // Fixed-width child of PINNED_PANEL's flex column, not of the
             // scrolling track — `flex-1` sizes it on the panel's main axis
@@ -811,7 +832,7 @@ export function BoardColumn({
                     <button
                       type="button"
                       onClick={onOpenInfo}
-                      className="max-w-full cursor-pointer truncate rounded text-left hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                      className="max-w-full cursor-pointer truncate rounded text-left hover:underline focus-ring"
                     >
                       {title}
                     </button>
@@ -868,7 +889,7 @@ export function BoardColumn({
             className={cn(
               DUE_BANNER,
               "w-full cursor-pointer text-left hover:bg-urgent/15",
-              "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
+              "focus-ring",
             )}
           >
             <CalendarCheck className="size-3 shrink-0" aria-hidden />
@@ -948,7 +969,7 @@ export function BoardColumn({
             Outside the input group, as its own bordered chip — an inline
             addon read as a third control crammed against the clear button at
             this width. Only the two counts switch to `num` (monospace); "of"
-            and "todos" stay in the body font, which is what keeps a one-line
+            and "to-dos" stay in the body font, which is what keeps a one-line
             phrase from reading as two disconnected fragments.
           */}
           {filterActive && (
@@ -959,7 +980,7 @@ export function BoardColumn({
               )}
             >
               <span className="num">{todos.length}</span> of{" "}
-              <span className="num">{totalCount ?? todos.length}</span> todos
+              <span className="num">{totalCount ?? todos.length}</span> to-dos
             </span>
           )}
         </div>
@@ -999,9 +1020,21 @@ export function BoardColumn({
 
           {showsNoMatches && (
             <p className="px-3 py-1.5 text-2xs text-muted-foreground">
-              No matches
+              No to-dos match &ldquo;{filter}&rdquo;.{" "}
+              <button
+                type="button"
+                onClick={() => {
+                  onFilterChange?.("");
+                  filterInputRef.current?.focus();
+                }}
+                className="focus-ring rounded underline"
+              >
+                Clear filter
+              </button>
             </p>
           )}
+
+          {!filterActive && filterCount === 0 && emptyState}
 
           {/*
             Hovering the column itself rather than a specific card means the item
@@ -1025,7 +1058,7 @@ export function BoardColumn({
               data-drop-indicator
               className="relative block h-0.5 rounded-full bg-primary"
             >
-              <span className="absolute -left-0.5 -top-[3px] size-2 rounded-full bg-primary" />
+              <span className="drop-indicator-dot" />
             </span>
           )}
 
@@ -1034,7 +1067,12 @@ export function BoardColumn({
             <div className="group">
               <div className="relative flex items-center">
                 <Plus
-                  className="pointer-events-none absolute left-2 size-3 text-muted-foreground/40 opacity-0 group-hover/column:opacity-100 group-focus-within:opacity-100"
+                  className={cn(
+                    "pointer-events-none absolute left-2 size-3 text-muted-foreground/40",
+                    quickAddPlaceholderVisible
+                      ? "opacity-100"
+                      : "opacity-0 group-hover/column:opacity-100 group-focus-within:opacity-100 touch:opacity-100",
+                  )}
                   aria-hidden
                 />
                 <input
@@ -1123,8 +1161,15 @@ export function BoardColumn({
                   }
                   className={cn(
                     "w-full bg-transparent px-3 py-2 text-sm outline-none",
-                    "placeholder:text-transparent group-hover/column:placeholder:text-muted-foreground/40 focus:placeholder:text-muted-foreground/60",
-                    "group-focus-within:pl-6",
+                    // Day columns stay quiet at rest — the placeholder only
+                    // earns its keep once you've shown intent (hover, focus,
+                    // or a touch device with no hover to show it on).
+                    // Backlog is the one column that shows it unconditionally
+                    // (docs/DESIGN.md: it's the board's one always-open intake).
+                    quickAddPlaceholderVisible
+                      ? "placeholder:text-muted-foreground"
+                      : "placeholder:text-transparent group-hover/column:placeholder:text-muted-foreground focus:placeholder:text-muted-foreground touch:placeholder:text-muted-foreground",
+                    quickAddPlaceholderVisible ? "pl-6" : "group-focus-within:pl-6",
                   )}
                 />
                 {mention.isOpen && (
@@ -1146,7 +1191,20 @@ export function BoardColumn({
       )}
 
       {!collapsed && footer && (
-        <div className="sticky bottom-0 z-10 bg-surface-1 shadow-[0_-2px_6px_-2px_rgb(0_0_0/0.08)]">
+        <div
+          className={cn(
+            // `bg-background`, matching the page the column now sits
+            // directly on (the Air pass removed the panel surfaces) — the
+            // footer still needs to be opaque, since content scrolls under it.
+            "sticky bottom-0 z-10 bg-background",
+            // Casts UPWARD onto the content above (negative Y), which none of
+            // the token shadows do — they're all "this sits above the floor".
+            // oklch alpha, not the old raw rgb() literal, so it scales with
+            // the theme the same ratio --shadow-card does (light 8% → dark
+            // 50%) instead of staying flat and vanishing in dark mode.
+            "shadow-[0_-2px_6px_-2px_oklch(0_0_0/8%)] dark:shadow-[0_-2px_6px_-2px_oklch(0_0_0/50%)]",
+          )}
+        >
           {footer}
         </div>
       )}
@@ -1237,7 +1295,7 @@ function TodoGroupSection({
           "flex w-full items-center gap-1 border-b px-3 py-1 text-left",
           "type-eyebrow",
           "cursor-pointer transition-colors hover:bg-foreground/5",
-          "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring",
+          "focus-ring",
           // An uncolored list keeps the ordinary rule rather than gaining a grey
           // one — the same rule the column header's tab accent follows.
           !group.color && "border-border/60",
@@ -1286,7 +1344,7 @@ function TodoGroupSection({
           data-drop-indicator
           className="relative block h-0.5 rounded-full bg-primary"
         >
-          <span className="absolute -left-0.5 -top-[3px] size-2 rounded-full bg-primary" />
+          <span className="drop-indicator-dot" />
         </span>
       )}
     </div>

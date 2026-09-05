@@ -335,18 +335,18 @@ describe("in-column filter", () => {
         totalCount={14}
       />,
     );
-    expect(filterInput()!.getAttribute("placeholder")).toBe("Filter 14 items");
+    expect(filterInput()!.getAttribute("placeholder")).toBe("Filter 14 to-dos");
   });
 
-  it("singularizes the placeholder for exactly one item", () => {
+  it("singularizes the placeholder for exactly one to-do", () => {
     render(<Harness todos={[todo("only")]} filter="o" onFilterChange={vi.fn()} totalCount={1} />);
-    expect(filterInput()!.getAttribute("placeholder")).toBe("Filter 1 item");
+    expect(filterInput()!.getAttribute("placeholder")).toBe("Filter 1 to-do");
   });
 
   it("falls back to todos.length when totalCount is omitted", () => {
     const todos = manyTodos(FILTER_MIN_TODOS);
     render(<Harness todos={todos} filter="x" onFilterChange={vi.fn()} />);
-    expect(filterInput()!.getAttribute("placeholder")).toBe(`Filter ${FILTER_MIN_TODOS} items`);
+    expect(filterInput()!.getAttribute("placeholder")).toBe(`Filter ${FILTER_MIN_TODOS} to-dos`);
   });
 
   it("stays mounted while a filter is active even below the threshold", () => {
@@ -436,7 +436,7 @@ describe("in-column filter", () => {
     expect(document.activeElement).toBe(addInput);
   });
 
-  it("shows a bordered 'n of m todos' chip, outside the input group, only while a filter is active", () => {
+  it("shows a bordered 'n of m to-dos' chip, outside the input group, only while a filter is active", () => {
     const { rerender } = render(
       <Harness
         todos={manyTodos(FILTER_MIN_TODOS)}
@@ -454,22 +454,23 @@ describe("in-column filter", () => {
         totalCount={FILTER_MIN_TODOS}
       />,
     );
-    // Only the two counts are `num` (monospace); "of"/"todos" stay in the
+    // Only the two counts are `num` (monospace); "of"/"to-dos" stay in the
     // body font, so they render as separate elements from the chip's words.
     const counts = document.querySelectorAll("span.num");
     expect(Array.from(counts).map((el) => el.textContent)).toEqual(["1", "8"]);
 
     const chip = counts[0].closest("span.rounded-md");
-    expect(chip?.textContent?.replace(/\s+/g, " ").trim()).toBe("1 of 8 todos");
+    expect(chip?.textContent?.replace(/\s+/g, " ").trim()).toBe("1 of 8 to-dos");
     expect(chip?.className).toContain("border");
     // Outside the input group, not one of its addons — see the component's
     // comment on why this moved.
     expect(chip?.closest('[data-slot="input-group"]')).toBeNull();
   });
 
-  it("renders 'No matches' when the filter leaves nothing, without losing the ruled height", () => {
+  it("names the query and offers a clear-filter exit when the filter leaves nothing", () => {
     render(<Harness todos={[]} filter="nothing" onFilterChange={vi.fn()} totalCount={12} />);
-    expect(screen.getByText("No matches")).toBeTruthy();
+    expect(screen.getByText(/No to-dos match/)).toBeTruthy();
+    expect(screen.getByText("Clear filter")).toBeTruthy();
   });
 
   it("clears the filter when a quick-add commits", () => {

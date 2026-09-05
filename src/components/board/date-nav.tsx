@@ -113,7 +113,14 @@ export function DateNav({
   if (compact) {
     return (
       <div className="flex items-center gap-2 px-4 py-2">
-        <span className="num min-w-0 flex-1 truncate text-sm font-medium">{range}</span>
+        {/*
+          The board's one serif display moment (docs/DESIGN.md §2): "where am
+          I" is the first thing worth reading on the page, and there was no
+          `<h1>` anywhere under /board until this one.
+        */}
+        <h1 className="nums min-w-0 flex-1 truncate font-heading text-base font-semibold tracking-tight text-foreground">
+          {range}
+        </h1>
         {anchorIndex > 0 && (
           <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={onToday}>
             Today
@@ -136,9 +143,14 @@ export function DateNav({
       label truncate instead of pushing the centre off-axis.
     */
     <div className="flex items-center gap-2 px-4 py-2">
-      <span className="num min-w-0 flex-1 truncate text-sm text-foreground">
+      {/*
+        The board's one serif display moment (docs/DESIGN.md §2): "where am
+        I" is the first thing worth reading on the page, and there was no
+        `<h1>` anywhere under /board until this one.
+      */}
+      <h1 className="nums min-w-0 flex-1 truncate font-heading text-lg font-semibold tracking-tight text-foreground">
         {range}
-      </span>
+      </h1>
 
       <div className="flex items-center gap-0.5 rounded-lg border border-line/60 bg-surface-0 p-0.5">
         <ViewSettings settings={settings} />

@@ -6,7 +6,7 @@ import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { effectiveListColor } from "@/lib/colors";
 import { NAV_LOAD_MORE, navKeyOf } from "@/lib/column-nav";
-import { formatDay, OVERFLOW } from "@/lib/scheduling";
+import { formatDay, formatShortDate, OVERFLOW } from "@/lib/scheduling";
 import { OVERDRIVE_MIN_TODOS } from "@/lib/overdrive";
 import { AppHeader } from "./app-header";
 import { SignedOutBanner } from "@/components/auth/signed-out-banner";
@@ -15,6 +15,7 @@ import { BoardEmptyBanner } from "./board-empty-banner";
 import { CreateListColumn } from "./create-list-column";
 import { DateNav } from "./date-nav";
 import { DayOverdriveButton, OverdriveButton } from "./overdrive-button";
+import { OverflowEmptyState } from "./overflow-empty-state";
 import { TabStrip } from "./tab-strip";
 import { PhoneBottomBar } from "./phone-bottom-bar";
 import type { BoardUiState } from "./use-board-ui-state";
@@ -207,6 +208,7 @@ export function PhoneBoard({
               filter={columnFilters.get(board.overflow.id)}
               onFilterChange={(query) => setColumnFilter(board.overflow.id, query)}
               totalCount={board.overflow.todos.length}
+              emptyState={<OverflowEmptyState />}
               emphasis
               isDragActive={!!activeTodo}
               overTodoId={overTodoId}
@@ -252,7 +254,9 @@ export function PhoneBoard({
                   title={weekday}
                   subtitle={
                     <span className="num">
-                      {label}
+                      {isToday && "Today · "}
+                      {/* Short form, no year — same reasoning as desktop-board.tsx. */}
+                      {formatShortDate(column.day)}
                       {data.dayNotes.has(column.day) && (
                         <>
                           <StickyNote
@@ -321,7 +325,7 @@ export function PhoneBoard({
                   "pager-column flex shrink-0 flex-col items-center justify-center",
                   "border border-dashed border-border px-2 text-center text-sm text-muted-foreground",
                   "transition-colors hover:border-foreground/30 hover:bg-background/60 hover:text-foreground",
-                  "focus-visible:outline-2 focus-visible:outline-ring",
+                  "focus-ring",
                 )}
               >
                 Load {LOAD_MORE_STEP} more days
@@ -387,6 +391,7 @@ export function PhoneBoard({
                   attachmentCounts={attachmentCounts}
                   isColumnDragActive={!!activeList}
                   accentColor={null}
+                  quickAddPlaceholderVisible
                 />
               )}
               {/*

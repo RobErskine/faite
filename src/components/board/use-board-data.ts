@@ -122,7 +122,7 @@ export function useBoardData(params: UseBoardDataParams) {
     layout,
   } = params;
 
-  const ready = useBootstrap();
+  const { ready, error } = useBootstrap();
   const todos = useTodos();
   const recurrenceChildren = useRecurrenceChildren();
   const lists = useLists();
@@ -869,6 +869,7 @@ export function useBoardData(params: UseBoardDataParams) {
 
   return {
     ready,
+    error,
     todos,
     recurrenceChildren,
     lists,

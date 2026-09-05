@@ -217,6 +217,29 @@ export function TodoCard({
     return () => observer.disconnect();
   }, [todo.title]);
 
+  /**
+   * True for one animation cycle right after THIS card is completed — not
+   * simply "status is done", which is also true every time an already-done
+   * card remounts (a tab switch, a filter change). `wasDoneRef` is what
+   * tells a fresh completion apart from a card that was already settled
+   * when it mounted, so the flash plays once, at the moment it means
+   * something. Drives `--animate-check` (docs/DESIGN.md §4), one of the
+   * spectrum's four allowed places — the same signal the hairline and the
+   * focus ring use, here for "you just finished this."
+   */
+  const wasDoneRef = useRef(todo.status === "done");
+  const [justCompleted, setJustCompleted] = useState(false);
+  useEffect(() => {
+    const isDone = todo.status === "done";
+    if (isDone && !wasDoneRef.current) {
+      setJustCompleted(true);
+      const timer = setTimeout(() => setJustCompleted(false), 200);
+      wasDoneRef.current = isDone;
+      return () => clearTimeout(timer);
+    }
+    wasDoneRef.current = isDone;
+  }, [todo.status]);
+
   return (
     <div
       ref={setNodeRef}
@@ -324,7 +347,7 @@ export function TodoCard({
         */
         "group relative block py-2 pl-3 pr-2",
         draggable && "cursor-grab active:cursor-grabbing",
-        "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring",
+        "focus-ring",
         // Opacity transitions alongside the background so the row fades in when
         // a landing completes rather than popping. Hover only changes the
         // background, so naming both properties loses nothing over
@@ -383,7 +406,7 @@ export function TodoCard({
           data-drop-indicator
           className="absolute -top-px left-0 right-0 z-10 h-0.5 rounded-full bg-primary"
         >
-          <span className="absolute -left-0.5 -top-[3px] size-2 rounded-full bg-primary" />
+          <span className="drop-indicator-dot" />
         </span>
       )}
 
@@ -498,7 +521,10 @@ export function TodoCard({
             // Cursor is inherited, so without this the checkbox would read as a
             // drag surface. It still drags if you pull from it; it just should not
             // advertise that over being a checkbox.
-            className="cursor-pointer after:-inset-x-1 pointer-coarse:after:-inset-x-1"
+            className={cn(
+              "cursor-pointer after:-inset-x-1 pointer-coarse:after:-inset-x-1",
+              justCompleted && "animate-check motion-reduce:animate-none",
+            )}
           />
         </TooltipTrigger>
         {completionStamp && <TooltipContent>{completionStamp}</TooltipContent>}
@@ -518,7 +544,7 @@ export function TodoCard({
           // Stated rather than inherited: dragging is the primary gesture over
           // the title now, and a click still opens the sheet.
           draggable && "cursor-grab active:cursor-grabbing",
-          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded",
+          "focus-ring rounded",
           /*
             Two settled statuses, two different reads — worth the extra branch
             now that the "Marked as won't do" filter can put them side by side.

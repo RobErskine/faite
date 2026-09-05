@@ -151,10 +151,10 @@ describe("archived button", () => {
     expect(button.textContent).toBe("(3)");
   });
 
-  it("shows (0) rather than hiding the count when the archive is empty", () => {
+  it("hides the count entirely when the archive is empty — no '(0)' noise", () => {
     render(<Harness tabs={[]} activeTabId="none" archivedCount={0} />);
     const button = screen.getByRole("button", { name: "Archived" });
-    expect(button.textContent).toBe("(0)");
+    expect(button.textContent).toBe("");
   });
 
   it("calls onOpenArchive on click", () => {

@@ -5,7 +5,7 @@ import { StickyNote } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { effectiveListColor } from "@/lib/colors";
 import { NAV_LOAD_MORE, navKeyOf } from "@/lib/column-nav";
-import { formatDay, OVERFLOW } from "@/lib/scheduling";
+import { formatDay, formatShortDate, OVERFLOW } from "@/lib/scheduling";
 import { OVERDRIVE_MIN_TODOS } from "@/lib/overdrive";
 import { LOCAL_OWNER_ID } from "@/lib/store/repositories";
 import { mutateSettings } from "@/lib/store/mutate";
@@ -17,6 +17,7 @@ import { BoardEmptyBanner } from "./board-empty-banner";
 import { CreateListColumn } from "./create-list-column";
 import { DateNav } from "./date-nav";
 import { DayOverdriveButton, OverdriveButton } from "./overdrive-button";
+import { OverflowEmptyState } from "./overflow-empty-state";
 import { RailCollapseButton } from "./rail-collapse-button";
 import { RailHandle } from "./rail-handle";
 import { SplitHandle } from "./split-handle";
@@ -72,9 +73,13 @@ interface DesktopBoardProps {
   jumpToToday: () => void;
 }
 
+/*
+  The Air pass: no divider and no sunken floor here anymore. Whitespace (this
+  panel's own padding plus the track's) is what separates the rail from the
+  days — a `border-line-strong` rule was the loudest line on the board.
+*/
 const PINNED_PANEL = cn(
-  "relative z-10 flex shrink-0 flex-col bg-surface-sunken px-3 py-3",
-  "border-r border-line-strong",
+  "relative z-10 flex shrink-0 flex-col px-3 py-2",
   "[--column-min:var(--list-column-min)]",
 );
 
@@ -163,17 +168,21 @@ export function DesktopBoard({
   const visibleDays = settings?.visibleDays ?? 7;
   /*
     Makes `visibleDays` the day track's page size: N columns fill the track
-    exactly (accounting for the 6px `gap-1.5` between them), so choosing 3 widens
-    each column rather than merely widening a floor that `renderedDays`
-    already exceeds. `max()` with the shared floor keeps a narrow viewport
-    scrolling instead of squeezing columns into slivers, same as the default.
-    Min == max (both set to the same value) so columns are rigid, which is
-    what lets `pageAlignedJump` in date-nav.tsx land exactly on a page
-    boundary.
+    exactly (accounting for the 12px `gap-3` between them — whitespace is the
+    only column separator since the Air pass, so the gap is what a border
+    used to be), so choosing 3 widens each column rather than merely widening
+    a floor that `renderedDays` already exceeds. `max()` with the shared
+    floor keeps a narrow viewport scrolling instead of squeezing columns into
+    slivers, same as the default. Min == max (both set to the same value) so
+    columns are rigid, which is what lets `pageAlignedJump` in date-nav.tsx
+    land exactly on a page boundary. Keep the constant below in step with the
+    track's `gap-3` class — `measurePitch` (use-day-track.ts) reads the real
+    computed gap, but this calc cannot.
   */
+  const DAY_GAP_PX = 12;
   const dayTrackStyle = {
-    "--column-min": `max(var(--column-floor), calc((100% - ${(visibleDays - 1) * 6}px) / ${visibleDays}))`,
-    "--column-max": `max(var(--column-floor), calc((100% - ${(visibleDays - 1) * 6}px) / ${visibleDays}))`,
+    "--column-min": `max(var(--column-floor), calc((100% - ${(visibleDays - 1) * DAY_GAP_PX}px) / ${visibleDays}))`,
+    "--column-max": `max(var(--column-floor), calc((100% - ${(visibleDays - 1) * DAY_GAP_PX}px) / ${visibleDays}))`,
   } as CSSProperties;
   // Resizing mid-drag would invalidate every droppable rect dnd-kit cached at
   // drag start (§4.2 of DRAG-AND-DROP.md) — same reasoning as `rejectsDrop`.
@@ -257,8 +266,9 @@ export function DesktopBoard({
       <div
         ref={calendarHalfRef}
         className={cn(
-          // The sunken floor (docs/DESIGN.md §3); the columns tier up from it.
-          "flex min-h-0 basis-0 bg-surface-sunken",
+          // One continuous paper (the Air pass) — no sunken floor. Today's
+          // own card is the only surface that steps up from the page.
+          "flex min-h-0 basis-0",
           splitCollapsed === "planning" ? "flex-1" : "grow-(--split-top)",
         )}
       >
@@ -274,7 +284,10 @@ export function DesktopBoard({
           <BoardColumn
             id={board.overflow.id}
             title="Overflow"
-            className="rounded-lg border border-line/60 bg-surface-1"
+            // A resizable rail, unlike a day column — the faint tint gives
+            // its whole region an edge to register before you're hunting for
+            // the resize handle (RailHandle) specifically.
+            className="rounded-lg bg-surface-0"
             // The urgency channel (docs/DESIGN.md §1): a rule under the title
             // and a tinted count, so the queue reads as pressure, not as a list.
             tone="urgent"
@@ -302,6 +315,11 @@ export function DesktopBoard({
             filter={columnFilters.get(board.overflow.id)}
             onFilterChange={(query) => setColumnFilter(board.overflow.id, query)}
             totalCount={board.overflow.todos.length}
+            emptyState={
+              <OverflowEmptyState
+                onCollapse={() => void mutateSettings(LOCAL_OWNER_ID, { overflowCollapsed: true })}
+              />
+            }
             emphasis
             isDragActive={!!activeTodo}
             overTodoId={overTodoId}
@@ -342,10 +360,10 @@ export function DesktopBoard({
             />
           )}
         </div>
-        <div className="flex min-w-0 flex-1 gap-1.5 px-3 py-3">
+        <div className="flex min-w-0 flex-1 gap-3 px-3 py-2">
           <div
             ref={dayTrackRef}
-            className="column-track flex flex-1 gap-1.5"
+            className="column-track flex flex-1 gap-3"
             style={dayTrackStyle}
           >
             {trackSlots.map((slot) => {
@@ -391,7 +409,20 @@ export function DesktopBoard({
                   // would ignore on every list column.
                   subtitle={
                     <span className="num">
-                      {label}
+                      {/*
+                        The board's only textual "this is today" — everything
+                        else (the extra size, the full ink, the spectrum
+                        hairline, the shadow) is a style cue, and style alone
+                        is never enough to say what a color or a shadow means.
+                      */}
+                      {isToday && "Today · "}
+                      {/*
+                        Short form, no year — ", 2026" stamped across eight
+                        columns was the loudest repeated text on the board.
+                        The full date stays where it works: the day sheet,
+                        and this button's own aria via `label` below.
+                      */}
+                      {formatShortDate(column.day)}
                       {dayNotes.has(column.day) && (
                         <>
                           <StickyNote
@@ -433,10 +464,13 @@ export function DesktopBoard({
                   overGroupId={overGroupId}
                   emphasis={isToday}
                   className={cn(
-                    "rounded-lg border",
-                    // Today gets the raised tier: a real edge and the card
-                    // shadow, so it reads nearer than its neighbours.
-                    isToday ? "border-line/80 shadow-card" : "border-line/60",
+                    // The Air pass: today is the board's ONLY card — its
+                    // surface + shadow come from `emphasis` (bg-surface-1 in
+                    // board-column.tsx) and the shadow here; no border, the
+                    // shadow carries the edge (dark theme's --shadow-card has
+                    // its own inset hairline). Every other day is open air on
+                    // the page, separated by the track's gap alone.
+                    isToday && "rounded-lg shadow-card",
                   )}
                   onToggle={handleToggle}
                   onOpen={(todo) => openTodoSheet(todo.id)}
@@ -476,11 +510,13 @@ export function DesktopBoard({
                   if (key && navigate(NAV_LOAD_MORE, key)) e.preventDefault();
                 }}
                 className={cn(
+                  // Air pass: a quiet text affordance, not a dashed box the
+                  // size of a whole column pretending to be content.
                   "flex flex-1 flex-col items-center justify-center rounded-md",
-                  "min-w-(--column-min) max-w-(--column-max) border border-dashed border-border",
+                  "min-w-(--column-min) max-w-(--column-max)",
                   "px-2 text-center text-xs text-muted-foreground transition-colors",
-                  "hover:border-foreground/30 hover:bg-background/60 hover:text-foreground",
-                  "focus-visible:outline-2 focus-visible:outline-ring",
+                  "hover:text-foreground hover:underline",
+                  "focus-ring",
                 )}
               >
                 Load {LOAD_MORE_STEP} more days
@@ -515,7 +551,7 @@ export function DesktopBoard({
       <div
         ref={planningHalfRef}
         className={cn(
-          "flex min-h-0 basis-0 bg-surface-sunken",
+          "flex min-h-0 basis-0",
           splitCollapsed === "calendar" ? "flex-1" : "grow-[calc(100_-_var(--split-top))]",
         )}
       >
@@ -532,7 +568,9 @@ export function DesktopBoard({
             <BoardColumn
               id={filteredBacklogColumn.id}
               title={filteredBacklogColumn.list.name}
-              className="rounded-lg border border-line/60 bg-surface-1"
+              // Same reasoning as Overflow's className: a resizable rail
+              // needs its region to register at a glance.
+              className="rounded-lg bg-surface-0"
               todos={filteredBacklogColumn.todos}
               labels={labels}
               ctx={ctx}
@@ -574,6 +612,7 @@ export function DesktopBoard({
               // difference is also the clearest signal that it is shared.
               accentColor={null}
               pinned
+              quickAddPlaceholderVisible
               collapsed={backlogCollapsed}
               onExpand={() => void mutateSettings(LOCAL_OWNER_ID, { backlogCollapsed: false })}
               actions={
@@ -622,8 +661,8 @@ export function DesktopBoard({
             PINNED_PANEL, so it lands at this width too even though it now
             sits in its own panel rather than this row.
           */}
-          <div className="flex flex-1 gap-1.5 bg-surface-sunken px-3 py-3 [--column-min:var(--list-column-min)]">
-            <div className="column-track flex flex-1 gap-1.5">
+          <div className="flex flex-1 gap-3 px-3 py-2 [--column-min:var(--list-column-min)]">
+            <div className="column-track flex flex-1 gap-3">
               {/*
                 Index-zipped with `otherListColumns`, not a second `.find`:
                 both arrays come from the same `.map` in use-board-data.ts, so
@@ -660,7 +699,6 @@ export function DesktopBoard({
                   subtaskCounts={subtaskCounts}
                   attachmentCounts={attachmentCounts}
                   reorderListId={column.list.id}
-                  className="rounded-lg border border-line/60 bg-surface-0"
                   reservesGripSlot
                   onOpenInfo={() => setInfoListId(column.list.id)}
                   isColumnDropTarget={columnDropTargetId === column.list.id}

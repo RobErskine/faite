@@ -111,7 +111,7 @@ export function ArchivedListsSheet({
           */}
           {tabs.length > 0 && (
             <section className="pb-2">
-              <h3 className="py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <h3 className="type-eyebrow py-2">
                 Tabs
               </h3>
               <ul className="divide-y">
@@ -151,7 +151,7 @@ export function ArchivedListsSheet({
           )}
 
           {tabs.length > 0 && (
-            <h3 className="py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <h3 className="type-eyebrow py-2">
               Lists
             </h3>
           )}

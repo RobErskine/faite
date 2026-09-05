@@ -77,8 +77,11 @@ export function WeekendColumn({
         // leaves the rest of the row to the real day columns, which keep their
         // --column-min floor. Matching the collapsed rail in board-column.tsx.
         "group/weekend relative flex w-10 min-h-0 shrink-0 cursor-pointer flex-col items-center",
-        "gap-1 rounded-lg border border-line/60 bg-surface-0 py-2 transition-all",
-        "hover:bg-muted focus-visible:outline-2 focus-visible:outline-ring",
+        // Borderless since the Air pass — the strip keeps its surface tint
+        // (it's a click target and has to read as a control), edge comes
+        // from the tint alone.
+        "gap-1 rounded-lg bg-surface-0 py-2 transition-all",
+        "hover:bg-muted focus-ring",
         // The CANDIDATE outline, not `rejectsDrop`'s destructive one. Hovering
         // here with a card is productive — it opens the days — so dressing it
         // as a refusal would say the opposite of what happens.

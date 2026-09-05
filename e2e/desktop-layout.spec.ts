@@ -98,11 +98,13 @@ test.describe("desktop board layout", () => {
     // leftmost day column after the resize.
     const column = page.getByRole("region", { name: "Tuesday" }).first();
 
-    // 3 columns + 2 `gap-px` gaps fill the track exactly. `expect.poll`
-    // rather than a single `boundingBox()` read: the column carries
-    // `transition-all` (board-column.tsx), so a read straight after the
-    // click can catch the width mid-animation from the old 7-day size.
-    const expectedWidth = (trackBox!.width - 2) / 3;
+    // 3 columns + 2 12px `gap-3` gaps fill the track exactly (the gap IS
+    // the column separator since the Air pass — keep this in step with
+    // DAY_GAP_PX in desktop-board.tsx). `expect.poll` rather than a single
+    // `boundingBox()` read: the column carries `transition-all`
+    // (board-column.tsx), so a read straight after the click can catch the
+    // width mid-animation from the old 7-day size.
+    const expectedWidth = (trackBox!.width - 2 * 12) / 3;
     await expect
       .poll(async () => (await column.boundingBox())?.width)
       .toBeGreaterThan(expectedWidth - 5);

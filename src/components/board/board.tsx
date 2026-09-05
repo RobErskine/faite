@@ -21,6 +21,7 @@ import { LOCAL_OWNER_ID } from "@/lib/store/repositories";
 import { mutateSettings } from "@/lib/store/mutate";
 import type { Hotkey } from "@/lib/keyboard";
 import { Hotkeys } from "@/components/hotkeys";
+import { BoardErrorFallback, BoardFallback } from "./board-fallback";
 import { TodoSheet } from "./todo-sheet";
 import { ListInfoDialog } from "./list-info-dialog";
 import { TabInfoDialog } from "./tab-info-dialog";
@@ -297,12 +298,12 @@ export function Board() {
     [data.board, data.todosById, data.listsById, data.tabsById],
   );
 
+  if (data.error) {
+    return <BoardErrorFallback />;
+  }
+
   if (!data.ready || !data.ctx || !data.board || !data.settings) {
-    return (
-      <div className="flex h-dvh items-center justify-center text-sm text-muted-foreground">
-        Loading your board…
-      </div>
-    );
+    return <BoardFallback />;
   }
 
   return (
