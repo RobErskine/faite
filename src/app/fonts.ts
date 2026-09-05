@@ -2,9 +2,6 @@ import {
   Atkinson_Hyperlegible_Mono,
   Atkinson_Hyperlegible_Next,
   IBM_Plex_Mono,
-  IBM_Plex_Sans,
-  Inter,
-  JetBrains_Mono,
   Source_Sans_3,
   Source_Serif_4,
 } from "next/font/google";
@@ -12,27 +9,57 @@ import {
 /**
  * Every font family the app can render, declared once.
  *
- * Eight families sounds expensive but costs almost nothing at runtime: only the
- * DEFAULT pairing sets `preload`, and a browser will not download a declared
- * `@font-face` until CSS actually applies it. Switching pairings fetches the two
- * new files on demand; the other six never leave the CDN for most users.
+ * Five families cost almost nothing at runtime: only the DEFAULT pairing sets
+ * `preload`, and a browser will not download a declared `@font-face` until CSS
+ * actually applies it. Switching pairings fetches the new files on demand; the
+ * others never leave the CDN for most users.
  *
  * Each family exposes a CSS variable. `globals.css` maps those onto four ROLE
  * tokens (sans / heading / mono / numeric) per pairing, so components reference
  * roles and never a specific family.
+ *
+ * Two pairings since the V milestone (docs/DESIGN.md §2): Editorial (default)
+ * and Hyperlegible. Inter, JetBrains Mono and IBM Plex Sans were removed with
+ * the Precision and Systematic pairings.
  */
 
-// --- Hyperlegible (default) ------------------------------------------------
-// Braille Institute, engineered for maximum character disambiguation for
-// low-vision readers. The only pairing that preloads.
+// --- Editorial (default) ---------------------------------------------------
+// Source Serif for headings, Source Sans for body, Plex Mono for numerals. The
+// only pairing that preloads: it is the first impression for a new account.
+
+const sourceSerif = Source_Serif_4({
+  variable: "--font-source-serif",
+  subsets: ["latin"],
+  display: "swap",
+  // Optical-size axis; `font-optical-sizing: auto` in globals.css engages it,
+  // which is what keeps a serif readable at column-title sizes.
+  axes: ["opsz"],
+});
+
+const sourceSans = Source_Sans_3({
+  variable: "--font-source-sans",
+  subsets: ["latin"],
+  display: "swap",
+});
+
+// Not a variable font, so weights are explicit. These three cover every
+// `font-normal` / `font-medium` / `font-semibold` in the app.
+const plexMono = IBM_Plex_Mono({
+  variable: "--font-plex-mono",
+  subsets: ["latin"],
+  display: "swap",
+  weight: ["400", "500", "600"],
+});
+
+// --- Hyperlegible ----------------------------------------------------------
+// Braille Institute, purpose-designed for maximum character disambiguation
+// for low-vision readers. Fetched on demand when chosen.
 
 /*
  * These two are newer than the font metrics Next bundles, so it cannot generate
- * a size-adjusted fallback face for them and says so at build time. The
- * consequence is a small layout shift if the fallback paints first — mitigated
- * by these being the only preloaded families, so they are normally ready before
- * first paint. An explicit `fallback` at least pins which face fills the gap
- * instead of leaving it to the UA default.
+ * a size-adjusted fallback face for them and says so at build time. An
+ * explicit `fallback` at least pins which face fills the gap instead of
+ * leaving it to the UA default.
  *
  * The original `Atkinson_Hyperlegible` does have metrics, but ships static
  * 400/700 only; the board uses four weights, so the variable versions win.
@@ -45,6 +72,7 @@ const atkinson = Atkinson_Hyperlegible_Next({
   variable: "--font-atkinson",
   subsets: ["latin"],
   display: "swap",
+  preload: false,
   fallback: ["ui-sans-serif", "system-ui", "arial"],
 });
 
@@ -52,75 +80,17 @@ const atkinsonMono = Atkinson_Hyperlegible_Mono({
   variable: "--font-atkinson-mono",
   subsets: ["latin"],
   display: "swap",
+  preload: false,
   fallback: ["ui-monospace", "SFMono-Regular", "monospace"],
-});
-
-// --- Precision -------------------------------------------------------------
-
-const inter = Inter({
-  variable: "--font-inter",
-  subsets: ["latin"],
-  display: "swap",
-  preload: false,
-  // Inter's optical-size axis; `font-optical-sizing: auto` in globals.css
-  // engages it, which is what keeps it readable down at badge sizes.
-  axes: ["opsz"],
-});
-
-const jetbrainsMono = JetBrains_Mono({
-  variable: "--font-jetbrains-mono",
-  subsets: ["latin"],
-  display: "swap",
-  preload: false,
-});
-
-// --- Systematic ------------------------------------------------------------
-
-const plexSans = IBM_Plex_Sans({
-  variable: "--font-plex-sans",
-  subsets: ["latin"],
-  display: "swap",
-  preload: false,
-});
-
-// Not a variable font, so weights are explicit. These three cover every
-// `font-normal` / `font-medium` / `font-semibold` in the app.
-const plexMono = IBM_Plex_Mono({
-  variable: "--font-plex-mono",
-  subsets: ["latin"],
-  display: "swap",
-  preload: false,
-  weight: ["400", "500", "600"],
-});
-
-// --- Editorial -------------------------------------------------------------
-// Reuses Plex Mono for numerals, so it costs one extra family, not two.
-
-const sourceSerif = Source_Serif_4({
-  variable: "--font-source-serif",
-  subsets: ["latin"],
-  display: "swap",
-  preload: false,
-  axes: ["opsz"],
-});
-
-const sourceSans = Source_Sans_3({
-  variable: "--font-source-sans",
-  subsets: ["latin"],
-  display: "swap",
-  preload: false,
 });
 
 /** All font CSS variables, for the `<html>` className. */
 export const fontVariables = [
-  atkinson.variable,
-  atkinsonMono.variable,
-  inter.variable,
-  jetbrainsMono.variable,
-  plexSans.variable,
-  plexMono.variable,
   sourceSerif.variable,
   sourceSans.variable,
+  plexMono.variable,
+  atkinson.variable,
+  atkinsonMono.variable,
 ].join(" ");
 
 /*

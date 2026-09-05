@@ -487,7 +487,7 @@ function TodoSheetContent({
             <button
               type="button"
               onClick={onBackToDay}
-              className="-ml-1 flex w-fit items-center gap-1 rounded px-1 py-0.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+              className="-ml-1 flex w-fit items-center gap-1 rounded px-1 py-0.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:underline focus-ring"
             >
               <ArrowLeft className="size-3" aria-hidden />
               Back to {formatShortDate(backToDay)}
@@ -1106,7 +1106,7 @@ function HistorySection({ todo, events, timezone, ctx, listsById }: HistorySecti
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:text-foreground"
+        className="type-eyebrow flex items-center gap-1 hover:text-foreground"
       >
         <ChevronDown
           aria-hidden

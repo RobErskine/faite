@@ -48,7 +48,10 @@ export function RailHandle({
         // explicit `relative`.
         "pointer-coarse:after:absolute pointer-coarse:after:inset-y-0 pointer-coarse:after:-inset-x-2.5 pointer-coarse:after:content-['']",
         disabled ? "cursor-default" : "cursor-col-resize",
-        "transition-colors hover:bg-primary/40 focus-visible:bg-primary/60",
+        // A faint line at rest, same treatment as split-handle.tsx — this was
+        // fully invisible until hover, which is what made the resize edge
+        // hard to find in the first place.
+        "border-r border-line-faint transition-colors hover:bg-primary/40 focus-visible:bg-primary/60",
         "focus-visible:outline-none",
         isDragging && "bg-primary/60",
       )}

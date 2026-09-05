@@ -79,21 +79,23 @@ export function CreateListColumn({
             if (key && onNavigate?.(NAV_CREATE_LIST, key)) e.preventDefault();
           }}
           className={cn(
-            "flex flex-1 flex-col items-center justify-center gap-1.5 rounded-md",
-            "border border-dashed border-border text-muted-foreground",
-            "transition-colors hover:border-foreground/30 hover:bg-background/60",
-            "hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring",
+            // Air pass: a quiet text affordance, not a dashed column-sized
+            // box. The dashed border returns on the editing branch below,
+            // where an active text field genuinely needs a visible boundary.
+            "flex flex-1 flex-col items-center justify-center gap-1.5 rounded-lg",
+            "text-muted-foreground transition-colors hover:text-foreground",
+            "focus-ring",
           )}
         >
           <Plus className="size-4" aria-hidden />
-          <span className="font-heading text-sm font-bold uppercase tracking-tight">
+          <span className="type-column-title text-sm">
             Create list
           </span>
         </button>
       ) : (
         <div
           className={cn(
-            "flex flex-1 flex-col rounded-md border border-dashed",
+            "flex flex-1 flex-col rounded-lg border border-dashed",
             "border-foreground/30 bg-background/60 px-2 pt-2",
           )}
         >
@@ -116,7 +118,7 @@ export function CreateListColumn({
             aria-label="New list name"
             className={cn(
               "w-full bg-transparent text-sm outline-none",
-              "font-heading font-bold uppercase tracking-tight",
+              "type-column-title",
               "placeholder:font-sans placeholder:font-normal placeholder:normal-case",
               "placeholder:tracking-normal placeholder:text-muted-foreground/60",
             )}

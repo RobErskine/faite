@@ -4,14 +4,14 @@
  * A brand-new account lands here (`seedIfEmpty` seeds lists, never sample
  * to-dos), and so does an existing one that has cleared everything out.
  *
- * Deliberately NOT a per-column treatment. A single empty list or day
- * already has one: `BoardColumn`'s ruled `fillerRows` plus its quick-add
- * row, matching the reference UI's paper feel — that is working as designed
- * and stays untouched. This banner exists only for the board reading blank
- * ALL AT ONCE, the one moment a first-time visitor has no card, no ruled
- * column with anything in it, and no cue that typing into any column's
- * quick-add row (its placeholder is intentionally invisible until focused,
- * same paper feel) is the way to start.
+ * Deliberately NOT a per-column treatment — a single empty list or day is
+ * just its quick-add row, matching the paper feel, and stays untouched. This
+ * banner exists only for the board reading blank ALL AT ONCE. It points at
+ * Backlog specifically, not "any column": Backlog is the one column whose
+ * quick-add placeholder is visible at rest (`quickAddPlaceholderVisible` on
+ * `BoardColumn`) — every day column stays quiet until hover/focus/touch, so
+ * telling a first-time visitor to type into one of those points at a field
+ * they can't see yet.
  *
  * No dismissal state, unlike `SignedOutBanner`. It is driven straight off
  * `calendarCount + planningCount` (`use-board-data.ts`), which both boards
@@ -25,7 +25,7 @@ export function BoardEmptyBanner() {
       role="status"
       className="border-b border-border/60 bg-muted/30 px-4 py-3 text-center text-sm text-muted-foreground"
     >
-      Nothing on the board yet — type into any column below to add your first to-do.
+      Nothing on the board yet — type into Backlog to add your first to-do.
     </div>
   );
 }

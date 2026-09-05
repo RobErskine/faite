@@ -34,11 +34,11 @@ export function SplitStrip({ label, count, direction, onExpand }: SplitStripProp
       className={cn(
         "group/half flex h-10 shrink-0 cursor-pointer items-center gap-2 px-4",
         "bg-muted/30 transition-colors hover:bg-muted/60",
-        "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
+        "focus-ring",
       )}
     >
       <Chevron className="size-3.5 text-muted-foreground/70" aria-hidden />
-      <span className="font-heading text-sm font-bold uppercase tracking-tight">{label}</span>
+      <span className="type-column-title text-sm">{label}</span>
       {count > 0 && (
         <span className="num text-2xs font-medium text-muted-foreground">{count}</span>
       )}

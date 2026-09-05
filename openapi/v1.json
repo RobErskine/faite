@@ -2126,13 +2126,11 @@
             "type": "boolean"
           },
           "fontPairing": {
-            "default": "hyperlegible",
+            "default": "editorial",
             "type": "string",
             "enum": [
-              "hyperlegible",
-              "precision",
-              "systematic",
-              "editorial"
+              "editorial",
+              "hyperlegible"
             ]
           },
           "theme": {

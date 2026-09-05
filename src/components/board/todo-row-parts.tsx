@@ -13,6 +13,7 @@ import {
 import { Badge, badgeVariants } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { edge, tint } from "@/lib/colors";
 import { priorityRail } from "@/lib/priority";
 import type { CivilDate, Label as LabelRecord, ReminderPreset, Todo } from "@/lib/schema";
 import { formatDeadlineDue, formatShortDate, isDeadlineMissed } from "@/lib/scheduling";
@@ -46,7 +47,23 @@ export function PriorityRail({
     <span
       aria-hidden
       data-priority-rail={priority}
-      style={{ width: rail.width, backgroundColor: rail.color }}
+      /*
+        Achromatic (docs/DESIGN.md §7, decision A): the rail is `--foreground`
+        at the level's opacity, so it inverts with the theme and never collides
+        with a list's hue or the urgency red. P4 is dotted — a 1px repeating
+        gradient rather than a border, because the rail is a span, not a
+        border (see TodoCard for why).
+      */
+      style={{
+        width: rail.width,
+        opacity: rail.opacity,
+        ...(rail.dotted
+          ? {
+              backgroundImage:
+                "repeating-linear-gradient(to bottom, var(--foreground) 0 2px, transparent 2px 5px)",
+            }
+          : { backgroundColor: "var(--foreground)" }),
+      }}
       className={cn("pointer-events-none absolute inset-y-0 left-0", className)}
     />
   );
@@ -232,7 +249,7 @@ export function TodoMetaBadges({
   if (!hasContent) return null;
 
   return (
-    <span className="mt-1 flex flex-wrap items-center gap-1">
+    <span className="mt-1.5 flex flex-wrap items-center gap-1">
       {showScheduledDate && todo.scheduledDate && (
         <Badge variant="outline" className="num gap-1 text-2xs font-normal">
           <CalendarClock className="size-2.5" aria-hidden />
@@ -308,9 +325,14 @@ export function TodoMetaBadges({
           key={label.id}
           variant="secondary"
           className="text-2xs font-normal"
+          /*
+            The identity ladder from lib/colors.ts, not a hand-rolled alpha:
+            tint behind, edge around, and — the one place hue touches text
+            (docs/DESIGN.md §1) — the label's own colour on the name.
+          */
           style={
             label.color
-              ? { backgroundColor: `${label.color}20`, color: label.color }
+              ? { backgroundColor: tint(label.color), borderColor: edge(label.color), color: label.color }
               : undefined
           }
         >

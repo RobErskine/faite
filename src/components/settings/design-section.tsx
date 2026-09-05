@@ -1,6 +1,6 @@
 "use client";
 
-import { DEFAULT_FONT_PAIRING } from "@/lib/fonts";
+import { normalizeFontPairing } from "@/lib/fonts";
 import { LOCAL_OWNER_ID } from "@/lib/store/repositories";
 import { mutateSettings } from "@/lib/store/mutate";
 import { normalizeTheme } from "@/lib/theme";
@@ -20,7 +20,7 @@ export function DesignSection({ settings }: SettingsSectionProps) {
   return (
     <div className="space-y-6">
       <FontPairingField
-        value={settings?.fontPairing ?? DEFAULT_FONT_PAIRING}
+        value={normalizeFontPairing(settings?.fontPairing)}
         onChange={(id) => void mutateSettings(LOCAL_OWNER_ID, { fontPairing: id })}
       />
       <ThemeField

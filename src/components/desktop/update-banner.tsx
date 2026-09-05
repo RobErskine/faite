@@ -50,11 +50,13 @@ export function DesktopUpdateBanner() {
       role={blocked ? "alert" : undefined}
       className={cn(
         "flex items-center gap-3 border-b px-4 py-2 text-sm",
+        // Status tokens (docs/DESIGN.md §1): blocked is urgent, a staged
+        // update is information, a newer version out there is a warning.
         blocked
-          ? "bg-red-50 text-red-900 dark:bg-red-950/40 dark:text-red-200"
+          ? "bg-urgent-soft text-urgent-foreground"
           : staged
-            ? "bg-sky-50 text-sky-900 dark:bg-sky-950/40 dark:text-sky-200"
-            : "bg-amber-50 text-amber-900 dark:bg-amber-950/40 dark:text-amber-200",
+            ? "bg-info-soft text-info-foreground"
+            : "bg-warning-soft text-warning-foreground",
       )}
     >
       <span className="flex-1">

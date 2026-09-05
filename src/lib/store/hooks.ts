@@ -36,6 +36,19 @@ import {
  * on the interaction path waits for a network round trip.
  */
 
+export interface BootstrapState {
+  ready: boolean;
+  /**
+   * True when the store could not be prepared — either `canUseDb()` says
+   * IndexedDB isn't available, or the seed/repair chain below rejected.
+   * Both used to fall through to "board reads empty" (a corrupt store looks
+   * like a brand-new one) or "stuck on the loading screen forever" (no
+   * IndexedDB never flips `ready`). Callers show a recovery state instead of
+   * guessing which of those two silent failures happened.
+   */
+  error: boolean;
+}
+
 /**
  * Seeds default lists on first run, repairs the store, and reports readiness.
  *
@@ -47,8 +60,15 @@ import {
  * Personal tab and "Groceries" on a Work tab), with no tombstone and no
  * outbox entry. See `repositories.ts`'s removal commit for the incident.
  */
-export function useBootstrap(): boolean {
-  const [ready, setReady] = useState(false);
+export function useBootstrap(): BootstrapState {
+  // `canUseDb()` is synchronous and deterministic per environment, so the
+  // no-IndexedDB case is decided in the lazy initializer rather than an
+  // effect — setting state synchronously inside an effect body (as the
+  // early-return branch here used to) trips `react-hooks/set-state-in-effect`
+  // and costs an extra render for a value that never changes after mount.
+  const [state, setState] = useState<BootstrapState>(() =>
+    canUseDb() ? { ready: false, error: false } : { ready: false, error: true },
+  );
 
   useEffect(() => {
     if (!canUseDb()) return;
@@ -59,15 +79,15 @@ export function useBootstrap(): boolean {
           console.info(`[faite] moved ${assigned} list(s) onto the default tab`);
         }
         await seedReminderPresetsIfNeeded();
-        setReady(true);
+        setState({ ready: true, error: false });
       })
       .catch((error) => {
         console.error("[faite] failed to prepare local store", error);
-        setReady(true);
+        setState({ ready: false, error: true });
       });
   }, []);
 
-  return ready;
+  return state;
 }
 
 const alive = <T extends { deletedAt: string | null }>(rows: T[] | undefined): T[] =>

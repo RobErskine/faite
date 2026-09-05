@@ -1,4 +1,5 @@
 import type { DropAnimationFunctionArguments } from "@dnd-kit/core";
+import { prefersReducedMotion } from "@/lib/reduced-motion";
 
 /**
  * The released item flies from where it was dropped to where it will land.
@@ -92,11 +93,6 @@ export function readLandingRect(): DOMRect | null {
   if (typeof document === "undefined") return null;
   const indicator = document.querySelector(`[${DROP_INDICATOR_ATTR}]`);
   return indicator ? indicator.getBoundingClientRect() : null;
-}
-
-function prefersReducedMotion(): boolean {
-  if (typeof window === "undefined" || !window.matchMedia) return false;
-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
 interface LandingDropAnimationOptions {

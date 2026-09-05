@@ -107,6 +107,82 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+
+  /*
+    THE SEMANTIC LAYER (docs/DESIGN.md).
+
+    Every shadcn token above keeps its name; these say what a region IS. They
+    alias `:root`/`.dark` values, so they belong in `@theme inline` — Tailwind
+    embeds the referenced var into each utility instead of resolving it once
+    at the ancestor that defined it.
+  */
+  --color-surface-sunken: var(--surface-sunken);
+  --color-surface-0: var(--surface-0);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-line-faint: var(--line-faint);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-spectrum-solid: var(--spectrum-solid);
+  --color-urgent: var(--urgent);
+  --color-urgent-foreground: var(--urgent-foreground);
+  --color-urgent-soft: var(--urgent-soft);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning-soft: var(--warning-soft);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-info-soft: var(--info-soft);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-success-soft: var(--success-soft);
+
+  --shadow-card: var(--shadow-card);
+  --shadow-raised: var(--shadow-raised);
+  --shadow-overlay: var(--shadow-overlay);
+
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /*
+    Motion. Literal durations here rather than `var(--dur-*)`: an animation
+    shorthand with a var() inside is resolved at use time and is one more
+    thing to get wrong; the three durations are also declared as plain vars
+    on :root for hand-written CSS. Keep the two in step. Consumers must add
+    `motion-reduce:animate-none` — the state has to be right with the
+    animation removed.
+  */
+  --animate-check: check 180ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  --animate-strike: strike 180ms cubic-bezier(0.22, 1, 0.36, 1);
+  --animate-settle: settle 260ms cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* The checked-box flash: one ring pulse in the spectrum's solid stop. */
+  @keyframes check {
+    from {
+      box-shadow: 0 0 0 0 var(--spectrum-solid);
+    }
+    to {
+      box-shadow: 0 0 0 6px transparent;
+    }
+  }
+  /* The strike draws left to right, like a pen. Apply to a scaleX line. */
+  @keyframes strike {
+    from {
+      transform: scaleX(0);
+    }
+    to {
+      transform: scaleX(1);
+    }
+  }
+  /* A dropped row settles from the overlay's 1.02 lift back to rest. */
+  @keyframes settle {
+    from {
+      transform: scale(1.02);
+    }
+    to {
+      transform: scale(1);
+    }
+  }
 }
 
 :root {
@@ -133,7 +209,12 @@
   --destructive: oklch(0.577 0.245 27.325);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  /*
+    The focus ring is the spectrum's solid stop — the fourth of its four
+    allowed places (docs/DESIGN.md §1). Focus is "here, now", which is what
+    the spectrum means. Declared below with the rest of the semantic layer.
+  */
+  --ring: var(--spectrum-solid);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -148,6 +229,75 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+
+  /*
+    THE SEMANTIC LAYER — light. See docs/DESIGN.md §3 for what each tier is
+    for. Surfaces step UP in lightness from the sunken floor to a raised pill;
+    in the light theme the top two steps are both white and shadow tells them
+    apart, because there is nowhere above white to go.
+  */
+  --surface-sunken: oklch(0.955 0 0);
+  --surface-0: oklch(0.985 0 0);
+  --surface-1: oklch(1 0 0);
+  --surface-2: oklch(1 0 0);
+  --line-faint: oklch(0.945 0 0);
+  --line: var(--border);
+  --line-strong: oklch(0.85 0 0);
+
+  /*
+    The spectrum (docs/DESIGN.md §1): peach → rose → lavender → sky at low
+    chroma. A gradient, so it is not a colour token — it reaches the DOM
+    through the `hairline-spectrum` utility and hand-written CSS only.
+    `--spectrum-solid` is the lavender stop on its own, for rings and any
+    place a gradient cannot go.
+  */
+  --spectrum: linear-gradient(
+    90deg,
+    oklch(0.85 0.08 55),
+    oklch(0.82 0.09 10),
+    oklch(0.8 0.09 300),
+    oklch(0.82 0.08 230)
+  );
+  /*
+    Darker than the gradient's own lavender stop (0.8 0.09 300) on purpose: at
+    0.7 the ring measured 2.76:1 against white, short of the 3:1 WCAG
+    non-text floor. 0.55 clears it (5.12:1) while staying the same hue.
+  */
+  --spectrum-solid: oklch(0.55 0.13 300);
+
+  /* Urgency is the destructive red under a name that says what it means. */
+  --urgent: var(--destructive);
+  --urgent-foreground: oklch(0.35 0.14 27);
+  --urgent-soft: oklch(0.965 0.03 25);
+
+  /* System status, for banners and toasts only — never board content. */
+  --warning: oklch(0.55 0.13 75);
+  --warning-foreground: oklch(0.35 0.1 70);
+  --warning-soft: oklch(0.97 0.04 85);
+  --info: oklch(0.5 0.12 240);
+  --info-foreground: oklch(0.33 0.09 245);
+  --info-soft: oklch(0.965 0.025 230);
+  --success: oklch(0.5 0.13 150);
+  --success-foreground: oklch(0.33 0.09 150);
+  --success-soft: oklch(0.965 0.035 150);
+
+  /*
+    -1px spread on the primary layer, matching --shadow-raised/--shadow-
+    overlay below (both already do this; this was the one shadow in the
+    ladder without it). Box-shadow blur spreads sideways as much as it does
+    down — on a TALL element (today's column) or a WIDE one (the active tab
+    pill), that sideways bleed read as an unwanted vertical border on either
+    edge. The spread pulls the shadow's source box in before blurring it,
+    so the visible result stays weighted toward "below", not "beside".
+  */
+  --shadow-card: 0 1px 2px -1px oklch(0 0 0 / 10%), 0 1px 1px oklch(0 0 0 / 4%);
+  --shadow-raised: 0 2px 8px -2px oklch(0 0 0 / 12%), 0 1px 2px oklch(0 0 0 / 6%);
+  --shadow-overlay: 0 12px 32px -8px oklch(0 0 0 / 25%), 0 2px 6px oklch(0 0 0 / 8%);
+
+  /* Motion budget. Nothing over --dur-slow except opt-in confetti. */
+  --dur-fast: 100ms;
+  --dur-base: 180ms;
+  --dur-slow: 260ms;
 
   /*
     THE COLUMN TRACK.
@@ -232,7 +382,7 @@
   --destructive: oklch(0.704 0.191 22.216);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  --ring: var(--spectrum-solid);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -240,12 +390,55 @@
   --chart-5: oklch(0.269 0 0);
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
+  /* Was a shadcn-default blue that nothing used — the one unintended chroma. */
+  --sidebar-primary: oklch(0.922 0 0);
+  --sidebar-primary-foreground: oklch(0.205 0 0);
   --sidebar-accent: oklch(0.269 0 0);
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+
+  /*
+    THE SEMANTIC LAYER — dark. Same ladder, real lightness steps this time,
+    plus an inset light hairline on each shadow: on a dark surface a drop
+    shadow alone disappears into the floor, and the hairline is what says
+    "this edge is nearer".
+  */
+  --surface-sunken: oklch(0.165 0 0);
+  --surface-0: oklch(0.19 0 0);
+  --surface-1: oklch(0.225 0 0);
+  --surface-2: oklch(0.27 0 0);
+  --line-faint: oklch(1 0 0 / 6%);
+  --line: var(--border);
+  --line-strong: oklch(1 0 0 / 18%);
+
+  --spectrum: linear-gradient(
+    90deg,
+    oklch(0.8 0.08 55),
+    oklch(0.78 0.09 10),
+    oklch(0.78 0.09 300),
+    oklch(0.8 0.08 230)
+  );
+  --spectrum-solid: oklch(0.78 0.1 300);
+
+  --urgent: var(--destructive);
+  --urgent-foreground: oklch(0.88 0.07 20);
+  --urgent-soft: oklch(0.27 0.07 25);
+
+  --warning: oklch(0.85 0.1 85);
+  --warning-foreground: oklch(0.9 0.08 85);
+  --warning-soft: oklch(0.25 0.04 80);
+  --info: oklch(0.8 0.08 230);
+  --info-foreground: oklch(0.88 0.06 230);
+  --info-soft: oklch(0.26 0.05 240);
+  --success: oklch(0.8 0.1 150);
+  --success-foreground: oklch(0.88 0.08 150);
+  --success-soft: oklch(0.26 0.05 150);
+
+  /* Same -1px spread fix as the light theme above. */
+  --shadow-card: 0 1px 2px -1px oklch(0 0 0 / 45%), inset 0 1px 0 oklch(1 0 0 / 5%);
+  --shadow-raised: 0 2px 8px -2px oklch(0 0 0 / 50%), inset 0 1px 0 oklch(1 0 0 / 6%);
+  --shadow-overlay: 0 12px 32px -8px oklch(0 0 0 / 60%), inset 0 1px 0 oklch(1 0 0 / 6%);
 }
 
 /* ---------------------------------------------------------------------------
@@ -260,33 +453,17 @@
    --------------------------------------------------------------------------- */
 
 :root,
-[data-font="hyperlegible"] {
-  --app-sans: var(--font-atkinson), ui-sans-serif, system-ui, sans-serif;
-  --app-heading: var(--app-sans);
-  --app-mono: var(--font-atkinson-mono), ui-monospace, monospace;
-  --app-numeric: var(--app-mono);
-}
-
-[data-font="precision"] {
-  --app-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-  --app-heading: var(--app-sans);
-  --app-mono: var(--font-jetbrains-mono), ui-monospace, monospace;
-  --app-numeric: var(--app-mono);
-  /* Inter character variants: tailed l (cv05) and disambiguated 1/I (cv08). */
-  font-feature-settings: "cv05" 1, "cv08" 1;
-}
-
-[data-font="systematic"] {
-  --app-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
-  --app-heading: var(--app-sans);
-  --app-mono: var(--font-plex-mono), ui-monospace, monospace;
-  --app-numeric: var(--app-mono);
-}
-
 [data-font="editorial"] {
   --app-sans: var(--font-source-sans), ui-sans-serif, system-ui, sans-serif;
   --app-heading: var(--font-source-serif), ui-serif, Georgia, serif;
   --app-mono: var(--font-plex-mono), ui-monospace, monospace;
+  --app-numeric: var(--app-mono);
+}
+
+[data-font="hyperlegible"] {
+  --app-sans: var(--font-atkinson), ui-sans-serif, system-ui, sans-serif;
+  --app-heading: var(--app-sans);
+  --app-mono: var(--font-atkinson-mono), ui-monospace, monospace;
   --app-numeric: var(--app-mono);
 }
 
@@ -313,6 +490,91 @@
 
 @utility nums {
   font-variant-numeric: tabular-nums slashed-zero;
+}
+
+/*
+  Type roles (docs/DESIGN.md §2). Two label styles that were inlined some
+  twenty times across the board, named once.
+
+  `type-column-title` deliberately sets NO font-size: the same style runs at
+  `text-lg` on a column and `text-sm` on a collapsed strip, and a size inside
+  the utility would fight the caller's size class — tailwind-merge cannot see
+  inside an @utility, so which one won would come down to emission order.
+  Size stays at the call site.
+*/
+@utility type-column-title {
+  font-family: var(--app-heading);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: -0.025em;
+}
+
+@utility type-eyebrow {
+  font-size: var(--text-2xs);
+  line-height: var(--text-2xs--line-height);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted-foreground);
+}
+
+/*
+  One focus treatment for the whole board (docs/DESIGN.md §1: focus is the
+  spectrum's solid stop). Every component that hand-rolled its own
+  `focus-visible:outline-*`/`focus-visible:ring-*` combination now applies
+  this instead.
+*/
+@utility focus-ring {
+  outline: none;
+  &:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: -2px;
+  }
+}
+
+/*
+  The 8px dot at the start of a drop-indicator line, centered on it —
+  repeated identically at three drop sites (a card's own indicator, the
+  group-boundary indicator, the end-of-column indicator) before this existed.
+*/
+@utility drop-indicator-dot {
+  position: absolute;
+  left: -0.125rem;
+  top: -3px;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 9999px;
+  background: var(--primary);
+}
+
+/*
+  The spectrum as a 2px rule along an element's top edge. One of the four
+  places the spectrum is allowed (docs/DESIGN.md §1). A pseudo-element rather
+  than `border-image`, so the element's own borders and radius are untouched.
+*/
+@utility hairline-spectrum {
+  position: relative;
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0 10px auto 10px;
+    height: 2px;
+    border-radius: 1px;
+    background: var(--spectrum);
+    pointer-events: none;
+  }
+}
+
+/*
+  The spectrum through letterforms — the wordmark on hover and focus. Text
+  only, and only there; a gradient behind body text is exactly the "fill" the
+  grammar forbids.
+*/
+@utility text-spectrum {
+  background: var(--spectrum);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 /*
@@ -546,7 +808,7 @@
   }
   html {
     @apply font-sans;
-    /* Lets the opsz axis on Inter and Source Serif actually engage. */
+    /* Lets the opsz axis on Source Serif actually engage. */
     font-optical-sizing: auto;
   }
 }

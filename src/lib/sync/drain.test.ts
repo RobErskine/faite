@@ -21,7 +21,7 @@ describe("planDrain", () => {
       entry({
         kind: "settings",
         entityId: "local-user",
-        patch: { fontPairing: "precision" },
+        patch: { fontPairing: "hyperlegible" },
         hlc: encodeHlc({ phys: 1000, counter: 0, nodeId: NODE }),
         createdAt: "2026-08-04T00:00:00.000Z",
       }),
@@ -32,7 +32,7 @@ describe("planDrain", () => {
     expect(plan.drop).toEqual([]);
     expect(plan.batch).toHaveLength(1);
     expect(plan.batch[0].kind).toBe("settings");
-    expect(plan.batch[0].patch).toEqual({ fontPairing: "precision" });
+    expect(plan.batch[0].patch).toEqual({ fontPairing: "hyperlegible" });
   });
 
   it("drops a settings entry whose patch is empty after the allow-list filter", () => {

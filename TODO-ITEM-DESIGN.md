@@ -326,10 +326,15 @@ changed, the bootstrap fingerprint should **not** move and no
 
 ## 10. Presentation
 
+The spec of record for colour, type, surfaces and motion is
+[`docs/DESIGN.md`](docs/DESIGN.md). The notes below are the card-specific
+decisions it builds on.
+
 - Priority is a **rail**, not a chip — a chip cost a whole badge row in a 168px
-  column. Two channels (thickness + hue) arranged so no two levels share both,
-  and the pair sharing a thickness sits far apart on the blue axis that survives
-  red-green colour blindness. See `src/lib/priority.ts`.
+  column. Since the V milestone the rail is achromatic: thickness (3/2/1/1px)
+  and opacity carry the four levels, and P4 is dotted. Hue was dropped so red
+  can mean urgency alone — `docs/DESIGN.md` §7, decision A. See
+  `src/lib/priority.ts`.
 - `done` is struck through; `dropped` is dimmed only.
 - The unchecked checkbox uses `border-muted-foreground`, not `border-input`.
   `--input` is `oklch(0.922 0 0)` in the light theme — near-white, fine on a
@@ -339,6 +344,33 @@ changed, the bootstrap fingerprint should **not** move and no
   are the point: rule 35% / header 12% / card field 5%. Wash and tint were once
   10% and 12%, which is inside the noise — the header and the run below it read
   as one flat panel rather than a label above a field.
+
+### The Air pass (2026-09-05)
+
+Board-wide, so the full record is `docs/DESIGN.md` §3 and §7 — noted here
+because it changes what a card sits on and how completing one feels.
+
+- **Columns lost their borders and backgrounds.** No panel, no sunken floor.
+  Whitespace (`gap-3`) is the only column separator; today is the board's
+  only card (`--surface-1` + `shadow-card`, no border — the shadow carries
+  the edge). A card's own chrome (checkbox, priority rail, meta badges) is
+  now the only thing giving it a boundary at all, since its column no
+  longer draws one.
+- **`--shadow-card` gained a `-1px` spread.** Box-shadow blur bleeds
+  sideways as much as down; on today's column and the active tab pill the
+  un-spread blur read as a stray vertical border. Any future card-level
+  shadow should carry the same spread, not the bare `0 1px 2px` shape.
+- **The completion check-flash is wired** (`--animate-check`, `todo-
+  card.tsx`): a spectrum pulse on the checkbox the instant a to-do is
+  marked done, gated on the actual open→done transition (a `wasDoneRef`
+  guard), not on `status === "done"` alone, so an already-done card
+  remounting (tab switch, filter change) never replays it.
+- **Every focus ring, including the checkbox and title button, is one
+  `focus-ring` utility** (`globals.css`) now — no more per-component
+  `ring-2`/`outline-2` variants drifting apart.
+- Overlays (the to-do sheet included) dropped shadcn's default filled
+  footer bar and label-sized title for a hairline footer and a real
+  heading step — see `docs/DESIGN.md`'s new "Overlays" paragraph in §3.
 
 ---
 

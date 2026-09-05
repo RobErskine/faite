@@ -32,7 +32,7 @@ export function SignedOutBanner({ hasUserData }: SignedOutBannerProps) {
   };
 
   return (
-    <div className="flex items-center gap-3 border-b bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+    <div className="flex items-center gap-3 border-b bg-warning-soft px-4 py-2 text-sm text-warning-foreground">
       <span className="flex-1">
         You&apos;re not signed in — this board only exists on this device.{" "}
         {isDesktopShell() ? (

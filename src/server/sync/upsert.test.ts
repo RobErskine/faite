@@ -52,7 +52,7 @@ describe("buildInsertColumns", () => {
   it("settings: synthesizes fontPairing/theme/avatarKind and drops id/createdAt entirely", () => {
     const row = buildInsertColumns("settings", "settings", "user-1", {}, NOW, 1);
 
-    expect(row.fontPairing).toBe("hyperlegible");
+    expect(row.fontPairing).toBe("editorial");
     expect(row.theme).toBe("system");
     expect(row.avatarKind).toBe("initials");
     expect(row.ownerId).toBe("user-1");
@@ -65,7 +65,7 @@ describe("buildInsertColumns", () => {
   });
 
   it("settings: leaves a fully-supplied patch's fields untouched", () => {
-    const row = buildInsertColumns("settings", "settings", "user-1", { fontPairing: "precision" }, NOW, 1);
-    expect(row.fontPairing).toBe("precision");
+    const row = buildInsertColumns("settings", "settings", "user-1", { fontPairing: "hyperlegible" }, NOW, 1);
+    expect(row.fontPairing).toBe("hyperlegible");
   });
 });

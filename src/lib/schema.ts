@@ -581,7 +581,17 @@ export const settingsSchema = z.object({
    * Typography pairing. Purely presentational, but stored (not localStorage)
    * so it syncs with the rest of the user's settings across devices.
    */
-  fontPairing: z.enum(FONT_PAIRING_IDS).default(DEFAULT_FONT_PAIRING),
+  /*
+    `.catch()` as well as `.default()`: the V milestone cut two pairings, and
+    a row synced from an older device can still name one. Without the catch
+    that row fails to parse and takes the board down with it; with it, the
+    unknown id reads as the default. Read-time only — nothing writes the
+    coerced value back. See `normalizeFontPairing` in lib/fonts.ts.
+  */
+  fontPairing: z
+    .enum(FONT_PAIRING_IDS)
+    .default(DEFAULT_FONT_PAIRING)
+    .catch(DEFAULT_FONT_PAIRING),
   /**
    * Appearance. Stored rather than kept in localStorage for the same reason
    * `fontPairing` is: it belongs to the account, not to the device.

@@ -62,8 +62,8 @@ const CARDS_NOT_DROPPABLE = { draggable: false, droppable: true } as const;
  * the two visual treatments can't drift apart from each other over time.
  */
 const DUE_BANNER = cn(
-  "flex items-center gap-1 border-b border-destructive/20 bg-destructive/10",
-  "px-2 py-1 text-2xs font-medium text-destructive",
+  "flex items-center gap-1 border-b border-urgent/20 bg-urgent/10 px-3",
+  "py-1 text-2xs font-medium text-urgent",
 );
 
 /**
@@ -132,6 +132,13 @@ interface BoardColumnProps {
   /** The group a release would land in — highlight and drop indicator. */
   overGroupId?: string | null;
   emphasis?: boolean;
+  /**
+   * `"urgent"` dresses the header in the urgency channel (docs/DESIGN.md §1):
+   * an `--urgent` rule under the title and a tinted count beside it, so the
+   * column reads as a queue with pressure rather than as one more list. Only
+   * Overflow passes it.
+   */
+  tone?: "urgent";
   /** Rendered in the column header — list rename/delete menus, etc. */
   actions?: React.ReactNode;
   onToggle: (todo: Todo) => void;
@@ -167,8 +174,6 @@ interface BoardColumnProps {
    * true when focus moved. See docs/KEYBOARD.md §11.
    */
   onNavigate?: (fromStopId: string, key: NavKey) => boolean;
-  /** Ruled lines fill the empty space, matching the reference UI's paper feel. */
-  minRows?: number;
   /**
    * In-column filter text. `todos`/`groups` above must already be narrowed to
    * it — this prop only drives the row's own UI (the input's value, the
@@ -179,6 +184,14 @@ interface BoardColumnProps {
   onFilterChange?: (query: string) => void;
   /** Unfiltered count, for the reveal threshold and the `n of m` readout. */
   totalCount?: number;
+  /**
+   * Shown in place of the (otherwise blank) body when the column is
+   * genuinely empty — `totalCount ?? todos.length` is 0 — and no filter is
+   * active. Most columns don't need one: their quick-add row is itself the
+   * empty-state affordance. Overflow has no quick-add (nothing schedules
+   * INTO it), so an empty Overflow rendered nothing at all until this.
+   */
+  emptyState?: React.ReactNode;
   /**
    * Opens this column's detail surface — the list settings dialog for a list
    * column, the day details sheet for a day column. A single click on the
@@ -236,6 +249,13 @@ interface BoardColumnProps {
    * shares the track that provided one.
    */
   pinned?: boolean;
+  /**
+   * Shows the quick-add placeholder ("Add a to-do") at rest instead of only
+   * on hover/focus/touch. Backlog is the one column that sets this — it's the
+   * board's always-open intake, so its entry point stays visible; every day
+   * column stays quiet until you show intent (docs/DESIGN.md).
+   */
+  quickAddPlaceholderVisible?: boolean;
   /**
    * Shrinks to a 40px strip with a vertical label and a count, in place of
    * the ordinary body — only meaningful alongside `pinned`. Stays a real
@@ -321,6 +341,7 @@ export function BoardColumn({
   onToggleGroup,
   overGroupId,
   emphasis,
+  tone,
   actions,
   onToggle,
   onOpen,
@@ -328,10 +349,10 @@ export function BoardColumn({
   lists,
   reminderPresets,
   onNavigate,
-  minRows = 8,
   filter,
   onFilterChange,
   totalCount,
+  emptyState,
   onOpenInfo,
   isDragActive,
   overTodoId,
@@ -346,6 +367,7 @@ export function BoardColumn({
   isColumnDropTarget,
   accentColor,
   pinned,
+  quickAddPlaceholderVisible = false,
   collapsed,
   onExpand,
   dayTrackColumn,
@@ -374,7 +396,7 @@ export function BoardColumn({
   // anything — `totalCount` rather than `todos.length`, which is already
   // narrowed by an active filter (see the prop doc above).
   const filterCount = totalCount ?? todos.length;
-  const filterPlaceholder = `Filter ${filterCount} item${filterCount === 1 ? "" : "s"}`;
+  const filterPlaceholder = `Filter ${filterCount} to-do${filterCount === 1 ? "" : "s"}`;
 
   /**
    * The list name when this column can be reordered, null when it cannot.
@@ -563,14 +585,6 @@ export function BoardColumn({
   // structural change is needed here beyond making room for the message row.
   const showsNoMatches = filterActive && todos.length === 0;
 
-  // Group headers occupy vertical space the filler arithmetic did not know
-  // about. A header is ~19px against a 32px filler row, so counting them 1:1
-  // slightly under-fills — the safe direction.
-  const fillerRows = Math.max(
-    0,
-    minRows - todos.length - (groups?.length ?? 0) - (showsNoMatches ? 1 : 0),
-  );
-
   /**
    * The card rows, so the markup exists once whether or not the column groups.
    *
@@ -644,7 +658,18 @@ export function BoardColumn({
       }
       className={cn(
         "group/column relative flex flex-col rounded-md transition-all",
-        collapsed && "w-10 min-h-0 flex-1 shrink-0 cursor-pointer items-center",
+        /*
+          The Air pass: today is the one surface that steps up from the page
+          (paired with `shadow-card` from desktop-board.tsx). Every other day
+          column is transparent — open air on one continuous paper, separated
+          from its neighbours by the track's gap and its own header alone.
+        */
+        dayTrackColumn && !collapsed && emphasis && "bg-surface-1",
+        // The collapsed strip is a click target and has to read as one — the
+        // same subtle tint the weekend strip carries, now that the panel
+        // box it used to inherit from the shells is gone.
+        collapsed &&
+          "w-10 min-h-0 flex-1 shrink-0 cursor-pointer items-center rounded-lg bg-surface-0",
         pinned && !collapsed
           ? // Fixed-width child of PINNED_PANEL's flex column, not of the
             // scrolling track — `flex-1` sizes it on the panel's main axis
@@ -674,9 +699,9 @@ export function BoardColumn({
           (isColumnDragActive && isColumnDropTarget)) &&
           "bg-primary/5 outline outline-2 outline-offset-[-2px] outline-primary",
         isDragActive && rejectsDrop && !isOver &&
-          "outline-dashed outline-1 outline-offset-[-2px] outline-destructive/30",
+          "outline-dashed outline-1 outline-offset-[-2px] outline-urgent/30",
         isOver && rejectsDrop && !isColumnDragActive &&
-          "bg-destructive/5 outline outline-2 outline-offset-[-2px] outline-destructive/60",
+          "bg-urgent/5 outline outline-2 outline-offset-[-2px] outline-urgent/60",
         className,
       )}
       data-drop-indicator={isColumnDragActive && isColumnDropTarget ? "" : undefined}
@@ -705,13 +730,20 @@ export function BoardColumn({
           "relative",
           collapsed
             ? "flex flex-1 flex-col items-center gap-2 px-1 py-2"
-            : "flex items-baseline justify-between gap-2 px-2 pb-1",
+            : "flex items-start justify-between gap-2 px-3 pt-2.5 pb-2",
           // Stated rather than inherited, so the header advertises the gesture
           // across its whole width and not just over the grip.
           dragListName !== null && "cursor-grab active:cursor-grabbing",
           // Only drawn when the tab has a color, so an uncolored tab keeps
           // the original headers rather than gaining a grey rule.
           accentColor && !collapsed && "border-b-2",
+          // Overflow: the urgency channel's rule, so the queue reads as
+          // pressure. Same 2px as a tab accent, different meaning.
+          tone === "urgent" && !collapsed && "border-b-2 border-urgent/40",
+          // Today: the spectrum's one hairline on the board (docs/DESIGN.md
+          // §1). On the header, not the section, so the section's rounded
+          // corners and outline states stay untouched.
+          dayTrackColumn && emphasis && !collapsed && "hairline-spectrum",
         )}
         style={accentColor && !collapsed ? { borderColor: edge(accentColor) } : undefined}
       >
@@ -724,9 +756,11 @@ export function BoardColumn({
             )}
             <h2
               className={cn(
-                "truncate font-heading text-lg font-bold uppercase tracking-tight",
+                "truncate type-column-title text-lg",
                 "[writing-mode:vertical-rl] rotate-180",
-                emphasis && "text-primary",
+                // Today and Overflow keep the full ink; the other days recede
+                // so the one that matters now is the one the eye lands on.
+                dayTrackColumn && !emphasis && "text-muted-foreground",
               )}
             >
               {title}
@@ -736,7 +770,7 @@ export function BoardColumn({
           <>
             <div className="min-w-0">
               {subtitle && (
-                <p className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+                <p className="type-eyebrow">
                   {subtitle}
                 </p>
               )}
@@ -785,15 +819,20 @@ export function BoardColumn({
                 */}
                 <h2
                   className={cn(
-                    "min-w-0 truncate font-heading text-lg font-bold uppercase tracking-tight",
-                    emphasis && "text-primary",
+                    "min-w-0 truncate type-column-title",
+                    // Days are the stage, lists are containers: today text-xl,
+                    // other days and the rails text-lg, list columns text-base.
+                    dayTrackColumn && emphasis ? "text-xl" : dayTrackColumn || pinned ? "text-lg" : "text-base",
+                    // Today and Overflow keep the full ink; the other days recede
+                // so the one that matters now is the one the eye lands on.
+                dayTrackColumn && !emphasis && "text-muted-foreground",
                   )}
                 >
                   {onOpenInfo ? (
                     <button
                       type="button"
                       onClick={onOpenInfo}
-                      className="max-w-full cursor-pointer truncate rounded text-left hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+                      className="max-w-full cursor-pointer truncate rounded text-left hover:underline focus-ring"
                     >
                       {title}
                     </button>
@@ -801,6 +840,20 @@ export function BoardColumn({
                     title
                   )}
                 </h2>
+                {/*
+                  The queue's size, in the urgency tint. `aria-hidden`: the
+                  section is already named by its title, and every row inside
+                  is reachable — a count in the name would just be noise read
+                  twice. The collapsed strip shows the same number.
+                */}
+                {tone === "urgent" && todos.length > 0 && (
+                  <span
+                    aria-hidden
+                    className="num shrink-0 rounded-4xl bg-urgent/10 px-1.5 text-2xs font-medium text-urgent"
+                  >
+                    {todos.length}
+                  </span>
+                )}
               </div>
             </div>
             {actions}
@@ -835,8 +888,8 @@ export function BoardColumn({
             onClick={onOpenInfo}
             className={cn(
               DUE_BANNER,
-              "w-full cursor-pointer text-left hover:bg-destructive/15",
-              "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
+              "w-full cursor-pointer text-left hover:bg-urgent/15",
+              "focus-ring",
             )}
           >
             <CalendarCheck className="size-3 shrink-0" aria-hidden />
@@ -916,7 +969,7 @@ export function BoardColumn({
             Outside the input group, as its own bordered chip — an inline
             addon read as a third control crammed against the clear button at
             this width. Only the two counts switch to `num` (monospace); "of"
-            and "todos" stay in the body font, which is what keeps a one-line
+            and "to-dos" stay in the body font, which is what keeps a one-line
             phrase from reading as two disconnected fragments.
           */}
           {filterActive && (
@@ -927,7 +980,7 @@ export function BoardColumn({
               )}
             >
               <span className="num">{todos.length}</span> of{" "}
-              <span className="num">{totalCount ?? todos.length}</span> todos
+              <span className="num">{totalCount ?? todos.length}</span> to-dos
             </span>
           )}
         </div>
@@ -966,10 +1019,22 @@ export function BoardColumn({
           </SortableContext>
 
           {showsNoMatches && (
-            <p className="border-b border-border/40 px-2 py-1.5 text-2xs text-muted-foreground">
-              No matches
+            <p className="px-3 py-1.5 text-2xs text-muted-foreground">
+              No to-dos match &ldquo;{filter}&rdquo;.{" "}
+              <button
+                type="button"
+                onClick={() => {
+                  onFilterChange?.("");
+                  filterInputRef.current?.focus();
+                }}
+                className="focus-ring rounded underline"
+              >
+                Clear filter
+              </button>
             </p>
           )}
+
+          {!filterActive && filterCount === 0 && emptyState}
 
           {/*
             Hovering the column itself rather than a specific card means the item
@@ -993,16 +1058,21 @@ export function BoardColumn({
               data-drop-indicator
               className="relative block h-0.5 rounded-full bg-primary"
             >
-              <span className="absolute -left-0.5 -top-[3px] size-2 rounded-full bg-primary" />
+              <span className="drop-indicator-dot" />
             </span>
           )}
 
           {/* Quick add sits directly under the last item, like the reference UI. */}
           {onQuickAdd && (
-            <div className="group border-b border-border/60">
+            <div className="group">
               <div className="relative flex items-center">
                 <Plus
-                  className="pointer-events-none absolute left-2 size-3 text-muted-foreground/40 opacity-0 group-focus-within:opacity-100"
+                  className={cn(
+                    "pointer-events-none absolute left-2 size-3 text-muted-foreground/40",
+                    quickAddPlaceholderVisible
+                      ? "opacity-100"
+                      : "opacity-0 group-hover/column:opacity-100 group-focus-within:opacity-100 touch:opacity-100",
+                  )}
                   aria-hidden
                 />
                 <input
@@ -1090,9 +1160,16 @@ export function BoardColumn({
                     typeof title === "string" ? `Add a to-do to ${title}` : "Add a to-do"
                   }
                   className={cn(
-                    "w-full bg-transparent px-2 py-1.5 text-sm outline-none",
-                    "placeholder:text-transparent focus:placeholder:text-muted-foreground/60",
-                    "group-focus-within:pl-6",
+                    "w-full bg-transparent px-3 py-2 text-sm outline-none",
+                    // Day columns stay quiet at rest — the placeholder only
+                    // earns its keep once you've shown intent (hover, focus,
+                    // or a touch device with no hover to show it on).
+                    // Backlog is the one column that shows it unconditionally
+                    // (docs/DESIGN.md: it's the board's one always-open intake).
+                    quickAddPlaceholderVisible
+                      ? "placeholder:text-muted-foreground"
+                      : "placeholder:text-transparent group-hover/column:placeholder:text-muted-foreground focus:placeholder:text-muted-foreground touch:placeholder:text-muted-foreground",
+                    quickAddPlaceholderVisible ? "pl-6" : "group-focus-within:pl-6",
                   )}
                 />
                 {mention.isOpen && (
@@ -1110,15 +1187,24 @@ export function BoardColumn({
             </div>
           )}
 
-          {/* Ruled filler lines. Decorative only. */}
-          {Array.from({ length: fillerRows }, (_, i) => (
-            <div key={i} className="h-8 border-b border-border/40" aria-hidden />
-          ))}
         </div>
       )}
 
       {!collapsed && footer && (
-        <div className="sticky bottom-0 z-10 bg-card shadow-[0_-2px_6px_-2px_rgb(0_0_0/0.08)]">
+        <div
+          className={cn(
+            // `bg-background`, matching the page the column now sits
+            // directly on (the Air pass removed the panel surfaces) — the
+            // footer still needs to be opaque, since content scrolls under it.
+            "sticky bottom-0 z-10 bg-background",
+            // Casts UPWARD onto the content above (negative Y), which none of
+            // the token shadows do — they're all "this sits above the floor".
+            // oklch alpha, not the old raw rgb() literal, so it scales with
+            // the theme the same ratio --shadow-card does (light 8% → dark
+            // 50%) instead of staying flat and vanishing in dark mode.
+            "shadow-[0_-2px_6px_-2px_oklch(0_0_0/8%)] dark:shadow-[0_-2px_6px_-2px_oklch(0_0_0/50%)]",
+          )}
+        >
           {footer}
         </div>
       )}
@@ -1206,10 +1292,10 @@ function TodoGroupSection({
           if (key && onNavigate?.(groupStop(group.id), key)) e.preventDefault();
         }}
         className={cn(
-          "flex w-full items-center gap-1 border-b px-2 py-0.5 text-left",
-          "text-2xs font-medium uppercase tracking-wide text-muted-foreground",
-          "cursor-pointer transition-colors hover:bg-accent/50",
-          "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-ring",
+          "flex w-full items-center gap-1 border-b px-3 py-1 text-left",
+          "type-eyebrow",
+          "cursor-pointer transition-colors hover:bg-foreground/5",
+          "focus-ring",
           // An uncolored list keeps the ordinary rule rather than gaining a grey
           // one — the same rule the column header's tab accent follows.
           !group.color && "border-border/60",
@@ -1258,7 +1344,7 @@ function TodoGroupSection({
           data-drop-indicator
           className="relative block h-0.5 rounded-full bg-primary"
         >
-          <span className="absolute -left-0.5 -top-[3px] size-2 rounded-full bg-primary" />
+          <span className="drop-indicator-dot" />
         </span>
       )}
     </div>

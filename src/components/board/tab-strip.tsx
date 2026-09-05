@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
-import { Archive, Info, Plus } from "lucide-react";
+import { Archive, ArrowUp, Info, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { tabDragId, tabDropId, type TabCount } from "@/lib/board";
 import { edge, tint } from "@/lib/colors";
 import type { Tab } from "@/lib/schema";
 import { cn } from "@/lib/utils";
+import { prefersReducedMotion } from "@/lib/reduced-motion";
 import { DragGrip } from "./drag-grip";
 
 interface TabStripProps {
@@ -124,14 +125,12 @@ export function TabStrip({
     el?.scrollIntoView({
       inline: "nearest",
       block: "nearest",
-      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
-        ? "auto"
-        : "smooth",
+      behavior: prefersReducedMotion() ? "auto" : "smooth",
     });
   }, [activeTabId]);
 
   return (
-    <div className="flex shrink-0 items-center gap-1 px-4 py-1.5">
+    <div className="flex shrink-0 items-center gap-1 px-3 py-1.5">
       {/*
         Scrolls on its own rather than pushing Archived off the bar. `min-w-0`
         is what lets it actually shrink inside the flex row.
@@ -206,11 +205,16 @@ export function TabStrip({
 
         Icon-only — the word "Archived" cost more strip width than it earned
         once a board can carry a dozen tabs. The count sits inline in
-        parens, same as every tab pill's `(lists/items)`, rather than a
-        corner badge — a badge reads as "this needs your attention", which
-        an empty-able archive count is not. `aria-label` fully owns the
-        accessible name so the aria-hidden count can't garble it into
-        "Archived 3"; the tooltip spells the count out for anyone hovering.
+        parens rather than a corner badge — a badge reads as "this needs
+        your attention", which an empty-able archive count is not — and only
+        once there is something to count; an empty archive doesn't need a 0.
+        `aria-label` fully owns the accessible name so the aria-hidden count
+        can't garble it into "Archived 3".
+
+        The tooltip earns its keep twice over: at count 0 the button is a
+        bare icon, so hover is how a sighted user learns its name — and
+        `completion-tooltip.spec.ts`'s CONTROL test hovers exactly this
+        button to prove the tooltip harness works at all. Do not remove it.
       */}
       <Tooltip>
         <TooltipTrigger
@@ -223,9 +227,11 @@ export function TabStrip({
               aria-label="Archived"
             >
               <Archive aria-hidden />
-              <span aria-hidden className="num">
-                ({archivedCount})
-              </span>
+              {archivedCount > 0 && (
+                <span aria-hidden className="num">
+                  ({archivedCount})
+                </span>
+              )}
             </Button>
           }
         />
@@ -295,15 +301,19 @@ function TabPill({
       ref={setNodeRef}
       data-tab-pill={tab.id}
       className={cn(
-        "group/tab relative flex shrink-0 items-center gap-1 rounded-md px-1.5 py-1",
+        "group/tab relative flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-1.5",
         "transition-colors",
         // `items-center` centers the (small) grip/label/info row within the
         // taller box on a coarse pointer, rather than stretching them —
         // invisible padding around a small tap target, the same trick native
         // mobile UIs use.
         "pointer-coarse:min-h-11",
-        isActive ? "bg-background shadow-xs" : "hover:bg-background/60",
-        isFocusCandidate && "ring-2 ring-primary ring-offset-1 ring-offset-muted",
+        // The raised tier (docs/DESIGN.md §3): a pill that sits above the
+        // strip, with the shadow that says so in both themes.
+        isActive ? "bg-surface-2 shadow-card" : "hover:bg-surface-2/60",
+        // Roving-tabindex state, not a real `:focus-visible` — `ring-ring`
+        // keeps it the same hue as every other focus cue on the board.
+        isFocusCandidate && "ring-2 ring-ring ring-offset-1 ring-offset-muted",
       )}
       style={
         // The tab's own color wins over the neutral active treatment, so an
@@ -333,8 +343,7 @@ function TabPill({
         onClick={onSelect}
         aria-current={isActive ? "true" : undefined}
         className={cn(
-          "flex max-w-40 min-w-0 items-baseline gap-1 rounded text-xs outline-none",
-          "focus-visible:ring-2 focus-visible:ring-ring",
+          "focus-ring flex max-w-40 min-w-0 items-baseline gap-1 rounded text-xs",
           isActive ? "font-semibold" : "text-muted-foreground",
         )}
       >
@@ -346,8 +355,15 @@ function TabPill({
           by letter, so `sr-only` below carries the real sentence — the same
           bargain as the deadline/location markers in todo-row-parts.tsx.
         */}
-        <span aria-hidden className="num shrink-0 text-2xs font-normal text-muted-foreground/70">
-          {count.lists}/{count.items}/{count.assigned}
+        <span aria-hidden className="num shrink-0 text-2xs font-normal text-muted-foreground/60">
+          {count.lists}/{count.items}/
+          {/*
+            The third number is the one that confuses: a tab can read `3/0/1`
+            while every list in it looks empty, because that item has moved UP
+            to a day. The arrow says "above" without the tooltip.
+          */}
+          <ArrowUp className="inline size-2.5 align-[-0.05em]" aria-hidden />
+          {count.assigned}
         </span>
         <span className="sr-only">, {countLabel}</span>
       </button>

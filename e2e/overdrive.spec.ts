@@ -145,11 +145,15 @@ test("→ → Enter schedules the card onto tomorrow's day column", async ({ pag
   await expect(overlay(page)).toHaveCount(0);
 
   // FROZEN_TIME (fixtures.ts) is 2026-08-11 (Tuesday) — tomorrow is
-  // 2026-08-12. Each day column's subtitle ("Aug 12, 2026") is unique across
-  // the whole board, unlike its weekday name ("Wednesday"), which repeats
-  // every seven columns — filtering the region by that subtitle is what
-  // stays unambiguous regardless of how many weeks are rendered.
-  const tomorrow = page.getByRole("region").filter({ has: page.getByText("Aug 12, 2026") });
+  // 2026-08-12. Each day column's subtitle ("Aug 12" — the Air pass dropped
+  // the year) is unique across the rendered window, unlike its weekday name
+  // ("Wednesday"), which repeats every seven columns — filtering the region
+  // by that subtitle is what stays unambiguous. `exact: true` because the
+  // short form is now a substring of other dates' text far more easily than
+  // the full form was.
+  const tomorrow = page
+    .getByRole("region")
+    .filter({ has: page.getByText("Aug 12", { exact: true }) });
   await expect(tomorrow.getByText(title!, { exact: true })).toBeVisible();
 });
 
@@ -369,7 +373,10 @@ test("→ Enter from a day session schedules onto the NEXT day, never the day it
   await expect(overlay(page)).toHaveCount(0);
 
   // FROZEN_TIME (fixtures.ts) is 2026-08-11 — tomorrow is 2026-08-12.
-  const tomorrow = page.getByRole("region").filter({ has: page.getByText("Aug 12, 2026") });
+  // Short subtitle since the Air pass; `exact: true` as above.
+  const tomorrow = page
+    .getByRole("region")
+    .filter({ has: page.getByText("Aug 12", { exact: true }) });
   await expect(tomorrow.getByText(title!, { exact: true })).toBeVisible();
   await expect(todayColumn(page).getByText(title!, { exact: true })).toHaveCount(0);
 });

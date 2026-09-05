@@ -1,6 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { BoardFallback } from "@/components/board/board-fallback";
 
 /**
  * The board is client-only by design.
@@ -17,11 +18,7 @@ const Board = dynamic(
   () => import("@/components/board/board").then((m) => m.Board),
   {
     ssr: false,
-    loading: () => (
-      <div className="flex h-dvh items-center justify-center text-sm text-muted-foreground">
-        Loading your board…
-      </div>
-    ),
+    loading: () => <BoardFallback />,
   },
 );
 

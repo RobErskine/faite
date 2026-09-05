@@ -323,7 +323,7 @@ export function ActivitySheet({
                         // every `TimelineRow`'s own left inset) — so the
                         // label still lines up with the rows above and below
                         // it; only the background bleeds wider.
-                        className="relative -mx-4 bg-muted/60 py-1.5 pr-4 pl-11 text-2xs font-semibold uppercase tracking-wide text-muted-foreground"
+                        className="type-eyebrow relative -mx-4 bg-muted/60 py-1.5 pr-4 pl-11"
                       >
                         {/*
                           Keeps the rail unbroken through the header — without
@@ -347,7 +347,7 @@ export function ActivitySheet({
                   if (item.type === "marker") {
                     return (
                       <li key={item.key} className="pl-7 text-2xs text-muted-foreground">
-                        Older activity isn&apos;t shown
+                        This is as far back as activity goes
                       </li>
                     );
                   }

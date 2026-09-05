@@ -81,7 +81,7 @@ export function HelpSheet({ open, onOpenChange, hotkeys }: HelpSheetProps) {
             if (!entries || entries.length === 0) return null;
             return (
               <section key={scope} className="pb-4">
-                <h3 className="py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                <h3 className="type-eyebrow py-2">
                   {scope}
                 </h3>
                 <ul className="divide-y">

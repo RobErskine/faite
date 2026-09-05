@@ -54,7 +54,7 @@ describe("hydrateRemoteRow", () => {
       const result = hydrateRemoteRow("settings", "settings", { displayName: "Rob" }, CTX);
       expect(result.ok).toBe(true);
       if (!result.ok) throw new Error("expected ok");
-      expect(result.row.fontPairing).toBe("hyperlegible");
+      expect(result.row.fontPairing).toBe("editorial");
       expect(result.row.theme).toBe("system");
       expect(result.row.avatarKind).toBe("initials");
     },

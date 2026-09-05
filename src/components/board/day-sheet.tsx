@@ -220,7 +220,7 @@ function DaySheetContent({
           {sortedDue.length > 0 && (
             <>
               <section className="space-y-1.5">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                <h3 className="type-eyebrow">
                   <span className="num">{sortedDue.length}</span> due
                 </h3>
                 <ul
@@ -264,7 +264,7 @@ function DaySheetContent({
 
           <section className="space-y-1.5">
             <div className="flex items-center justify-between gap-2">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <h3 className="type-eyebrow">
                 Timeline
               </h3>
               <DropdownMenu>

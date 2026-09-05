@@ -25,7 +25,9 @@ function Command({
     <CommandPrimitive
       data-slot="command"
       className={cn(
-        "flex size-full flex-col overflow-hidden rounded-xl! bg-popover p-1 text-popover-foreground",
+        // Matches DialogContent's radius step (concentric with its own
+        // rounded-lg items below).
+        "flex size-full flex-col overflow-hidden rounded-3xl! bg-popover p-1 text-popover-foreground",
         className
       )}
       {...props}
@@ -55,7 +57,11 @@ function CommandDialog({
       </DialogHeader>
       <DialogContent
         className={cn(
-          "top-1/3 translate-y-0 overflow-hidden rounded-xl! p-0",
+          // Opens right under the header's own search field (AppHeader is
+          // `h-12`/48px) instead of a third of the way down the viewport —
+          // it should read as that field growing open, not as an unrelated
+          // dialog appearing mid-page.
+          "top-20 translate-y-0 overflow-hidden rounded-3xl! p-0",
           className
         )}
         showCloseButton={showCloseButton}
@@ -72,7 +78,12 @@ const CommandInput = React.forwardRef<
 >(function CommandInput({ className, ...props }, ref) {
   return (
     <div data-slot="command-input-wrapper" className="p-1 pb-0">
-      <InputGroup className="h-8! rounded-lg! border-input/30 bg-input/30 shadow-none! *:data-[slot=input-group-addon]:pl-2!">
+      {/* `bg-surface-sunken`, not the generic `bg-input/30` — the same
+          recessed surface the header's own ⌘K trigger sits on
+          (app-header.tsx), so opening the palette reads as that field
+          growing into this one rather than handing off to a different
+          component's idea of an input. */}
+      <InputGroup className="h-8! rounded-lg! border-transparent bg-surface-sunken shadow-none! *:data-[slot=input-group-addon]:pl-2!">
         <CommandPrimitive.Input
           ref={ref}
           data-slot="command-input"
@@ -127,7 +138,13 @@ function CommandGroup({
     <CommandPrimitive.Group
       data-slot="command-group"
       className={cn(
-        "overflow-hidden p-1 text-foreground **:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:py-1.5 **:[[cmdk-group-heading]]:text-xs **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:text-muted-foreground",
+        // The group heading matches `type-eyebrow` (globals.css) property by
+        // property — `**:` can't apply a custom `@utility` through cmdk's own
+        // markup, so the values are spelled out: `text-2xs`/`tracking-wider`
+        // (0.05em, the same as the utility's own letter-spacing) in place of
+        // the unstyled `text-xs font-medium` every other label-like heading
+        // in the app used to hand-roll before they were consolidated.
+        "overflow-hidden p-1 text-foreground **:[[cmdk-group-heading]]:px-2 **:[[cmdk-group-heading]]:py-1.5 **:[[cmdk-group-heading]]:text-2xs **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:text-muted-foreground **:[[cmdk-group-heading]]:uppercase **:[[cmdk-group-heading]]:tracking-wider",
         className
       )}
       {...props}
