@@ -260,7 +260,15 @@ function DemoCard({ todo }: { todo: DemoTodo }) {
     subtaskTotal > 0;
 
   return (
-    <div className="group relative block border-b border-border/60 py-2 pr-2 pl-3 last:border-b-0">
+    <div
+      /*
+        The one card the homepage story follows (EI-278). `card-travel.tsx`
+        measures this element every frame and flies a copy of it from here into
+        the story's panel; nothing here changes if that never runs.
+      */
+      data-travel-origin={todo.title === MOVE_TODO_TITLE ? "" : undefined}
+      className="group relative block border-b border-border/60 py-2 pr-2 pl-3 last:border-b-0"
+    >
       {rail && (
         <span
           aria-hidden

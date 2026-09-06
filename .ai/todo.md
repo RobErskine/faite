@@ -2397,3 +2397,73 @@ new entry in `.ai/lessons.md`. The option was set and
 `matchMedia("(prefers-reduced-motion: reduce)").matches` still read `false` in
 the page, so the canvas mounted and the test failed for a reason unrelated to
 its own name.
+
+## EI-278 (part) — the card travels (2026-09-06)
+
+The hero board's "Plan living room move" now leaves the board on scroll,
+crosses the page, widens, unfolds its five sub-tasks, and lands in the panel
+beside the room. Before this the two were unconnected pictures of the same
+to-do and the reader had no reason to link them.
+
+`src/components/marketing/card-travel.tsx`: FLIP, with both ends measured
+live every frame rather than remembered, so a resize or a reflow mid-scroll
+self-corrects on the next frame. Four things interpolate — translate, width,
+the sub-task list's height, and opacity. The two real cards are never moved;
+a third server-rendered copy flies between them.
+
+### Two things that were wrong first, and the measurements that showed it
+
+**The window was timed off the story alone** (`t = 1 - storyTop / vh`). Correct
+on paper. In the browser the board row sits ~445px down a 100vh hero, so by a
+third of the way across it had left the top of the screen — the card appeared
+to arrive from nowhere, having never been seen to leave. Now the start is
+pinned to the ORIGIN (a quarter down, board still plainly there) and the end to
+the STORY (just past half, panel plainly there), both in document coordinates
+because a viewport-relative window that moves as you scroll through it is
+circular.
+
+**Geometry eased across the full range**, so at t=0.92 the copy sat at y=535
+while the panel it was dissolving into sat at y=556. Two near-identical cards
+21px apart at half opacity each read as a ghost, not a handoff. Geometry now
+runs over the middle band only (`(t - FADE) / (1 - 2·FADE)`), so it is exactly
+on the origin for the whole fade-in and exactly on the target for the whole
+fade-out. Measured after: 0px at both ends.
+
+A third thing worth recording: the first browser measurement of the fix showed
+the OLD numbers exactly (left 587 where the old formula predicts 587). The dev
+server had not recompiled. A "fix that did not work" is worth one check that
+the code under test is the code running.
+
+### Deliberately not done
+
+`scale()`. Cheaper, and wrong: it would zoom the title from 14px to 35px and
+blur every glyph on the way, when what the card actually does is widen and
+unfold. Width and height cost layout on one small subtree once a frame, which
+is the trade.
+
+### Also
+
+The hero is `min-h-dvh` now, so the board is the only thing on screen and the
+fold is a real edge rather than wherever the content stopped.
+
+### Measured
+
+| `/` | eager JS (gz) | HTML (gz) | three.js eager |
+|---|---|---|---|
+| before | 342.2 KB | 13.9 KB | 0.0 KB |
+| after | 342.8 KB | 14.1 KB | 0.0 KB |
+
++0.6 KB of JS. The flying copy duplicates the whole panel in the HTML and costs
+0.2 KB gzipped, because it is a byte-for-byte repeat.
+
+### Verified
+
+`npm run verify` green (155 files, 2375 tests). The gate the way CI runs it:
+113 passed, 0 flaky. Off entirely under reduced motion, with no JavaScript, and
+below `md` — confirmed on a 390px viewport that the copy stays hidden at every
+scroll position and neither real card's opacity is ever touched.
+
+The new e2e asserts the handoff is exact (2px) at both ends, and was proved
+non-vacuous by restoring the old timing formula, which fails it.
+
+**Still open on EI-278:** the live sub-task ticks.
