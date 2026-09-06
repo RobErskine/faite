@@ -2546,3 +2546,84 @@ adds 1.2 KB to the lazy chunk (241.4 → 242.6 KB gz).
 `npm run verify` green (156 files, 2383 tests). The gate the way CI runs it:
 113 passed, 0 flaky. Looked at in the browser at beats 2, 4 and 5 — swatch
 wall, wall shelf, and the console with the new set.
+
+## EI-277 + EI-278 — the story matches the research (2026-09-06)
+
+Review caught the real problem: the five sub-tasks were plausible renovation
+chores I invented, and they had nothing to do with the studies beside them.
+Pick a paint color, measure for the couch, sort the bookcase — a to-do list
+that happened to sit next to some citations. Backwards.
+
+### Rebuilt from `docs/RESEARCH.md` §2, six beats
+
+Each row's sub-task now DEMONSTRATES its finding, and each maps to a Faite
+feature via §3's feature→section table:
+
+| beat | §2 | frames | sub-task |
+|---|---|---|---|
+| You wrote it down | 2.1 capture | the room | Get the whole move out of my head |
+| A date and a time | 2.3 scheduling | swatches | Painter comes Saturday, 9:00am |
+| Miss one, no streak | 2.5 recurring | **the plant** | Water the plants — every Wednesday |
+| Never finishing Tuesday | 2.4 rollover | couch | Measure the room before ordering the couch |
+| Keep not doing / keep thinking | 2.4 ambivalence | shelf | Decide about the old bookcase |
+| Letting go / sending back | 1, 2.8 | tv | Sell the old TV instead of moving it |
+
+Read down the sub-task column and it is one plan for one move. Read across a
+row and the room, the study and the to-do all make the same point. The
+recurring beat is the one that was missing entirely, and it is the one that
+needed the room's monstera — a plant that needs watering every Wednesday is
+the only thing in that room that is never finished.
+
+Five beats became six, so `BeatFocus` gained `plant` and `room-camera.ts` a
+framing for it. The monstera over the three smaller plants: at diorama scale
+the ones on the console and the coffee table read as texture, not as something
+you could have a to-do about.
+
+### EI-277: the claim in front of the citation
+
+`StoryBeat` gained `claim` and `section`. Each beat now prints the finding in
+plain language and then the surname — rendered as `<figure>`/`<figcaption>`,
+because the citation is the attribution FOR the claim above it and that is the
+one relationship the markup can carry.
+
+Quotes are paraphrased with the quotation marks dropped, which
+`docs/RESEARCH.md` rule 1 explicitly allows. Partly length, partly that the
+Lally quote contains "behaviour" and `spelling.test.ts` scans string literals —
+a verbatim quote is exempt per `docs/CONTENT.md` §3, but the test cannot know
+that, so not putting quotation marks around a paraphrase is the honest fix.
+Every number traces to a §2 row; nothing from §4 appears.
+
+### EI-278: the live ticks, and two thresholds that were wrong
+
+`story-ticks.tsx` toggles `data-done` from the scroll loop on both copies of
+the card. `DemoCheckbox` gained a `live` mode so the mark is in the DOM and
+revealed by CSS — a conditional `{done && …}` cannot be turned on by an
+attribute, and the server still decides what a no-JS reader keeps.
+
+**`floor(t·n)` was wrong at both ends.** It ticks a beat only once the reader
+has scrolled clear of it, so the card lags a section behind the screen; and the
+last band ends at t=1, so the sixth line checked on the final pixel. Measured:
+at t=0.99 the card read 5/6 and the page ended on an unfinished plan.
+
+**`+ 0.5` was still wrong.** That puts the threshold exactly on the band
+centre, which is knife-edge: sampled at the six exact centres it returned
+0,1,2,3,5,6 instead of 1..6, because rounding the scroll target to a whole
+pixel landed a hair under the boundary four times out of six. `+ 0.6` puts it
+40% in — checked by the time you are reading the sentence, complete at t=0.9.
+
+**A third, smaller one:** wrapping the count in its own span made `/6` a
+separate flex child of an `inline-flex gap-1` badge, which rendered "3 /6".
+
+### Measured
+
+Eager JS 342.8 → **344.5 KB gz** (+1.7 KB, `story-ticks.tsx`). HTML 14.1 →
+15.8 KB gz — six beats instead of five, each carrying a claim. three.js still
+**0.0 KB eager**.
+
+### Verified
+
+`npm run verify` green (156 files, 2388 tests). The gate the way CI runs it:
+113 passed, 1 flaky (`overdrive`, pre-existing and untouched). New e2e asserts
+beat *n* ticks item *n* at each beat's own centre, and that the card finishes
+at 6/6. Looked at beat 3 in the browser: camera on the monstera, "Water the
+plants — every Wednesday" struck through, badge 3/6.

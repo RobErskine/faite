@@ -96,6 +96,31 @@ describe.each(SOURCES)("$file", ({ file, code }) => {
   });
 });
 
+describe("the live layers", () => {
+  const ticks = stripComments(readFileSync(new URL("story-ticks.tsx", dir), "utf8"));
+
+  it("ticks sub-tasks without React state", () => {
+    // Same rule as the scene (docs/SCENE.md §4). `useState` here would
+    // re-render the panel and its six rows on every scroll frame to change
+    // one integer.
+    expect(ticks).toContain('"use client"');
+    expect(ticks).not.toContain("useState");
+  });
+
+  it("reads progress off the same element the camera does", () => {
+    // `[data-story] > div` is RoomStage's own grid. A second, independently
+    // derived notion of "how far in are we" is exactly how the room ends up
+    // framing the plant while a different line ticks.
+    expect(ticks).toContain('"[data-story] > div"');
+  });
+
+  it("respects reduced motion", () => {
+    // The server already renders a correct static card from `doneThrough`, so
+    // doing nothing here is the whole fallback.
+    expect(ticks).toContain("prefers-reduced-motion");
+  });
+});
+
 describe("the flying copy", () => {
   const travel = stripComments(
     readFileSync(new URL("card-travel.tsx", dir), "utf8"),

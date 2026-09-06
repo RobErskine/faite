@@ -4,6 +4,7 @@ import { DemoBoard } from "@/components/marketing/demo-board";
 import { MarketingFooter } from "@/components/marketing/marketing-footer";
 import { MarketingHeader } from "@/components/marketing/marketing-header";
 import { StoryPanel } from "@/components/marketing/story-panel";
+import { StoryTicks } from "@/components/marketing/story-ticks";
 import { RoomStage } from "@/components/scene/room-stage";
 import { buttonVariants } from "@/components/ui/button";
 import { pageMetadata } from "@/lib/metadata";
@@ -166,12 +167,21 @@ export default function Home() {
                   </h2>
                   <p className="mt-4 text-muted-foreground">{beat.body}</p>
                   {/*
-                    A bare surname and a year, for now. EI-277 puts the finding
-                    in plain language in front of it — "research shows …" —
-                    because a citation nobody can read is a claim nobody can
-                    check.
+                    The finding first, the surname second (EI-277). A bare
+                    "Masicampo & Baumeister (2011)" is a claim nobody can check
+                    and almost nobody will look up; saying what the study found
+                    and then who found it is the whole disclosure.
+
+                    A `<figure>`/`<figcaption>` pair rather than two paragraphs:
+                    the citation is the attribution FOR the claim above it, and
+                    that relationship is the one thing the markup can carry.
                   */}
-                  <p className="mt-4 text-xs text-muted-foreground">{beat.cite}</p>
+                  <figure className="mt-6 border-l-2 border-border pl-4">
+                    <p className="text-sm text-muted-foreground">{beat.claim}</p>
+                    <figcaption className="mt-2 text-xs text-muted-foreground/80">
+                      {beat.cite}
+                    </figcaption>
+                  </figure>
                 </div>
               ))}
             </RoomStage>
@@ -232,6 +242,14 @@ export default function Home() {
           <CardTravel>
             <StoryPanel flying />
           </CardTravel>
+
+          {/*
+            Ticks each sub-task off as you read past its beat. Renders nothing
+            — it is a scroll loop that writes one attribute and one number, on
+            both copies of the card. See `story-ticks.tsx` for why it measures
+            the same box the camera does.
+          */}
+          <StoryTicks />
         </main>
 
         <MarketingFooter />

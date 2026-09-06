@@ -209,7 +209,10 @@ test("the homepage story renders every beat, its citation, and its sub-task", as
   for (const beat of STORY_BEATS) {
     expect(body).toContain(beat.headline);
     expect(body).toContain(beat.cite);
-    // One sub-task per beat is the identity EI-278's ticks depend on.
+    // The finding in plain language, printed in front of the citation
+    // (EI-277). A bare surname and a year is a claim nobody can check.
+    expect(body).toContain(beat.claim);
+    // One sub-task per beat is the identity the live ticks depend on.
     expect(body).toContain(beat.subtask);
   }
 
@@ -217,7 +220,57 @@ test("the homepage story renders every beat, its citation, and its sub-task", as
   const story = page.getByRole("region", { name: "How Faite works" });
   await expect(story.getByRole("heading", { name: STORY_BEATS[0].headline })).toBeVisible();
   // The panel starts at zero: nothing is done when the room is still bare.
-  await expect(story.getByRole("group", { name: /0 of 5 done/ })).toBeVisible();
+  await expect(story.getByRole("group", { name: /0 of 6 done/ })).toBeVisible();
+});
+
+/**
+ * The sub-tasks tick off as you read past their beats (EI-278).
+ *
+ * Six beats, six lines, in order — so "how far down the story am I" and "how
+ * much of this card is done" are the same number. Asserted at each beat's own
+ * centre, which is where `page.tsx` centres that beat's copy, because the claim
+ * is specifically that the line ticks while you are reading the section it
+ * belongs to.
+ *
+ * The threshold that got this wrong is worth guarding: ticking on band EXIT
+ * left the card at 5/6 with the closing beat on screen, so the page ended on an
+ * unfinished plan.
+ */
+test("each beat ticks its own sub-task off the card", async ({ page }) => {
+  await page.goto("/");
+
+  const state = () =>
+    page.evaluate(() => {
+      const panel = document.querySelector("[data-travel-target]")!;
+      const rows = [...panel.querySelectorAll("[data-subtask]")];
+      return {
+        badge: panel.querySelector("[data-subtask-count]")!.textContent,
+        ticked: rows.filter((r) => r.hasAttribute("data-done")).length,
+      };
+    });
+
+  const scrollToBeat = async (index: number) => {
+    await page.evaluate((i) => {
+      const story = document.querySelector("[data-story] > div")!;
+      const rect = story.getBoundingClientRect();
+      const total = rect.height - window.innerHeight;
+      // The centre of beat `i`'s band — where its copy is centred on screen.
+      window.scrollTo(0, Math.round(rect.top + window.scrollY + ((i + 0.5) / 6) * total));
+    }, index);
+    await page.evaluate(
+      () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))),
+    );
+  };
+
+  for (const [i, beat] of STORY_BEATS.entries()) {
+    await scrollToBeat(i);
+    const { badge, ticked } = await state();
+    expect(ticked, `at "${beat.headline}"`).toBe(i + 1);
+    expect(badge, `badge at "${beat.headline}"`).toBe(String(i + 1));
+  }
+
+  // And the card is complete by the end, not one line short of it.
+  expect((await state()).ticked).toBe(STORY_BEATS.length);
 });
 
 /**
@@ -266,7 +319,7 @@ test.describe("without JavaScript", () => {
       await expect(story.getByRole("heading", { name: beat.headline })).toBeVisible();
       await expect(story.getByText(beat.subtask)).toBeVisible();
     }
-    await expect(story.getByRole("group", { name: /0 of 5 done/ })).toBeVisible();
+    await expect(story.getByRole("group", { name: /0 of 6 done/ })).toBeVisible();
 
     // The static stage: three swatches and a sentence, not a spinner.
     await expect(story.getByText(/Three paint swatches/)).toBeVisible();

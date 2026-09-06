@@ -68,7 +68,7 @@ export interface DemoTodo {
   /** "In Overflow N days". */
   overflowDays?: number;
   /**
-   * The sub-tasks behind the `0/5` badge.
+   * The sub-tasks behind the `0/6` badge.
    *
    * Declared as text rather than a count because EI-278 ticks them off one by
    * one as the story scrolls, and the hero card is where that list starts.
@@ -95,13 +95,13 @@ export interface DemoColumn {
 export const MOVE_TODO_TITLE = "Plan living room move";
 
 /**
- * The five sub-tasks, in the order the room does them.
+ * The sub-tasks, in the order the story does them.
  *
  * DERIVED from `STORY_BEATS`, not written out again here: one sub-task per
  * beat is the identity EI-278 relies on to tick them from scroll progress, and
  * a second hand-maintained copy of the list is exactly how that identity would
  * quietly stop holding. On the hero none of them are done yet — that is the
- * point of the `0/5`.
+ * point of the `0/6`.
  */
 export const MOVE_SUBTASKS: { title: string; done?: boolean }[] = STORY_BEATS.map(
   (beat) => ({ title: beat.subtask }),
@@ -212,20 +212,42 @@ export const DEMO_LISTS: DemoColumn[] = [
  * Exported because the story panel (`story-panel.tsx`) ticks the same boxes
  * the hero board draws, and two hand-rolled checkmarks would drift apart.
  */
-export function DemoCheckbox({ done, className }: { done?: boolean; className?: string }) {
+export function DemoCheckbox({
+  done,
+  live,
+  className,
+}: {
+  done?: boolean;
+  /**
+   * Take the checked state from the nearest ancestor carrying `data-done`
+   * rather than from the `done` prop.
+   *
+   * The story's sub-tasks are ticked by `story-ticks.tsx`, which toggles an
+   * attribute from a scroll loop rather than re-rendering React. So the mark
+   * has to be in the DOM already and revealed by CSS — a conditional `{done &&
+   * …}` cannot be turned on by an attribute. The `done` prop still decides
+   * what the SERVER renders, which is what a reader with no JavaScript keeps.
+   */
+  live?: boolean;
+  className?: string;
+}) {
   return (
     <span
       aria-hidden
       className={cn(
         "flex size-4 shrink-0 items-center justify-center rounded-none border transition-colors",
         done ? "border-primary bg-primary" : "border-muted-foreground",
+        live && "group-data-done:border-primary group-data-done:bg-primary",
         className,
       )}
     >
-      {done && (
+      {(done || live) && (
         <svg
           viewBox="0 0 16 16"
-          className="size-3 text-primary-foreground"
+          className={cn(
+            "size-3 text-primary-foreground transition-opacity",
+            live && !done && "opacity-0 group-data-done:opacity-100",
+          )}
           fill="none"
           stroke="currentColor"
           strokeWidth={2.5}

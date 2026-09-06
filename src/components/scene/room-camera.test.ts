@@ -99,18 +99,35 @@ describe("framingAt", () => {
     }
   });
 
-  it("actually visits every object rather than averaging them", () => {
-    // Guards against an interpolation so smooth it never arrives: each beat's
-    // target must be hit exactly somewhere along the track.
-    const visited = new Set<string>();
-    for (let t = 0; t <= 1; t += 0.001) {
-      const { target } = framingAt(t);
-      for (const [name, framing] of Object.entries(FRAMINGS)) {
-        if (framing.target.every((v, i) => Math.abs(v - target[i]) < 1e-9)) visited.add(name);
-      }
-    }
-    for (const beat of STORY_BEATS) {
-      expect(visited, `never framed "${beat.focus}"`).toContain(beat.focus);
-    }
+  it("uses every framing it defines", () => {
+    /*
+      A framing nobody points at is dead weight that still passes the bounds
+      and zoom checks above, and reads in review as a beat that exists.
+
+      Deliberately NOT the mirror of "gives every beat somewhere to look": that
+      one catches a beat with no framing, this one catches a framing with no
+      beat. The 5→6 beat rewrite (EI-277) is exactly when the second happens.
+    */
+    const pointedAt = new Set(STORY_BEATS.map((b) => b.focus));
+    expect([...Object.keys(FRAMINGS)].sort()).toEqual([...pointedAt].sort());
   });
-});
+
+  it("never leaves the room while moving between objects", () => {
+    /*
+      Two framings can each sit inside the room and still have a straight line
+      between them that does not — the camera would swing through a wall on
+      the way past. Sampled densely rather than at the keyframes, because that
+      is the only place this can go wrong.
+
+      Not written as an exact-hit sweep: `(i + 0.5) / 6` is not reachable by
+      accumulating 0.001, so a sampling loop silently misses two of six
+      keyframes. The exact hits are asserted directly above, where they belong.
+    */
+    for (let t = 0; t <= 1; t += 0.002) {
+      const [x, y, z] = framingAt(t).target;
+      expect(Math.abs(x), `x at t=${t.toFixed(3)}`).toBeLessThanOrEqual(ROOM.width / 2);
+      expect(Math.abs(z), `z at t=${t.toFixed(3)}`).toBeLessThanOrEqual(ROOM.depth / 2);
+      expect(y, `y at t=${t.toFixed(3)}`).toBeGreaterThanOrEqual(0);
+      expect(y, `y at t=${t.toFixed(3)}`).toBeLessThanOrEqual(ROOM.wallHeight);
+    }
+  });});
