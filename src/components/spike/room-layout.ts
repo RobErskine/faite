@@ -114,7 +114,10 @@ export const STATIC_PROPS: PropPlacement[] = [
   { node: "desk_lamp", position: [-1.78, 0.654, -HALF_D + 0.31] },
   // The fish bowl balances the desk lamp on the sideboard's other end. Its
   // fish is a separate node (see FISH below) so the scene can animate it.
-  { node: "fish_bowl", position: [-0.95, 0.654, -HALF_D + 0.31] },
+  // Quarter turn: the bowl's wide axis (0.297 m vs 0.211) runs along the
+  // sideboard, not across it. The FISH below turns with it, or the fish
+  // would swim through the glass.
+  { node: "fish_bowl", position: [-0.95, 0.654, -HALF_D + 0.31], rotationY: Math.PI / 2 },
   // Review asked for a lamp in the bare back-left corner. A taller, different
   // model - matched lamps in opposite corners read as a hotel lobby.
   { node: "floor_lamp_b", position: [-2.32, 0, -HALF_D + 0.42] },
@@ -160,6 +163,9 @@ export const TV_NEW: PropPlacement = {
 export const FISH: PropPlacement = {
   node: "fish",
   position: [-0.95, 0.654, -HALF_D + 0.31],
+  // Matches the bowl's quarter turn exactly - shared origin, shared rotation
+  // is what keeps the split pair nested.
+  rotationY: Math.PI / 2,
 };
 
 /**

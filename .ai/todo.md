@@ -2225,3 +2225,11 @@ full `npm test` (2344 tests, 152 files) green. Colophon creators e2e run
 singly against the dev server: green. Scene verified by screenshot at
 `/spike-3d`: love seat faces the coffee table, bowl + books placed, corner
 clear, fish bobbing (pixel-diff above).
+
+### Follow-up tweaks (same day)
+
+Bowl turned 90° so its wide axis (0.297 m) runs along the sideboard — the
+FISH placement carries the identical rotationY, since the split pair only
+stays nested while origin and rotation match. Books up 0.35 → 0.48 m: true
+to life read as clutter at diorama distance. Verified by screenshot: fish
+inside the glass after the turn, books legible on the shelf.

@@ -173,11 +173,13 @@ const SCENE_MODELS = [
   // "books" by Tiff Eidmann, CC-BY, via Poly Pizza. A stack for the wall
   // shelf. Unmapped in room-materials.ts on purpose, like the TVs: the covers
   // are the books' own liveries and should read as books in any theme.
+  // 0.48, up from a true-to-life 0.35: at diorama distance the honest size
+  // read as clutter, not books. The camera gets a vote on scale.
   {
     node: "books",
     file: "books.glb",
     fit: "x",
-    size: 0.35,
+    size: 0.48,
     rename: {
       mat3: "Books_Teal",
       mat8: "Books_Red",
