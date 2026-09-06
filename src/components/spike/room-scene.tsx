@@ -21,14 +21,14 @@
  */
 
 import { Canvas, useFrame, useLoader, useThree, type ThreeElements } from "@react-three/fiber";
-import { Component, Suspense, useEffect, useMemo, useRef, type ReactNode } from "react";
+import { Component, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { applyRoomPalette, readRoomPalette } from "./room-materials";
 import {
+  CONTACT_SHADOWS,
   PRINTS,
   ROOM,
-  SHELF_PROPS,
   STATIC_PROPS,
   SWATCHES,
   TV_NEW,
@@ -59,8 +59,8 @@ const SCENE_URL = "/scene/living-room.glb";
  * 0.35-0.85  push in; the wall cycles through the candidates
  * 0.85-1.00  snap back to bare. The indecision IS the animation.
  */
-function wallColourAt(t: number): string {
-  if (t < 0.35 || t > 0.85) return SWATCHES.bareWall;
+function wallColourAt(t: number): string | null {
+  if (t < 0.35 || t > 0.85) return null; // bare - the wall's own theme colour
   const span = (t - 0.35) / 0.5;
   const n = SWATCHES.candidates.length;
   return SWATCHES.candidates[Math.min(n - 1, Math.floor(span * n))];
@@ -103,6 +103,53 @@ function Rig({ progress }: { progress: Progress }) {
 
 // --- the room shell ---------------------------------------------------------
 
+type ShellPalette = { floor: string; wall: string; side: string; dark: boolean };
+
+const SHELL_FALLBACK: ShellPalette = {
+  floor: "#d6c1a1",
+  wall: "#edeae3",
+  side: "#e3dfd6",
+  dark: false,
+};
+
+/**
+ * The shell's colours come from the same `--room-*` tokens as the furniture.
+ * They were hardcoded at first, and the screenshot that caught it was
+ * incoherent in exactly the way you would predict: dark mode dimmed every
+ * loaded prop while the floor and walls stayed at noon.
+ */
+function useShellPalette(): ShellPalette {
+  const [palette, setPalette] = useState(SHELL_FALLBACK);
+
+  useEffect(() => {
+    const read = () => {
+      const style = getComputedStyle(document.documentElement);
+      const token = (name: string, fallback: string) =>
+        style.getPropertyValue(name).trim() || fallback;
+      setPalette({
+        floor: token("--room-floor", SHELL_FALLBACK.floor),
+        wall: token("--room-wall", SHELL_FALLBACK.wall),
+        side: token("--room-wall-side", SHELL_FALLBACK.side),
+        dark: document.documentElement.classList.contains("dark"),
+      });
+    };
+    // rAF-deferred, same reasoning as the WebGL gate in room-stage.tsx: keeps
+    // `react-hooks/set-state-in-effect` honest and lands after first paint.
+    const id = requestAnimationFrame(read);
+    const observer = new MutationObserver(read);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+    return () => {
+      cancelAnimationFrame(id);
+      observer.disconnect();
+    };
+  }, []);
+
+  return palette;
+}
+
 /**
  * Floor and two walls. Procedural because they are boxes, and because the back
  * wall is the one surface whose colour animates — it is the subject of the
@@ -111,10 +158,20 @@ function Rig({ progress }: { progress: Progress }) {
 function RoomShell({ progress }: { progress: Progress }) {
   const wall = useRef<THREE.MeshLambertMaterial>(null);
   const scratch = useMemo(() => new THREE.Color(), []);
+  const palette = useShellPalette();
+
+  // useFrame reads refs, never state - the palette flows in through one.
+  const paletteRef = useRef(palette);
+  paletteRef.current = palette;
 
   useFrame(() => {
     if (!wall.current) return;
-    scratch.set(wallColourAt(progress.current));
+    const candidate = wallColourAt(progress.current);
+    scratch.set(candidate ?? paletteRef.current.wall);
+    // A candidate is a paint chip picked in daylight; on a dark-mode wall it
+    // would glow. Dim the paint, not the chip - the swatches themselves stay
+    // true, like real samples under a lamp.
+    if (candidate && paletteRef.current.dark) scratch.multiplyScalar(0.62);
     wall.current.color.lerp(scratch, 0.09);
   });
 
@@ -124,21 +181,24 @@ function RoomShell({ progress }: { progress: Progress }) {
 
   return (
     <group>
-      <mesh position={[0, -0.05, 0]} receiveShadow>
+      <mesh position={[0, -0.05, 0]}>
         <boxGeometry args={[ROOM.width, 0.1, ROOM.depth]} />
-        <meshLambertMaterial color="#c8b49a" />
+        {/* Light oak. Warm floor + cool couch is the room's one big contrast. */}
+        <meshLambertMaterial color={palette.floor} />
       </mesh>
 
       {/* back wall — the one being painted */}
       <mesh position={[0, midY, -halfD - 0.06]}>
         <boxGeometry args={[ROOM.width, ROOM.wallHeight, 0.12]} />
-        <meshLambertMaterial ref={wall} color={SWATCHES.bareWall} />
+        <meshLambertMaterial ref={wall} color={palette.wall} />
       </mesh>
 
       {/* side wall, stays neutral */}
       <mesh position={[-halfW - 0.06, midY, 0]}>
         <boxGeometry args={[0.12, ROOM.wallHeight, ROOM.depth]} />
-        <meshLambertMaterial color="#dcd8d1" />
+        {/* A step darker than the back wall: two walls the same value read as
+            one folded plane, and the corner disappears. */}
+        <meshLambertMaterial color={palette.side} />
       </mesh>
     </group>
   );
@@ -163,30 +223,54 @@ function Swatches() {
 }
 
 /**
- * Framed prints, taken down in beat 5. Two quads each: a border and a face.
+ * A gallery pair over the sitting area. Two quads each: a frame and a mat.
  * The library ships no wall art, so this is the gap filled by geometry.
  */
-function Prints({ progress }: { progress: Progress }) {
-  const group = useRef<THREE.Group>(null);
-
-  useFrame(() => {
-    if (!group.current) return;
-    group.current.visible = progress.current < 0.45;
-  });
-
+function Prints() {
   return (
-    <group ref={group}>
+    <group>
       {PRINTS.map((p, i) => (
         <group key={i} position={p.position}>
           <mesh>
             <planeGeometry args={p.size} />
-            <meshLambertMaterial color="#6b5f52" />
+            <meshLambertMaterial color="#4a443d" />
           </mesh>
           <mesh position={[0, 0, 0.01]}>
-            <planeGeometry args={[p.size[0] - 0.07, p.size[1] - 0.07]} />
-            <meshLambertMaterial color="#b9b0a4" />
+            <planeGeometry args={[p.size[0] - 0.06, p.size[1] - 0.06]} />
+            <meshLambertMaterial color="#d9d2c6" />
           </mesh>
         </group>
+      ))}
+    </group>
+  );
+}
+
+/**
+ * Soft radial shadow under anything with mass. Flat-lit low-poly furniture
+ * floats without grounding; a 128px canvas gradient shared across six quads is
+ * the cheapest possible fix, and needs no texture asset. `depthWrite: false`
+ * keeps the transparent quads from punching holes in each other.
+ */
+function ContactShadows() {
+  const texture = useMemo(() => {
+    const c = document.createElement("canvas");
+    c.width = c.height = 128;
+    const ctx = c.getContext("2d")!;
+    const g = ctx.createRadialGradient(64, 64, 10, 64, 64, 64);
+    g.addColorStop(0, "rgba(30, 26, 20, 0.32)");
+    g.addColorStop(1, "rgba(30, 26, 20, 0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 128, 128);
+    return new THREE.CanvasTexture(c);
+  }, []);
+
+  return (
+    <group>
+      {CONTACT_SHADOWS.map((shadow, i) => (
+        <mesh key={i} position={shadow.position} rotation-x={-Math.PI / 2}>
+          <planeGeometry args={shadow.size} />
+          <meshBasicMaterial map={texture} transparent depthWrite={false} />
+        </mesh>
       ))}
     </group>
   );
@@ -224,7 +308,6 @@ function LivingRoomProps({ progress }: { progress: Progress }) {
 
   const oldTv = useRef<THREE.Group>(null);
   const newTv = useRef<THREE.Group>(null);
-  const shelves = useRef<THREE.Group>(null);
 
   // Re-tint from design tokens, and again whenever the theme class changes.
   // `applyRoomPalette` walks the scene once; this is never per-frame.
@@ -239,13 +322,13 @@ function LivingRoomProps({ progress }: { progress: Progress }) {
     return () => observer.disconnect();
   }, [scene]);
 
+  // The ONLY thing scroll changes about the furniture. Everything else is
+  // simply there, from the first frame - a room where furniture pops in reads
+  // as a software demo, and this has to read as a place someone lives.
   useFrame(() => {
-    const t = progress.current;
-    const upgraded = tvUpgradedAt(t);
+    const upgraded = tvUpgradedAt(progress.current);
     if (oldTv.current) oldTv.current.visible = !upgraded;
     if (newTv.current) newTv.current.visible = upgraded;
-    // The shelves go up in beat 5 and stay up.
-    if (shelves.current) shelves.current.visible = t > 0.4;
   });
 
   return (
@@ -253,12 +336,6 @@ function LivingRoomProps({ progress }: { progress: Progress }) {
       {STATIC_PROPS.map((p) => (
         <Placed key={p.node} scene={scene} placement={p} />
       ))}
-
-      <group ref={shelves}>
-        {SHELF_PROPS.map((p) => (
-          <Placed key={p.node} scene={scene} placement={p} />
-        ))}
-      </group>
 
       <group ref={oldTv}>
         <Placed scene={scene} placement={TV_OLD} />
@@ -303,14 +380,20 @@ export default function RoomScene({ progress }: { progress: Progress }) {
       gl={{ antialias: false, alpha: true, powerPreference: "low-power" }}
       dpr={[1, 1.75]}
     >
-      <ambientLight intensity={1.35} />
-      <directionalLight position={[8, 12, 6]} intensity={1.8} />
-      <directionalLight position={[-8, 5, -4]} intensity={0.45} />
+      {/* Hemisphere carries most of the fill: warm bounce from the floor,
+          cool from above, which is what daylight in a real room does. The key
+          comes from the window side so every face the camera sees is lit
+          slightly differently - even shading is what made the first pass flat. */}
+      <hemisphereLight args={["#fdf6ec", "#c9b394", 0.9]} />
+      <ambientLight intensity={0.5} />
+      <directionalLight position={[6, 10, 3]} intensity={1.5} />
+      <directionalLight position={[-4, 6, -6]} intensity={0.4} />
 
       <Rig progress={progress} />
       <RoomShell progress={progress} />
+      <ContactShadows />
       <Swatches />
-      <Prints progress={progress} />
+      <Prints />
 
       <PropsBoundary>
         <Suspense fallback={null}>

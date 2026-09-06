@@ -23,37 +23,37 @@ import { Color } from "three";
 /**
  * Material name -> CSS custom property.
  *
- * Only the names a living room actually uses are mapped; the kit's bathroom
- * and kitchen materials are left out deliberately rather than mapped to
- * something arbitrary.
+ * Exactly the materials `living-room.glb` contains, no more — a speculative
+ * mapping for a material that never ships is a token nobody can see drift.
+ * The `Couch_*`, `Rug_*` and `Curtain_*` names are namespaced by
+ * `build-room.mjs`, because the kit paints the couch and the rug with the
+ * same `DarkRed` — shared names mean shared colours, and a blue couch must
+ * not force a blue rug.
+ *
+ * The `mat*` names on the two televisions are deliberately absent: those are
+ * the sets' own liveries from a different author, and a CRT should look like
+ * a CRT in any theme.
  */
 export const MATERIAL_TOKENS: Record<string, string> = {
+  // Kit-wide semantics.
   White: "--room-white",
   Grey: "--room-grey",
   Black: "--room-black",
   Brown: "--room-brown",
   Wood: "--room-wood",
-  Wood_Dark: "--room-wood-dark",
-  Wood_Light: "--room-wood-light",
   Metal: "--room-metal",
-  DarkMetal: "--room-metal-dark",
   LightMetal: "--room-metal-light",
   Glass: "--room-glass",
   Light: "--room-light",
-  Marble: "--room-marble",
-  Gold: "--room-gold",
-  Mirror: "--room-mirror",
   Plant_Green: "--room-plant",
   DarkGreen: "--room-plant-dark",
-  DarkRed: "--room-accent-red",
-  Red: "--room-accent-red",
-  LightOrange: "--room-accent-orange",
-  Cushin: "--room-cushion",
-  Couch_Blue: "--room-couch",
-  Couch_Beige: "--room-couch-beige",
-  Couch_BeigeDark: "--room-couch-beige-dark",
-  Couch_Mustard: "--room-couch-mustard",
-  Couch_Green: "--room-couch-green",
+  LightOrange: "--room-terracotta",
+  // Namespaced per piece.
+  Couch_Main: "--room-couch",
+  Couch_Base: "--room-couch-base",
+  Rug_Main: "--room-rug",
+  Rug_Trim: "--room-rug-trim",
+  Curtain_Main: "--room-curtain",
 };
 
 /**

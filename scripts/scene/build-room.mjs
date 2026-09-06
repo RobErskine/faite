@@ -25,7 +25,11 @@
  *
  * Material NAMES are preserved (`Wood`, `White`, `Plant_Green`, ...). The whole
  * kit shares a 31-name palette, which is what lets `room-materials.ts` re-tint
- * the entire room from design tokens at runtime. Do not merge or rename them.
+ * the entire room from design tokens at runtime. Do not merge them — but a
+ * model MAY namespace its materials via `rename`, and sometimes must: the kit
+ * gives the couch and the rug the same `DarkRed`, which makes it impossible to
+ * tint a blue couch onto a neutral rug. Namespacing (`DarkRed` -> `Couch_Base`)
+ * keeps the semantics while giving each piece of furniture its own token.
  */
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
@@ -55,8 +59,11 @@ const SCENE_MODELS = [
   // "TV" by Jarlan Perez, CC-BY. Screen is a flat plane on X, so 90 degrees
   // brings it round to face the room.
   { node: "tv_new", file: "new-tv.obj", fit: "x", size: 1.1, rotateY: 90 },
-  { node: "coffee_table", file: "Table_RoundSmall.obj", fit: "x", size: 0.9 },
-  { node: "houseplant", file: "Houseplant_1.obj", fit: "y", size: 0.9 },
+  // Fit by HEIGHT. Fit by width this model is 0.53 m tall - dining height. A
+  // coffee table sits at ~0.42 m, below the couch seat, or the whole seating
+  // zone reads out of scale.
+  { node: "coffee_table", file: "Table_RoundSmall.obj", fit: "y", size: 0.42 },
+  { node: "houseplant", file: "Houseplant_1.obj", fit: "y", size: 1.15 },
   // Shelf_Small2/3, NOT Shelf_1/2 — those are floor-standing bookcases with a
   // height/width ratio near 4, so fitting them by width produced a 4.5 m tower.
   // The `_Small` pair are the actual wall shelves (ratio 0.38).
@@ -64,19 +71,46 @@ const SCENE_MODELS = [
   { node: "wall_shelf_b", file: "Shelf_Small3.obj", fit: "x", size: 0.9 },
 
   // --- dressing -----------------------------------------------------------
-  { node: "couch", file: "Couch_Large1.obj", fit: "x", size: 2.1 },
+  // The kit paints this couch with the same `Red`/`DarkRed` it uses on the
+  // rug, so they are namespaced apart or a blue couch forces a blue rug.
+  {
+    node: "couch",
+    file: "Couch_Large1.obj",
+    fit: "x",
+    size: 2.1,
+    rename: { Red: "Couch_Main", DarkRed: "Couch_Base" },
+  },
   // Carpet_2 is near-square (z/x = 1.03); Carpet_1 is 1.45 deep per unit wide
   // and ran halfway across the room once scaled.
-  { node: "rug", file: "Carpet_2.obj", fit: "x", size: 2.5 },
+  {
+    node: "rug",
+    file: "Carpet_2.obj",
+    fit: "x",
+    size: 2.6,
+    rename: { DarkRed: "Rug_Main", LightOrange: "Rug_Trim" },
+  },
   { node: "floor_lamp", file: "Light_Floor1.obj", fit: "y", size: 1.5 },
   { node: "window", file: "Window_Large1.obj", fit: "x", size: 1.4 },
-  // Fit by HEIGHT: curtains are 2.7x taller than wide, so fitting by width
-  // made them 4.3 m tall in a 2.7 m room.
-  { node: "curtains", file: "Curtains_Single.obj", fit: "y", size: 2.1 },
+  // Double, not Single: two panels either side of the window instead of one
+  // drape covering half the glass. Fit by HEIGHT - the source is 1.25x taller
+  // than wide and by-width put it at 4.3 m in a 2.7 m room. The kit colours
+  // curtains `Couch_Blue`; namespaced so linen curtains don't demand a blue
+  // couch.
+  {
+    node: "curtains",
+    file: "Curtains_Double.obj",
+    fit: "y",
+    size: 2.25,
+    rename: { Couch_Blue: "Curtain_Main" },
+  },
   { node: "door", file: "Door_1.obj", fit: "y", size: 2.0 },
-  // Fit by WIDTH: this stool is 2x taller than wide, so a 0.45 m height gave a
-  // 0.22 m footprint - a spike, not a seat.
-  { node: "stool", file: "Stool.obj", fit: "x", size: 0.36 },
+  // A cube-ish nightstand reads as a modern side table at side-table scale.
+  // It replaces the stool, which stood alone in the middle of the floor with
+  // no job - real rooms don't have furniture without a reason.
+  { node: "side_table", file: "NightStand_1.obj", fit: "x", size: 0.48 },
+  // Console styling. A television alone on 1.3 m of console is a showroom;
+  // a small plant next to it is a home.
+  { node: "plant_small", file: "Houseplant_2.obj", fit: "y", size: 0.32 },
 ];
 
 // --- OBJ + MTL parsing ------------------------------------------------------
@@ -439,8 +473,21 @@ console.log(`\n${"node".padEnd(16)} ${"file".padEnd(24)} size (m)      tris`);
 console.log("-".repeat(66));
 
 for (const spec of SCENE_MODELS) {
-  const groups = parseObj(join(SRC, spec.file));
-  const colours = parseMtl(join(SRC, spec.file.replace(/\.obj$/, ".mtl")));
+  let groups = parseObj(join(SRC, spec.file));
+  let colours = parseMtl(join(SRC, spec.file.replace(/\.obj$/, ".mtl")));
+
+  // Namespace this model's materials where the spec asks for it. Applied to
+  // the geometry groups and the colour table together, so a renamed material
+  // can never fall back to the 0.8-grey default by accident.
+  if (spec.rename) {
+    const renamed = new Map();
+    for (const [name, g] of groups) renamed.set(spec.rename[name] ?? name, g);
+    groups = renamed;
+    colours = Object.fromEntries(
+      Object.entries(colours).map(([name, kd]) => [spec.rename[name] ?? name, kd]),
+    );
+  }
+
   rotateY(groups, spec.rotateY);
   const size = normalise(groups, spec.fit, spec.size);
   const tris =

@@ -1234,6 +1234,14 @@ measurement that works by looking for the file.
 zero, first prove the artefact still exists — a metric that improves to
 *exactly* nothing is usually absent, not optimised.
 
+**The same trap bites e2e, not just measurement.** A local
+`npx playwright test` served from a post-`verify` `.next` failed the `/`
+canonical assertion with "element(s) not found" — consistently, through a
+retry — and passed the moment `npm run build` ran again. Nothing was wrong
+with the page. So: e2e also gets a fresh `npm run build` first, which is what
+CI does anyway, and a local e2e failure right after `verify` is the stale
+export until proven otherwise.
+
 ## The app-shell build will happily ship a library it can never run
 
 EI-272 put three.js behind `next/dynamic` and confirmed it cost 0 bytes before
