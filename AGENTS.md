@@ -47,7 +47,8 @@ a shortcut left out of it is invisible to users who go looking for it. See
 
 # The 3D scene ships other people's work
 
-The room on `/spike-3d` is built from vendored models, four of them **CC-BY**.
+The room in the homepage story is built from vendored models, four of them
+**CC-BY**.
 CC-BY grants the licence *only* if attribution is given, so a credit that no
 user can reach means the site is shipping something it is not licensed to
 ship. Adding a CC-BY model touches three files in one commit:
@@ -60,7 +61,7 @@ see `src/lib/desktop/bundle-assets.test.ts`), and scroll must drive the camera
 through a **ref**, never React state.
 
 `docs/SCENE.md` is the whole procedure — read it before touching
-`scripts/scene/`, `src/components/spike/`, or any `--room-*` token.
+`scripts/scene/`, `src/components/scene/`, or any `--room-*` token.
 
 # Issues live in Linear, not GitHub
 

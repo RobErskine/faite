@@ -1290,3 +1290,35 @@ zoom the arrow's target and list every object that overlaps there from the
 camera's angle. The user names what they see; the scene graph is not what
 they see. If the label and the arrow disagree, suspect an occlusion illusion
 before assuming either is wrong.
+
+## Playwright's `reducedMotion` did not reach `matchMedia` (EI-275)
+
+The homepage's flat fallback is chosen by `canUseWebGL()`, which returns false
+when `matchMedia("(prefers-reduced-motion: reduce)").matches`. The obvious
+test was `test.use({ reducedMotion: "reduce" })` — and it failed, on the one
+assertion that mattered, while every assertion before it passed.
+
+Measured from inside the page rather than assumed:
+
+```
+REDUCED: false
+CANVAS:  1
+```
+
+The option was set, the media query still read `false`, so the canvas mounted
+and the fallback was never rendered. The test was not checking what its name
+said; it was checking the normal path and failing for an unrelated reason.
+
+Two things could have happened next. A `toBeVisible` swapped for
+`toBeAttached`, or a `waitFor`, would have made it green while still testing
+nothing — the failure looks exactly like a flake. What it actually needed was
+a different lever: `javaScriptEnabled: false` holds `RoomStage` at its
+`enabled: false` initial state, which is the same branch, is not emulated
+media, and tests a stronger claim (the story reads with no JS at all).
+
+**Rule:** when a test depends on emulated environment state — reduced motion,
+colour scheme, geolocation, permissions — assert the emulation landed before
+trusting a failure downstream of it. One `page.evaluate` reading the media
+query is the difference between "the feature is broken" and "the harness never
+applied the setting". And when the emulation cannot be trusted, look for a
+lever that puts the code in the same branch by a route you control.

@@ -12,7 +12,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 const CHUNKS = ".next/static/chunks";
-const html = readFileSync(process.argv[2] ?? ".next/server/app/spike-3d.html", "utf8");
+const html = readFileSync(process.argv[2] ?? ".next/server/app/index.html", "utf8");
 const eager = new Set(
   [...html.matchAll(/src="\/_next\/static\/chunks\/([^"]*\.js)"/g)].map((m) => m[1]),
 );

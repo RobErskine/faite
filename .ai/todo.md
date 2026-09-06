@@ -2317,3 +2317,83 @@ matched by the `desktop` project, so no `playwright.config.ts` change — and
 asserts the board's text against the raw response body rather than the
 hydrated DOM: rendering it on the client would keep every locator green and
 fail that line.
+
+## EI-275 — the room moves to the homepage (2026-09-06)
+
+Sub B of EI-273. `/spike-3d` is gone — route, `PRIVATE_ROUTES` entry, and the
+"nothing here ships" premise with it. `src/components/spike/` is now
+`src/components/scene/`, and the eslint override's `files` glob moved with it,
+as `docs/SCENE.md` §11 said it would have to.
+
+`/` is three movements: the hero board (EI-274), the room, and the board
+again. The closing beat offers `/board` first and `/signup` second — the board
+works with no account, so leading with sign-up would contradict the sentence
+directly above the buttons.
+
+### The beat table
+
+`src/lib/story-beats.ts` is new and is the point of the refactor: one row per
+beat carrying headline, body, citation **and the sub-task it ticks**. EI-276
+(camera), EI-277 (copy) and EI-278 (ticks) all read it, and three parallel
+arrays kept in step by hand fail silently — the room showing the bookcase
+while the copy talks about paint. `MOVE_SUBTASKS` in `demo-board.tsx` is now
+derived from it rather than written out twice.
+
+### The panel
+
+`RoomStage` gained a `panel` slot; `story-panel.tsx` fills it with the "Plan
+living room move" card and its five sub-tasks. It takes `doneThrough` as a
+prop and renders a correct static state from it, which is deliberately the
+cheap way round: EI-278 adds the live layer on top of something already right,
+so its degrade-gracefully requirement is satisfied by construction instead of
+by a second code path.
+
+### The stage is sticky at every width now
+
+It was `md:sticky`. Stacked and unpinned on a phone, the room scrolled away
+after one screen and never came back — a decorative picture at the top of an
+article, with the page's actual argument (this room, and the list doing it, at
+once) only ever made on a desktop. Now it pins to the top 45vh, the beats read
+underneath it, and the camera keeps moving the whole way down. `bg-background`
+on the outer box is what makes that safe: sticky elements stay in flow, so the
+beats scroll up behind it, and `bg-muted/30` is a tint, not a backdrop.
+
+The panel takes the opposite call and is sticky only from `md:` up. Two sticky
+elements do not fit on 844px — 45vh plus ~250px leaves a third of a viewport
+for copy — and the room wins that trade: it is the thing that changes, and
+EI-278's ticking degrades to a static card by design whereas a room that
+cannot be seen degrades to nothing. Beat blocks are `min-h-[55vh]` on phone
+(the clear region below the stage) and 80vh from `md:` up.
+
+### Measured
+
+`npm run build` immediately before measuring.
+
+| `/` | eager JS (gz) | HTML (gz) | three.js eager |
+|---|---|---|---|
+| before (hero only) | 340.5 KB | 10.9 KB | — |
+| after (hero + story) | 342.2 KB | 13.9 KB | **0.0 KB** |
+
+The whole story costs 1.7 KB of eager JS — `RoomStage` itself, since its
+`panel` and `children` cross from `page.tsx` as an RSC payload and stay server
+HTML. three.js is 241.4 KB gz **lazy**, fetched in a `requestAnimationFrame`
+after first paint on a device that passes `canUseWebGL()`. `.next-static`
+greps clean of it, `/` there is still only `window.location.replace("/board")`,
+and the GLB stays out of the desktop payload via the existing `/scene/`
+exclusion.
+
+### Verified
+
+`npm run verify` green (154 files, 2359 tests). The gate run the way CI runs
+it — production build, `E2E_SERVER="npx next start -p 3100"`, `CI=1` — is
+green: 111 passed, 1 flaky (`touch-smoke`'s day-track swipe, pre-existing and
+untouched, green on retry). Four new e2e tests in `marketing-pages.spec.ts`:
+the story's beats/citations/sub-tasks table-driven off `STORY_BEATS`, the
+closing CTAs, `/spike-3d` returning 404, and the flat page under
+`javaScriptEnabled: false`.
+
+That last one started as `reducedMotion: "reduce"` and did not work — see the
+new entry in `.ai/lessons.md`. The option was set and
+`matchMedia("(prefers-reduced-motion: reduce)").matches` still read `false` in
+the page, so the canvas mounted and the test failed for a reason unrelated to
+its own name.

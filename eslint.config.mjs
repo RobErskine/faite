@@ -26,10 +26,10 @@ const eslintConfig = defineConfig([
     // camera in a useMemo, own it in a ref) just trips a different rule in the
     // same family. Three attempts, three rules; the code got worse each time.
     //
-    // Scoped to the spike directory so the rules keep their teeth everywhere
-    // else. If the 3D scene ships, this override moves to its real directory
-    // and this comment moves with it.
-    files: ["src/components/spike/**/*.tsx"],
+    // Scoped to the scene directory so the rules keep their teeth everywhere
+    // else. The scene shipped (EI-275), so this override moved here from
+    // `src/components/spike/` along with the code.
+    files: ["src/components/scene/**/*.tsx"],
     rules: {
       "react-hooks/immutability": "off",
       "react-hooks/refs": "off",
