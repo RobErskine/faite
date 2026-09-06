@@ -25,6 +25,7 @@ already tells the story.
 | `public/scene/living-room.glb` | The committed build output. 371 KB, 23 nodes, 37 materials. |
 | `src/components/scene/room-layout.ts` | Where every prop sits, in meters. No geometry. |
 | `src/components/scene/room-materials.ts` | Material name → CSS custom property, and the re-tint pass. |
+| `src/components/scene/room-camera.ts` | Which object each beat frames, and the interpolation between them. No three.js, so it is unit-tested. |
 | `src/components/scene/room-scene.tsx` | The R3F canvas: shell, lights, camera rig, placed props, the fish. |
 | `src/components/scene/room-stage.tsx` | The pinned stage, the lazy gate, the scroll listener, the flat fallback. |
 | `src/components/scene/webgl.ts` | Capability + reduced-motion probe. |
@@ -363,9 +364,11 @@ Open work, in the order it should happen:
 
 1. **Re-measure on the live deploy** with the real GLB — §3's frame numbers
    were taken against procedural boxes, on localhost.
-2. **Per-beat camera framing** (EI-276): the rig still does one continuous
-   push-in, but `src/lib/story-beats.ts` now names a beat per row and the
-   camera should frame the object each one is about.
+2. ~~Per-beat camera framing~~ **done** (EI-276). Each beat names an object in
+   `src/lib/story-beats.ts` (`focus`), `src/components/scene/room-camera.ts`
+   turns that name into a framing, and `Rig` damps toward it. The zoom band is
+   the constraint to respect if you add a beat: see that file's header, and its
+   test, which fails past 135.
 3. **The live sub-task ticks** (EI-278): `story-panel.tsx` renders a correct
    static state from `doneThrough`; the scroll ref should drive it. The other
    half of that ticket has landed — `card-travel.tsx` flies the hero's card

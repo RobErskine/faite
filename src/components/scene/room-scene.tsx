@@ -36,6 +36,7 @@ import {
   TV_OLD,
   type PropPlacement,
 } from "./room-layout";
+import { framingAt } from "./room-camera";
 
 declare module "react" {
   // Both disables are forced by the shape of React 19's JSX types: the
@@ -74,28 +75,49 @@ function tvUpgradedAt(t: number): boolean {
 
 // --- camera -----------------------------------------------------------------
 
+/**
+ * The camera, aimed at whatever the beat on screen is about (EI-276).
+ *
+ * `framingAt()` (`room-camera.ts`) turns scroll progress into a target, a zoom,
+ * an angle and a height; this does nothing but follow it. The split is so the
+ * interpolation can be unit-tested — no canvas, no WebGL context, no headless
+ * GPU — while the part that cannot be tested that way stays four lines long.
+ *
+ * Everything is DAMPED toward the framing rather than set to it. Scroll
+ * position is not continuous — a wheel notch or a trackpad flick jumps it — and
+ * a camera that tracked those exactly would snap. Following at a fixed fraction
+ * per frame turns each jump into a short glide, and it means the camera keeps
+ * easing for a few frames after the scroll stops, which is what makes it read
+ * as settling on the object rather than being dragged onto it.
+ */
 function Rig({ progress }: { progress: Progress }) {
   const { camera } = useThree();
-  const target = useMemo(() => new THREE.Vector3(0, 1.0, 0), []);
+  // Allocated once and mutated in place: `useFrame` runs at 60fps, and three
+  // new Vector3s a frame is garbage the collector has to chase mid-scroll.
+  const aim = useMemo(() => new THREE.Vector3(0, 1.0, 0), []);
+  const wanted = useMemo(() => new THREE.Vector3(), []);
+  /** How much of the remaining distance to close each frame. */
+  const FOLLOW = 0.12;
 
   useFrame(() => {
-    const t = progress.current;
     const orth = camera as THREE.OrthographicCamera;
+    const framing = framingAt(progress.current);
 
-    // Orthographic zoom is the isometric equivalent of a dolly-in. The range is
-    // deliberately narrow: the first spike pushed 52 -> 132 and by the end of
-    // the beat the walls and floor were cropped off every edge, which loses the
-    // room. A diorama has to stay a diorama - the payoff is a finished ROOM, and
-    // you cannot read that through a keyhole.
-    const zoom = THREE.MathUtils.lerp(93, 128, THREE.MathUtils.smoothstep(t, 0, 0.9));
-    orth.zoom += (zoom - orth.zoom) * 0.12;
+    wanted.set(framing.target[0], framing.target[1], framing.target[2]);
+    aim.lerp(wanted, FOLLOW);
 
-    // Drift a few degrees around the room so the push-in has parallax rather
-    // than reading as a flat scale.
-    const angle = Math.PI / 4 + t * 0.2;
+    orth.zoom += (framing.zoom - orth.zoom) * FOLLOW;
+
+    // The camera rides a circle around the room, so the angle is damped as a
+    // scalar and the position derived from it — lerping the POSITION instead
+    // would cut the chord and pull the camera in toward the room as it swings.
     const r = 14;
-    orth.position.set(Math.cos(angle) * r, 9.5 - t * 1.2, Math.sin(angle) * r);
-    orth.lookAt(target);
+    const current = Math.atan2(orth.position.z, orth.position.x);
+    const angle = current + (framing.angle - current) * FOLLOW;
+    const height = orth.position.y + (framing.height - orth.position.y) * FOLLOW;
+
+    orth.position.set(Math.cos(angle) * r, height, Math.sin(angle) * r);
+    orth.lookAt(aim);
     orth.updateProjectionMatrix();
   });
 

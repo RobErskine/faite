@@ -14,6 +14,16 @@
  * checked before any number is printed. EI-277 adds the plain-language
  * `claim` line that goes in front of each citation.
  */
+/**
+ * What the camera frames for a beat, named rather than positioned.
+ *
+ * A name, not a vector, because this module is content: it is imported by
+ * `page.tsx`, by the hero board, and by an e2e spec, and none of them has any
+ * business carrying metres. `room-camera.ts` resolves these to a framing
+ * against `room-layout.ts`, which is the one place the room's geometry lives.
+ */
+export type BeatFocus = "room" | "swatches" | "couch" | "shelf" | "tv";
+
 export interface StoryBeat {
   headline: string;
   body: string;
@@ -26,6 +36,8 @@ export interface StoryBeat {
    * identity is what lets EI-278 drive the ticks from scroll progress alone.
    */
   subtask: string;
+  /** The thing in the room this beat is about (EI-276). */
+  focus: BeatFocus;
 }
 
 export const STORY_BEATS: StoryBeat[] = [
@@ -34,29 +46,34 @@ export const STORY_BEATS: StoryBeat[] = [
     body: "An unfinished task interrupts work that has nothing to do with it. Writing down a plan for it stops the interruptions - not the task, the plan.",
     cite: "Masicampo & Baumeister (2011)",
     subtask: "Get everything out of my head and onto the list",
+    focus: "room",
   },
   {
     headline: "A date and a time. Not just a date.",
     body: "Prompted to write down a date, people did no better than the control group. Prompted to write down a date and a time, they did measurably better.",
     cite: "Milkman et al. (2011)",
     subtask: "Pick a paint color and book the painter",
+    focus: "swatches",
   },
   {
     headline: "You were never going to finish on Tuesday.",
     body: "Asked for their best guess, students said 33.9 days. They took 55.5. Fewer than a third finished inside their own most accurate estimate.",
     cite: "Buehler, Griffin & Ross (1994)",
     subtask: "Measure the room before ordering the couch",
+    focus: "couch",
   },
   {
     headline: "The things you keep not doing are the things you keep thinking about.",
     body: "The goals people felt torn about were the ones they acted on least - and thought about most.",
     cite: "Emmons & King (1988)",
     subtask: "Decide about the old bookcase",
+    focus: "shelf",
   },
   {
     headline: "Letting go helps. Sending it back helps twice as much.",
     body: "Across 31 samples, dropping an unreachable goal helped. Redirecting to a new one helped more than twice as much.",
     cite: "Barlow, Wrosch & McGrath (2020)",
     subtask: "Sell or donate what is not coming with us",
+    focus: "tv",
   },
 ];
