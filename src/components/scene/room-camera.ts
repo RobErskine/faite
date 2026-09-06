@@ -67,6 +67,18 @@ export const FRAMINGS: Record<BeatFocus, Framing> = {
   room: { target: [0, 1.0, 0], zoom: 93, angle: BASE_ANGLE, height: 9.5 },
   /** The three paint chips on the back wall, up since July. */
   swatches: { target: SWATCH_CENTER, zoom: 120, angle: BASE_ANGLE + 0.1, height: 9.0 },
+  /**
+   * The big monstera in the corner by the window — the recurring beat's
+   * subject, because a plant that needs watering every Wednesday is the one
+   * thing in this room that is never finished.
+   *
+   * Chosen over the three smaller plants for being legible at diorama scale:
+   * the ones on the console and the coffee table are a few centimetres across
+   * and read as texture rather than as a plant you could have a to-do about.
+   * Position from `PROPS` in `room-layout.ts`; aimed above its base so the
+   * leaves are centred rather than the pot.
+   */
+  plant: { target: [2.05, 0.62, -1.6], zoom: 122, angle: BASE_ANGLE - 0.06, height: 8.9 },
   /** The blue couch on the rug — the thing you measure the room for. */
   couch: { target: [1.6, 0.55, 0.2], zoom: 118, angle: BASE_ANGLE - 0.14, height: 8.8 },
   /** The wall shelf and its books: the bookcase there is a decision about. */

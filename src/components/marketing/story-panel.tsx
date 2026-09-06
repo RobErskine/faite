@@ -9,7 +9,7 @@ import { DemoCheckbox, MOVE_SUBTASKS, MOVE_TODO_TITLE } from "./demo-board";
  * The product, beside the room.
  *
  * One card — the same "Plan living room move" the hero board opens with — with
- * its five sub-tasks showing. It is pinned at the top of the copy column for
+ * its sub-tasks showing, one per story beat. It is pinned at the top of the copy column for
  * the whole story (`RoomStage`'s `panel` slot), so what the room is doing and
  * what the list says about it are never more than a glance apart. That pairing
  * is the argument the page is making; putting the two in sequence instead of
@@ -89,7 +89,15 @@ export function StoryPanel({
                 className={cn(badgeVariants({ variant: "outline" }), "num gap-1 text-2xs font-normal")}
               >
                 <ListChecks className="size-2.5" aria-hidden />
-                {doneThrough}/{MOVE_SUBTASKS.length}
+                {/*
+                  One flex child, not two. The badge is `inline-flex gap-1`, so
+                  splitting the count into `<span>3</span>` plus a bare "/6"
+                  text node made them two children and the gap rendered between
+                  them: "3 /6". `story-ticks.tsx` rewrites the inner span.
+                */}
+                <span>
+                  <span data-subtask-count>{doneThrough}</span>/{MOVE_SUBTASKS.length}
+                </span>
               </span>
               <span
                 className={cn(badgeVariants({ variant: "secondary" }), "text-2xs font-normal")}
@@ -121,13 +129,23 @@ export function StoryPanel({
               */
               data-subtask={i}
               data-done={done ? "" : undefined}
-              className="flex items-start gap-2 border-b border-border/60 py-2 pr-3 pl-6 last:border-b-0"
+              /*
+                `group` so the checkbox and the title can both read this row's
+                `data-done`. That attribute is written twice: by the server
+                from `doneThrough`, and by `story-ticks.tsx` from the scroll
+                loop. One attribute, one set of styles, two ways to set it —
+                which is why a reader with no JavaScript sees a correct card
+                rather than an empty one.
+              */
+              className="group flex items-start gap-2 border-b border-border/60 py-2 pr-3 pl-6 last:border-b-0"
             >
-              <DemoCheckbox done={done} className="mt-0.5" />
+              <DemoCheckbox done={done} live className="mt-0.5" />
               <span
                 className={cn(
                   "text-sm leading-snug transition-colors",
-                  done ? "text-muted-foreground line-through" : "text-foreground",
+                  done
+                    ? "text-muted-foreground line-through"
+                    : "text-foreground group-data-done:text-muted-foreground group-data-done:line-through",
                 )}
               >
                 {subtask.title}

@@ -32,6 +32,7 @@ already tells the story.
 | `src/app/page.tsx` | Server Component. The hero board, the beats, the closing CTA. No client JS of its own. |
 | `src/lib/story-beats.ts` | One row per beat: headline, body, citation, and the sub-task it ticks. |
 | `src/components/marketing/story-panel.tsx` | The card pinned beside the room. Server Component. |
+| `src/components/marketing/story-ticks.tsx` | Ticks each sub-task off as its beat is read. Renders nothing. |
 | `src/components/marketing/card-travel.tsx` | Flies a copy of that card from the hero board into the panel on scroll. Client, and the only thing it renders is position. |
 | `src/app/globals.css` | The `--room-*` token block, light and dark. |
 
@@ -369,11 +370,10 @@ Open work, in the order it should happen:
    turns that name into a framing, and `Rig` damps toward it. The zoom band is
    the constraint to respect if you add a beat: see that file's header, and its
    test, which fails past 135.
-3. **The live sub-task ticks** (EI-278): `story-panel.tsx` renders a correct
-   static state from `doneThrough`; the scroll ref should drive it. The other
-   half of that ticket has landed — `card-travel.tsx` flies the hero's card
-   into the panel as you scroll, and the ticks are the same idea applied to
-   the five rows inside it.
+3. ~~The live sub-task ticks~~ **done** (EI-278). `story-ticks.tsx` toggles
+   `data-done` from the scroll loop, on both copies of the card, reading the
+   same box `RoomStage` measures — which is what keeps "the room frames the
+   plant" and "the watering line ticks" the same moment.
 4. Consider Draco/meshopt compression if the GLB grows much past 371 KB. It is
    currently uncompressed indexed geometry; the dedupe in `indexGeometry`
    already took it from 455 KB.

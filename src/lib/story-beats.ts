@@ -1,19 +1,45 @@
 /**
  * The homepage story, one row per beat.
  *
- * Three separate things read this table and they must never disagree: the
+ * Four separate things read this table and they must never disagree: the
  * camera frames the object a beat is about (EI-276), the copy states what the
- * research found (EI-277), and the sub-task ticks off in the product panel
- * beside it (EI-278). A beat, an object, a claim and a sub-task are one unit,
- * so they live on one row — the alternative is three parallel arrays kept in
- * step by hand, and the failure mode there is silent: the room shows the
- * bookcase while the copy talks about paint.
+ * research found (EI-277), the sub-task ticks off in the product panel beside
+ * it (EI-278), and the hero board opens with that same list. A beat, an
+ * object, a claim and a sub-task are one unit, so they live on one row — the
+ * alternative is four parallel arrays kept in step by hand, and the failure
+ * mode there is silent: the room shows the bookcase while the copy talks about
+ * paint.
  *
- * Copy is governed by `docs/RESEARCH.md`: the §2 evidence tables are the only
- * source, quotes are verbatim, and §4's "claims we do not make" list is
- * checked before any number is printed. EI-277 adds the plain-language
- * `claim` line that goes in front of each citation.
+ * # The sub-tasks are the argument, not set dressing
+ *
+ * The first draft of this table invented five plausible renovation chores —
+ * pick a paint color, measure for the couch, sort the bookcase — and they had
+ * nothing to do with the studies beside them. That is backwards. Each row's
+ * sub-task now DEMONSTRATES its finding: the beat about scheduling carries a
+ * task with a date and a time on it, the beat about recurrence carries a
+ * genuinely recurring one, and the beat about letting go carries the thing
+ * that gets dropped.
+ *
+ * Read down the `subtask` column and you get one plan for one move. Read
+ * across a row and the room, the study and the to-do are all making the same
+ * point.
+ *
+ * # Where the copy comes from
+ *
+ * `docs/RESEARCH.md`, and nowhere else. Its §2 evidence tables are the only
+ * source, §3 maps each Faite feature to the section that argues for it, and
+ * §4 lists the claims we deliberately do not make — no Zeigarnik, no 21 days,
+ * no 41%, no 42%. Every number below traces to a §2 row.
+ *
+ * Quotes are NOT reproduced verbatim here. `docs/RESEARCH.md`'s own rule 1
+ * allows either an exact quote or a paraphrase with the quotation marks
+ * dropped, and these are paraphrases — partly for length, and partly because
+ * `src/lib/spelling.test.ts` scans string literals for British spellings and
+ * one of the source quotes contains "behaviour". A verbatim quote would be
+ * exempt from that rule (`docs/CONTENT.md` §3) but the test cannot know that,
+ * so the honest fix is to not put a quotation mark around a paraphrase.
  */
+
 /**
  * What the camera frames for a beat, named rather than positioned.
  *
@@ -22,18 +48,31 @@
  * business carrying metres. `room-camera.ts` resolves these to a framing
  * against `room-layout.ts`, which is the one place the room's geometry lives.
  */
-export type BeatFocus = "room" | "swatches" | "couch" | "shelf" | "tv";
+export type BeatFocus = "room" | "swatches" | "plant" | "couch" | "shelf" | "tv";
 
 export interface StoryBeat {
+  /** The human line, in the product's voice. */
   headline: string;
+  /** What it means for the person reading it. */
   body: string;
-  /** The study, named. EI-277 puts a plain-language finding in front of it. */
+  /**
+   * The finding, in plain language, printed in front of the citation.
+   *
+   * The point of EI-277: a bare "Masicampo & Baumeister (2011)" is a claim
+   * nobody can check and most people will not look up. Saying what the study
+   * found, and then who found it, is the whole disclosure.
+   */
+  claim: string;
+  /** The study, named. */
   cite: string;
+  /** Which `docs/RESEARCH.md` §2 table this row's evidence comes from. */
+  section: string;
   /**
    * This beat's line in the "Plan living room move" card.
    *
    * In order: the reader is `n` beats in, so `n` sub-tasks are done. That
-   * identity is what lets EI-278 drive the ticks from scroll progress alone.
+   * identity is what lets `story-ticks.tsx` drive the check-offs from scroll
+   * progress alone.
    */
   subtask: string;
   /** The thing in the room this beat is about (EI-276). */
@@ -43,37 +82,62 @@ export interface StoryBeat {
 export const STORY_BEATS: StoryBeat[] = [
   {
     headline: "You wrote it down. That is most of it.",
-    body: "An unfinished task interrupts work that has nothing to do with it. Writing down a plan for it stops the interruptions - not the task, the plan.",
+    body: "An unfinished task interrupts work that has nothing to do with it. Faite gives it somewhere to go the moment you think of it.",
+    claim:
+      "Unfinished goals caused intrusive thoughts during unrelated tasks — and letting people write a specific plan eliminated the effect. Not doing the task. Planning it.",
     cite: "Masicampo & Baumeister (2011)",
-    subtask: "Get everything out of my head and onto the list",
+    section: "§2.1",
+    subtask: "Get the whole move out of my head",
     focus: "room",
   },
   {
     headline: "A date and a time. Not just a date.",
-    body: "Prompted to write down a date, people did no better than the control group. Prompted to write down a date and a time, they did measurably better.",
+    body: "Drag a card onto a day and it has a when. Add a time and it has an appointment.",
+    claim:
+      "Prompted to write down a date, people did no better than the control group. Prompted to write down a date and a time, vaccination rates rose 4.2 percentage points.",
     cite: "Milkman et al. (2011)",
-    subtask: "Pick a paint color and book the painter",
+    section: "§2.3",
+    subtask: "Painter comes Saturday, 9:00am",
     focus: "swatches",
   },
   {
+    headline: "Miss one. There is no streak to break.",
+    body: "Repeating to-dos come back on their own schedule. Faite never counts how many you have kept in a row, because nothing in the evidence says it should.",
+    claim:
+      "In a twelve-week study of real daily habits, missing a single opportunity did not materially affect how the habit formed.",
+    cite: "Lally et al. (2010)",
+    section: "§2.5",
+    subtask: "Water the plants — every Wednesday",
+    focus: "plant",
+  },
+  {
     headline: "You were never going to finish on Tuesday.",
-    body: "Asked for their best guess, students said 33.9 days. They took 55.5. Fewer than a third finished inside their own most accurate estimate.",
+    body: "So a missed day rolls forward instead of turning red. Your order was right; only the date was optimistic.",
+    claim:
+      "Asked for their best guess, students said they would finish in 33.9 days and took 55.5. Fewer than a third finished inside their own most accurate estimate.",
     cite: "Buehler, Griffin & Ross (1994)",
+    section: "§2.4",
     subtask: "Measure the room before ordering the couch",
     focus: "couch",
   },
   {
     headline: "The things you keep not doing are the things you keep thinking about.",
-    body: "The goals people felt torn about were the ones they acted on least - and thought about most.",
+    body: "After a few rolls a card moves to Overflow — not to shame it, but because leaving it undecided is the expensive part.",
+    claim:
+      "People acted least on the goals they felt most torn about, and spent the most time thinking about exactly those.",
     cite: "Emmons & King (1988)",
+    section: "§2.4",
     subtask: "Decide about the old bookcase",
     focus: "shelf",
   },
   {
     headline: "Letting go helps. Sending it back helps twice as much.",
-    body: "Across 31 samples, dropping an unreachable goal helped. Redirecting to a new one helped more than twice as much.",
+    body: "Every card gets one of three honest endings: you do it, you send it back to its list, or you let it go.",
+    claim:
+      "Across 31 samples, dropping an unreachable goal was linked to better quality of life (r = 0.08) — and redirecting to a new one more than twice as strongly (r = 0.19).",
     cite: "Barlow, Wrosch & McGrath (2020)",
-    subtask: "Sell or donate what is not coming with us",
+    section: "§1, §2.8",
+    subtask: "Sell the old TV instead of moving it",
     focus: "tv",
   },
 ];
