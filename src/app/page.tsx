@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { CardTravel } from "@/components/marketing/card-travel";
 import { DemoBoard } from "@/components/marketing/demo-board";
 import { MarketingFooter } from "@/components/marketing/marketing-footer";
 import { MarketingHeader } from "@/components/marketing/marketing-header";
@@ -90,7 +91,13 @@ export default function Home() {
             Text first, board second, in the markup as well as on screen: the
             headline is the LCP element and it is plain server-rendered HTML.
           */}
-          <section className="flex flex-col items-center gap-10 px-4 pt-16 sm:pt-24">
+          {/*
+            A full viewport, so the board is the only thing on screen and the
+            fold is a real edge rather than wherever the content happened to
+            stop. `justify-between` puts the pitch at the top and lets the
+            board run off the bottom; `overflow-hidden` is what crops it.
+          */}
+          <section className="flex min-h-dvh flex-col items-center justify-between gap-10 overflow-hidden px-4 pt-16 sm:pt-24">
             <div className="flex flex-col items-center gap-8 text-center">
               <div className="space-y-3">
                 <h1 className="font-heading text-4xl font-semibold tracking-tight sm:text-5xl">
@@ -119,10 +126,8 @@ export default function Home() {
               truth. The gradient says the page continues, which is the
               invitation into the story below.
             */}
-            <div className="relative w-full max-w-6xl">
-              <div className="max-h-[60vh] overflow-hidden">
-                <DemoBoard className="w-6xl max-w-none" />
-              </div>
+            <div className="relative w-full max-w-6xl flex-1 overflow-hidden">
+              <DemoBoard className="w-6xl max-w-none" />
               <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-linear-to-b from-transparent to-background" />
             </div>
           </section>
@@ -135,7 +140,13 @@ export default function Home() {
             reason they are side by side rather than in sequence is that the
             argument only lands when you can see both at once.
           */}
-          <section className="mt-24" aria-label="How Faite works">
+          {/*
+            `data-story` is the travel's clock (`card-travel.tsx`): the card
+            flies over the last viewport of scrolling before this section
+            reaches the top, so the hero hands off to the story exactly as the
+            room takes over.
+          */}
+          <section className="mt-24" aria-label="How Faite works" data-story>
             <RoomStage panel={<StoryPanel />}>
               {STORY_BEATS.map((beat) => (
                 <div
@@ -206,6 +217,21 @@ export default function Home() {
               </Link>
             </div>
           </section>
+          {/*
+            The copy that flies from the board into the story (EI-278).
+            Rendered here as server HTML and handed to a client component that
+            does nothing but position it — so with no JavaScript it stays
+            hidden and costs nothing, and the two real cards carry the page on
+            their own.
+
+            LAST in the document, not first. It is a fixed overlay, so its
+            position in the flow is arbitrary for layout — but not for reading
+            order, and a hidden duplicate of the hero's card sitting ahead of
+            the real one is what any "first match" lands on.
+          */}
+          <CardTravel>
+            <StoryPanel flying />
+          </CardTravel>
         </main>
 
         <MarketingFooter />

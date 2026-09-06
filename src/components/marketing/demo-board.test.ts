@@ -25,6 +25,16 @@ import { readFileSync } from "node:fs";
 const dir = new URL(".", import.meta.url);
 
 /**
+ * The marketing components that must stay Server Components.
+ *
+ * `card-travel.tsx` is the one deliberate client component on the homepage
+ * besides the scene, and it is not in this list: it renders nothing of its own
+ * — the card it flies is passed in as `children` from `page.tsx` and stays
+ * server HTML — so what it costs the page is a positioning loop, not the copy.
+ */
+const SERVER_ONLY = ["demo-board.tsx", "story-panel.tsx"];
+
+/**
  * Comments are stripped before anything is searched, because the file this
  * guards explains at length why it is not a client component — and would
  * otherwise fail on its own prose. Same for the modules it imports.
@@ -32,7 +42,10 @@ const dir = new URL(".", import.meta.url);
 const stripComments = (source: string) =>
   source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
 
-const SOURCE = stripComments(readFileSync(new URL("demo-board.tsx", dir), "utf8"));
+const SOURCES = SERVER_ONLY.map((file) => ({
+  file,
+  code: stripComments(readFileSync(new URL(file, dir), "utf8")),
+}));
 
 /** `@/…` back to a path under `src/`, then the two extensions we author in. */
 function readAliased(specifier: string): string {
@@ -48,11 +61,16 @@ function readAliased(specifier: string): string {
   return "";
 }
 
-const IMPORTS = [...SOURCE.matchAll(/from "(@\/[^"]+)"/g)].map((m) => m[1]);
+const IMPORTS = SOURCES.map(({ file, code }) => ({
+  file,
+  specifiers: [...code.matchAll(/from "(@\/[^"]+)"/g)].map((m) => m[1]),
+}));
 
-describe("the marketing demo board", () => {
+describe.each(SOURCES)("$file", ({ file, code }) => {
+  const { specifiers } = IMPORTS.find((i) => i.file === file)!;
+
   it("is a Server Component", () => {
-    expect(SOURCE).not.toContain('"use client"');
+    expect(code).not.toContain('"use client"');
   });
 
   it("imports nothing that is itself a client component", () => {
@@ -60,21 +78,42 @@ describe("the marketing demo board", () => {
     // module — `badgeVariants` is a `cva` call, and `Badge` (which does use a
     // hook) is never called here. `ui/checkbox.tsx` and `board/todo-row-parts.tsx`
     // are the two near misses this would catch.
-    const client = IMPORTS.filter((s) => readAliased(s).includes('"use client"'));
-    expect(client).toEqual([]);
+    expect(specifiers.filter((s) => readAliased(s).includes('"use client"'))).toEqual([]);
   });
 
   it("does not reach into the board or the store", () => {
     // `board-column.tsx` imports `createLabel` from `lib/store/repositories`,
     // so one convenient import would put Dexie on the marketing page.
-    expect(IMPORTS.filter((s) => s.startsWith("@/lib/store"))).toEqual([]);
-    expect(IMPORTS.filter((s) => s.startsWith("@/components/board"))).toEqual([]);
+    expect(specifiers.filter((s) => s.startsWith("@/lib/store"))).toEqual([]);
+    expect(specifiers.filter((s) => s.startsWith("@/components/board"))).toEqual([]);
   });
 
   it("resolves every alias it imports", () => {
     // Guards the helper above rather than the component: a specifier this
     // cannot read would make the two checks above pass vacuously.
-    expect(IMPORTS.length).toBeGreaterThan(0);
-    expect(IMPORTS.filter((s) => readAliased(s) === "")).toEqual([]);
+    expect(specifiers.length).toBeGreaterThan(0);
+    expect(specifiers.filter((s) => readAliased(s) === "")).toEqual([]);
+  });
+});
+
+describe("the flying copy", () => {
+  const travel = stripComments(
+    readFileSync(new URL("card-travel.tsx", dir), "utf8"),
+  );
+
+  it("is a client component that renders no copy of its own", () => {
+    // It is allowed to be `"use client"` precisely because the card it flies
+    // arrives as `children`. The moment it imports `StoryPanel` (or anything
+    // else that draws a card) the marketing page starts shipping that markup
+    // to the client twice, once as HTML and once as a component.
+    expect(travel).toContain('"use client"');
+    expect(travel).not.toContain("story-panel");
+    expect(travel).not.toContain("demo-board");
+  });
+
+  it("never writes scroll position into React state", () => {
+    // Same rule as the scene (docs/SCENE.md §4). `useState` here would
+    // re-render the subtree on every scroll frame.
+    expect(travel).not.toContain("useState");
   });
 });

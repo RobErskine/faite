@@ -175,7 +175,10 @@ test("the homepage hero board is server-rendered HTML", async ({ page, request }
   expect(body).toContain("Overflow");
 
   await page.goto("/");
-  await expect(page.getByText("Plan living room move").first()).toBeVisible();
+  // `[data-travel-origin]` rather than a text match: the flying copy (EI-278)
+  // carries the same title, and which one a text query lands on is document
+  // order, not intent.
+  await expect(page.locator("[data-travel-origin]")).toBeVisible();
   // The pitch still outranks the picture: the heading is the LCP candidate,
   // and the board sits under it rather than in front of it.
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
@@ -269,10 +272,105 @@ test.describe("without JavaScript", () => {
     await expect(story.getByText(/Three paint swatches/)).toBeVisible();
     await expect(page.locator("canvas")).toHaveCount(0);
 
+    /*
+      The flying copy of the card (EI-278) is server-rendered so the loop has
+      something to measure on its first frame, which means it is in the HTML
+      whether or not that loop ever runs. With no JavaScript it must show
+      nothing and take no space — otherwise a visitor gets a second, stray
+      "Plan living room move" card pinned over the page with no way to move it.
+    */
+    const flyer = page.locator("[data-card-flyer]");
+    await expect(flyer).toHaveCount(1);
+    await expect(flyer).not.toBeVisible();
+
+    // And both REAL cards are on screen, which is what makes the travel a
+    // flourish rather than the only way the page makes sense.
+    await expect(page.locator("[data-travel-origin]")).toBeVisible();
+    await expect(page.locator("[data-travel-target]")).toBeVisible();
+
     // And the hero and the closing CTA, which never depended on JS either.
-    await expect(page.getByText("Plan living room move").first()).toBeVisible();
+    // `[data-travel-origin]` rather than a text match: the flying copy (EI-278)
+  // carries the same title, and which one a text query lands on is document
+  // order, not intent.
+  await expect(page.locator("[data-travel-origin]")).toBeVisible();
     await expect(page.getByRole("link", { name: /Open the board/ })).toHaveCount(2);
   });
+});
+
+/**
+ * The card travels (EI-278): it leaves the board, crosses the page, and lands
+ * in the panel beside the room.
+ *
+ * Asserted at three scroll positions rather than by watching it move, because
+ * what can regress is the geometry, not the animation. The two failure modes
+ * that actually happened during the build are both caught here:
+ *
+ *  - the copy never reaching its destination, leaving a card stranded a few
+ *    pixels off the one it is dissolving into (a ghost, not a handoff);
+ *  - the window being timed off the story alone, so the copy set off after the
+ *    board had already scrolled away and appeared to arrive from nowhere.
+ *
+ * The tolerance is 2px: the handoff is supposed to be exact, and anything that
+ * makes it inexact is the bug.
+ */
+test("the hero card flies into the story panel", async ({ page }) => {
+  await page.goto("/");
+
+  const geometry = () =>
+    page.evaluate(() => {
+      const q = (s: string) => document.querySelector<HTMLElement>(s);
+      const flyer = q("[data-card-flyer]")!.parentElement!;
+      const rect = (el: Element) => {
+        const r = el.getBoundingClientRect();
+        return { top: Math.round(r.top), left: Math.round(r.left) };
+      };
+      return {
+        visible: flyer.style.visibility === "visible",
+        flyer: rect(flyer),
+        origin: rect(q("[data-travel-origin]")!),
+        target: rect(q("[data-travel-target]")!),
+      };
+    });
+
+  // The window runs from a quarter of the way down the hero to just past the
+  // start of the story, both measured in document coordinates.
+  const { startY, endY } = await page.evaluate(() => {
+    const vh = window.innerHeight;
+    const o = document.querySelector("[data-travel-origin]")!.getBoundingClientRect();
+    const s = document.querySelector("[data-story]")!.getBoundingClientRect();
+    return { startY: o.top - vh * 0.25, endY: s.top - vh * 0.55 };
+  });
+
+  const settle = async (y: number) => {
+    await page.evaluate((to) => window.scrollTo(0, to), y);
+    // Two frames: one for the scroll listener to schedule, one for it to run.
+    await page.evaluate(
+      () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))),
+    );
+  };
+
+  // Before the window: nothing in flight, the board's own card on screen.
+  await settle(Math.max(0, startY - 40));
+  expect((await geometry()).visible).toBe(false);
+
+  // Setting off: sitting exactly on the board row it is leaving.
+  await settle(startY + 20);
+  const leaving = await geometry();
+  expect(leaving.visible).toBe(true);
+  expect(Math.abs(leaving.flyer.top - leaving.origin.top)).toBeLessThanOrEqual(2);
+  expect(Math.abs(leaving.flyer.left - leaving.origin.left)).toBeLessThanOrEqual(2);
+
+  // Landing: sitting exactly on the panel it is dissolving into.
+  await settle(endY - 20);
+  const landing = await geometry();
+  expect(landing.visible).toBe(true);
+  expect(Math.abs(landing.flyer.top - landing.target.top)).toBeLessThanOrEqual(2);
+  expect(Math.abs(landing.flyer.left - landing.target.left)).toBeLessThanOrEqual(2);
+
+  // Past the window: out of the way, with the real panel carrying the story.
+  await settle(endY + 120);
+  expect((await geometry()).visible).toBe(false);
+  await expect(page.locator("[data-travel-target]")).toBeVisible();
 });
 
 /**

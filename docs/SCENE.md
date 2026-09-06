@@ -31,6 +31,7 @@ already tells the story.
 | `src/app/page.tsx` | Server Component. The hero board, the beats, the closing CTA. No client JS of its own. |
 | `src/lib/story-beats.ts` | One row per beat: headline, body, citation, and the sub-task it ticks. |
 | `src/components/marketing/story-panel.tsx` | The card pinned beside the room. Server Component. |
+| `src/components/marketing/card-travel.tsx` | Flies a copy of that card from the hero board into the panel on scroll. Client, and the only thing it renders is position. |
 | `src/app/globals.css` | The `--room-*` token block, light and dark. |
 
 Generated output is **committed**, same convention as `assets/icons/`
@@ -366,7 +367,10 @@ Open work, in the order it should happen:
    push-in, but `src/lib/story-beats.ts` now names a beat per row and the
    camera should frame the object each one is about.
 3. **The live sub-task ticks** (EI-278): `story-panel.tsx` renders a correct
-   static state from `doneThrough`; the scroll ref should drive it.
+   static state from `doneThrough`; the scroll ref should drive it. The other
+   half of that ticket has landed — `card-travel.tsx` flies the hero's card
+   into the panel as you scroll, and the ticks are the same idea applied to
+   the five rows inside it.
 4. Consider Draco/meshopt compression if the GLB grows much past 371 KB. It is
    currently uncompressed indexed geometry; the dedupe in `indexGeometry`
    already took it from 455 KB.

@@ -35,15 +35,30 @@ import { DemoCheckbox, MOVE_SUBTASKS, MOVE_TODO_TITLE } from "./demo-board";
  */
 export function StoryPanel({
   doneThrough = 0,
+  flying = false,
 }: {
   /** How many sub-tasks are ticked: 0 at the top of the story, 5 at the end. */
   doneThrough?: number;
+  /**
+   * This is the copy in flight, not the one at rest.
+   *
+   * Only two things differ. It drops `data-travel-target`, so the query that
+   * finds the resting card cannot match it. And it is `aria-hidden`, because
+   * the story would otherwise announce the same five sub-tasks twice.
+   */
+  flying?: boolean;
 }) {
   const rail = priorityRail(1);
   const home = { name: "Home", color: "#46a758" };
 
   return (
     <div
+      /*
+        Where the hero's card lands (EI-278). Marked on the resting copy only —
+        the flying copy is rendered by `card-travel.tsx` and carries no
+        attribute, so the two can never be confused for one another.
+      */
+      data-travel-target={flying ? undefined : ""}
       className="overflow-hidden rounded-xl border border-border bg-surface-1 shadow-card"
       /*
         The card is a picture of software, like the hero board — but unlike the
@@ -53,8 +68,9 @@ export function StoryPanel({
         screen reader should hear them once, here, instead of hearing forty
         to-dos on the board above.
       */
-      aria-label={`${MOVE_TODO_TITLE}: ${doneThrough} of ${MOVE_SUBTASKS.length} done`}
-      role="group"
+      aria-label={flying ? undefined : `${MOVE_TODO_TITLE}: ${doneThrough} of ${MOVE_SUBTASKS.length} done`}
+      aria-hidden={flying || undefined}
+      role={flying ? undefined : "group"}
     >
       <div className="relative py-2.5 pr-3 pl-3">
         {rail && (
@@ -90,7 +106,10 @@ export function StoryPanel({
         </div>
       </div>
 
-      <ul className="border-t border-border/60">
+      {/* `data-subtask-list` is the handle `card-travel.tsx` sizes from zero
+          to full height, which is what makes the card unfold as it travels
+          rather than merely slide. */}
+      <ul data-subtask-list className="border-t border-border/60">
         {MOVE_SUBTASKS.map((subtask, i) => {
           const done = i < doneThrough;
           return (
