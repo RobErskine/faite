@@ -72,7 +72,8 @@ const CONSOLE_TOP = 0.445;
 const LEFT_WALL_X = -HALF_W + 0.2;
 
 /** Where the TV stands, whichever TV it currently is. */
-const TV_SPOT: Vec3 = [-HALF_W + 0.38, CONSOLE_TOP, 0.1];
+/** Exported so `room-camera.ts` can frame the console without repeating it. */
+export const TV_SPOT: Vec3 = [-HALF_W + 0.38, CONSOLE_TOP, 0.1];
 
 /**
  * The room. Everything is present from the first frame - the only thing that

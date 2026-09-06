@@ -2467,3 +2467,82 @@ The new e2e asserts the handoff is exact (2px) at both ends, and was proved
 non-vacuous by restoring the old timing formula, which fails it.
 
 **Still open on EI-278:** the live sub-task ticks.
+
+## EI-276 — the camera frames what each beat is about (2026-09-06)
+
+Sub C of EI-273. The spike's rig did one continuous push-in aimed at the middle
+of the room the whole way down, so the room did the same thing under every
+beat — the copy talked about paint while the camera looked at the couch. Now
+each beat names an object and the camera goes there.
+
+### The mapping
+
+| beat | frames | sub-task |
+|---|---|---|
+| You wrote it down | the whole room, undecided | Get everything out of my head |
+| A date and a time | the paint swatches | Pick a paint color, book the painter |
+| Never going to finish on Tuesday | the blue couch on the rug | Measure the room before ordering the couch |
+| The things you keep not doing | the wall shelf and its books | Decide about the old bookcase |
+| Letting go / sending it back | the console, where the TV swaps | Sell or donate what is not coming |
+
+Uses only objects already in the room, so no new models and no new CC-BY chain.
+The last two land on the scene's two existing animations: the wall-colour cycle
+(t 0.35–0.85, still the indecision it always was) and `tvUpgradedAt` (t > 0.9).
+
+### Named, not positioned
+
+`focus` on `StoryBeat` is a name — `"swatches"`, `"couch"` — not a vector.
+`lib/story-beats.ts` is content: `page.tsx`, the hero board and an e2e spec all
+import it, and none of them has any business carrying metres.
+`components/scene/room-camera.ts` resolves the name against `room-layout.ts`.
+
+That split also makes the track testable. `framingAt()` is pure arithmetic with
+no three.js import, so eight unit tests cover what would actually regress — a
+beat pointing at the wrong object, a keyframe off by half a band, a zoom
+widened past the point where the room stops being a room. What is left in the
+Rig is four lines of damping, and no unit test can tell you those look right;
+that is what SCENE.md's "look at the room" step is for.
+
+### Two decisions
+
+**Pans more than it zooms.** The spike's constraint still holds — pushing to
+132 cropped the walls off every edge and lost the room. The framings stay in a
+93–135 band (a test enforces it) and the work of "look at this" is done by
+moving what the camera aims at.
+
+**Keyframes at the CENTRE of each beat's band, not its edges.** A beat's copy
+is centred in its band, so the camera is on the object exactly when the
+sentence about it is centred on screen. Keying the edges would have the camera
+arrive at each object just as its paragraph left.
+
+### One bug worth recording
+
+`toEqual` on a framing at a beat centre failed by a float bit. `a + (b - a) * t`
+does not return exactly `b` at t=1; `(1 - t) * a + t * b` does. A camera landing
+1e-16 short of the object is invisible on screen and fatal to the one assertion
+the whole track exists to support.
+
+### Deliberately not done
+
+**A per-beat static frame under reduced motion**, which EI-276's acceptance
+criteria ask for. Reduced motion currently gets `StaticStage` and never mounts
+the canvas at all — rendering WebGL for someone who asked for stillness to show
+them a still is the wrong trade, and the flat stage already tells the story.
+Flagged rather than silently decided either way.
+
+### Measured
+
+Scroll frame cost through the whole story: median **8.4 ms**, max 22.0 ms,
+**zero frames over 33 ms** (spike baseline: median 8.3 ms). Caveat worth
+keeping: dev build, synthetic rAF-driven scroll, and the measuring loop itself
+competes for the frame — so the median and the over-33ms count are the
+trustworthy numbers, not p95.
+
+Eager JS unchanged at 342.8 KB gz; three.js still 0.0 KB eager. The camera code
+adds 1.2 KB to the lazy chunk (241.4 → 242.6 KB gz).
+
+### Verified
+
+`npm run verify` green (156 files, 2383 tests). The gate the way CI runs it:
+113 passed, 0 flaky. Looked at in the browser at beats 2, 4 and 5 — swatch
+wall, wall shelf, and the console with the new set.
