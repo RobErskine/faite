@@ -2233,3 +2233,15 @@ FISH placement carries the identical rotationY, since the split pair only
 stays nested while origin and rotation match. Books up 0.35 → 0.48 m: true
 to life read as clutter at diorama distance. Verified by screenshot: fish
 inside the glass after the turn, books legible on the shelf.
+
+### Documented and shipped
+
+`docs/SCENE.md` written as the standing procedure for the scene: file map,
+the three load invariants, the measured budget, the two permanent guards
+(app-shell exclusion, the CC-BY chain), the bake pipeline's normalisation
+contract and spec options, placement/theming rules, the add-a-model recipe,
+the "look at the room" verification step, the composition rules the review
+rounds produced, and the four traps. Indexed in `docs/README.md`; a short
+rules section added to `AGENTS.md`; the runbook's "nothing here ships"
+premise corrected and pointed at the doc. `site.ts`'s `/spike-3d` comment
+rewritten - it ships deliberately now, to be re-measured live.

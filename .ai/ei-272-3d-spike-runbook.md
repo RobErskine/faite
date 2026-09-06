@@ -1,7 +1,14 @@
 # EI-272 — 3D homepage scene spike
 
-Throwaway. Nothing on this branch ships. Read `docs/RESEARCH.md` §1 and the
-homepage story plan for why the scene exists at all.
+**Superseded by `docs/SCENE.md`** — that is the standing procedure; this file
+is kept as the point-in-time record of the measurements below and the
+reasoning that produced them.
+
+Written as a throwaway on the premise that nothing on this branch would ship.
+That premise did not survive: the spike answered its question, the room was
+then designed over five review rounds, and `/spike-3d` ships deliberately so
+§"Results" can be re-measured on real hardware. Read `docs/RESEARCH.md` §1 for
+why the scene exists at all.
 
 **Verdict: the architecture holds. Proceed to Tier 3 (three.js), with the two
 guards below made permanent.**
