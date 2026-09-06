@@ -36,7 +36,7 @@
 /*
   Viewport HEIGHT, deliberately — not width, and not `touch:`.
 
-  Overdrive's centred dialog (docs/OVERDRIVE.md §9) needs vertical room: for
+  Overdrive's centered dialog (docs/OVERDRIVE.md §9) needs vertical room: for
   itself, and for the decision toast that sits under it. What it can't cope
   with is a SHORT viewport, and short doesn't correlate with either of the
   conditions we already have variants for. A landscape iPhone is 734px wide
@@ -45,7 +45,7 @@
   actually leaves no room. `touch:` gets it wrong the other way: an iPad has
   no hover but plenty of height, and would be needlessly cramped.
 
-  So: `tall:` is "there is vertical room for a centred dialog." Below it,
+  So: `tall:` is "there is vertical room for a centered dialog." Below it,
   Overdrive falls back to the full-bleed presentation it had before.
 */
 @custom-variant tall (@media (min-height: 40rem));
@@ -246,7 +246,7 @@
 
   /*
     The spectrum (docs/DESIGN.md §1): peach → rose → lavender → sky at low
-    chroma. A gradient, so it is not a colour token — it reaches the DOM
+    chroma. A gradient, so it is not a color token — it reaches the DOM
     through the `hairline-spectrum` utility and hand-written CSS only.
     `--spectrum-solid` is the lavender stop on its own, for rings and any
     place a gradient cannot go.
@@ -451,7 +451,7 @@
    maps those names onto these properties and re-tints the loaded scene.
 
    Deliberately NOT derived from the app's `--background`/`--foreground` scale.
-   That scale is achromatic by design, and a room rendered in greys reads as a
+   That scale is achromatic by design, and a room rendered in grays reads as a
    wireframe. These are the one place in the app allowed real hue — but they
    still live here, as tokens, so the scene follows the theme and survives
    EI-265/EI-267 rather than hard-coding hex into a scene graph.
@@ -459,9 +459,9 @@
    HEX, not OKLCH, and that is not an oversight. These are the only tokens in
    the app read by JavaScript rather than by CSS, and a custom property is
    SUBSTITUTION-ONLY: `getPropertyValue()` hands back the literal text, never a
-   resolved colour. three.js's `Color.setStyle()` parses hex, `rgb()` and
+   resolved color. three.js's `Color.setStyle()` parses hex, `rgb()` and
    `hsl()` — give it `oklch()` or `light-dark()` and it throws, the catch in
-   `room-materials.ts` keeps the baked colour, and the whole token system
+   `room-materials.ts` keeps the baked color, and the whole token system
    silently does nothing while looking like it works. Hex is what survives the
    round trip.
 
@@ -472,7 +472,7 @@
 /*
    The scheme is a warm/cool complement: warm oak floor and walnut tables
    against a slate-blue couch, with everything else held neutral (greige rug,
-   linen curtains, off-white built-ins) so exactly three things carry colour -
+   linen curtains, off-white built-ins) so exactly three things carry color -
    the couch, the plants, and whatever the wall is being painted. A room where
    every object has a hue is a toy; a room where three do is an apartment.
 */

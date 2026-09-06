@@ -60,7 +60,7 @@ export interface PullArgs {
  * Clamps pull arguments from either transport.
  *
  * The asymmetry between the two inputs is deliberate and matches the
- * pre-existing HTTP behaviour exactly, so this refactor is a no-op for the
+ * pre-existing HTTP behavior exactly, so this refactor is a no-op for the
  * route:
  *
  *   - **cursor** is REJECTED when absent or invalid (`null`). A wrong cursor

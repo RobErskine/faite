@@ -5,7 +5,7 @@ import { switchToDays, switchToLists } from "./support/phone";
  * Cross-viewport functional contract — runs on every project in
  * playwright.config.ts (desktop, tablet, phone portrait/landscape).
  *
- * Written before P3's phone shell existed, to lock in behaviour (not
+ * Written before P3's phone shell existed, to lock in behavior (not
  * layout) that had to survive both the P2 extraction and P3 landing.
  * `PhoneBoard` genuinely differs from `DesktopBoard` now — it shows exactly
  * one of its two pagers at a time, defaulting to "Days" — so a few of these
@@ -145,7 +145,7 @@ test("mod+k opens the palette from the keyboard", async ({ page }) => {
  * Confetti pixels are unassertable, but its DELIVERY is not: `canvas-confetti`
  * appends a lone `position: fixed` `<canvas>` straight to `<body>`, and this
  * app never otherwise puts a canvas there. So "a canvas exists" is a true
- * end-to-end proof that the setting was read, the origin resolved, the colour
+ * end-to-end proof that the setting was read, the origin resolved, the color
  * resolved, and the lazy chunk loaded.
  *
  * Lives here rather than in a `good-job.spec.ts` of its own: `core-flows` is

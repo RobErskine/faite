@@ -383,7 +383,7 @@ Three layers, all required:
 - **`src/components/board/command-palette.test.tsx`** — happy-dom, asserts on
   what actually reaches the DOM. This layer is not optional: the matcher can be
   perfectly correct while cmdk scores the row to zero and hides it. Any new
-  matcher behaviour needs a DOM test proving it survives cmdk. The
+  matcher behavior needs a DOM test proving it survives cmdk. The
   `"CommandPalette — @list mention"` block covers §5's list half: the popover
   opening in both root and `New to-do` modes, selection stripping the token
   and showing the chip, and the no-match case staying closed. The

@@ -246,7 +246,7 @@ describe("buildNavGrid", () => {
   });
 
   it("cardItems reproduces the plain all-cards column", () => {
-    // A port test: the migration from `todoIds` to `items` must be behaviour
+    // A port test: the migration from `todoIds` to `items` must be behavior
     // preserving for every ungrouped column, which is the whole planning half.
     expect(cardItems(["a1", "a2"])).toEqual([
       { kind: "card", id: "a1" },
@@ -361,7 +361,7 @@ describe("resolveNavTarget — vertical", () => {
 describe("resolveNavTarget — horizontal", () => {
   const grid = fixture();
 
-  it("moves between neighbouring columns", () => {
+  it("moves between neighboring columns", () => {
     expect(resolveNavTarget(grid, addStop("list:overall"), "ArrowLeft", NOWHERE)).toBe(
       addStop("list:backlog"),
     );

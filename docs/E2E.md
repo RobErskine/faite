@@ -47,7 +47,7 @@ No app source was changed to make seeding work. `useBootstrap()`
 (`src/lib/store/hooks.ts`) already seeds a Backlog list, four starter lists,
 and a default tab into any empty IndexedDB on boot, and Playwright gives
 every test its own fresh, isolated browser context by default — so "fresh
-store" and "seeded board" fall out of the app's own first-run behaviour for
+store" and "seeded board" fall out of the app's own first-run behavior for
 free. Content-bearing tests seed further through the real UI (typing into
 quick-add, pressing Enter) rather than reaching into Dexie, which is both
 more realistic and requires zero test-only hooks in app code.
@@ -280,7 +280,7 @@ deferring the rest gives up.
   in the config now instead of skipped at runtime.
 - **`multi-drag` on `desktop` only** (EI-194). Cmd+click has no touch
   equivalent, and the gesture is desktop-scoped by design. Nothing is traded:
-  there is no behaviour here for another viewport to have.
+  there is no behavior here for another viewport to have.
 - **`completion-tooltip` on `desktop` only** (EI-196). It needs CDP mouse
   input, which is Chromium-only, and a hover has no meaning on a touch
   project. Note this spec leads with a deliberate **CONTROL** test that hovers
@@ -292,7 +292,7 @@ deferring the rest gives up.
   Also unchanged: `pointer: coarse` doesn't exist on desktop, and CDP touch
   dispatch is only wired for the `phone-*` projects (§3).
 - **`core-flows` everywhere.** Untouched on purpose. This is the
-  cross-viewport behaviour contract — it is the one suite whose whole reason
+  cross-viewport behavior contract — it is the one suite whose whole reason
   for existing is running on all five, and it stays that way.
 - **`reminders` on `desktop` + `phone-iphone` only.** *Traded away:* tablet,
   landscape and Pixel. This spec asserts what got written to the store and
@@ -332,7 +332,7 @@ deferring the rest gives up.
   — see the spec file's own comment. **Risk accepted:** none specific to
   this feature beyond what `reminders` already accepts; the card's own
   visual layout (image/no-image, hostname fallback) has no cross-viewport
-  behaviour to lose by skipping tablet/landscape/Pixel.
+  behavior to lose by skipping tablet/landscape/Pixel.
 
 ### 8.3 The one change that wasn't a coverage trade
 
@@ -417,7 +417,7 @@ for that spec rather than deleting it globally.
 - **`concurrency` with `cancel-in-progress` on PRs.** Pushing three times to
   a PR used to leave three full runs racing for runners when only the last
   one's result would ever be read. `main` is exempt: each push there gets
-  its own group, so a merge is never cancelled by the merge behind it.
+  its own group, so a merge is never canceled by the merge behind it.
 - **CI is skipped for docs-only commits** (`paths-ignore: **/*.md`, `.ai/**`,
   `LICENSE`) and **e2e is skipped on merges to `main`**. A `pull_request`
   run tests the *merge result*, not the branch tip, so re-running e2e on

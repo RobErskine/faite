@@ -11,17 +11,17 @@ import { pageMetadata } from "@/lib/metadata";
 export const metadata = pageMetadata("/colophon");
 
 /**
- * The credits page — and, for two of the models below, a licence condition
+ * The credits page — and, for two of the models below, a license condition
  * rather than a courtesy.
  *
  * CC0 waives everything; a CC0 asset may ship uncredited. **CC-BY grants the
- * licence only if attribution is given**, so a CC-BY model whose credit is not
+ * license only if attribution is given**, so a CC-BY model whose credit is not
  * on a page a user can reach is a model Faite is not licensed to use. That is
  * why this page has a `SITE_PAGES` row and a footer link rather than living in
  * a README.
  *
  * `assets/scene/CREDITS.md` is the machine-side record next to the vendored
- * sources. Adding a CC-BY asset there without adding it here is a licence
+ * sources. Adding a CC-BY asset there without adding it here is a license
  * violation, not a missing nicety.
  */
 export default function ColophonPage() {

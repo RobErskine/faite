@@ -116,7 +116,7 @@ describe("clampPullArgs", () => {
     expect(clampPullArgs(Number.POSITIVE_INFINITY, 10)).toBeNull();
   });
 
-  it("treats an explicitly empty query param as cursor 0, matching the HTTP route's prior behaviour", () => {
+  it("treats an explicitly empty query param as cursor 0, matching the HTTP route's prior behavior", () => {
     expect(clampPullArgs("", undefined)?.cursor).toBe(0);
   });
 

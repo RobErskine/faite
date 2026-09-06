@@ -37,7 +37,7 @@ below can.
 | `⌘⇧A` / `Ctrl+Shift+A` | Toggle the global activity feed | none |
 | `⇧⌘Z` | **Deliberately unbound.** Redo does not exist; see ARCHITECTURE §2.11 | — |
 
-**Local** — `onKeyDown` on the element that owns the behaviour. Hand-authored
+**Local** — `onKeyDown` on the element that owns the behavior. Hand-authored
 in `shortcuts.ts`'s `LOCAL_SHORTCUTS`, each with a `source` field pointing
 here; nothing enforces this table or that array stay in sync with the code
 the way the global half is enforced — see §5 for the recipe that's supposed
@@ -194,13 +194,13 @@ you get it for free. It is ours rather than the library's because whether
 failure mode is invisible.
 
 Swallowing a chord you don't handle is worse than not binding it: it does
-nothing, and it makes adding the real behaviour later a change in behaviour.
+nothing, and it makes adding the real behavior later a change in behavior.
 
 ---
 
 ## 5. How to add a shortcut
 
-1. **Can it be local?** If the behaviour needs focus on a control, put
+1. **Can it be local?** If the behavior needs focus on a control, put
    `onKeyDown` on that control and stop here — but still do steps 4 and 6.
 2. **Check §1 and §3** — is the chord claimed by cmdk, Base UI, dnd-kit, or the
    OS?
@@ -404,7 +404,7 @@ Follow the `drop-animation.test.ts` precedent: **extract the pure function and
 test that.** Simulating key events through Testing Library tests the browser
 more than it tests the code. `src/lib/keyboard.test.ts` covers:
 
-- `parseCombo` — modifier/key split, alias normalisation, case and whitespace.
+- `parseCombo` — modifier/key split, alias normalization, case and whitespace.
 - `hasExactModifiers` — `mod` matches either Ctrl or Meta but **not both**;
   rejects an unrequested extra modifier (the `⇧⌘Z` case); distinguishes an
   explicit `ctrl+` combo from `meta`.
@@ -442,12 +442,12 @@ Component-level tests only for wiring pure functions cannot reach, using the
   - **End** — `"<title> was dropped in <column>, position <i> of <n>."`, computed
     from `over` (dnd-kit calls this before the app's own `onDragEnd` handler runs
     and before React re-renders, so it can't read the post-drop board back)
-  - **Cancel** — `"<title>. Drag cancelled, still in <column>."`
+  - **Cancel** — `"<title>. Drag canceled, still in <column>."`
 
   `<column>` is a day's weekday name, `"Overflow"`, or a list's name — the same
   labels the columns render. List/tab reorder drags (`listdrag:`/`tabdrag:` ids)
   get a shorter parallel set: `"<name> list/tab. Picked up for reordering."` /
-  `"… was dropped."` / `"… reorder cancelled."`, no over-announcement (kept
+  `"… was dropped."` / `"… reorder canceled."`, no over-announcement (kept
   simple; the vocabulary above is about cards, which is what EI-84 scoped).
   dnd-kit renders its own visually-hidden live region — this is content going
   into that region, not a second `aria-live` element beside it.
@@ -522,7 +522,7 @@ nobody "tidies" it into `board.tsx`'s table:
   on the board, the rail handle's 16px nudge, dnd-kit's keyboard drag, and
   cmdk's `↑ ↓` inside the palette — all four are in the §1 table.
 - §3 forbids bare-key globals for exactly this reason, and permits them locally.
-- The behaviour is meaningless without a focused stop, which is §2's test for
+- The behavior is meaningless without a focused stop, which is §2's test for
   "local".
 
 The registry stays for chords that must work from anywhere. This is the other
@@ -623,7 +623,7 @@ and nothing warns.
 ## 13. Sources
 
 Verified August 2026. Re-check before changing §7 — the v4 → v5 migration
-changed matching behaviour, so version-specific claims go stale.
+changed matching behavior, so version-specific claims go stale.
 
 - [react-hotkeys-hook on npm](https://www.npmjs.com/package/react-hotkeys-hook)
   — v5.3.3, published 2026-06-26, peer dep `react >=16.8.0`.

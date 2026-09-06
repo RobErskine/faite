@@ -135,12 +135,12 @@ export function DateNav({
   return (
     /*
       Three tracks rather than the old `[label][ml-auto cluster]`, so the view
-      controls sit centred on the BAR rather than centred on whatever the range
+      controls sit centered on the BAR rather than centered on whatever the range
       label and the jump cluster leave over. `flex-1` on the outer two is what
       does it: they claim equal space regardless of their content, which is why
       the middle stays put as jump buttons appear and disappear (they render
       conditionally — see the comment above this component). `min-w-0` lets the
-      label truncate instead of pushing the centre off-axis.
+      label truncate instead of pushing the center off-axis.
     */
     <div className="flex items-center gap-2 px-4 py-2">
       {/*

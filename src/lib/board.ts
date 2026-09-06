@@ -224,7 +224,7 @@ export function planListDrop(
   const fromIndex = movable.findIndex((l) => l.id === draggedId);
   if (fromIndex < 0) return null;
 
-  // The dragged column must not be one of its own neighbours — same rule as
+  // The dragged column must not be one of its own neighbors — same rule as
   // reordering todos.
   const remaining = movable.filter((l) => l.id !== draggedId);
 
@@ -267,7 +267,7 @@ export function planTabDrop(
   const fromIndex = tabs.findIndex((t) => t.id === draggedId);
   if (fromIndex < 0) return null;
 
-  // The dragged tab must not be one of its own neighbours.
+  // The dragged tab must not be one of its own neighbors.
   const remaining = tabs.filter((t) => t.id !== draggedId);
   const overIndex = remaining.findIndex((t) => t.id === overTabId);
   if (overIndex < 0) return null; // dropped on itself, or an unknown tab
@@ -350,7 +350,7 @@ export function planListDayDrop(
  * destination tab's own ordering at all, so there is no "direction" to read.
  * This always lands AFTER the hovered column instead, the same convention
  * `planListDrop` already uses for "dropped on Backlog" (`§4.10`): arriving
- * content, not a neighbour changing places.
+ * content, not a neighbor changing places.
  *
  * `overListId: null` means "dropped directly on the pill", which lands at the
  * END of the destination tab's track — the only way to reach the last slot
@@ -394,7 +394,7 @@ export function planListTabDrop(
 }
 
 /**
- * "To " is a filing artefact, not part of the name.
+ * "To " is a filing artifact, not part of the name.
  *
  * "To Buy", "To Read" and "To Watch" would otherwise all sort under T and the
  * alphabet would do no work at all — the entire reason to sort group headers is
@@ -436,12 +436,12 @@ const COLLATOR = new Intl.Collator(undefined, {
  * Order group headers within one computed column: BY TAB, then alphabetically.
  *
  * The tab level came second and is the load-bearing half. Group headers take
- * their colour from the owning tab (a list is born colourless — see
+ * their color from the owning tab (a list is born colourless — see
  * `effectiveListColor`), so a column holding work from three tabs already
- * shows three colours; sorting on the list name alone then scattered them,
- * putting two lists of the SAME colour either side of a list of another. The
- * colour said "these belong together" and the order said otherwise. Runs now
- * follow the tab strip, so what the eye groups by colour is contiguous.
+ * shows three colors; sorting on the list name alone then scattered them,
+ * putting two lists of the SAME color either side of a list of another. The
+ * color said "these belong together" and the order said otherwise. Runs now
+ * follow the tab strip, so what the eye groups by color is contiguous.
  *
  * The alphabet still decides everything INSIDE a run, which is where it does
  * real work: a tab has few enough lists to scan, and the tab strip has no
@@ -552,7 +552,7 @@ export interface OverflowColumn {
  * are ordered by different rules entirely (§4.13: the planning half is
  * arranged by hand, the calendar half is computed), and the columns between
  * them on screen are not a sequence you can walk. Returning null lets the
- * caller re-anchor on the clicked card instead, which is the behaviour that
+ * caller re-anchor on the clicked card instead, which is the behavior that
  * needs no explaining.
  *
  * Within a column it IS well defined, including a day column: `column.todos`
@@ -831,7 +831,7 @@ export interface BuildBoardOptions {
    * `effectiveListColor`, lib/colors.ts) and the tab level of the group sort
    * (`position`, see `byListGroup`). Omitted defaults to an empty map, i.e.
    * `color` is exactly `list.color` and every group sorts as untabbed —
-   * alphabetically, the behaviour this had before tabs entered the sort.
+   * alphabetically, the behavior this had before tabs entered the sort.
    */
   tabsById?: ReadonlyMap<string, Pick<Tab, "color" | "position">>;
 }
@@ -840,7 +840,7 @@ export interface BuildBoardOptions {
  * Group todos into columns.
  *
  * `visibleStatuses` decides which statuses reach the board at all, defaulting
- * to `["open"]` — the behaviour this had unconditionally before it was a
+ * to `["open"]` — the behavior this had unconditionally before it was a
  * setting. Settled work (`done`/`dropped`) takes a DIFFERENT placement path:
  * see `placeSettled` below for why it must not go through `deriveColumn`.
  *
@@ -852,7 +852,7 @@ export interface BuildBoardOptions {
  * `hiddenLists` carries RECORDS rather than ids, and that is load bearing now
  * that day columns group by list. The calendar branch below runs before the tab
  * check, so a day column routinely holds a card whose list is not in `lists` at
- * all — grouping it needs that list's name and colour. With ids alone, every
+ * all — grouping it needs that list's name and color. With ids alone, every
  * other tab's scheduled work would group under Backlog, indistinguishable from a
  * genuinely homeless todo, and a drop on that header would then REWRITE its
  * `listId` to Backlog's.

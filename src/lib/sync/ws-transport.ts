@@ -99,7 +99,7 @@ function socketUrl(path: string): string {
  * The desktop shell's bearer token, offered as a WS subprotocol — `[]` for
  * every other case (ordinary browser session, or desktop with no token
  * stored yet), which `WebSocket`'s constructor treats as "no protocols
- * requested", identical to today's behaviour.
+ * requested", identical to today's behavior.
  */
 async function wsSubprotocols(): Promise<string[]> {
   if (!isDesktopShell()) return [];

@@ -1,9 +1,9 @@
 /**
- * EI-272 — where everything sits, in metres.
+ * EI-272 — where everything sits, in meters.
  *
  * Placement lives here rather than baked into the GLB on purpose. The GLB is
  * produced by `scripts/scene/build-room.mjs`, which drops every prop at the
- * origin, normalised: front facing +Z, scaled to a real-world size, centred on
+ * origin, normalized: front facing +Z, scaled to a real-world size, centered on
  * X/Z and sitting on Y=0. So a position below is a position in a real room,
  * and it can be nudged without re-running the build.
  *
@@ -35,12 +35,12 @@ export type PropPlacement = {
   /** Node name in the GLB, from `SCENE_MODELS` in `scripts/scene/build-room.mjs`. */
   node: string;
   position: Vec3;
-  /** Y rotation in radians, applied on top of the model's normalised +Z facing. */
+  /** Y rotation in radians, applied on top of the model's normalized +Z facing. */
   rotationY?: number;
 };
 
 /**
- * Floor extent in metres. The camera framing in `room-scene.tsx` assumes this.
+ * Floor extent in meters. The camera framing in `room-scene.tsx` assumes this.
  *
  * 5.4 x 4.6, down from 6 x 5: review feedback was that the console and TV
  * looked toy-sized against the room, and they were - a 6 m wall will do that
@@ -58,13 +58,13 @@ const HALF_W = ROOM.width / 2; // walls' inner faces: x = -3.0, z = -2.5
 const HALF_D = ROOM.depth / 2;
 
 /**
- * The console's top surface, in metres.
+ * The console's top surface, in meters.
  *
  * `Shelf_Small1` measures 1.944 x 0.577 units at source, so its height is
  * 0.297 of its width; scaled to a 1.5 m console that puts the top at 0.445 m.
  * The television and the small plant both stand on this. **If the console's
  * target size changes in `build-room.mjs`, this number changes with it** — the
- * models are normalised to sit on Y=0, so nothing else corrects for it.
+ * models are normalized to sit on Y=0, so nothing else corrects for it.
  */
 const CONSOLE_TOP = 0.445;
 
@@ -87,7 +87,7 @@ export const STATIC_PROPS: PropPlacement[] = [
   // ONE shelf (review: the stacked pair read as a hovering cabinet), over the
   // console's plant end, with the book stack on its top surface (unit height
   // 0.412, so 1.5 + 0.412). Books replaced the small plant's clone here —
-  // review: two identical plants a metre apart read as a copy-paste.
+  // review: two identical plants a meter apart read as a copy-paste.
   { node: "wall_shelf", position: [LEFT_WALL_X + 0.06, 1.5, -0.58], rotationY: Math.PI / 2 },
   { node: "books", position: [LEFT_WALL_X + 0.06, 1.912, -0.58], rotationY: Math.PI / 2 },
   { node: "door", position: [-HALF_W + 0.1, 0, 1.55], rotationY: Math.PI / 2 },
@@ -174,11 +174,11 @@ export const FISH: PropPlacement = {
  * rectangle is a painted rectangle.
  */
 export const SWATCHES = {
-  /** Candidate colours the beat cycles through, then abandons. Muted,
+  /** Candidate colors the beat cycles through, then abandons. Muted,
    *  interior-paint chips rather than primaries. */
   candidates: ["#b6bfae", "#cfae94", "#a8b8c6", "#c9a9a6"],
   /**
-   * `null` means "the wall's own colour" - which is a theme token now, read at
+   * `null` means "the wall's own color" - which is a theme token now, read at
    * runtime by `RoomShell`, so it cannot be a hex here without forking from
    * dark mode.
    */

@@ -197,7 +197,7 @@ a catch-all is the toggle, not a rule you create there.
 Because the catch-all sends *everything* on the zone to the ingest Worker, any
 apex address you actually want has to be a literal rule that outranks it.
 
-Worth doing, since the Worker hard-550s anything it does not recognise and
+Worth doing, since the Worker hard-550s anything it does not recognize and
 `myfaite.app` is a domain we *send* from — hard-rejecting `postmaster@` and
 `abuse@` is a deliverability liability:
 

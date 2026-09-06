@@ -27,7 +27,7 @@ describe("fractional ordering", () => {
     expect([...positions].sort()).toEqual(positions);
   });
 
-  it("inserts strictly between neighbours", () => {
+  it("inserts strictly between neighbors", () => {
     const a = positionAtEnd(null);
     const b = positionAtEnd(a);
     const mid = positionBetween(a, b);
@@ -107,7 +107,7 @@ describe("positionForDropOnItem", () => {
 
   it("matches positionForIndex when the dragged card is not a sibling", () => {
     // A cross-column drop: the filter is a no-op, so nothing about the
-    // existing behaviour may change.
+    // existing behavior may change.
     const items = column();
     const position = positionForDropOnItem(items, "elsewhere", "c");
     expect(position).toBe(positionForIndex(items, 2));
@@ -160,7 +160,7 @@ describe("positionsForDropOnItem", () => {
     expect(out[2] < items[2].position).toBe(true);
   });
 
-  it("excludes every mover from the neighbour list, not just the hovered one", () => {
+  it("excludes every mover from the neighbor list, not just the hovered one", () => {
     // With b and c both moving, a run dropped on d must not be interleaved
     // with cards that are about to leave from between them.
     const items = column();

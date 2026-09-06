@@ -43,7 +43,7 @@ archived by its owner on 2026-06-12. So: our own card, our own fetcher.
 
 ### Decisions Rob made (2026-08-29)
 
-1. **Paste behaviour:** explicit only. Pasting gives an inline link; you press
+1. **Paste behavior:** explicit only. Pasting gives an inline link; you press
    **Card** to convert. No auto-card on paste.
 2. **`og:image`:** load straight from the remote origin with
    `referrerPolicy="no-referrer"`. No Worker image proxy in v1.
@@ -84,7 +84,7 @@ stored by any user would silently become a card the day this shipped.
 
 ### Dead end 2: a `linkPreview` block round-tripping via its own `toExternalHTML`/`parse`
 
-The documented fallback — a ```linkcard fenced code block, recognised by a
+The documented fallback — a ```linkcard fenced code block, recognized by a
 custom block's own `parse` rule — is *also* a dead end, for a reason that
 only shows up empirically. BlockNote's markdown tokenizer hardcodes fenced
 code as `<pre><code data-language="...">` for **every** language string

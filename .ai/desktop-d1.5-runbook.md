@@ -239,7 +239,7 @@ Manual smoke — **the part D1 never did**:
 4. Resize/move → quit → relaunch → geometry restored
    (`tauri-plugin-window-state`, never verified).
 5. Menu bar shows Faite/Edit/Window; Cmd-C/V/A work in the todo input.
-6. **The dock behaviour:** Cmd-W closes the window, app stays in the dock; click
+6. **The dock behavior:** Cmd-W closes the window, app stays in the dock; click
    the dock icon → same window returns, focused, state intact. Cmd-Q quits.
 7. Cmd-Tab shows Faite with the branded icon.
 8. `ps -o rss= -p $(pgrep -x Faite)` — records the signed-bundle, single-window

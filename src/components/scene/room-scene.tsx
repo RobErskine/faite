@@ -61,7 +61,7 @@ const SCENE_URL = "/scene/living-room.glb";
  * 0.85-1.00  snap back to bare. The indecision IS the animation.
  */
 function wallColourAt(t: number): string | null {
-  if (t < 0.35 || t > 0.85) return null; // bare - the wall's own theme colour
+  if (t < 0.35 || t > 0.85) return null; // bare - the wall's own theme color
   const span = (t - 0.35) / 0.5;
   const n = SWATCHES.candidates.length;
   return SWATCHES.candidates[Math.min(n - 1, Math.floor(span * n))];
@@ -114,7 +114,7 @@ const SHELL_FALLBACK: ShellPalette = {
 };
 
 /**
- * The shell's colours come from the same `--room-*` tokens as the furniture.
+ * The shell's colors come from the same `--room-*` tokens as the furniture.
  * They were hardcoded at first, and the screenshot that caught it was
  * incoherent in exactly the way you would predict: dark mode dimmed every
  * loaded prop while the floor and walls stayed at noon.
@@ -153,7 +153,7 @@ function useShellPalette(): ShellPalette {
 
 /**
  * Floor and two walls. Procedural because they are boxes, and because the back
- * wall is the one surface whose colour animates — it is the subject of the
+ * wall is the one surface whose color animates — it is the subject of the
  * beat, not scenery.
  */
 function RoomShell({ progress }: { progress: Progress }) {

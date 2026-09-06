@@ -11,7 +11,7 @@ import {
 
 /**
  * A deliberately dumb SQL stand-in: it records statements and models the one
- * behaviour these tests care about — the `schema_migrations` ledger. Enough
+ * behavior these tests care about — the `schema_migrations` ledger. Enough
  * to pin ordering, atomicity, and idempotence without a Durable Object.
  * The real SQL is exercised by `scripts/sync-smoke/`.
  */

@@ -358,7 +358,7 @@ export function useBoardData(params: UseBoardDataParams) {
    *
    * Records rather than ids, because day columns group by list: a card scheduled
    * from another tab's list still shows on its day, and its group needs that
-   * list's name and colour. With ids alone it would group under Backlog — and a
+   * list's name and color. With ids alone it would group under Backlog — and a
    * drop on that header would then rewrite its `listId`.
    */
   const hiddenLists = useMemo(
@@ -593,10 +593,10 @@ export function useBoardData(params: UseBoardDataParams) {
   const tabCounts = useMemo(() => tabCountsFrom(lists, nonTemplateTodos), [lists, nonTemplateTodos]);
 
   /**
-   * Every list a todo could point at, for the day sheet's timeline colours.
+   * Every list a todo could point at, for the day sheet's timeline colors.
    *
    * Includes ARCHIVED lists on purpose: a todo finished last week whose list has
-   * since been filed still happened, and the timeline losing its colour would
+   * since been filed still happened, and the timeline losing its color would
    * make it look like it never belonged anywhere.
    */
   const listsById = useMemo(
@@ -702,7 +702,7 @@ export function useBoardData(params: UseBoardDataParams) {
    * has to stay the full contiguous list rather than following `trackSlots`,
    * or every jump past a collapsed weekend would land short. A strip's own
    * key is not in here at all; `indexOf` returns -1 and the caller falls
-   * through to `scrollIntoView`, which is the right behaviour for something
+   * through to `scrollIntoView`, which is the right behavior for something
    * whose position is not a day.
    */
   const dayIds = useMemo(() => board?.days.map((c) => c.id) ?? [], [board]);
@@ -756,7 +756,7 @@ export function useBoardData(params: UseBoardDataParams) {
    * The group a release would land in, or null.
    *
    * Two cases, and they have to resolve the SAME WAY the write does, or the drop
-   * animation flies the card to an indicator the write will not honour:
+   * animation flies the card to an indicator the write will not honor:
    *
    *   over is a group      → that group
    *   over is a day column → the group matching the DRAGGED CARD'S OWN list,

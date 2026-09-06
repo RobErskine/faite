@@ -2,7 +2,7 @@
 
 **Self-contained handoff.** Everything needed to continue drag-and-drop work on
 Faite without reading the rest of the codebase. Read this top to bottom before
-changing anything; several behaviours look like bugs but are deliberate, and at
+changing anything; several behaviors look like bugs but are deliberate, and at
 least one "obvious improvement" has already been tried and reverted.
 
 ---
@@ -48,7 +48,7 @@ handle mid-drag.
 | `src/components/board/board-column.tsx` | `useDroppable` + `SortableContext`; `useDraggable` for column reorder; whole-header drag; drop-target visual states |
 | `src/components/board/todo-card.tsx` | `useSortable`; whole-row drag, out-of-flow grip, priority rail, inline location pin, insertion line |
 | `src/components/board/drag-grip.tsx` | The one grip affordance, shared by rows, columns and tabs |
-| `src/lib/priority.ts` | `PRIORITY_RAILS` — the width and colour of a card's priority rail, shared with the drag overlay chip; `byPriorityThenPosition`, which orders a group |
+| `src/lib/priority.ts` | `PRIORITY_RAILS` — the width and color of a card's priority rail, shared with the drag overlay chip; `byPriorityThenPosition`, which orders a group |
 | `src/lib/board.ts` | Id codecs, `preferPreciseTarget()`, and every pure drop planner — `planListDrop`, `planTabDrop`, `planListTabDrop`, `planListDayDrop` (§4.10e), `selectedTodosInBoardOrder`/`rangeSelectionIds` (§4.14). Plus `TodoGroup`, `listSortKey`, `byListGroup`, `dayGroupId` — the calendar half's computed grouping (§4.13) |
 | `src/components/board/create-list-column.tsx` | End-of-track "Create list" slot. Column-sized, deliberately **not** a droppable (§5.6) |
 | `src/components/board/use-day-track.ts` | Pure scroll-position/jump math for the day track (anchor index, jump clamping) — not itself drag-and-drop, but shares the track dnd-kit measures |
@@ -236,7 +236,7 @@ return positionForIndex(ordered, index);
 ```
 
 **The dragged item must be excluded from its own sibling list**, or it becomes
-one of its own neighbours and the new key can land on the wrong side of it.
+one of its own neighbors and the new key can land on the wrong side of it.
 
 **And the target's index must be read from that SAME filtered list.** This was
 one function for a reason (EI-191): the two lines above used to live apart, with
@@ -608,7 +608,7 @@ should become active and I can drop my list in this new tab."
 record.** `moveTodoToList`/`scheduleTodo` never enter the picture — nothing
 about the todos changes, only which tab their list renders under. Scheduled
 todos keep their day-column placement and keep grouping under the moved
-list's name and colour either way, because `hiddenLists` (`use-board-data.ts`)
+list's name and color either way, because `hiddenLists` (`use-board-data.ts`)
 already passes cross-tab lists as records rather than ids (§4.13) — that
 existed for the read path before this shipped, and needed no change.
 
@@ -647,7 +647,7 @@ the two columns never rendered in the same track: the dragged list isn't
 even a member of the destination tab's ordering yet. `planListTabDrop()`
 sidesteps the question instead of answering it wrong — every cross-tab drop
 lands **after** whatever it was dropped on (same convention `planListDrop`
-already uses for "dropped on Backlog": arriving content, not a neighbour
+already uses for "dropped on Backlog": arriving content, not a neighbor
 changing places), scoped to `lists.filter(l => l.isBacklog || l.tabId ===
 destinationTabId)`. `overListId: null` is the pill-drop case above, and
 lands at the end of that filtered, ordered list.
@@ -667,7 +667,7 @@ already visible to this drag too).
 lands on the pill directly (`dragged.tabId === overTabId` short-circuits) or
 among its own track's columns (`destinationTabId` compares equal to
 `dragged.tabId`, so the ordinary same-track `planListDrop()` path runs
-instead — same behaviour as before this shipped, unchanged).
+instead — same behavior as before this shipped, unchanged).
 
 Undo restores both fields in one step: `inversePatch(dragged, { tabId,
 position })`, not two separate undo entries — a half-undone cross-tab move
@@ -711,7 +711,7 @@ and can never both be under one pointer. Then `handleDragEnd`'s list branch
 had `if (target?.kind !== "list") return;` as its first act.
 
 **What `kind === "day"` excludes by omission is as load-bearing as what it
-includes**, and all three are the wanted behaviour rather than oversights:
+includes**, and all three are the wanted behavior rather than oversights:
 
 - **Overflow** parses as `{kind:"overflow"}`, never `"day"`, so it refuses a
   list drop exactly as it refuses a card drop (§5.1) — silently, with no
@@ -736,7 +736,7 @@ every one of them already has a day.
 **`landingTodoId` became `landingTodoIds: ReadonlySet<string>` here**, and it
 had to. One gesture now commits many to-dos, and with only the dragged id
 held back every other mover pops into its destination while the overlay is
-still travelling — precisely the failure the landing state exists to prevent
+still traveling — precisely the failure the landing state exists to prevent
 (§4.7). One overlay still flies; the rest wait for it. The write loop clears
 the set in a `finally` as well as from `onLand`, because N sequential Dexie
 transactions can outlast the `FLIGHT_MS + 250` backstop, and a row revealed
@@ -877,8 +877,8 @@ cards the eye passed over.
 `positionForDropOnItem`, and it is required to agree with it at `count === 1`
 — a one-card selection must land exactly where a plain drag of that card
 would. There is a test pinning that equality. It also excludes **every** mover
-from the neighbour list, not just the one under the cursor: leaving the others
-in lets a mover become its own run's neighbour and interleaves the result with
+from the neighbor list, not just the one under the cursor: leaving the others
+in lets a mover become its own run's neighbor and interleaves the result with
 cards that are about to move out from between them.
 
 The pointer decides where the *run* lands, not where within the run the
@@ -908,7 +908,7 @@ reads as data loss. There is no cap on selection size yet (§7).
 plain click on another card, `Escape`, a completed drop, and lifting a card
 that is *not* in the selection (the gesture is no longer about the selection,
 so leaving it highlighted would look armed). A drag **cancel** deliberately
-keeps it — Escape cancelled the lift, not the picking; a second Escape clears.
+keeps it — Escape canceled the lift, not the picking; a second Escape clears.
 The document listener is registered only while something is selected, and its
 `Escape` is guarded by `isTextEntry`, because Escape inside a column filter
 already means "clear the filter".
@@ -1090,7 +1090,7 @@ already under way, which is the one moment the affordance is not needed. Styling
 the pseudo-element opts the scroller out of overlay entirely. The two cannot be
 combined — Blink ignores these pseudo-elements outright once `scrollbar-width`
 is set to anything but `auto`, so adding it back "for Firefox" would silently
-return every Chrome user to overlay. Firefox keeps its native behaviour.
+return every Chrome user to overlay. Firefox keeps its native behavior.
 
 `column-track` deliberately sets **no `overflow-y`**. Left unset it computes to
 `auto` alongside the x-axis, so a column whose cards run past the bottom of the
@@ -1115,11 +1115,11 @@ then alphabetically** (`byListGroup` — see below), and sort within each group 
 hand.
 
 `byListGroup` is two-level, and the outer level is the one that matters. A group
-header takes its colour from the owning **tab** (a list is born colourless, so
+header takes its color from the owning **tab** (a list is born colourless, so
 `effectiveListColor` falls through to the tab almost always), which means a day
-holding work from three tabs already shows three colours. Sorting on the list
-name alone then scattered them — two same-coloured groups either side of a group
-of another colour, the colour saying "these belong together" while the order said
+holding work from three tabs already shows three colors. Sorting on the list
+name alone then scattered them — two same-colored groups either side of a group
+of another color, the color saying "these belong together" while the order said
 otherwise. So groups first sort on the owning tab's `position`, putting each
 tab's lists in one contiguous run **in tab-strip order**; the alphabet
 (`listSortKey`, which strips a leading "To ", so "To Buy" files under B) then
@@ -1180,7 +1180,7 @@ day columns are transient — 30 rendered against a 365 cap, and the track scrol
 so per-day state would be hundreds of entries needing garbage collection as
 `today` advances. It is not persisted yet, so it resets on reload.
 
-## 5. Deliberate behaviours — do not "fix" these
+## 5. Deliberate behaviors — do not "fix" these
 
 ### 5.1 Overflow refuses drops
 
@@ -1221,7 +1221,7 @@ Three rules, and each has a failure mode if changed:
 - **Always immediately left of the title or name.** On a column that meant
   moving it out of the header's right-hand action cluster. Backlog, which cannot
   be reordered, renders an **empty slot of the same width** — without it, its
-  title would sit flush left while every neighbouring column's title was
+  title would sit flush left while every neighboring column's title was
   indented past a grip. Day columns have no grips at all, so they reserve
   nothing. On a **card** the grip is still leftmost but is absolutely positioned
   in the row's 12px left gutter (`pl-3`) rather than sitting in the flex flow —
@@ -1231,7 +1231,7 @@ Three rules, and each has a failure mode if changed:
   an absolutely positioned `::before` rather than padding. Padding would have
   grown the button's box and pushed the title along with it; the pseudo-element
   costs nothing in layout, and pointer events on it still resolve to the button.
-  On a **column** the expansion stops ~2px short of the neighbouring control, so
+  On a **column** the expansion stops ~2px short of the neighboring control, so
   **widening it further would start stealing clicks from it.** On a **card** the
   horizontal expansion is switched off entirely (`before:-inset-y-1.5
   before:inset-x-0`), because an out-of-flow grip's 24px box would sit over the
@@ -1264,7 +1264,7 @@ grabbable with a mouse, `group-focus-within` means arrowing onto a row reveals t
 grip (so the keyboard path teaches itself), and the grip-means-draggable
 vocabulary is still taught by columns and tabs — `tab-strip.tsx` has always
 revealed its grip on hover, so a card now matches a tab rather than inventing a
-third behaviour.
+third behavior.
 
 It is still the keyboard activator and still a real focusable control carrying
 `aria-roledescription`. It is **no longer** the touch drag surface (§4.9).
@@ -1323,9 +1323,9 @@ and toasts with an Undo action, the same shape the palette's creates use.
   `lib/title.ts`, shared with the detail sheet's title field, and is the shape of
   a future local-only preference
 - **priority is a rail, not a chip** — an `aria-hidden` span, `absolute inset-y-0
-  left-0`, 1–3px wide, width and colour from `lib/priority.ts`. Four reasons it
+  left-0`, 1–3px wide, width and color from `lib/priority.ts`. Four reasons it
   is not `border-l`: a left border would indent the checkbox and title per level
-  (`border-box`), mitre against `border-b` into a coloured wedge, shift where the
+  (`border-box`), mitre against `border-b` into a colored wedge, shift where the
   insertion line starts (its position is load bearing, below), and fuse a run of
   same-priority cards into one continuous stripe instead of per-card ticks. The
   level reaches screen readers as `sr-only` text inside the title button
@@ -1377,9 +1377,9 @@ All use `outline-offset-[-2px]` to draw inside the column bounds.
 - header is `text-2xs` uppercase, chevron rotating on collapse, count shown only
   when collapsed but always in the accessible name — a screen-reader user has no
   "glance"
-- colour rides the header's `border-b` (`edge`) and a faint fill (`tint`), **never
+- color rides the header's `border-b` (`edge`) and a faint fill (`tint`), **never
   the text**: a step-9 hue at `text-2xs` fails contrast in one theme or the other
-- the cards sit on a `wash()` (~10%) of the list colour, applied to a wrapper
+- the cards sit on a `wash()` (~10%) of the list color, applied to a wrapper
   **behind** them rather than to each row. An inline `style.backgroundColor` on a
   row would beat `hover:bg-accent/50` outright, since inline always wins; behind
   them the 50%-alpha hover simply composites over it
@@ -1429,7 +1429,7 @@ It is the only always-on chrome either half has, and it is the reason the
 create-list slot is discoverable at all on a narrow window. See §4.12 for why it
 is a `::-webkit-scrollbar` and not `scrollbar-width: thin`.
 
-**Create list** (`create-list-column.tsx`) — dashed border, centred `+` and
+**Create list** (`create-list-column.tsx`) — dashed border, centered `+` and
 label; hover firms the border and lifts the text out of muted. No drag states at
 all, because it is not a droppable (§5.6). While its field is open the dashed
 border stays but the card fills faintly, so it reads as the same slot mid-edit
@@ -1546,7 +1546,7 @@ list — see §4.7 and §4.9.)
     does for a card drag; the dwell effect is gated on `activeTodo`. Symmetry
     says it should, blast radius said not in the same change.
 6. **Overlay width vs. cursor.** The overlay is `max-w-xs`; on a narrow column
-   it visually overhangs neighbours while only the cursor's column highlights.
+   it visually overhangs neighbors while only the cursor's column highlights.
    Correct, but arguably reads oddly — worth a look.
 7. **Column reorder has no keyboard path.** The header's grip is a focusable
    button carrying dnd-kit's attributes and `onKeyDown`, so Space should start a
@@ -1608,7 +1608,7 @@ rect-based collision logic cannot be meaningfully tested there.
    so this exercises the width morph.
 4. Start a drag — **every** column outlines dashed at once.
 5. Straddle two day columns — the column under the **cursor** highlights solid,
-   even though the card overlaps its neighbour. *(This was a reported bug.)*
+   even though the card overlaps its neighbor. *(This was a reported bug.)*
 6. Cross a boundary slowly — highlight switches cleanly, no dead zone or flicker.
 7. Hover empty space low in a column — still highlights; indicator at the end.
 8. Hover a specific card — indicator jumps to that card.
@@ -1624,7 +1624,7 @@ rect-based collision logic cannot be meaningfully tested there.
     in the air. Neither row is left invisible.
 16. **Narrow the window until the day track hits `--column-min`.** A ~60-character
     title wraps to at most 3 lines and clamps after; no card crosses into a
-    neighbouring column. Repeat with a title that is one unbroken 60-character
+    neighboring column. Repeat with a title that is one unbroken 60-character
     token — that is what `wrap-break-word` is for, and it fails differently.
     The second and third lines must run **under** the checkbox, not beside it.
 17. Four cards, P1 → P4, side by side. The rails differ by **both** thickness and
@@ -1653,12 +1653,12 @@ rect-based collision logic cannot be meaningfully tested there.
     card is in that column. Mark one done — it drops to "1 due".
 25. In the detail sheet, paste a long title: the field grows to 3 lines and then
     scrolls, and `Enter` commits rather than inserting a newline.
-26. Give two lists colours, then schedule cards from both onto one day. Two group
+26. Give two lists colors, then schedule cards from both onto one day. Two group
     headers, priority order inside each so the rails run thick → thin, and a faint
     wash behind each run.
 26b. Schedule cards onto one day from **two lists on one tab and one list on
     another**, named so the alphabet would interleave them (say `Admin` and
-    `Notes` on one tab, `Errands` on the other). The two same-coloured headers sit
+    `Notes` on one tab, `Errands` on the other). The two same-colored headers sit
     together, the runs follow the tab strip left to right, Backlog leads the
     column, and names stay A–Z *within* a run. Reorder the tab strip → the runs
     reorder with it.
@@ -1689,7 +1689,7 @@ rect-based collision logic cannot be meaningfully tested there.
 
 16. Grab the last list **by its title, not its grip**, and drop it on the
     leftmost movable column. It lands **immediately after Backlog, never before
-    it.** *(This was the requested behaviour.)*
+    it.** *(This was the requested behavior.)*
 17. Drag a column rightwards onto the last one — it lands **after** it, i.e.
     the end slot is reachable. That column shows the single active-outline
     border while hovered; releasing lands the dragged column just after it.
@@ -1738,7 +1738,7 @@ rect-based collision logic cannot be meaningfully tested there.
     tab**; switch back to the old tab and confirm none are left stranded
     there.
 30. Schedule a todo from the moved list onto a day *before* moving the list.
-    After the move, that day's group still shows the list's name and colour,
+    After the move, that day's group still shows the list's name and color,
     from either tab — nothing about a scheduled todo's placement should
     change.
 31. Drop the list back onto the tab it's already on — via its own pill and
@@ -1768,8 +1768,8 @@ rect-based collision logic cannot be meaningfully tested there.
     destructive styling, no end-of-column card dot, and the tab-reorder
     insertion bar never appears.
 47. Release. Every unscheduled to-do from that list appears under that day,
-    grouped under the list's own name and colour. **The list column is still
-    in the planning half, in the same slot** — check its neighbours did not
+    grouped under the list's own name and color. **The list column is still
+    in the planning half, in the same slot** — check its neighbors did not
     shuffle.
 48. A to-do in that list that already had a different day is still on that
     day, untouched.
@@ -1929,5 +1929,5 @@ The corollary, and the reason this file keeps growing: when the answer turns out
 to live in dnd-kit's source rather than its docs, **write down what you found
 and the line it was on**. Three separate pieces of work here — the collision
 rewrite, the drop animation, the whole-row drag — each began by re-deriving
-behaviour someone had already read once. §4.7 and §4.9 exist so the fourth
+behavior someone had already read once. §4.7 and §4.9 exist so the fourth
 person does not have to.

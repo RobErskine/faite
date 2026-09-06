@@ -5,7 +5,7 @@
 them there was never the point — the point is a verdict. Overdrive is a
 one-card-at-a-time overlay that turns a pile of stale to-dos into a
 keyboard-driven (or thumb-driven) burn-down: won't do, done, back to a list,
-or scheduled forward. It renders as a centred dialog with the board live
+or scheduled forward. It renders as a centered dialog with the board live
 behind it — see §9 for why, and for the short-viewport fallback. Ticket:
 EI-97.
 
@@ -202,7 +202,7 @@ same moment, for the same reason in reverse: while something is staged, they
 are not the obvious next action.
 
 > **Shipped, opt-in (EI-103)**: `settings.overdriveAutoConfirmMs`, a
-> per-user delay in milliseconds, `0` (off) by default — the exact behaviour
+> per-user delay in milliseconds, `0` (off) by default — the exact behavior
 > above, unchanged, unless a user turns it on from Settings → Faite Loop. A
 > nonzero value dispatches `"confirm"` (the same action `Enter`/the Confirm
 > button already trigger — no second commit path) after that many ms with no
@@ -477,7 +477,7 @@ found, because the symptom ("tune the animation") pointed away from it.
 
 Instrumenting a real browser — recording, per flick, when the element was
 inserted, when its CSS animation actually *started*, when it *ended*, and
-how far it travelled — showed:
+how far it traveled — showed:
 
 | | insert→animStart | animStart→animEnd | travel |
 | --- | --- | --- | --- |
@@ -590,10 +590,10 @@ can't be scrolled into the toast's band.
 
 Round 5 re-scoped that padding rather than removing it. It now applies to
 the **full-bleed branch only** (`tall:py-8` overrides it once there's room
-for the centred dialog, §9): the reservation is only needed where the
+for the centered dialog, §9): the reservation is only needed where the
 surface actually reaches the screen's bottom edge, which is exactly the
 short viewports that still render full-bleed. This bug is also why the
-dialog is gated on viewport *height* — shrinking Overdrive to a centred box
+dialog is gated on viewport *height* — shrinking Overdrive to a centered box
 on a 343px-tall screen reintroduces the collision wholesale.
 
 ## 9. Where it renders, and why outside `DndContext`
@@ -605,7 +605,7 @@ dnd-kit hook at all, so there's nothing for the context to protect either
 way. Keeping it outside is just consistency with every other full-board
 overlay, not a functional requirement here.
 
-### A centred dialog, not a full-screen sheet — round 5
+### A centered dialog, not a full-screen sheet — round 5
 
 Overdrive shipped as a full-screen `Sheet`, on the theory that triage wants
 maximum focus. Live use argued the opposite, and it's right: **the board is
@@ -725,7 +725,7 @@ verdict on a stale to-do is a more annoying mistake than a mis-tap.
   keeping: at its real ~320ms the mid-flick window is narrower than a single
   traced Playwright round trip on a loaded CI runner, so anything asserted
   inside it lands after the flick ended — a flaky test about correct
-  behaviour. And it's the sharpest available regression test for round 4b:
+  behavior. And it's the sharpest available regression test for round 4b:
   the flick ends on `animationend`, so a 900ms animation means a 900ms
   block, whereas the clock-driven implementation this replaced would advance
   ~340ms in no matter how long the animation ran.

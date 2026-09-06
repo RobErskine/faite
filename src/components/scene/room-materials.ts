@@ -3,17 +3,17 @@
  *
  * The whole asset library shares a 31-name semantic material palette
  * (`Wood`, `White`, `Grey`, `Plant_Green`, `Couch_Blue`, ...) and carries NO
- * TEXTURES - every material is a flat colour. That is what makes this file
+ * TEXTURES - every material is a flat color. That is what makes this file
  * possible: instead of baking one look into the GLB, the scene reads its
- * colours from CSS custom properties at runtime.
+ * colors from CSS custom properties at runtime.
  *
  * Which matters for a specific reason. The visual design system is in flight
  * (EI-265/267/271), and the homepage story has to be written against tokens
- * rather than colours. A baked render would need re-exporting every time the
+ * rather than colors. A baked render would need re-exporting every time the
  * palette moved, and could not follow light/dark at all. This walks the loaded
  * scene once and assigns.
  *
- * Anything not in the map below keeps the colour baked into the GLB, so an
+ * Anything not in the map below keeps the color baked into the GLB, so an
  * unmapped material is a slightly-off prop, never an invisible one.
  */
 
@@ -27,7 +27,7 @@ import { Color } from "three";
  * mapping for a material that never ships is a token nobody can see drift.
  * The `Couch_*`, `Rug_*` and `Curtain_*` names are namespaced by
  * `build-room.mjs`, because the kit paints the couch and the rug with the
- * same `DarkRed` — shared names mean shared colours, and a blue couch must
+ * same `DarkRed` — shared names mean shared colors, and a blue couch must
  * not force a blue rug.
  *
  * The `mat*` names on the two televisions are deliberately absent: those are
@@ -104,14 +104,14 @@ export function applyRoomPalette(
       seen.add(material.uuid);
 
       const value = palette[material.name];
-      if (!value) continue; // unmapped: keep the GLB's own colour
+      if (!value) continue; // unmapped: keep the GLB's own color
 
       try {
         scratch.setStyle(value);
         material.color.copy(scratch);
       } catch {
         // An unparseable token is a design-system bug, not a render bug.
-        // Keeping the baked colour is the right failure.
+        // Keeping the baked color is the right failure.
       }
     }
   });

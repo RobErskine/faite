@@ -609,7 +609,7 @@ describe("byListGroup", () => {
   it("keeps a tab's lists in one contiguous run", () => {
     // The failure this exists to catch: sorted on the name alone these
     // interleave — Admin, Errands, Notes, Rico — putting a Blue list between
-    // two Green ones even though the header colour comes from the tab.
+    // two Green ones even though the header color comes from the tab.
     const sorted = [
       group("notes", "Notes", ["green", "a1"]),
       group("errands", "Errands", ["blue", "a2"]),

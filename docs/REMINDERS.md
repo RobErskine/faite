@@ -187,7 +187,7 @@ match on an actual word in the name, not the original bug.
 **An ambiguous word (matches more than one preset) resolves to nothing.**
 Quick-add has no disambiguation UI mid-parse the way the picker's dropdown
 does, so an ambiguous trailing word falls through to plain title text — the
-same behaviour as any other token the scanner doesn't recognize. Note
+same behavior as any other token the scanner doesn't recognize. Note
 `parsePresetQuery` (§2) is deliberately **not** word-bounded the same way —
 it drives a dropdown the user chooses from, so a looser substring match
 there is a feature (typing `"noon"` still surfaces `"Afternoon"`), not a

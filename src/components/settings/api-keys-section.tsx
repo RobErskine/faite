@@ -196,10 +196,10 @@ export function ApiKeysSection() {
 
   useEffect(() => {
     if (!session || !online) return;
-    let cancelled = false;
+    let canceled = false;
 
     void authClient.apiKey.list().then(({ data, error }) => {
-      if (cancelled) return;
+      if (canceled) return;
       if (error || !data) {
         setLoadError(true);
         return;
@@ -209,7 +209,7 @@ export function ApiKeysSection() {
     });
 
     return () => {
-      cancelled = true;
+      canceled = true;
     };
   }, [session, online, refreshToken]);
 

@@ -120,7 +120,7 @@ describe("arrow-key navigation wiring", () => {
     expect(document.querySelector(`[data-nav-stop="${cardStop("t2")}"]`)).toBeTruthy();
   });
 
-  it("moves focus to the neighbouring column's quick-add", () => {
+  it("moves focus to the neighboring column's quick-add", () => {
     render(<Harness />);
     const from = quickAdd("list:overall")!;
     from.focus();
