@@ -48,9 +48,13 @@ export const MATERIAL_TOKENS: Record<string, string> = {
   Plant_Green: "--room-plant",
   DarkGreen: "--room-plant-dark",
   LightOrange: "--room-terracotta",
+  Wood_Dark: "--room-wood-dark",
+  Wood_Light: "--room-wood-light",
   // Namespaced per piece.
   Couch_Main: "--room-couch",
   Couch_Base: "--room-couch-base",
+  Loveseat_Main: "--room-loveseat",
+  Loveseat_Base: "--room-loveseat-base",
   Rug_Main: "--room-rug",
   Rug_Trim: "--room-rug-trim",
   Curtain_Main: "--room-curtain",

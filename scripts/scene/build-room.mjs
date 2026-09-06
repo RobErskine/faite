@@ -59,10 +59,10 @@ const SCENE_MODELS = [
   // "TV" by Jarlan Perez, CC-BY. Screen is a flat plane on X, so 90 degrees
   // brings it round to face the room.
   { node: "tv_new", file: "new-tv.obj", fit: "x", size: 1.1, rotateY: 90 },
-  // Fit by HEIGHT. Fit by width this model is 0.53 m tall - dining height. A
-  // coffee table sits at ~0.42 m, below the couch seat, or the whole seating
-  // zone reads out of scale.
-  { node: "coffee_table", file: "Table_RoundSmall.obj", fit: "y", size: 0.42 },
+  // RoundLarge, not RoundSmall: the small one's proportions force a choice
+  // between dining height and doll size. This one is 0.30 tall per unit wide,
+  // so a real 1.15 m oval coffee table lands at 0.35 m high with no tricks.
+  { node: "coffee_table", file: "Table_RoundLarge.obj", fit: "x", size: 1.15 },
   { node: "houseplant", file: "Houseplant_1.obj", fit: "y", size: 1.15 },
   // Shelf_Small2/3, NOT Shelf_1/2 — those are floor-standing bookcases with a
   // height/width ratio near 4, so fitting them by width produced a 4.5 m tower.
@@ -86,7 +86,10 @@ const SCENE_MODELS = [
     node: "rug",
     file: "Carpet_2.obj",
     fit: "x",
-    size: 2.6,
+    // Grew with the seating: at 2.6 the loveseat's front feet barely caught
+    // the edge, and a rug that small under this much furniture reads like a
+    // bath mat. Rule of thumb is front feet of EVERY seat on the rug.
+    size: 3.0,
     rename: { DarkRed: "Rug_Main", LightOrange: "Rug_Trim" },
   },
   { node: "floor_lamp", file: "Light_Floor1.obj", fit: "y", size: 1.5 },
@@ -111,6 +114,36 @@ const SCENE_MODELS = [
   // Console styling. A television alone on 1.3 m of console is a showroom;
   // a small plant next to it is a home.
   { node: "plant_small", file: "Houseplant_2.obj", fit: "y", size: 0.32 },
+
+  // --- the fill: what makes it read as lived-in, not staged ---------------
+  // The kit's "Small" couches are nearly square in plan (2.114 x 1.992), so a
+  // width-fit love seat came out 1.37 m deep - a mattress with arms. The
+  // squash pulls depth and height back to the big couch's proportions; on
+  // boxy low-poly geometry the distortion is invisible where the maths says
+  // it exists. Its own material namespace: an oatmeal two-seater against the
+  // slate sofa is a furnished room, a matched pair is a showroom floor.
+  {
+    node: "loveseat",
+    file: "Couch_Small2.obj",
+    fit: "x",
+    size: 1.5,
+    squash: { y: 0.82, z: 0.62 },
+    rename: { Couch_Beige: "Loveseat_Main", Couch_BeigeDark: "Loveseat_Base" },
+  },
+  // Sideboard for the wall the swatches hang over. Furniture under wall art
+  // is what stops the art floating.
+  { node: "sideboard", file: "Drawer_1.obj", fit: "x", size: 1.35 },
+  { node: "desk_lamp", file: "Light_Desk.obj", fit: "y", size: 0.35 },
+  // The plant family. Different silhouettes on purpose - a tall cane by the
+  // window, a bushy one by the door, a sprawler on the coffee table, a
+  // narrow one on the side table. Same pot palette ties them together.
+  // Houseplant_3, not _8: number 8's "foliage" is the kit's Wood material -
+  // bare branches. In a room that's supposed to feel cared for, it read as
+  // the one plant nobody watered.
+  { node: "plant_tall", file: "Houseplant_3.obj", fit: "y", size: 1.05 },
+  { node: "plant_bushy", file: "Houseplant_7.obj", fit: "y", size: 0.75 },
+  { node: "plant_table", file: "Houseplant_5.obj", fit: "y", size: 0.2 },
+  { node: "plant_side", file: "Houseplant_4.obj", fit: "y", size: 0.5 },
 ];
 
 // --- OBJ + MTL parsing ------------------------------------------------------
@@ -490,6 +523,18 @@ for (const spec of SCENE_MODELS) {
 
   rotateY(groups, spec.rotateY);
   const size = normalise(groups, spec.fit, spec.size);
+  if (spec.squash) {
+    const fy = spec.squash.y ?? 1;
+    const fz = spec.squash.z ?? 1;
+    for (const g of groups.values()) {
+      for (let i = 0; i < g.positions.length; i += 3) {
+        g.positions[i + 1] *= fy; // ground plane is y=0, so grounding survives
+        g.positions[i + 2] *= fz; // centred on z, so centring survives
+      }
+    }
+    size[1] = +(size[1] * fy).toFixed(3);
+    size[2] = +(size[2] * fz).toFixed(3);
+  }
   const tris =
     [...groups.values()].reduce((n, g) => n + g.positions.length, 0) / 9;
   console.log(

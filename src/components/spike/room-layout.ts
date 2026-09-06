@@ -84,22 +84,43 @@ export const STATIC_PROPS: PropPlacement[] = [
   // top reaches ~1.16 m, because it sits over the console's plant end.
   { node: "wall_shelf_a", position: [LEFT_WALL_X + 0.04, 1.42, -0.52], rotationY: Math.PI / 2 },
   { node: "wall_shelf_b", position: [LEFT_WALL_X + 0.04, 1.84, -0.52], rotationY: Math.PI / 2 },
+  // Shelf styling: the same little plant as the console, up on the lower
+  // shelf's top surface (unit height 0.337, so 1.42 + 0.337).
+  { node: "plant_small", position: [LEFT_WALL_X + 0.04, 1.757, -0.52], rotationY: Math.PI / 2 },
   { node: "door", position: [-HALF_W + 0.1, 0, 1.7], rotationY: Math.PI / 2 },
 
-  // --- the seating zone, anchored on the rug ------------------------------
+  // --- the seating zone: an L around the coffee table, anchored on the rug -
   { node: "rug", position: [0.2, 0.004, 0.1] },
   // Faces the television. Front feet land on the rug's right edge.
   { node: "couch", position: [1.85, 0, 0.1], rotationY: -Math.PI / 2 },
-  { node: "coffee_table", position: [-0.15, 0, 0.1] },
+  // The second seat that turns "a sofa opposite a TV" into a conversation
+  // corner. It floats on the rug's top edge with a walkway behind it -
+  // furniture off the wall is how real rooms use their middle.
+  { node: "loveseat", position: [0.3, 0, -1.42] },
+  // Long axis parallel to the couch, like an oval coffee table actually sits.
+  { node: "coffee_table", position: [0.2, 0, 0.25], rotationY: Math.PI / 2 },
+  { node: "plant_table", position: [0.2, 0.347, 0.25], rotationY: Math.PI / 2 },
   // Touching the couch's front arm - a table nobody can reach is decoration.
   { node: "side_table", position: [1.88, 0, 1.42] },
-  // Reading light behind the other arm.
-  { node: "floor_lamp", position: [2.05, 0, -1.15] },
+  { node: "plant_side", position: [1.88, 0.416, 1.42] },
+  // Reading light in the corner of the L, serving both seats.
+  { node: "floor_lamp", position: [2.15, 0, -1.35] },
 
-  // --- the back wall (-Z), left to right: swatches, prints, window --------
-  { node: "houseplant", position: [2.35, 0, -1.9] },
+  // --- the back wall (-Z), left to right: sideboard+swatches, prints, window
+  // The sideboard sits directly under the swatch row, so the paint decision
+  // hangs over real furniture instead of floating on an empty wall.
+  { node: "sideboard", position: [-1.55, 0, -HALF_D + 0.29] },
+  { node: "desk_lamp", position: [-2.0, 0.654, -HALF_D + 0.31] },
   { node: "window", position: [1.5, 1.3, -HALF_D + 0.06] },
   { node: "curtains", position: [1.5, 0.32, -HALF_D + 0.14] },
+  // The window cluster: the monstera and a tall cane, different heights,
+  // where the light is.
+  { node: "houseplant", position: [2.4, 0, -1.85] },
+  { node: "plant_tall", position: [1.75, 0, -2.05] },
+
+  // --- the doorway ---------------------------------------------------------
+  // A bushy one beside the door, the first thing you'd see coming in.
+  { node: "plant_bushy", position: [-2.3, 0, 2.1] },
 ];
 
 /**
@@ -160,9 +181,13 @@ export const PRINTS: { position: Vec3; size: [number, number] }[] = [
  */
 export const CONTACT_SHADOWS: { position: Vec3; size: [number, number] }[] = [
   { position: [1.85, 0.045, 0.1], size: [1.3, 2.5] }, // couch
-  { position: [-0.15, 0.045, 0.1], size: [1.1, 1.1] }, // coffee table
+  { position: [0.3, 0.045, -1.42], size: [1.8, 1.1] }, // loveseat
+  { position: [0.2, 0.045, 0.25], size: [0.95, 1.5] }, // coffee table
   { position: [-2.8, 0.012, 0.1], size: [0.75, 1.7] }, // console
-  { position: [2.35, 0.012, -1.9], size: [1.2, 1.2] }, // houseplant
+  { position: [-1.55, 0.012, -2.21], size: [1.55, 0.75] }, // sideboard
+  { position: [2.4, 0.012, -1.85], size: [1.2, 1.2] }, // houseplant
+  { position: [1.75, 0.012, -2.05], size: [0.65, 0.65] }, // plant_tall
+  { position: [-2.3, 0.012, 2.1], size: [1.0, 1.0] }, // plant_bushy
   { position: [1.88, 0.012, 1.42], size: [0.75, 0.75] }, // side table
-  { position: [2.05, 0.012, -1.15], size: [0.6, 0.6] }, // floor lamp
+  { position: [2.15, 0.012, -1.35], size: [0.6, 0.6] }, // floor lamp
 ];

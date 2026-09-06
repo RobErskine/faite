@@ -494,6 +494,10 @@
   --room-rug: #cabfab;
   --room-rug-trim: #b7a98f;
   --room-curtain: #e7e1d4;
+  --room-wood-dark: #6b5138;
+  --room-wood-light: #a9895f;
+  --room-loveseat: #cfc3ae;
+  --room-loveseat-base: #b3a58c;
   /* The shell - floor and both walls - read by RoomShell at runtime. */
   --room-floor: #d6c1a1;
   --room-wall: #edeae3;
@@ -518,6 +522,10 @@
   --room-rug: #8d8574;
   --room-rug-trim: #7d7361;
   --room-curtain: #a9a294;
+  --room-wood-dark: #52402c;
+  --room-wood-light: #7e6748;
+  --room-loveseat: #948a76;
+  --room-loveseat-base: #7c7260;
   /* The room dims at night; it does not invert. Same hues, lower lightness. */
   --room-floor: #6f5d45;
   --room-wall: #4b4842;

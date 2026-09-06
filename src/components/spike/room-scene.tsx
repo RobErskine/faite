@@ -333,8 +333,10 @@ function LivingRoomProps({ progress }: { progress: Progress }) {
 
   return (
     <group>
-      {STATIC_PROPS.map((p) => (
-        <Placed key={p.node} scene={scene} placement={p} />
+      {STATIC_PROPS.map((p, i) => (
+        // Index in the key: the same GLB node may legitimately be placed more
+        // than once (Placed clones), so node names alone can collide.
+        <Placed key={`${p.node}-${i}`} scene={scene} placement={p} />
       ))}
 
       <group ref={oldTv}>
