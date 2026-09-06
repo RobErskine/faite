@@ -396,7 +396,7 @@ export function Board() {
               // no column edge to keep true and no layout to shift, so a border
               // is simply the right form here. Both surfaces read their width,
               // opacity and line style from PRIORITY_RAILS, so they cannot
-              // drift in value. Opacity rides the colour via color-mix here
+              // drift in value. Opacity rides the color via color-mix here
               // because the chip's own opacity is the lift animation's.
               borderLeftWidth: activeRail?.width,
               borderLeftStyle: activeRail?.dotted ? "dotted" : undefined,

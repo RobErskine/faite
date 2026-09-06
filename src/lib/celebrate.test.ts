@@ -23,9 +23,9 @@ describe("originOf", () => {
     window.innerHeight = 500;
   });
 
-  it("normalises the centre of the rect against the viewport", () => {
+  it("normalises the center of the rect against the viewport", () => {
     const el = elementAt({ left: 200, top: 100, width: 100, height: 50, right: 300, bottom: 150 });
-    // centre is (250, 125) of a 1000x500 viewport
+    // center is (250, 125) of a 1000x500 viewport
     expect(originOf(el)).toEqual({ x: 0.25, y: 0.25 });
   });
 
@@ -70,7 +70,7 @@ describe("confettiPalette", () => {
     }
   });
 
-  it("leads with the to-do's own colour, then a lighter and a darker shade", () => {
+  it("leads with the to-do's own color, then a lighter and a darker shade", () => {
     const [base, lighter, darker] = confettiPalette("#46a758");
     expect(base).toBe("#46a758");
     expect(lighter).not.toBe(base);
@@ -80,8 +80,8 @@ describe("confettiPalette", () => {
     expect(Number.parseInt(darker.slice(1, 3), 16)).toBeLessThan(0x46);
   });
 
-  it("falls back to neutral for a to-do with no colour, rather than inventing one", () => {
-    // Backlog and unfiled to-dos have no colour — that is a real answer from
+  it("falls back to neutral for a to-do with no color, rather than inventing one", () => {
+    // Backlog and unfiled to-dos have no color — that is a real answer from
     // `effectiveListColor`, not missing data.
     const neutral = confettiPalette(null);
     expect(neutral).toHaveLength(3);
@@ -102,7 +102,7 @@ describe("celebrate", () => {
     vi.doUnmock("canvas-confetti");
   });
 
-  it("fires two shots, angled apart, at the given origin and in the given colours", async () => {
+  it("fires two shots, angled apart, at the given origin and in the given colors", async () => {
     const confetti = vi.fn();
     vi.doMock("canvas-confetti", () => ({ default: confetti }));
     const { celebrate } = await import("./celebrate");

@@ -8,7 +8,7 @@ import { test as base, expect } from "@playwright/test";
  * (src/lib/store/hooks.ts) already seeds a Backlog list and a default tab
  * into any empty IndexedDB on boot, and Playwright gives every test a fresh,
  * isolated browser context by default — so "fresh IndexedDB" and "seeded
- * board" fall out of the app's own first-run behaviour for free. The only
+ * board" fall out of the app's own first-run behavior for free. The only
  * thing this fixture adds is freezing the clock, because the board is
  * date-relative (`ctx.today`, column headers like "Tuesday").
  */

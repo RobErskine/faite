@@ -8,7 +8,7 @@ import { addDays, dayOfWeek, formatShortDate } from "./scheduling";
  *
  * RRULE's only advantage is interop, and it is gone the moment
  * `anchor: "completed"` needs a non-standard extension — no real consumer
- * will honour it either way. RRULE's `UNTIL` is also a UTC date-time when
+ * will honor it either way. RRULE's `UNTIL` is also a UTC date-time when
  * `DTSTART` is a date-time, which would drag instants into this civil-date
  * layer. A Zod schema over `JSON.parse` gets validation, defaults, and a type
  * for a fraction of the parsing surface.

@@ -328,7 +328,7 @@ export function TodoMetaBadges({
           /*
             The identity ladder from lib/colors.ts, not a hand-rolled alpha:
             tint behind, edge around, and — the one place hue touches text
-            (docs/DESIGN.md §1) — the label's own colour on the name.
+            (docs/DESIGN.md §1) — the label's own color on the name.
           */
           style={
             label.color

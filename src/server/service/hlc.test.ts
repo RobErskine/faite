@@ -72,7 +72,7 @@ describe("serverHlcClock", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-17T12:00:00.000Z"));
     // Two isolates at the same millisecond, each with its own in-memory
-    // adapter (no arguments passed), collide. Unchanged behaviour — every
+    // adapter (no arguments passed), collide. Unchanged behavior — every
     // existing caller (src/server/email/ingest.ts) only ever creates, and
     // creates have no field_clocks to lose an LWW comparison against.
     expect(serverHlcClock()()).toBe(serverHlcClock()());

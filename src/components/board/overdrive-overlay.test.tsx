@@ -701,7 +701,7 @@ describe("the flick transition (round 3)", () => {
       endFlickByAnimation();
       expect(titleHeading("t2")).toBeTruthy();
 
-      // The fallback is cancelled on finish, but even a stray one must not
+      // The fallback is canceled on finish, but even a stray one must not
       // advance a second time (`pendingAdvance` is the idempotency guard).
       flushFlick();
       expect(titleHeading("t2")).toBeTruthy();

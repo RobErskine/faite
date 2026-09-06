@@ -84,7 +84,7 @@ const ORDER_BY_KIND = {
 
 export type ListableKind = keyof typeof ORDER_BY_KIND;
 
-// The sweep's judgement calls live in `./attachments/sweep.ts` — pure, and
+// The sweep's judgment calls live in `./attachments/sweep.ts` — pure, and
 // therefore testable without SQLite, R2, or an alarm. What stays here is the
 // mechanical half: run the query, delete, stamp.
 
@@ -516,8 +516,8 @@ export class UserDurableObject extends DurableObject {
    * be gone, and "the resource is gone" is the honest answer either way.
    *
    * Ownership is re-checked by the route even though this DO is already
-   * per-user: the id comes from the URL, and defence that depends on the
-   * routing layer having picked the right DO is defence that disappears the
+   * per-user: the id comes from the URL, and defense that depends on the
+   * routing layer having picked the right DO is defense that disappears the
    * first time someone adds an admin path.
    */
   async getAttachment(id: string): Promise<Record<string, unknown> | null> {

@@ -6,7 +6,7 @@
  *
  * Pure Node, no Blender. That is a deliberate choice, not a shortcut: these
  * models are 60-750 faces each with NO TEXTURES ANYWHERE - every material is a
- * flat `Kd` colour - so the conversion is a few hundred lines of arithmetic,
+ * flat `Kd` color - so the conversion is a few hundred lines of arithmetic,
  * and keeping it dependency-free means `npm run scene` works in CI and on any
  * machine rather than only on one with a 1 GB app installed.
  *
@@ -19,8 +19,8 @@
  *  2. **Scale.** Each model is scaled to a target real-world size in METRES.
  *     The kit is roughly 0.4 m per unit and the two TVs are in unrelated units,
  *     so there is no single factor to apply - only a per-model target.
- *  3. **Origin.** Each model is centred on X/Z and sits on Y=0. The kit is
- *     ground-aligned but the TVs are centre-origin (`Ymin` about -0.21), which
+ *  3. **Origin.** Each model is centered on X/Z and sits on Y=0. The kit is
+ *     ground-aligned but the TVs are center-origin (`Ymin` about -0.21), which
  *     would otherwise bury half the set in the shelf.
  *
  * Material NAMES are preserved (`Wood`, `White`, `Plant_Green`, ...). The whole
@@ -47,7 +47,7 @@ const OUT = join(ROOT, "public", "scene", "living-room.glb");
  *
  * Sizes are real-world, so they are arguable in a way the rest of this file is
  * not - a 2.1 m couch and a 1.3 m console are choices. Change them here rather
- * than scaling at placement time, or the scene stops being in metres and every
+ * than scaling at placement time, or the scene stops being in meters and every
  * later position becomes a magic number.
  */
 const SCENE_MODELS = [
@@ -105,7 +105,7 @@ const SCENE_MODELS = [
   { node: "window", file: "Window_Large1.obj", fit: "x", size: 1.4 },
   // Double, not Single: two panels either side of the window instead of one
   // drape covering half the glass. Fit by HEIGHT - the source is 1.25x taller
-  // than wide and by-width put it at 4.3 m in a 2.7 m room. The kit colours
+  // than wide and by-width put it at 4.3 m in a 2.7 m room. The kit colors
   // curtains `Couch_Blue`; namespaced so linen curtains don't demand a blue
   // couch.
   {
@@ -286,7 +286,7 @@ function faceNormal(a, b, c) {
 /**
  * Reads a GLB source into the same shape `parseObj`/`parseMtl` produce: a
  * groups Map of non-indexed triangle soup keyed by material name, plus a
- * colour table. Poly Pizza exports are flat-coloured and untextured, exactly
+ * color table. Poly Pizza exports are flat-colored and untextured, exactly
  * like the OBJ kit, so nothing downstream needs to know which format a model
  * arrived in.
  *
@@ -333,7 +333,7 @@ function parseGlb(path) {
   };
 
   const groups = new Map();
-  const colours = {};
+  const colors = {};
   const ensure = (m) => {
     if (!groups.has(m)) groups.set(m, { positions: [], normals: [] });
     return groups.get(m);
@@ -347,7 +347,7 @@ function parseGlb(path) {
     for (const prim of json.meshes[node.mesh].primitives) {
       const mat = json.materials[prim.material];
       const name = mat?.name ?? "Default";
-      colours[name] = mat?.pbrMetallicRoughness?.baseColorFactor ?? [0.8, 0.8, 0.8, 1];
+      colors[name] = mat?.pbrMetallicRoughness?.baseColorFactor ?? [0.8, 0.8, 0.8, 1];
 
       const pos = readAccessor(prim.attributes.POSITION);
       const nrm = readAccessor(prim.attributes.NORMAL);
@@ -362,10 +362,10 @@ function parseGlb(path) {
       }
     }
   }
-  return { groups, colours };
+  return { groups, colors };
 }
 
-// --- normalisation ----------------------------------------------------------
+// --- normalization ----------------------------------------------------------
 
 /** Rotate about Y in place, degrees. Applied before measuring, so `fit` refers
  *  to the axis you can actually see in the finished scene. */
@@ -386,8 +386,8 @@ function rotateY(groups, deg) {
   }
 }
 
-/** Scale to `size` metres on `fit`, centre on X/Z, and sit on Y=0. */
-function normalise(groups, fit, size) {
+/** Scale to `size` meters on `fit`, center on X/Z, and sit on Y=0. */
+function normalize(groups, fit, size) {
   const lo = [Infinity, Infinity, Infinity];
   const hi = [-Infinity, -Infinity, -Infinity];
   for (const g of groups.values()) {
@@ -547,7 +547,7 @@ function buildGltf(models) {
       if (!g.positions.length) continue;
 
       if (!materialIndex.has(matName)) {
-        const [r, gg, b, a = 1] = m.colours[matName] ?? [0.8, 0.8, 0.8];
+        const [r, gg, b, a = 1] = m.colors[matName] ?? [0.8, 0.8, 0.8];
         const material = {
           name: matName, // semantic; room-materials.ts re-tints by this
           pbrMetallicRoughness: {
@@ -644,34 +644,34 @@ console.log(`\n${"node".padEnd(16)} ${"file".padEnd(24)} size (m)      tris`);
 console.log("-".repeat(66));
 
 for (const spec of SCENE_MODELS) {
-  let { groups, colours } = spec.file.endsWith(".glb")
+  let { groups, colors } = spec.file.endsWith(".glb")
     ? parseGlb(join(SRC, spec.file))
     : {
         groups: parseObj(join(SRC, spec.file)),
-        colours: parseMtl(join(SRC, spec.file.replace(/\.obj$/, ".mtl"))),
+        colors: parseMtl(join(SRC, spec.file.replace(/\.obj$/, ".mtl"))),
       };
 
   // Namespace this model's materials where the spec asks for it. Applied to
-  // the geometry groups and the colour table together, so a renamed material
-  // can never fall back to the 0.8-grey default by accident.
+  // the geometry groups and the color table together, so a renamed material
+  // can never fall back to the 0.8-gray default by accident.
   if (spec.rename) {
     const renamed = new Map();
     for (const [name, g] of groups) renamed.set(spec.rename[name] ?? name, g);
     groups = renamed;
-    colours = Object.fromEntries(
-      Object.entries(colours).map(([name, kd]) => [spec.rename[name] ?? name, kd]),
+    colors = Object.fromEntries(
+      Object.entries(colors).map(([name, kd]) => [spec.rename[name] ?? name, kd]),
     );
   }
 
   rotateY(groups, spec.rotateY);
-  const size = normalise(groups, spec.fit, spec.size);
+  const size = normalize(groups, spec.fit, spec.size);
   if (spec.squash) {
     const fy = spec.squash.y ?? 1;
     const fz = spec.squash.z ?? 1;
     for (const g of groups.values()) {
       for (let i = 0; i < g.positions.length; i += 3) {
         g.positions[i + 1] *= fy; // ground plane is y=0, so grounding survives
-        g.positions[i + 2] *= fz; // centred on z, so centring survives
+        g.positions[i + 2] *= fz; // centered on z, so centering survives
       }
     }
     size[1] = +(size[1] * fy).toFixed(3);
@@ -683,16 +683,16 @@ for (const spec of SCENE_MODELS) {
     `${spec.node.padEnd(16)} ${spec.file.padEnd(24)} ` +
       `${size.join(" x ").padEnd(22)} ${tris}`,
   );
-  models.push({ ...spec, groups, colours });
+  models.push({ ...spec, groups, colors });
 
   // `split` lifts a material's geometry into its own sibling node AFTER the
-  // shared normalisation, so the parts keep their relative placement — the
+  // shared normalization, so the parts keep their relative placement — the
   // fish stays inside its bowl, but the scene can animate it independently.
   for (const [matName, nodeName] of Object.entries(spec.split ?? {})) {
     const g = groups.get(matName);
     if (!g) throw new Error(`${spec.node}: split material ${matName} not found`);
     groups.delete(matName);
-    models.push({ node: nodeName, groups: new Map([[matName, g]]), colours });
+    models.push({ node: nodeName, groups: new Map([[matName, g]]), colors });
   }
 }
 

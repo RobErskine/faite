@@ -42,14 +42,14 @@
 
 import { isTintableColor } from "./colors";
 
-/** A normalised viewport position: `0..1` on each axis, as canvas-confetti wants. */
+/** A normalized viewport position: `0..1` on each axis, as canvas-confetti wants. */
 export interface ConfettiOrigin {
   x: number;
   y: number;
 }
 
 /**
- * Where on screen an element is, normalised — or `null` if it is not anywhere
+ * Where on screen an element is, normalized — or `null` if it is not anywhere
  * useful.
  *
  * Measured SYNCHRONOUSLY by the caller, at the moment of the click or

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
  * EI-94), and the global activity feed's (`activity-sheet.tsx`). Extracted
  * from `day-sheet.tsx` rather than written fresh: a shared component with one
  * consumer is a guess, with two it's an interface, and `day-sheet.test.tsx`
- * passing unchanged is the proof this extraction is behaviour-preserving.
+ * passing unchanged is the proof this extraction is behavior-preserving.
  * `HiddenByFilterNotice` joined it once a second consumer needed the same
  * "N hidden by the view filter" empty state with its own filter setting.
  *

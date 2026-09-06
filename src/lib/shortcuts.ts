@@ -12,7 +12,7 @@ import type { Hotkey } from "@/lib/keyboard";
  * central table to derive from.
  *
  * **Local** entries are hand-authored below, each with a `source` pointing
- * at the file that actually owns the behaviour. There is no mechanism that
+ * at the file that actually owns the behavior. There is no mechanism that
  * keeps these in sync with the code the way the derived half is — that's
  * the real gap this catalog has, not a hidden one. See docs/KEYBOARD.md §5:
  * adding a new shortcut means adding it here too.
@@ -34,7 +34,7 @@ export interface ShortcutEntry {
     | "Quick add & mentions"
     | "Rails & split"
     | "Editor";
-  /** Where this behaviour actually lives, for whoever edits it next. */
+  /** Where this behavior actually lives, for whoever edits it next. */
   source?: string;
 }
 

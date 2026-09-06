@@ -78,7 +78,7 @@ function PresetChips<T extends number>({
  * both are just parameters on when/how the Loop hands a todo off to
  * Overdrive. Both shipped deliberately absent from v1 — see
  * docs/OVERDRIVE.md §1 ("A constant, not a setting, for now") and §4
- * ("Deferred, not rejected") — and both default to the exact behaviour v1
+ * ("Deferred, not rejected") — and both default to the exact behavior v1
  * had: a fixed entry threshold of `OVERDRIVE_MIN_TODOS`, and no auto-confirm
  * at all.
  */

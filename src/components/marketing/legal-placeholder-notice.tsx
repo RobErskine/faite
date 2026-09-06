@@ -7,7 +7,7 @@ import { ProseLink } from "@/components/marketing/prose";
  * later is a single deletion plus import removals, not a hunt through every
  * legal page for a repeated disclaimer block.
  *
- * Visually loud rather than prose-coloured on purpose — this notice needs to
+ * Visually loud rather than prose-colored on purpose — this notice needs to
  * read as a warning, not blend into the surrounding legal text it's
  * disclaiming.
  */

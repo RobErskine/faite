@@ -27,7 +27,7 @@ export const SEARCH_LIMIT = 8;
  * Which tier a to-do matches at, or null when it does not match at all.
  *
  * `query` must already be trimmed and lower-cased — this runs once per to-do
- * per keystroke, so the normalisation is hoisted to the caller.
+ * per keystroke, so the normalization is hoisted to the caller.
  */
 function tier(todo: Todo, query: string): number | null {
   const title = todo.title.toLowerCase();

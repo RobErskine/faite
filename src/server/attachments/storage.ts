@@ -11,7 +11,7 @@
  * `att/{ownerId}/{attachmentId}-{nonce}`.
  *
  * Namespaced by owner so a listing is scoped per account and a stray
- * prefix delete can never cross accounts. The nonce is defence in depth
+ * prefix delete can never cross accounts. The nonce is defense in depth
  * only: the bucket has no public access and `GET /api/attachments/{id}`
  * checks the row's `ownerId` against the session, so guessing a key buys
  * nothing today — it buys nothing tomorrow either, if someone ever attaches

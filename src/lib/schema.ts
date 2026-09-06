@@ -103,7 +103,7 @@ const syncableFields = {
 /**
  * A List is a column in the planning half. Single-assign and ordered.
  *
- * Lists are NOT labels. A label is multi-assign, so a labelled todo would have
+ * Lists are NOT labels. A label is multi-assign, so a labeled todo would have
  * to appear in several columns at once with several sort positions, and
  * dragging between columns would have no coherent meaning. Lists own the
  * column; labels are filters.
@@ -684,7 +684,7 @@ export const settingsSchema = z.object({
   overdriveAutoConfirmMs: z.number().int().min(0).max(10000).default(0),
   /**
    * "GOOD JOB" mode: a small confetti burst at the point of every completion,
-   * tinted with the colour the to-do already renders in. Opt-in and off by
+   * tinted with the color the to-do already renders in. Opt-in and off by
    * default — a celebration nobody asked for is a distraction, and this one
    * fires on the single most-repeated action in the app.
    *

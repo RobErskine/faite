@@ -207,7 +207,7 @@ export function useBoardUiState() {
    * A SET rather than a single id since EI-193: dropping a list on a day
    * commits many to-dos from one gesture, and with only the dragged id held
    * back every other mover pops into its destination while the overlay is
-   * still travelling — the precise failure the landing state exists to
+   * still traveling — the precise failure the landing state exists to
    * prevent (§4.7). One overlay still flies; the rest simply wait for it.
    */
   const [landingTodoIds, setLandingTodoIds] = useState<ReadonlySet<string>>(EMPTY_LANDING);

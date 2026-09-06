@@ -35,13 +35,13 @@ export function EmailSection() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    let cancelled = false;
+    let canceled = false;
     fetchIngestAddress()
       .then((next) => {
-        if (!cancelled) setState(next);
+        if (!canceled) setState(next);
       })
       .catch((error: unknown) => {
-        if (cancelled) return;
+        if (canceled) return;
         setUnavailable(
           error instanceof IngestUnavailableError
             ? error.message
@@ -49,7 +49,7 @@ export function EmailSection() {
         );
       });
     return () => {
-      cancelled = true;
+      canceled = true;
     };
   }, []);
 

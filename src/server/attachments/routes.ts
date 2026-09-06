@@ -411,7 +411,7 @@ async function handleRawDownload(
  * origin would hand a hostile file something worth stealing.
  *
  * Ownership is re-checked against the token's `userId` even though the token
- * is signed: defence that depends on nothing but the row itself.
+ * is signed: defense that depends on nothing but the row itself.
  */
 export async function handleFileOriginRequest(
   request: Request,

@@ -208,7 +208,7 @@ never in production. See `docs/SETUP.md`.
   characters and separators so they cannot inject into `Content-Disposition`.
 - Keys are `att/{ownerId}/{id}-{nonce}`. The bucket has no public access and
   the download route checks the row's `ownerId` against the session, so the
-  nonce is defence in depth against a future misconfiguration, not the
+  nonce is defense in depth against a future misconfiguration, not the
   control.
 - Route errors never echo `error.message` — a parser failure can quote the
   bytes it choked on, and those are the user's file.

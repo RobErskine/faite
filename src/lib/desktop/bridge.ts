@@ -249,7 +249,7 @@ export async function reportFrontendReady(): Promise<void> {
   try {
     await invoke("hot_assets_ready");
   } catch {
-    // See above: silence is the correct behaviour, not an oversight.
+    // See above: silence is the correct behavior, not an oversight.
   }
 }
 

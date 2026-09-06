@@ -47,7 +47,7 @@ test.describe("keyboard drag and drop", () => {
     await page.keyboard.press("Space"); // lift
     await page.waitForTimeout(250); // let dnd-kit process the lift before moving
     await page.keyboard.press("ArrowUp"); // stage a reorder above Alpha
-    await page.waitForTimeout(250); // let dnd-kit process the move before cancelling
+    await page.waitForTimeout(250); // let dnd-kit process the move before canceling
     await page.keyboard.press("Escape"); // cancel — must not commit
 
     // Alpha was added first, so it stays above Beta if the cancel held.
@@ -117,7 +117,7 @@ test.describe("keyboard drag and drop", () => {
     }).toPass({ timeout: 5_000 });
   });
 
-  test("cancelling mid-drag with Escape leaves a cross-column move uncommitted", async ({
+  test("canceling mid-drag with Escape leaves a cross-column move uncommitted", async ({
     page,
   }) => {
     const tuesday = page.getByRole("region", { name: "Tuesday" }).first();
@@ -133,7 +133,7 @@ test.describe("keyboard drag and drop", () => {
     await page.keyboard.press("Space");
     await page.waitForTimeout(250); // let dnd-kit process the lift before moving
     await page.keyboard.press("ArrowRight");
-    await page.waitForTimeout(250); // let dnd-kit process the move before cancelling
+    await page.waitForTimeout(250); // let dnd-kit process the move before canceling
     await page.keyboard.press("Escape");
 
     await expect(async () => {

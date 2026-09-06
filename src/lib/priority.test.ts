@@ -37,7 +37,7 @@ describe("the encoding", () => {
 
   // Decision A (docs/DESIGN.md §7): the rail carries no hue, so red can mean
   // urgency alone. A `color` field creeping back in is the regression to catch.
-  it("is achromatic — no level carries a colour", () => {
+  it("is achromatic — no level carries a color", () => {
     for (const p of LEVELS) {
       expect(PRIORITY_RAILS[p]).not.toHaveProperty("color");
     }
@@ -51,7 +51,7 @@ describe("the encoding", () => {
   });
 
   // The 1px pair shares a thickness; the dotted line is what tells them apart,
-  // in every theme and for every colour-vision deficiency, because it is form.
+  // in every theme and for every color-vision deficiency, because it is form.
   it("dots only the lowest level", () => {
     expect(LEVELS.map((p) => PRIORITY_RAILS[p].dotted)).toEqual([false, false, false, true]);
   });

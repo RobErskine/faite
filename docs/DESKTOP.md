@@ -1611,9 +1611,9 @@ Frankenstein page: new markup, stale chunk, no error anywhere.
 
 So the production shape is **all-or-nothing**, decided before activation: the
 bundle carries a manifest, every file in it is verified present (and hashed) at
-startup, and a bundle that fails verification is rejected *whole* in favour of
+startup, and a bundle that fails verification is rejected *whole* in favor of
 the embedded copy. Per-file fallback then only ever fires for paths the
-manifest never claimed. The probe deliberately has the weaker behaviour, which
+manifest never claimed. The probe deliberately has the weaker behavior, which
 is how the hazard surfaced at all.
 
 ### 13.4 Not yet answered
@@ -1731,7 +1731,7 @@ and added to a refuse list it can never leave.
 
 Three decisions worth not re-litigating:
 
-- **The judgement happens at the next launch, in the shell.** It cannot be a
+- **The judgment happens at the next launch, in the shell.** It cannot be a
   timer. The failure is "the frontend never came up", and asking that frontend
   to notice its own absence — on a timer it also failed to start — is circular.
   A file on disk is the one vantage point that survives whatever went wrong.
@@ -1882,9 +1882,9 @@ this, recovery meant deleting a directory from a terminal.
 
 Three small decisions:
 
-- **It clears the refuse-list too.** That list is the shell's judgement about a
+- **It clears the refuse-list too.** That list is the shell's judgment about a
   bad bundle, and someone reaching for this menu item is overriding that
-  judgement. Starting completely clean is more predictable than starting
+  judgment. Starting completely clean is more predictable than starting
   clean-except-for-one-file.
 - **No keyboard shortcut.** This is used once in a blue moon, and a shortcut
   for it is a shortcut for throwing away a working update by accident. It is

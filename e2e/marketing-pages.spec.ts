@@ -67,7 +67,7 @@ for (const page_ of SITE_PAGES) {
  * The CC-BY models are licensed to Faite *on condition* that they are
  * credited. The table-driven test above only checks this page's title and
  * description, so it would stay green if the credits themselves were deleted —
- * and the failure mode there is a licence violation, not a cosmetic one.
+ * and the failure mode there is a license violation, not a cosmetic one.
  *
  * Keep this list in step with `assets/scene/CREDITS.md`. Anything CC-BY that
  * ships has to be named in both.
@@ -79,9 +79,9 @@ test("the colophon credits every CC-BY creator by name", async ({ page }) => {
   for (const creator of ["Kell Condon", "Jarlan Perez", "sirkitree", "Tiff Eidmann"]) {
     await expect(main).toContainText(creator);
   }
-  // The licence itself has to be named, not just the person.
+  // The license itself has to be named, not just the person.
   await expect(main).toContainText("CC BY");
-  // Poly Pizza is the source the licence points back to.
+  // Poly Pizza is the source the license points back to.
   await expect(main.getByRole("link", { name: "Poly Pizza" }).first()).toBeVisible();
 });
 
