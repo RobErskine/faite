@@ -40,10 +40,18 @@ export type PropPlacement = {
   rotationY?: number;
 };
 
-/** Floor extent in metres. The camera framing in `room-scene.tsx` assumes this. */
+/**
+ * Floor extent in metres. The camera framing in `room-scene.tsx` assumes this.
+ *
+ * 5.4 x 4.6, down from 6 x 5: review feedback was that the console and TV
+ * looked toy-sized against the room, and they were - a 6 m wall will do that
+ * to 1.3 m of furniture. Rather than inflate every prop past its real size,
+ * the room lost the square footage it wasn't using. Real apartments are the
+ * small thing furniture fills, not the big thing it rattles in.
+ */
 export const ROOM = {
-  width: 6,
-  depth: 5,
+  width: 5.4,
+  depth: 4.6,
   wallHeight: 2.7,
 };
 
@@ -54,18 +62,18 @@ const HALF_D = ROOM.depth / 2;
  * The console's top surface, in metres.
  *
  * `Shelf_Small1` measures 1.944 x 0.577 units at source, so its height is
- * 0.297 of its width; scaled to a 1.3 m console that puts the top at 0.386 m.
+ * 0.297 of its width; scaled to a 1.5 m console that puts the top at 0.445 m.
  * The television and the small plant both stand on this. **If the console's
  * target size changes in `build-room.mjs`, this number changes with it** — the
  * models are normalised to sit on Y=0, so nothing else corrects for it.
  */
-const CONSOLE_TOP = 0.386;
+const CONSOLE_TOP = 0.445;
 
 /** The media wall: everything on the left wall shares this X. */
 const LEFT_WALL_X = -HALF_W + 0.2;
 
 /** Where the TV stands, whichever TV it currently is. */
-const TV_SPOT: Vec3 = [-HALF_W + 0.35, CONSOLE_TOP, 0.1];
+const TV_SPOT: Vec3 = [-HALF_W + 0.38, CONSOLE_TOP, 0.1];
 
 /**
  * The room. Everything is present from the first frame - the only thing that
@@ -75,52 +83,52 @@ const TV_SPOT: Vec3 = [-HALF_W + 0.35, CONSOLE_TOP, 0.1];
  */
 export const STATIC_PROPS: PropPlacement[] = [
   // --- the media wall (-X), facing the seating across the rug -------------
-  { node: "shelf_console", position: [-HALF_W + 0.35, 0, 0.1], rotationY: Math.PI / 2 },
-  { node: "plant_small", position: [-HALF_W + 0.35, CONSOLE_TOP, 0.62], rotationY: Math.PI / 2 },
-  // A stacked pair directly over the console's far end - grouped with the
-  // media wall, not floating in a corner. (First pass staggered them toward
-  // the back corner, where they read as one detached cabinet with no
-  // relationship to anything.) The lower shelf clears the upgraded TV, whose
-  // top reaches ~1.16 m, because it sits over the console's plant end.
-  { node: "wall_shelf_a", position: [LEFT_WALL_X + 0.04, 1.42, -0.52], rotationY: Math.PI / 2 },
-  { node: "wall_shelf_b", position: [LEFT_WALL_X + 0.04, 1.84, -0.52], rotationY: Math.PI / 2 },
-  // Shelf styling: the same little plant as the console, up on the lower
-  // shelf's top surface (unit height 0.337, so 1.42 + 0.337).
-  { node: "plant_small", position: [LEFT_WALL_X + 0.04, 1.757, -0.52], rotationY: Math.PI / 2 },
-  { node: "door", position: [-HALF_W + 0.1, 0, 1.7], rotationY: Math.PI / 2 },
+  { node: "shelf_console", position: [-HALF_W + 0.38, 0, 0.1], rotationY: Math.PI / 2 },
+  { node: "plant_small", position: [-HALF_W + 0.38, CONSOLE_TOP, 0.7], rotationY: Math.PI / 2 },
+  // ONE shelf (review: the stacked pair read as a hovering cabinet), over the
+  // console's plant end, with the little plant's clone on its top surface
+  // (unit height 0.412, so 1.5 + 0.412).
+  { node: "wall_shelf", position: [LEFT_WALL_X + 0.06, 1.5, -0.58], rotationY: Math.PI / 2 },
+  { node: "plant_small", position: [LEFT_WALL_X + 0.06, 1.912, -0.58], rotationY: Math.PI / 2 },
+  { node: "door", position: [-HALF_W + 0.1, 0, 1.55], rotationY: Math.PI / 2 },
 
   // --- the seating zone: an L around the coffee table, anchored on the rug -
   { node: "rug", position: [0.2, 0.004, 0.1] },
   // Faces the television. Front feet land on the rug's right edge.
-  { node: "couch", position: [1.85, 0, 0.1], rotationY: -Math.PI / 2 },
+  { node: "couch", position: [1.72, 0, 0.1], rotationY: -Math.PI / 2 },
   // The second seat that turns "a sofa opposite a TV" into a conversation
   // corner. It floats on the rug's top edge with a walkway behind it -
   // furniture off the wall is how real rooms use their middle.
-  { node: "loveseat", position: [0.3, 0, -1.42] },
+  { node: "loveseat", position: [0.25, 0, -1.28] },
   // Long axis parallel to the couch, like an oval coffee table actually sits.
-  { node: "coffee_table", position: [0.2, 0, 0.25], rotationY: Math.PI / 2 },
-  { node: "plant_table", position: [0.2, 0.347, 0.25], rotationY: Math.PI / 2 },
+  { node: "coffee_table", position: [0.15, 0, 0.3], rotationY: Math.PI / 2 },
+  { node: "plant_table", position: [0.15, 0.347, 0.3], rotationY: Math.PI / 2 },
   // Touching the couch's front arm - a table nobody can reach is decoration.
-  { node: "side_table", position: [1.88, 0, 1.42] },
-  { node: "plant_side", position: [1.88, 0.416, 1.42] },
+  { node: "side_table", position: [1.75, 0, 1.32] },
+  { node: "plant_side", position: [1.75, 0.416, 1.32] },
   // Reading light in the corner of the L, serving both seats.
-  { node: "floor_lamp", position: [2.15, 0, -1.35] },
+  { node: "floor_lamp", position: [1.9, 0, -1.28] },
 
   // --- the back wall (-Z), left to right: sideboard+swatches, prints, window
   // The sideboard sits directly under the swatch row, so the paint decision
   // hangs over real furniture instead of floating on an empty wall.
-  { node: "sideboard", position: [-1.55, 0, -HALF_D + 0.29] },
-  { node: "desk_lamp", position: [-2.0, 0.654, -HALF_D + 0.31] },
-  { node: "window", position: [1.5, 1.3, -HALF_D + 0.06] },
-  { node: "curtains", position: [1.5, 0.32, -HALF_D + 0.14] },
-  // The window cluster: the monstera and a tall cane, different heights,
+  { node: "sideboard", position: [-1.35, 0, -HALF_D + 0.29] },
+  { node: "desk_lamp", position: [-1.78, 0.654, -HALF_D + 0.31] },
+  // Review asked for a lamp in the bare back-left corner. A taller, different
+  // model - matched lamps in opposite corners read as a hotel lobby.
+  { node: "floor_lamp_b", position: [-2.32, 0, -HALF_D + 0.42] },
+  { node: "window", position: [1.35, 1.3, -HALF_D + 0.06] },
+  { node: "curtains", position: [1.35, 0.32, -HALF_D + 0.14] },
+  // The window cluster: the monstera and a leafy cane, different heights,
   // where the light is.
-  { node: "houseplant", position: [2.4, 0, -1.85] },
-  { node: "plant_tall", position: [1.75, 0, -2.05] },
+  { node: "houseplant", position: [2.05, 0, -1.6] },
+  { node: "plant_tall", position: [1.4, 0, -1.85] },
 
-  // --- the doorway ---------------------------------------------------------
-  // A bushy one beside the door, the first thing you'd see coming in.
-  { node: "plant_bushy", position: [-2.3, 0, 2.1] },
+  // --- the front-right corner ----------------------------------------------
+  // The bushy one moved here from the doorway (review: a plant in front of a
+  // door is a plant you water twice and then move). It fills the floor the
+  // camera sees most of, beside the couch's far arm.
+  { node: "plant_bushy", position: [2.1, 0, 1.85] },
 ];
 
 /**
@@ -157,7 +165,7 @@ export const SWATCHES = {
   bareWall: null as string | null,
   size: 0.42,
   gap: 0.16,
-  origin: [-2.15, 1.45, -HALF_D + 0.05] as Vec3,
+  origin: [-1.95, 1.45, -HALF_D + 0.05] as Vec3,
 };
 
 /**
@@ -166,8 +174,8 @@ export const SWATCHES = {
  * pass stacked two mismatched frames vertically, which read as leftovers.)
  */
 export const PRINTS: { position: Vec3; size: [number, number] }[] = [
-  { position: [-0.35, 1.5, -HALF_D + 0.05], size: [0.45, 0.56] },
-  { position: [0.3, 1.5, -HALF_D + 0.05], size: [0.45, 0.56] },
+  { position: [-0.25, 1.5, -HALF_D + 0.05], size: [0.42, 0.52] },
+  { position: [0.35, 1.5, -HALF_D + 0.05], size: [0.42, 0.52] },
 ];
 
 /**
@@ -180,14 +188,15 @@ export const PRINTS: { position: Vec3; size: [number, number] }[] = [
  * is a shadow nobody sees.
  */
 export const CONTACT_SHADOWS: { position: Vec3; size: [number, number] }[] = [
-  { position: [1.85, 0.045, 0.1], size: [1.3, 2.5] }, // couch
-  { position: [0.3, 0.045, -1.42], size: [1.8, 1.1] }, // loveseat
-  { position: [0.2, 0.045, 0.25], size: [0.95, 1.5] }, // coffee table
-  { position: [-2.8, 0.012, 0.1], size: [0.75, 1.7] }, // console
-  { position: [-1.55, 0.012, -2.21], size: [1.55, 0.75] }, // sideboard
-  { position: [2.4, 0.012, -1.85], size: [1.2, 1.2] }, // houseplant
-  { position: [1.75, 0.012, -2.05], size: [0.65, 0.65] }, // plant_tall
-  { position: [-2.3, 0.012, 2.1], size: [1.0, 1.0] }, // plant_bushy
-  { position: [1.88, 0.012, 1.42], size: [0.75, 0.75] }, // side table
-  { position: [2.15, 0.012, -1.35], size: [0.6, 0.6] }, // floor lamp
+  { position: [1.72, 0.045, 0.1], size: [1.3, 2.5] }, // couch
+  { position: [0.25, 0.045, -1.28], size: [1.9, 1.0] }, // loveseat
+  { position: [0.15, 0.045, 0.3], size: [0.95, 1.5] }, // coffee table
+  { position: [-2.62, 0.012, 0.1], size: [0.8, 1.9] }, // console
+  { position: [-1.35, 0.012, -2.01], size: [1.55, 0.75] }, // sideboard
+  { position: [2.05, 0.012, -1.6], size: [1.2, 1.2] }, // houseplant
+  { position: [1.4, 0.012, -1.85], size: [0.65, 0.65] }, // plant_tall
+  { position: [2.1, 0.012, 1.85], size: [1.0, 1.0] }, // plant_bushy
+  { position: [1.75, 0.012, 1.32], size: [0.75, 0.75] }, // side table
+  { position: [1.9, 0.012, -1.28], size: [0.6, 0.6] }, // floor lamp
+  { position: [-2.32, 0.012, -1.88], size: [0.65, 0.65] }, // floor lamp b
 ];

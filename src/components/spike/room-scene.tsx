@@ -86,7 +86,7 @@ function Rig({ progress }: { progress: Progress }) {
     // the beat the walls and floor were cropped off every edge, which loses the
     // room. A diorama has to stay a diorama - the payoff is a finished ROOM, and
     // you cannot read that through a keyhole.
-    const zoom = THREE.MathUtils.lerp(84, 116, THREE.MathUtils.smoothstep(t, 0, 0.9));
+    const zoom = THREE.MathUtils.lerp(93, 128, THREE.MathUtils.smoothstep(t, 0, 0.9));
     orth.zoom += (zoom - orth.zoom) * 0.12;
 
     // Drift a few degrees around the room so the push-in has parallax rather

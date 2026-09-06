@@ -52,13 +52,13 @@ const OUT = join(ROOT, "public", "scene", "living-room.glb");
  */
 const SCENE_MODELS = [
   // --- the story cast -----------------------------------------------------
-  { node: "shelf_console", file: "Shelf_Small1.obj", fit: "x", size: 1.3 },
+  { node: "shelf_console", file: "Shelf_Small1.obj", fit: "x", size: 1.5 },
   // "Featured Content" by Kell Condon, CC-BY. Stays deliberately small: it
   // should look lost on the console. That empty space is the story beat.
-  { node: "tv_old", file: "old-tv.obj", fit: "x", size: 0.55, rotateY: 180 },
+  { node: "tv_old", file: "old-tv.obj", fit: "x", size: 0.6, rotateY: 180 },
   // "TV" by Jarlan Perez, CC-BY. Screen is a flat plane on X, so 90 degrees
   // brings it round to face the room.
-  { node: "tv_new", file: "new-tv.obj", fit: "x", size: 1.1, rotateY: 90 },
+  { node: "tv_new", file: "new-tv.obj", fit: "x", size: 1.3, rotateY: 90 },
   // RoundLarge, not RoundSmall: the small one's proportions force a choice
   // between dining height and doll size. This one is 0.30 tall per unit wide,
   // so a real 1.15 m oval coffee table lands at 0.35 m high with no tricks.
@@ -67,8 +67,9 @@ const SCENE_MODELS = [
   // Shelf_Small2/3, NOT Shelf_1/2 — those are floor-standing bookcases with a
   // height/width ratio near 4, so fitting them by width produced a 4.5 m tower.
   // The `_Small` pair are the actual wall shelves (ratio 0.38).
-  { node: "wall_shelf_a", file: "Shelf_Small2.obj", fit: "x", size: 0.9 },
-  { node: "wall_shelf_b", file: "Shelf_Small3.obj", fit: "x", size: 0.9 },
+  // ONE shelf, a little wider. The stacked pair read as a hovering cabinet -
+  // a single ledge with a plant on it is what actually hangs on walls.
+  { node: "wall_shelf", file: "Shelf_Small2.obj", fit: "x", size: 1.1 },
 
   // --- dressing -----------------------------------------------------------
   // The kit paints this couch with the same `Red`/`DarkRed` it uses on the
@@ -90,9 +91,16 @@ const SCENE_MODELS = [
     // the edge, and a rug that small under this much furniture reads like a
     // bath mat. Rule of thumb is front feet of EVERY seat on the rug.
     size: 3.0,
+    // The source is sculpted with raised folds - "ruffles", per review. Real,
+    // but at this scale they read as a rumpled bedsheet. Squashing the height
+    // keeps a hint of pile without the waves.
+    squash: { y: 0.4 },
     rename: { DarkRed: "Rug_Main", LightOrange: "Rug_Trim" },
   },
   { node: "floor_lamp", file: "Light_Floor1.obj", fit: "y", size: 1.5 },
+  // A second, taller lamp for the corner behind the sideboard. Different
+  // model on purpose: matched lamps in different corners read as a hotel.
+  { node: "floor_lamp_b", file: "Light_Stand2.obj", fit: "y", size: 1.7 },
   { node: "window", file: "Window_Large1.obj", fit: "x", size: 1.4 },
   // Double, not Single: two panels either side of the window instead of one
   // drape covering half the glass. Fit by HEIGHT - the source is 1.25x taller
@@ -116,19 +124,23 @@ const SCENE_MODELS = [
   { node: "plant_small", file: "Houseplant_2.obj", fit: "y", size: 0.32 },
 
   // --- the fill: what makes it read as lived-in, not staged ---------------
-  // The kit's "Small" couches are nearly square in plan (2.114 x 1.992), so a
-  // width-fit love seat came out 1.37 m deep - a mattress with arms. The
-  // squash pulls depth and height back to the big couch's proportions; on
-  // boxy low-poly geometry the distortion is invisible where the maths says
-  // it exists. Its own material namespace: an oatmeal two-seater against the
-  // slate sofa is a furnished room, a matched pair is a showroom floor.
+  // Couch_Medium2, not Couch_Small2: the "Small" couches are nearly square
+  // in plan and needed a squash to stop being 1.37 m deep, and even squashed
+  // they read as armchairs. The Medium is the Large couch's own silhouette -
+  // elongated, cushioned, on a wood frame that matches the walnut tables - so
+  // it needs no geometry tricks at all. Its upholstery keeps its own token
+  // (oatmeal against the slate sofa); its `Wood` frame deliberately keeps the
+  // shared wood token, because matching legs across a room is what a person
+  // who chose their furniture does.
+  // rotateY 180: unlike Couch_Large1, the Medium faces -Z at source. Verified
+  // by render - placed unrotated, it offered its backrest to the coffee table.
   {
     node: "loveseat",
-    file: "Couch_Small2.obj",
+    file: "Couch_Medium2.obj",
     fit: "x",
-    size: 1.5,
-    squash: { y: 0.82, z: 0.62 },
-    rename: { Couch_Beige: "Loveseat_Main", Couch_BeigeDark: "Loveseat_Base" },
+    size: 1.6,
+    rotateY: 180,
+    rename: { Couch_Mustard: "Loveseat_Main" },
   },
   // Sideboard for the wall the swatches hang over. Furniture under wall art
   // is what stops the art floating.
