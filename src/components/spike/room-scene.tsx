@@ -27,6 +27,7 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { applyRoomPalette, readRoomPalette } from "./room-materials";
 import {
   CONTACT_SHADOWS,
+  FISH,
   PRINTS,
   ROOM,
   STATIC_PROPS,
@@ -308,6 +309,7 @@ function LivingRoomProps({ progress }: { progress: Progress }) {
 
   const oldTv = useRef<THREE.Group>(null);
   const newTv = useRef<THREE.Group>(null);
+  const fish = useRef<THREE.Group>(null);
 
   // Re-tint from design tokens, and again whenever the theme class changes.
   // `applyRoomPalette` walks the scene once; this is never per-frame.
@@ -325,10 +327,17 @@ function LivingRoomProps({ progress }: { progress: Progress }) {
   // The ONLY thing scroll changes about the furniture. Everything else is
   // simply there, from the first frame - a room where furniture pops in reads
   // as a software demo, and this has to read as a place someone lives.
-  useFrame(() => {
+  useFrame(({ clock }) => {
     const upgraded = tvUpgradedAt(progress.current);
     if (oldTv.current) oldTv.current.visible = !upgraded;
     if (newTv.current) newTv.current.visible = upgraded;
+
+    // The fish swims: a slow bob, clock-driven rather than scroll-driven -
+    // the fish does not care what the human is doing, which is the joke.
+    // Amplitude is millimetres; it must stay inside a 0.24 m bowl.
+    if (fish.current) {
+      fish.current.position.y = Math.sin(clock.elapsedTime * 1.3) * 0.014;
+    }
   });
 
   return (
@@ -344,6 +353,10 @@ function LivingRoomProps({ progress }: { progress: Progress }) {
       </group>
       <group ref={newTv} visible={false}>
         <Placed scene={scene} placement={TV_NEW} />
+      </group>
+      {/* The group takes the bob; Placed owns the placement. */}
+      <group ref={fish}>
+        <Placed scene={scene} placement={FISH} />
       </group>
     </group>
   );

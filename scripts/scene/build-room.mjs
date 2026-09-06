@@ -1,8 +1,8 @@
 /**
  * EI-272 — build the homepage story scene.
  *
- * Reads the vendored OBJ/MTL sources in `assets/scene/models/` and writes one
- * merged `public/scene/living-room.glb` with a named node per prop.
+ * Reads the vendored OBJ/MTL and GLB sources in `assets/scene/models/` and
+ * writes one merged `public/scene/living-room.glb` with a named node per prop.
  *
  * Pure Node, no Blender. That is a deliberate choice, not a shortcut: these
  * models are 60-750 faces each with NO TEXTURES ANYWHERE - every material is a
@@ -97,9 +97,10 @@ const SCENE_MODELS = [
     squash: { y: 0.4 },
     rename: { DarkRed: "Rug_Main", LightOrange: "Rug_Trim" },
   },
-  { node: "floor_lamp", file: "Light_Floor1.obj", fit: "y", size: 1.5 },
-  // A second, taller lamp for the corner behind the sideboard. Different
-  // model on purpose: matched lamps in different corners read as a hotel.
+  // Light_Stand2, the room's one floor lamp, in the corner behind the
+  // sideboard. There were two — Light_Floor1's white globe stood by the
+  // loveseat, where review flagged it as "a cactus": at diorama scale a
+  // sphere on a stick reads as a plant, so it went.
   { node: "floor_lamp_b", file: "Light_Stand2.obj", fit: "y", size: 1.7 },
   { node: "window", file: "Window_Large1.obj", fit: "x", size: 1.4 },
   // Double, not Single: two panels either side of the window instead of one
@@ -132,30 +133,62 @@ const SCENE_MODELS = [
   // (oatmeal against the slate sofa); its `Wood` frame deliberately keeps the
   // shared wood token, because matching legs across a room is what a person
   // who chose their furniture does.
-  // rotateY 180: unlike Couch_Large1, the Medium faces -Z at source. Verified
-  // by render - placed unrotated, it offered its backrest to the coffee table.
+  // No rotateY: the Medium faces +Z at source, same as Couch_Large1. The 180
+  // an earlier pass carried over from Couch_Small2 turned its back on the room
+  // — review caught it offering its backrest to the coffee table.
   {
     node: "loveseat",
     file: "Couch_Medium2.obj",
     fit: "x",
     size: 1.6,
-    rotateY: 180,
     rename: { Couch_Mustard: "Loveseat_Main" },
   },
   // Sideboard for the wall the swatches hang over. Furniture under wall art
   // is what stops the art floating.
   { node: "sideboard", file: "Drawer_1.obj", fit: "x", size: 1.35 },
   { node: "desk_lamp", file: "Light_Desk.obj", fit: "y", size: 0.35 },
-  // The plant family. Different silhouettes on purpose - a tall cane by the
-  // window, a bushy one by the door, a sprawler on the coffee table, a
-  // narrow one on the side table. Same pot palette ties them together.
-  // Houseplant_3, not _8: number 8's "foliage" is the kit's Wood material -
-  // bare branches. In a room that's supposed to feel cared for, it read as
-  // the one plant nobody watered.
-  { node: "plant_tall", file: "Houseplant_3.obj", fit: "y", size: 1.05 },
+  // The plant family. Different silhouettes on purpose - a bushy one by the
+  // door, a sprawler on the coffee table, a narrow one on the side table.
+  // Same pot palette ties them together. Houseplant_3 (a paddle-leaf cane)
+  // was cut with the globe lamp: from the camera's angle the pair overlapped
+  // into one convincing cactus, and review wanted the cactus gone.
   { node: "plant_bushy", file: "Houseplant_7.obj", fit: "y", size: 0.75 },
   { node: "plant_table", file: "Houseplant_5.obj", fit: "y", size: 0.2 },
   { node: "plant_side", file: "Houseplant_4.obj", fit: "y", size: 0.5 },
+
+  // "Fish Bowl" by sirkitree, CC-BY, via Poly Pizza. GLB source. The fish is
+  // its own material, so `split` lifts it into a separate node the scene can
+  // bob up and down — the one moving thing in the room. Renamed because the
+  // Poly Pizza `mat*` names collide with the televisions' own `mat*` liveries.
+  // The glass keeps its source alpha (0.4); the build carries it through as
+  // an alpha-blended material.
+  {
+    node: "fish_bowl",
+    file: "fish-bowl.glb",
+    fit: "y",
+    size: 0.24,
+    rename: { mat24: "Fishbowl_Glass", mat13: "Fishbowl_Fish" },
+    split: { Fishbowl_Fish: "fish" },
+  },
+  // "books" by Tiff Eidmann, CC-BY, via Poly Pizza. A stack for the wall
+  // shelf. Unmapped in room-materials.ts on purpose, like the TVs: the covers
+  // are the books' own liveries and should read as books in any theme.
+  {
+    node: "books",
+    file: "books.glb",
+    fit: "x",
+    size: 0.35,
+    rename: {
+      mat3: "Books_Teal",
+      mat8: "Books_Red",
+      mat9: "Books_Green",
+      mat12: "Books_Yellow",
+      mat17: "Books_Navy",
+      mat20: "Books_Brown",
+      mat21: "Books_White",
+      mat23: "Books_Black",
+    },
+  },
 ];
 
 // --- OBJ + MTL parsing ------------------------------------------------------
@@ -244,6 +277,90 @@ function faceNormal(a, b, c) {
   ];
   const len = Math.hypot(n[0], n[1], n[2]) || 1;
   return [n[0] / len, n[1] / len, n[2] / len];
+}
+
+// --- GLB parsing ------------------------------------------------------------
+
+/**
+ * Reads a GLB source into the same shape `parseObj`/`parseMtl` produce: a
+ * groups Map of non-indexed triangle soup keyed by material name, plus a
+ * colour table. Poly Pizza exports are flat-coloured and untextured, exactly
+ * like the OBJ kit, so nothing downstream needs to know which format a model
+ * arrived in.
+ *
+ * Colours here carry a fourth component: the source's baseColorFactor alpha.
+ * The fish bowl's glass is the reason — 0.4 alpha is what makes it glass.
+ *
+ * Deliberately minimal: tightly-packed accessors, no node transforms, no
+ * textures. The Poly Pizza models this exists for have none of those, and the
+ * asserts below turn a fancier future source into a loud build failure rather
+ * than silently mangled geometry.
+ */
+function parseGlb(path) {
+  const buf = readFileSync(path);
+  if (buf.toString("ascii", 0, 4) !== "glTF") {
+    throw new Error(`${path}: not a GLB container`);
+  }
+  const jsonLen = buf.readUInt32LE(12);
+  const json = JSON.parse(buf.toString("utf8", 20, 20 + jsonLen));
+  const binStart = 20 + jsonLen + 8;
+  const bin = buf.subarray(binStart, binStart + buf.readUInt32LE(20 + jsonLen));
+
+  const readAccessor = (idx) => {
+    const acc = json.accessors[idx];
+    const view = json.bufferViews[acc.bufferView];
+    const comps = { SCALAR: 1, VEC2: 2, VEC3: 3 }[acc.type];
+    const compSize = { 5126: 4, 5125: 4, 5123: 2, 5121: 1 }[acc.componentType];
+    if (!comps || !compSize) {
+      throw new Error(`${path}: accessor ${acc.type}/${acc.componentType} unsupported`);
+    }
+    const read = { 5126: "readFloatLE", 5125: "readUInt32LE", 5123: "readUInt16LE", 5121: "readUInt8" }[
+      acc.componentType
+    ];
+    // byteStride is per ELEMENT (vec3, not float); components inside one
+    // element are always contiguous per the glTF spec.
+    const stride = view.byteStride ?? comps * compSize;
+    const start = (view.byteOffset ?? 0) + (acc.byteOffset ?? 0);
+    const out = new Array(acc.count * comps);
+    for (let i = 0; i < acc.count; i++) {
+      for (let c = 0; c < comps; c++) {
+        out[i * comps + c] = bin[read](start + i * stride + c * compSize);
+      }
+    }
+    return out;
+  };
+
+  const groups = new Map();
+  const colours = {};
+  const ensure = (m) => {
+    if (!groups.has(m)) groups.set(m, { positions: [], normals: [] });
+    return groups.get(m);
+  };
+
+  for (const node of json.nodes ?? []) {
+    if (node.mesh === undefined) continue;
+    if (node.translation || node.rotation || node.scale || node.matrix) {
+      throw new Error(`${path}: node transforms unsupported`);
+    }
+    for (const prim of json.meshes[node.mesh].primitives) {
+      const mat = json.materials[prim.material];
+      const name = mat?.name ?? "Default";
+      colours[name] = mat?.pbrMetallicRoughness?.baseColorFactor ?? [0.8, 0.8, 0.8, 1];
+
+      const pos = readAccessor(prim.attributes.POSITION);
+      const nrm = readAccessor(prim.attributes.NORMAL);
+      const indices = prim.indices !== undefined
+        ? readAccessor(prim.indices)
+        : Array.from({ length: pos.length / 3 }, (_, i) => i);
+
+      const g = ensure(name);
+      for (const i of indices) {
+        g.positions.push(pos[i * 3], pos[i * 3 + 1], pos[i * 3 + 2]);
+        g.normals.push(nrm[i * 3], nrm[i * 3 + 1], nrm[i * 3 + 2]);
+      }
+    }
+  }
+  return { groups, colours };
 }
 
 // --- normalisation ----------------------------------------------------------
@@ -428,15 +545,22 @@ function buildGltf(models) {
       if (!g.positions.length) continue;
 
       if (!materialIndex.has(matName)) {
-        const [r, gg, b] = m.colours[matName] ?? [0.8, 0.8, 0.8];
-        json.materials.push({
+        const [r, gg, b, a = 1] = m.colours[matName] ?? [0.8, 0.8, 0.8];
+        const material = {
           name: matName, // semantic; room-materials.ts re-tints by this
           pbrMetallicRoughness: {
-            baseColorFactor: [r, gg, b, 1],
+            baseColorFactor: [r, gg, b, a],
             metallicFactor: 0,
             roughnessFactor: 0.85,
           },
-        });
+        };
+        // Translucency survives the pipeline: the fish bowl's 0.4-alpha glass
+        // needs blending and both faces, or it renders as an opaque dome.
+        if (a < 1) {
+          material.alphaMode = "BLEND";
+          material.doubleSided = true;
+        }
+        json.materials.push(material);
         materialIndex.set(matName, json.materials.length - 1);
       }
 
@@ -518,8 +642,12 @@ console.log(`\n${"node".padEnd(16)} ${"file".padEnd(24)} size (m)      tris`);
 console.log("-".repeat(66));
 
 for (const spec of SCENE_MODELS) {
-  let groups = parseObj(join(SRC, spec.file));
-  let colours = parseMtl(join(SRC, spec.file.replace(/\.obj$/, ".mtl")));
+  let { groups, colours } = spec.file.endsWith(".glb")
+    ? parseGlb(join(SRC, spec.file))
+    : {
+        groups: parseObj(join(SRC, spec.file)),
+        colours: parseMtl(join(SRC, spec.file.replace(/\.obj$/, ".mtl"))),
+      };
 
   // Namespace this model's materials where the spec asks for it. Applied to
   // the geometry groups and the colour table together, so a renamed material
@@ -554,6 +682,16 @@ for (const spec of SCENE_MODELS) {
       `${size.join(" x ").padEnd(22)} ${tris}`,
   );
   models.push({ ...spec, groups, colours });
+
+  // `split` lifts a material's geometry into its own sibling node AFTER the
+  // shared normalisation, so the parts keep their relative placement — the
+  // fish stays inside its bowl, but the scene can animate it independently.
+  for (const [matName, nodeName] of Object.entries(spec.split ?? {})) {
+    const g = groups.get(matName);
+    if (!g) throw new Error(`${spec.node}: split material ${matName} not found`);
+    groups.delete(matName);
+    models.push({ node: nodeName, groups: new Map([[matName, g]]), colours });
+  }
 }
 
 const { json, bin } = buildGltf(models);

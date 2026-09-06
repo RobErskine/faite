@@ -478,14 +478,12 @@
 */
 :root {
   --room-white: #efece5;
-  --room-grey: #9a968e;
   --room-black: #322f2c;
   --room-brown: #7c6248;
   --room-wood: #8a6a48;
   --room-metal: #8a8f96;
   --room-metal-light: #c2beb4;
   --room-glass: #d7e4ea;
-  --room-light: #f5ecd7;
   --room-plant: #5f8f54;
   --room-plant-dark: #4b7345;
   --room-terracotta: #c4794f;
@@ -505,14 +503,12 @@
 
 .dark {
   --room-white: #b3afa7;
-  --room-grey: #6f6c65;
   --room-black: #262421;
   --room-brown: #5a4835;
   --room-wood: #6a5138;
   --room-metal: #63676d;
   --room-metal-light: #8d8a82;
   --room-glass: #7f929c;
-  --room-light: #e2d1a8;
   --room-plant: #49703f;
   --room-plant-dark: #3a5836;
   --room-terracotta: #955c3d;

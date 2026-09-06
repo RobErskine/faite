@@ -1265,3 +1265,28 @@ and the bundler drops the `import()`. `.next-static` went 15M → 14M.
 app-shell target cannot use has to be excluded by a build-time constant, and
 the exclusion needs an asserted test — grep the export for the library and fail
 if it is there. Nobody notices 800 KB of dead code by reading a diff.
+
+## A "verified by render" comment verifies the model it was written against
+
+The love seat shipped facing the wall. Its build spec carried `rotateY: 180`
+with a comment claiming the flip was "verified by render" — true for the
+Couch_Small2 the room used first, false for the Couch_Medium2 that replaced
+it (which faces +Z at source, like the other kit couches). The comment
+survived the model swap; the verification did not.
+
+**Rule:** when a model file changes under a spec entry, every orientation and
+scale claim in that entry is unverified again, however confident its comment
+sounds. Re-render before keeping any of it.
+
+## An annotation arrow points at pixels, not at scene nodes
+
+Review asked to "remove the cactus" with an arrow into the window corner.
+There was no cactus node — the arrow tip landed where a white-globe floor
+lamp overlapped a paddle-leaf houseplant, and from the camera's one angle
+the pair composited into a single convincing "cactus in a white pot".
+
+**Rule:** before mapping an annotated screenshot's label to a node, crop and
+zoom the arrow's target and list every object that overlaps there from the
+camera's angle. The user names what they see; the scene graph is not what
+they see. If the label and the arrow disagree, suspect an occlusion illusion
+before assuming either is wrong.

@@ -31,7 +31,7 @@ export default function ColophonPage() {
         <ProseSection id="scene" heading="The 3D scene">
           <ProseText>
             The room on the home page is built from models made by other
-            people and shared freely. Two of them are licensed{" "}
+            people and shared freely. Four of them are licensed{" "}
             <ProseLink href="https://creativecommons.org/licenses/by/3.0/">
               CC&nbsp;BY&nbsp;3.0
             </ProseLink>
@@ -48,6 +48,16 @@ export default function ColophonPage() {
               <em>TV</em> by Jarlan Perez, CC&nbsp;BY, via{" "}
               <ProseLink href="https://poly.pizza/">Poly Pizza</ProseLink>
               {" "}&mdash; the new television.
+            </li>
+            <li>
+              <em>Fish Bowl</em> by sirkitree, CC&nbsp;BY, via{" "}
+              <ProseLink href="https://poly.pizza/">Poly Pizza</ProseLink>
+              {" "}&mdash; the fish bowl on the sideboard, fish included.
+            </li>
+            <li>
+              <em>books</em> by Tiff Eidmann, CC&nbsp;BY, via{" "}
+              <ProseLink href="https://poly.pizza/">Poly Pizza</ProseLink>
+              {" "}&mdash; the stack on the wall shelf.
             </li>
             <li>
               <em>Houseplant</em> by{" "}

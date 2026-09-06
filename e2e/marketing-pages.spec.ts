@@ -75,7 +75,7 @@ test("the colophon credits every CC-BY creator by name", async ({ page }) => {
   await page.goto("/colophon");
   const main = page.getByRole("main");
 
-  for (const creator of ["Kell Condon", "Jarlan Perez"]) {
+  for (const creator of ["Kell Condon", "Jarlan Perez", "sirkitree", "Tiff Eidmann"]) {
     await expect(main).toContainText(creator);
   }
   // The licence itself has to be named, not just the person.

@@ -3,7 +3,7 @@
 Source models for the homepage story scene (EI-272). `npm run scene` reads
 `models/` and writes `public/scene/living-room.glb`.
 
-**Two of these are CC-BY, and that is a condition of use, not a courtesy.**
+**Four of these are CC-BY, and that is a condition of use, not a courtesy.**
 CC0 waives everything — you may ship it uncredited. CC-BY grants the licence
 *only* if attribution is given. So the credits below have to reach a user, not
 just sit in this file: they render at `/colophon`, which is linked from the
@@ -16,6 +16,8 @@ Attribution follows the standard CC form — **title, creator, licence, source.*
 |---|---|---|---|---|
 | `old-tv` | Featured Content | Kell Condon | **CC-BY 3.0** | Poly Pizza |
 | `new-tv` | TV | Jarlan Perez | **CC-BY 3.0** | Poly Pizza |
+| `fish-bowl` | Fish Bowl | sirkitree | **CC-BY 3.0** | Poly Pizza |
+| `books` | books | Tiff Eidmann | **CC-BY 3.0** | Poly Pizza |
 | `houseplant` | Houseplant | Quaternius | CC0 | Poly Pizza |
 | `furniture/*` | Ultimate House Interior Pack | Quaternius | CC0 | quaternius.com |
 

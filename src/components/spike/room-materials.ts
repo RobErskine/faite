@@ -37,14 +37,12 @@ import { Color } from "three";
 export const MATERIAL_TOKENS: Record<string, string> = {
   // Kit-wide semantics.
   White: "--room-white",
-  Grey: "--room-grey",
   Black: "--room-black",
   Brown: "--room-brown",
   Wood: "--room-wood",
   Metal: "--room-metal",
   LightMetal: "--room-metal-light",
   Glass: "--room-glass",
-  Light: "--room-light",
   Plant_Green: "--room-plant",
   DarkGreen: "--room-plant-dark",
   LightOrange: "--room-terracotta",

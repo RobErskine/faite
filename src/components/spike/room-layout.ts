@@ -14,8 +14,7 @@
  *    coffee table sits fully on it, and the television faces it. Furniture
  *    scattered off-rug is what made the first pass read as a showroom.
  *  - The couch and console face each other across the rug at a real viewing
- *    distance. The side table touches the couch's arm; the floor lamp stands
- *    behind the opposite arm, where a person would put a reading light.
+ *    distance. The side table touches the couch's arm.
  *  - Plants go where light is - the big one in the corner by the window, the
  *    small one on the console. Nothing stands alone in the middle of the
  *    floor; a prop with no relationship to another prop reads as clutter.
@@ -86,10 +85,11 @@ export const STATIC_PROPS: PropPlacement[] = [
   { node: "shelf_console", position: [-HALF_W + 0.38, 0, 0.1], rotationY: Math.PI / 2 },
   { node: "plant_small", position: [-HALF_W + 0.38, CONSOLE_TOP, 0.7], rotationY: Math.PI / 2 },
   // ONE shelf (review: the stacked pair read as a hovering cabinet), over the
-  // console's plant end, with the little plant's clone on its top surface
-  // (unit height 0.412, so 1.5 + 0.412).
+  // console's plant end, with the book stack on its top surface (unit height
+  // 0.412, so 1.5 + 0.412). Books replaced the small plant's clone here —
+  // review: two identical plants a metre apart read as a copy-paste.
   { node: "wall_shelf", position: [LEFT_WALL_X + 0.06, 1.5, -0.58], rotationY: Math.PI / 2 },
-  { node: "plant_small", position: [LEFT_WALL_X + 0.06, 1.912, -0.58], rotationY: Math.PI / 2 },
+  { node: "books", position: [LEFT_WALL_X + 0.06, 1.912, -0.58], rotationY: Math.PI / 2 },
   { node: "door", position: [-HALF_W + 0.1, 0, 1.55], rotationY: Math.PI / 2 },
 
   // --- the seating zone: an L around the coffee table, anchored on the rug -
@@ -106,23 +106,25 @@ export const STATIC_PROPS: PropPlacement[] = [
   // Touching the couch's front arm - a table nobody can reach is decoration.
   { node: "side_table", position: [1.75, 0, 1.32] },
   { node: "plant_side", position: [1.75, 0.416, 1.32] },
-  // Reading light in the corner of the L, serving both seats.
-  { node: "floor_lamp", position: [1.9, 0, -1.28] },
 
   // --- the back wall (-Z), left to right: sideboard+swatches, prints, window
   // The sideboard sits directly under the swatch row, so the paint decision
   // hangs over real furniture instead of floating on an empty wall.
   { node: "sideboard", position: [-1.35, 0, -HALF_D + 0.29] },
   { node: "desk_lamp", position: [-1.78, 0.654, -HALF_D + 0.31] },
+  // The fish bowl balances the desk lamp on the sideboard's other end. Its
+  // fish is a separate node (see FISH below) so the scene can animate it.
+  { node: "fish_bowl", position: [-0.95, 0.654, -HALF_D + 0.31] },
   // Review asked for a lamp in the bare back-left corner. A taller, different
   // model - matched lamps in opposite corners read as a hotel lobby.
   { node: "floor_lamp_b", position: [-2.32, 0, -HALF_D + 0.42] },
   { node: "window", position: [1.35, 1.3, -HALF_D + 0.06] },
   { node: "curtains", position: [1.35, 0.32, -HALF_D + 0.14] },
-  // The window cluster: the monstera and a leafy cane, different heights,
-  // where the light is.
+  // The monstera, where the light is. It had two companions once - a
+  // white-globe floor lamp and a paddle-leaf cane - which overlapped from the
+  // camera's angle into one convincing "cactus in a white pot". Review asked
+  // for the cactus gone; both halves of the illusion went with it.
   { node: "houseplant", position: [2.05, 0, -1.6] },
-  { node: "plant_tall", position: [1.4, 0, -1.85] },
 
   // --- the front-right corner ----------------------------------------------
   // The bushy one moved here from the doorway (review: a plant in front of a
@@ -146,6 +148,18 @@ export const TV_NEW: PropPlacement = {
   node: "tv_new",
   position: TV_SPOT,
   rotationY: Math.PI / 2,
+};
+
+/**
+ * The fish, split out of the bowl's GLB by `build-room.mjs` so it can swim.
+ * Same coordinates as the bowl — the split preserves their shared origin, so
+ * placing both at one spot nests the fish back inside the glass. The scene
+ * bobs it a few millimetres on Y; everything else in the room holds still,
+ * which is exactly what makes one small motion read as life.
+ */
+export const FISH: PropPlacement = {
+  node: "fish",
+  position: [-0.95, 0.654, -HALF_D + 0.31],
 };
 
 /**
@@ -194,9 +208,7 @@ export const CONTACT_SHADOWS: { position: Vec3; size: [number, number] }[] = [
   { position: [-2.62, 0.012, 0.1], size: [0.8, 1.9] }, // console
   { position: [-1.35, 0.012, -2.01], size: [1.55, 0.75] }, // sideboard
   { position: [2.05, 0.012, -1.6], size: [1.2, 1.2] }, // houseplant
-  { position: [1.4, 0.012, -1.85], size: [0.65, 0.65] }, // plant_tall
   { position: [2.1, 0.012, 1.85], size: [1.0, 1.0] }, // plant_bushy
   { position: [1.75, 0.012, 1.32], size: [0.75, 0.75] }, // side table
-  { position: [1.9, 0.012, -1.28], size: [0.6, 0.6] }, // floor lamp
   { position: [-2.32, 0.012, -1.88], size: [0.65, 0.65] }, // floor lamp b
 ];
