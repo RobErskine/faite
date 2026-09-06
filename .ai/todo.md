@@ -2245,3 +2245,75 @@ rounds produced, and the four traps. Indexed in `docs/README.md`; a short
 rules section added to `AGENTS.md`; the runbook's "nothing here ships"
 premise corrected and pointed at the doc. `site.ts`'s `/spike-3d` comment
 rewritten - it ships deliberately now, to be re-measured live.
+
+## EI-274 — the homepage hero is the board itself (2026-09-06)
+
+Sub A of EI-273. The old `/` was a wordmark, a tagline and a link. It now
+opens with the pitch as the `<h1>` and, under it, a picture of the board that
+is not a picture: `src/components/marketing/demo-board.tsx`, a Server
+Component drawing the two-half board — Overflow, today, two days ahead,
+Backlog and two list columns — from hand-written literals. The card the whole
+page is about, **"Plan living room move"**, sits at the top of today with its
+`0/5` sub-task badge; EI-278 carries it into the story and ticks the five off.
+
+### Why it is not `components/board/`
+
+`BoardColumn` imports `createLabel` from `lib/store/repositories` (Dexie on
+the marketing page), `TodoCard` calls `useSortable()` (cannot render outside
+a `DndContext` at all), and `todo-row-parts.tsx` is `"use client"` with a
+Base UI tooltip behind every badge. `/` is the one page whose entire audience
+is a cold-cache stranger — `redirectIfKnownDevice` sends everyone else to
+`/board` before paint — so a hero that cannot be dragged, ticked or hovered
+has no business shipping drag sensors, a database or a tooltip runtime.
+
+What it does reuse is the vocabulary, not the behaviour: `priorityRail`,
+`tint`/`edge`, `badgeVariants`, `TITLE_CLAMP_CLASS`, and the surface/type
+utilities. The data is a local `DemoTodo`, not a `Todo` — a card that can
+neither be scheduled nor synced has a real value for about six of thirty-odd
+fields, and nothing here is passed to a function that reads the rest.
+
+### Measured
+
+`npm run build` immediately before measuring, per the pruning lesson above.
+
+| `/` | JS (gz) | HTML (gz) |
+|---|---|---|
+| before | 340.5 KB | 5.2 KB |
+| after | 340.5 KB | 10.9 KB |
+
+**Zero added JS.** The whole hero is 5.7 KB of gzipped markup, which is the
+entire point of keeping it a Server Component. `.next-static` (app shell)
+greps clean of every string on the board, and `/` there is still nothing but
+`window.location.replace("/board")`.
+
+### Two decisions worth keeping
+
+**Cropped, never squeezed.** The board is held at a fixed `w-6xl` and clipped
+on the right rather than allowed to share out a narrow viewport: at phone
+width the columns collapse to ~90px each, every heading truncated to
+"WEDNE…". The product does not look like that on a phone — it renders
+`PhoneBoard` — so a shrunken desktop board is a picture of something broken,
+not a smaller picture of the truth. Clipped, a narrow screen gets a window
+onto a real board with Overflow and today always in frame. `max-h-[60vh]`
+plus a gradient does the same vertically, and doubles as the invitation into
+the scroll story.
+
+**Fixed dates.** `/` is prerendered, so a computed "today" freezes at build
+time anyway; a date that is silently three months stale reads worse than one
+that was obviously always a sample.
+
+### Verified
+
+`npm run verify` green (154 files, 2358 tests). `npm run e2e:ci` green
+(108 passed, desktop + phone-iphone). Rendered and read at 1440×900 and
+390×844, light and dark.
+
+Two new guards. `demo-board.test.ts` strips comments, then asserts the file
+carries no `"use client"`, that no module it imports carries one either
+(proved non-vacuous against `ui/checkbox` and `board/todo-row-parts`, which
+both trip it), and that it reaches into neither `lib/store` nor
+`components/board`. The e2e half lives in `marketing-pages.spec.ts` — already
+matched by the `desktop` project, so no `playwright.config.ts` change — and
+asserts the board's text against the raw response body rather than the
+hydrated DOM: rendering it on the client would keep every locator green and
+fail that line.
