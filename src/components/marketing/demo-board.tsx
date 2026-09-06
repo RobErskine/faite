@@ -32,7 +32,7 @@ import { cn } from "@/lib/utils";
  *
  * # What it does reuse
  *
- * The parts that carry meaning rather than behaviour, so the demo cannot drift
+ * The parts that carry meaning rather than behavior, so the demo cannot drift
  * from the product's own vocabulary: `priorityRail` (the achromatic rail,
  * docs/DESIGN.md §7), `tint`/`edge` (the identity ladder, §1),
  * `badgeVariants`, `TITLE_CLAMP_CLASS`, and the surface/type utilities from
@@ -85,7 +85,7 @@ export interface DemoColumn {
   emphasis?: boolean;
   /** Overflow: a rule under the title and a tinted count. */
   tone?: "urgent";
-  /** A list column's own colour, drawn as the header's 2px accent. */
+  /** A list column's own color, drawn as the header's 2px accent. */
   accentColor?: string;
   /** Overflow and Backlog — the pinned rails, on their own faint tint. */
   pinned?: boolean;
@@ -172,7 +172,7 @@ export const DEMO_COLUMNS: DemoColumn[] = [
   },
 ];
 
-/** The planning half: Backlog, then the lists, each in its own colour. */
+/** The planning half: Backlog, then the lists, each in its own color. */
 export const DEMO_LISTS: DemoColumn[] = [
   {
     title: "Backlog",
@@ -180,7 +180,7 @@ export const DEMO_LISTS: DemoColumn[] = [
     pinned: true,
     todos: [
       { title: "Draft blog post outline" },
-      { title: "Organise the garage", priority: 4 },
+      { title: "Organize the garage", priority: 4 },
     ],
   },
   {
@@ -337,7 +337,7 @@ function DemoCard({ todo }: { todo: DemoTodo }) {
                 key={label.name}
                 className={cn(badgeVariants({ variant: "secondary" }), "text-2xs font-normal")}
                 /* The identity ladder from lib/colors.ts — tint behind, edge
-                   around, the label's own colour on the name. */
+                   around, the label's own color on the name. */
                 style={{
                   backgroundColor: tint(label.color),
                   borderColor: edge(label.color),
@@ -417,7 +417,7 @@ function DemoColumnView({ column, dayTrack }: { column: DemoColumn; dayTrack?: b
 
 /**
  * The whole thing: the calendar half over the planning half, the two-track
- * shape a returning user would recognise from `/board` itself.
+ * shape a returning user would recognize from `/board` itself.
  *
  * `aria-hidden` with a caption instead: this is a picture of software, and
  * every string in it is a sample. Read aloud it would be forty to-dos of noise

@@ -32,7 +32,7 @@ export function DesignSection({ settings }: SettingsSectionProps) {
           <Label htmlFor="design-good-job-mode">GOOD JOB mode</Label>
           <p className="text-sm text-muted-foreground">
             Throw a spark of confetti when you complete a to-do, in that to-do&apos;s
-            own colour. Won&apos;t-do items get nothing. Off if your system asks for
+            own color. Won&apos;t-do items get nothing. Off if your system asks for
             reduced motion.
           </p>
         </div>

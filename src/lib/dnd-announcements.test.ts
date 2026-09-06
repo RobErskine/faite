@@ -198,7 +198,7 @@ describe("boardDragAnnouncements", () => {
   describe("onDragCancel", () => {
     it("names the todo and confirms it stayed in its column", () => {
       const message = announcements.onDragCancel?.({ active: { id: "t1" } as never, over: null });
-      expect(message).toBe("Buy milk. Drag cancelled, still in Tuesday.");
+      expect(message).toBe("Buy milk. Drag canceled, still in Tuesday.");
     });
   });
 
