@@ -2,6 +2,7 @@ import { CalendarCheck, CornerDownRight, ListChecks, MapPin } from "lucide-react
 import { badgeVariants } from "@/components/ui/badge";
 import { edge, tint } from "@/lib/colors";
 import { priorityRail } from "@/lib/priority";
+import { STORY_BEATS } from "@/lib/story-beats";
 import { TITLE_CLAMP_CLASS } from "@/lib/title";
 import { cn } from "@/lib/utils";
 
@@ -96,17 +97,15 @@ export const MOVE_TODO_TITLE = "Plan living room move";
 /**
  * The five sub-tasks, in the order the room does them.
  *
- * One per story beat, so EI-276's camera, EI-277's copy and EI-278's ticks all
- * read off the same list. On the hero none of them are done yet — that is the
+ * DERIVED from `STORY_BEATS`, not written out again here: one sub-task per
+ * beat is the identity EI-278 relies on to tick them from scroll progress, and
+ * a second hand-maintained copy of the list is exactly how that identity would
+ * quietly stop holding. On the hero none of them are done yet — that is the
  * point of the `0/5`.
  */
-export const MOVE_SUBTASKS: { title: string; done?: boolean }[] = [
-  { title: "Get everything out of my head and onto the list" },
-  { title: "Pick a paint colour and book the painter" },
-  { title: "Measure the room before ordering the couch" },
-  { title: "Decide about the old bookcase" },
-  { title: "Sell or donate what is not coming with us" },
-];
+export const MOVE_SUBTASKS: { title: string; done?: boolean }[] = STORY_BEATS.map(
+  (beat) => ({ title: beat.subtask }),
+);
 
 const HOME: DemoLabel = { name: "Home", color: "#46a758" };
 const ERRANDS: DemoLabel = { name: "Errands", color: "#00a2c7" };
@@ -203,6 +202,44 @@ export const DEMO_LISTS: DemoColumn[] = [
 ];
 
 /**
+ * The board's checkbox, as a picture of one.
+ *
+ * A `span`, not `ui/checkbox.tsx` — that one is `"use client"` and nothing on
+ * this page has anything to tick. Same 16px square, same square corners (see
+ * that file for why a 4px radius is wrong at this size), same `--primary` fill
+ * when checked.
+ *
+ * Exported because the story panel (`story-panel.tsx`) ticks the same boxes
+ * the hero board draws, and two hand-rolled checkmarks would drift apart.
+ */
+export function DemoCheckbox({ done, className }: { done?: boolean; className?: string }) {
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        "flex size-4 shrink-0 items-center justify-center rounded-none border transition-colors",
+        done ? "border-primary bg-primary" : "border-muted-foreground",
+        className,
+      )}
+    >
+      {done && (
+        <svg
+          viewBox="0 0 16 16"
+          className="size-3 text-primary-foreground"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2.5}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M3.5 8.5 6.5 11.5 12.5 4.5" />
+        </svg>
+      )}
+    </span>
+  );
+}
+
+/**
  * A card row.
  *
  * The geometry is `todo-card.tsx`'s and the comments there explain each piece:
@@ -242,32 +279,7 @@ function DemoCard({ todo }: { todo: DemoTodo }) {
         />
       )}
 
-      {/*
-        A span, not `<Checkbox>` — that one is `"use client"`, and a hero has
-        nothing to tick. Same 16px square, same square corners, same
-        `--primary` fill when checked.
-      */}
-      <span
-        aria-hidden
-        className={cn(
-          "absolute top-2.5 left-3 flex size-4 shrink-0 items-center justify-center rounded-none border",
-          done ? "border-primary bg-primary" : "border-muted-foreground",
-        )}
-      >
-        {done && (
-          <svg
-            viewBox="0 0 16 16"
-            className="size-3 text-primary-foreground"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={2.5}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M3.5 8.5 6.5 11.5 12.5 4.5" />
-          </svg>
-        )}
-      </span>
+      <DemoCheckbox done={done} className="absolute top-2.5 left-3" />
 
       <div
         className={cn(

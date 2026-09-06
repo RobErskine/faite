@@ -1,7 +1,7 @@
 # The 3D room scene
 
-The isometric living room on `/spike-3d` — how it is built, why it is built
-that way, and what to do to it next.
+The isometric living room on `/` — how it is built, why it is built that way,
+and what to do to it next.
 
 Rationale for the homepage story itself lives in `docs/RESEARCH.md`; the
 point-in-time spike record with the original measurements is
@@ -23,12 +23,14 @@ already tells the story.
 | `assets/scene/CREDITS.md` | Title / creator / licence / source per model. A missing licence is a blocker. |
 | `scripts/scene/build-room.mjs` | `npm run scene`. Reads the sources, writes one merged GLB. |
 | `public/scene/living-room.glb` | The committed build output. 371 KB, 23 nodes, 37 materials. |
-| `src/components/spike/room-layout.ts` | Where every prop sits, in metres. No geometry. |
-| `src/components/spike/room-materials.ts` | Material name → CSS custom property, and the re-tint pass. |
-| `src/components/spike/room-scene.tsx` | The R3F canvas: shell, lights, camera rig, placed props, the fish. |
-| `src/components/spike/room-stage.tsx` | The pinned stage, the lazy gate, the scroll listener, the flat fallback. |
-| `src/components/spike/webgl.ts` | Capability + reduced-motion probe. |
-| `src/app/spike-3d/page.tsx` | Server Component. Headline and beats. No client JS. |
+| `src/components/scene/room-layout.ts` | Where every prop sits, in metres. No geometry. |
+| `src/components/scene/room-materials.ts` | Material name → CSS custom property, and the re-tint pass. |
+| `src/components/scene/room-scene.tsx` | The R3F canvas: shell, lights, camera rig, placed props, the fish. |
+| `src/components/scene/room-stage.tsx` | The pinned stage, the lazy gate, the scroll listener, the flat fallback. |
+| `src/components/scene/webgl.ts` | Capability + reduced-motion probe. |
+| `src/app/page.tsx` | Server Component. The hero board, the beats, the closing CTA. No client JS of its own. |
+| `src/lib/story-beats.ts` | One row per beat: headline, body, citation, and the sub-task it ticks. |
+| `src/components/marketing/story-panel.tsx` | The card pinned beside the room. Server Component. |
 | `src/app/globals.css` | The `--room-*` token block, light and dark. |
 
 Generated output is **committed**, same convention as `assets/icons/`
@@ -84,7 +86,9 @@ because the server was localhost** — a real deploy adds a round trip. And the
 frame numbers were taken against a dozen untextured boxes, *not* the finished
 room; the GLB is flat-shaded and unlit-cheap so the cost should stay flat, but
 **re-measure on the live deploy before trusting it**. Scripts:
-`scripts/spike/measure-page.mjs` and `measure-deferred.mjs`.
+`scripts/spike/measure-page.mjs` and `measure-deferred.mjs`. The directory name
+is historical: they were written for the EI-272 spike and kept their path so
+the runbook and `.ai/lessons.md` still point at files that exist.
 
 INP is not measured and is not meaningful here: the page has no tap targets,
 and scroll is not an INP interaction. Frame cost is the real proxy.
@@ -264,7 +268,7 @@ Rules:
 Every composition bug on this scene was found by eye and none by a test. The
 suite cannot tell you the sofa faces the wall.
 
-Run the dev server, open `/spike-3d`, screenshot it, and crop in on what you
+Run the dev server, open `/`, scroll into the story, screenshot it, and crop in on what you
 changed. Two failures worth knowing about, both recorded in `.ai/lessons.md`:
 
 - **A "verified by render" comment verifies the model it was written against.**
@@ -329,7 +333,7 @@ something that looked wrong:
    into a `useMemo` trips the same rule; a ref trips `react-hooks/refs`
    instead. Three attempts, three rules, worse code each time. Resolved with a
    **directory-scoped override** in `eslint.config.mjs` — if this code moves
-   out of `src/components/spike/`, the override's `files` glob moves with it.
+   out of `src/components/scene/`, the override's `files` glob moves with it.
 
 4. **three.js logs one `THREE.Clock` → `THREE.Timer` deprecation warning** from
    inside R3F. Not ours; it will clear on an R3F release.
@@ -338,22 +342,31 @@ something that looked wrong:
 
 ## 12. Status and what is next
 
-The scene lives behind `/spike-3d`, which is **deployed deliberately** so it
-can be measured on real hardware. The route is listed in `PRIVATE_ROUTES`
-(`src/lib/site.ts`), not `SITE_PAGES`: it is never indexed and never linked
-from the marketing navigation, so it carries no metadata contract. Reaching it
-means typing the URL. `site.test.ts` asserts the two lists together account for
-every route under `src/app`, so the route cannot quietly disappear from both.
+The scene is **on the homepage** (EI-275). `/spike-3d` is gone — the route,
+its `PRIVATE_ROUTES` entry, and the throwaway premise with them — and
+`src/components/scene/` moved to `src/components/scene/`, taking the eslint
+override's `files` glob along.
+
+`/` is the demanding home the spike was always measuring for: its entire
+audience is a cold-cache first-time visitor, because `redirectIfKnownDevice`
+sends everyone who has used the board before to `/board` ahead of paint. The
+load invariants in §4 are load-bearing now rather than exploratory.
+
+The story is three movements — the board (`demo-board.tsx`), the room, the
+board again — and the room is the middle one. `RoomStage` gained a `panel`
+slot for the card pinned beside it, and its stage is now sticky at every
+width rather than `md:` and up; everything else about the load path is
+unchanged from the spike.
 
 Open work, in the order it should happen:
 
 1. **Re-measure on the live deploy** with the real GLB — §3's frame numbers
-   were taken against procedural boxes. This is the reason the route is live.
-2. Decide whether the scene moves onto `/` and, if so, move
-   `src/components/spike/` to a real directory, taking the eslint override's
-   `files` glob with it.
-3. Consider Draco/meshopt compression if the GLB grows much past 371 KB. It is
+   were taken against procedural boxes, on localhost.
+2. **Per-beat camera framing** (EI-276): the rig still does one continuous
+   push-in, but `src/lib/story-beats.ts` now names a beat per row and the
+   camera should frame the object each one is about.
+3. **The live sub-task ticks** (EI-278): `story-panel.tsx` renders a correct
+   static state from `doneThrough`; the scroll ref should drive it.
+4. Consider Draco/meshopt compression if the GLB grows much past 371 KB. It is
    currently uncompressed indexed geometry; the dedupe in `indexGeometry`
    already took it from 455 KB.
-4. Retire `/spike-3d` once one of the above lands — delete its `PRIVATE_ROUTES`
-   entry and the route together.

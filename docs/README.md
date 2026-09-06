@@ -55,7 +55,7 @@ reasoning — two copies drift, and the stale one always wins the argument.
 | [DESKTOP.md](DESKTOP.md) | The Tauri v2 desktop shell, milestones D0–D6 — including hot asset bundles (§14), which is how a web deploy reaches an installed `.app`. |
 | [DESKTOP-SYNC-TIMER-SPIKE.md](DESKTOP-SYNC-TIMER-SPIKE.md) | The D2 spike: hidden-webview `setInterval` death and three measured mitigations. |
 | [SITE.md](SITE.md) | Marketing, legal and support pages: the `SITE_PAGES` table, the metadata contract, static-export constraints. |
-| [SCENE.md](SCENE.md) | The 3D room on `/spike-3d`: the bake pipeline, placement in metres, token re-tinting, the load invariants, and the CC-BY chain. |
+| [SCENE.md](SCENE.md) | The 3D room on the homepage: the bake pipeline, placement in metres, token re-tinting, the load invariants, and the CC-BY chain. |
 | [RESEARCH.md](RESEARCH.md) | The cited evidence base for marketing claims — verbatim quote, relevance, primary link, and the claims we deliberately do not make. |
 
 ## Build and operations
