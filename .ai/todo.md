@@ -2184,3 +2184,64 @@ header. `npm run typecheck`, lint clean on every touched file, full
 `CI=1 E2E_PORT=3100 E2E_SERVER="npx next start -p 3100" npm run e2e:ci` —
 104/104. docs/DESIGN.md updated (§3 shadow-card row + Overflow/Backlog
 paragraph, 4 new decisions-log rows).
+
+---
+
+## 2026-09-06 — EI-272: fish bowl, books, the love seat turned, the "cactus" solved
+
+Second annotated-review round on the spike scene.
+
+### Done
+
+- **Love seat turned to face the room.** The `rotateY: 180` in its build spec
+  was inherited from Couch_Small2 and wrong for Couch_Medium2 — dropped it, so
+  the +Z normalisation invariant is true again and the placement stays clean.
+- **Fish Bowl by sirkitree (CC-BY) on the sideboard.** First GLB source:
+  `build-room.mjs` grew a ~90-line `parseGlb` (strided accessors, no
+  transforms/textures — asserts loudly on anything fancier) feeding the same
+  groups/colours shape as the OBJ path. The glass's 0.4 alpha survives as an
+  alpha-blended double-sided material. The fish is its own material, so a new
+  `split` spec option lifts it into a separate node after the shared
+  normalisation — it keeps its place inside the bowl but the scene bobs it
+  ±14 mm on a clock-driven sine. Verified by frame diff: 155 changed pixels
+  between two captures, all inside the bowl.
+- **books by Tiff Eidmann (CC-BY) on the wall shelf**, replacing the small
+  plant's clone. All eight `mat*` names namespaced to `Books_*` — the Poly
+  Pizza names collide with the televisions' own `mat*` liveries in the shared
+  material table. Unmapped in `room-materials.ts` on purpose, like the TVs.
+- **The "cactus" removed.** No cactus node existed: the arrow pointed where
+  the white-globe floor lamp (Light_Floor1) overlapped the paddle-leaf
+  Houseplant_3, compositing into one from the camera angle. Both went; the
+  monstera keeps the corner. Their orphaned `Grey`/`Light` materials came out
+  of `MATERIAL_TOKENS` and the `--room-grey`/`--room-light` tokens out of
+  `globals.css`, per that file's exactly-what-ships rule.
+- CC-BY bookkeeping in the same change: CREDITS.md rows, two `/colophon`
+  entries, and the colophon e2e creator list.
+
+### Verified
+
+`npm run scene` (370.8 KB, 23 nodes), `npm run typecheck`, `npm run lint`,
+full `npm test` (2344 tests, 152 files) green. Colophon creators e2e run
+singly against the dev server: green. Scene verified by screenshot at
+`/spike-3d`: love seat faces the coffee table, bowl + books placed, corner
+clear, fish bobbing (pixel-diff above).
+
+### Follow-up tweaks (same day)
+
+Bowl turned 90° so its wide axis (0.297 m) runs along the sideboard — the
+FISH placement carries the identical rotationY, since the split pair only
+stays nested while origin and rotation match. Books up 0.35 → 0.48 m: true
+to life read as clutter at diorama distance. Verified by screenshot: fish
+inside the glass after the turn, books legible on the shelf.
+
+### Documented and shipped
+
+`docs/SCENE.md` written as the standing procedure for the scene: file map,
+the three load invariants, the measured budget, the two permanent guards
+(app-shell exclusion, the CC-BY chain), the bake pipeline's normalisation
+contract and spec options, placement/theming rules, the add-a-model recipe,
+the "look at the room" verification step, the composition rules the review
+rounds produced, and the four traps. Indexed in `docs/README.md`; a short
+rules section added to `AGENTS.md`; the runbook's "nothing here ships"
+premise corrected and pointed at the doc. `site.ts`'s `/spike-3d` comment
+rewritten - it ships deliberately now, to be re-measured live.

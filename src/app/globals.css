@@ -442,6 +442,91 @@
 }
 
 /* ---------------------------------------------------------------------------
+   The room palette (EI-272)
+
+   Colours for the homepage story's 3D scene. Named for what they ARE in the
+   room — wood, plant, couch — not for a UI role, because that is how the
+   source models name their materials: the whole asset library shares a
+   31-name semantic palette and carries no textures at all. `room-materials.ts`
+   maps those names onto these properties and re-tints the loaded scene.
+
+   Deliberately NOT derived from the app's `--background`/`--foreground` scale.
+   That scale is achromatic by design, and a room rendered in greys reads as a
+   wireframe. These are the one place in the app allowed real hue — but they
+   still live here, as tokens, so the scene follows the theme and survives
+   EI-265/EI-267 rather than hard-coding hex into a scene graph.
+
+   HEX, not OKLCH, and that is not an oversight. These are the only tokens in
+   the app read by JavaScript rather than by CSS, and a custom property is
+   SUBSTITUTION-ONLY: `getPropertyValue()` hands back the literal text, never a
+   resolved colour. three.js's `Color.setStyle()` parses hex, `rgb()` and
+   `hsl()` — give it `oklch()` or `light-dark()` and it throws, the catch in
+   `room-materials.ts` keeps the baked colour, and the whole token system
+   silently does nothing while looking like it works. Hex is what survives the
+   round trip.
+
+   For the same reason light and dark are two blocks rather than one
+   `light-dark()` call. The room does not invert at night, it dims: same hue,
+   lower lightness.
+   --------------------------------------------------------------------------- */
+/*
+   The scheme is a warm/cool complement: warm oak floor and walnut tables
+   against a slate-blue couch, with everything else held neutral (greige rug,
+   linen curtains, off-white built-ins) so exactly three things carry colour -
+   the couch, the plants, and whatever the wall is being painted. A room where
+   every object has a hue is a toy; a room where three do is an apartment.
+*/
+:root {
+  --room-white: #efece5;
+  --room-black: #322f2c;
+  --room-brown: #7c6248;
+  --room-wood: #8a6a48;
+  --room-metal: #8a8f96;
+  --room-metal-light: #c2beb4;
+  --room-glass: #d7e4ea;
+  --room-plant: #5f8f54;
+  --room-plant-dark: #4b7345;
+  --room-terracotta: #c4794f;
+  --room-couch: #6b7e9c;
+  --room-couch-base: #55647c;
+  --room-rug: #cabfab;
+  --room-rug-trim: #b7a98f;
+  --room-curtain: #e7e1d4;
+  --room-wood-dark: #6b5138;
+  --room-wood-light: #a9895f;
+  --room-loveseat: #cfc3ae;
+  /* The shell - floor and both walls - read by RoomShell at runtime. */
+  --room-floor: #d6c1a1;
+  --room-wall: #edeae3;
+  --room-wall-side: #e3dfd6;
+}
+
+.dark {
+  --room-white: #b3afa7;
+  --room-black: #262421;
+  --room-brown: #5a4835;
+  --room-wood: #6a5138;
+  --room-metal: #63676d;
+  --room-metal-light: #8d8a82;
+  --room-glass: #7f929c;
+  --room-plant: #49703f;
+  --room-plant-dark: #3a5836;
+  --room-terracotta: #955c3d;
+  --room-couch: #4f5e77;
+  --room-couch-base: #3f4b60;
+  --room-rug: #8d8574;
+  --room-rug-trim: #7d7361;
+  --room-curtain: #a9a294;
+  --room-wood-dark: #52402c;
+  --room-wood-light: #7e6748;
+  --room-loveseat: #948a76;
+  /* The room dims at night; it does not invert. Same hues, lower lightness. */
+  --room-floor: #6f5d45;
+  --room-wall: #4b4842;
+  --room-wall-side: #43403a;
+}
+
+/* ---------------------------------------------------------------------------
    Font pairings
 
    One block per pairing, selected by `data-font` on <html>. `:root` carries the

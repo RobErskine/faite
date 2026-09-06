@@ -102,6 +102,33 @@ function walk(dir, base = dir, out = []) {
 const sha256 = (buffer) => createHash("sha256").update(buffer).digest("hex");
 
 /**
+ * Files that reach `.next-static` but must not reach a desktop client.
+ *
+ * `next build` copies `public/` into the export wholesale, so anything living
+ * there ships to every installed app whether or not the app can use it. The
+ * marketing homepage's 3D scene (EI-272) is the case that forced this: in an
+ * app-shell build `/` returns only a redirect script, so the canvas never
+ * mounts and `living-room.glb` is never fetched — but 240 KB of it was landing
+ * in the bundle anyway, and the hot-asset update path re-downloads the whole
+ * archive on any content change (see the EI-255 note in `next.config.ts` on why
+ * bundle identity is size-sensitive).
+ *
+ * The JS half of the same problem is solved in `room-stage.tsx`, where a
+ * `NEXT_PUBLIC_APP_SHELL` check makes the `import()` statically dead so the
+ * bundler drops three.js entirely. A static asset has no such branch to fold —
+ * it is copied by path — so it has to be excluded by path, here.
+ *
+ * Keep this list short and justified. Every entry is weight a user would
+ * otherwise pay for something they cannot see.
+ */
+const DESKTOP_EXCLUDED = [
+  "/scene/", // EI-272 marketing 3D scene; unreachable in the app shell.
+];
+
+const isDesktopPayload = (path) =>
+  !DESKTOP_EXCLUDED.some((prefix) => path.startsWith(prefix));
+
+/**
  * Fails unless the export was built for the desktop shell.
  *
  * The check is narrow on purpose: it finds the chunk carrying `api-origin.ts`'s
@@ -150,7 +177,7 @@ function main() {
     process.exit(1);
   }
 
-  const paths = walk(EXPORT_DIR);
+  const paths = walk(EXPORT_DIR).filter(isDesktopPayload);
   assertDesktopBuild(paths);
   if (!paths.includes(`/${ENTRY}`)) {
     console.error(`${EXPORT_DIR}/ has no ${ENTRY} — refusing to publish a bundle nothing can boot.`);

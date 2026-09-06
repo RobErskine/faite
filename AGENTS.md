@@ -45,6 +45,23 @@ Any new keyboard shortcut — global or local — must be registered in
 a shortcut left out of it is invisible to users who go looking for it. See
 `docs/KEYBOARD.md` §5 for the full recipe.
 
+# The 3D scene ships other people's work
+
+The room on `/spike-3d` is built from vendored models, four of them **CC-BY**.
+CC-BY grants the licence *only* if attribution is given, so a credit that no
+user can reach means the site is shipping something it is not licensed to
+ship. Adding a CC-BY model touches three files in one commit:
+`assets/scene/CREDITS.md`, `src/app/colophon/page.tsx`, and the creator list in
+`e2e/marketing-pages.spec.ts` — that last one is the enforcement.
+
+Two more rules with no test between them and a silent regression: scene assets
+must stay out of the app-shell bundle (`next/dynamic` alone does not do this —
+see `src/lib/desktop/bundle-assets.test.ts`), and scroll must drive the camera
+through a **ref**, never React state.
+
+`docs/SCENE.md` is the whole procedure — read it before touching
+`scripts/scene/`, `src/components/spike/`, or any `--room-*` token.
+
 # Issues live in Linear, not GitHub
 
 This project tracks work in **Linear**, not GitHub Issues. Workspace

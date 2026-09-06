@@ -1213,3 +1213,80 @@ test suite — the suite cannot see a grey moat.
 
 **Rule:** the day-track column arithmetic couples to the track gap
 (`desktop-board.tsx` dayTrackStyle). Change `gap-*` and the `calc()` together.
+
+## `build:static` prunes `.next`, so bundle numbers taken after `verify` lie
+
+Measuring EI-272's lazily-loaded three.js chunk, the same script reported
+227.7 KB gzipped one minute and 0.0 KB the next. The 0.0 KB reading came
+straight after `npm run verify`, and it looked like a spectacular win.
+
+It was an artefact. `npm run verify` runs `build` and then `build:static`, and
+**`build:static` prunes `.next/static/chunks` even though `next.config.ts`
+points it at a separate `distDir` (`.next-static`)**. Proved by bisecting it:
+fresh `build` → chunk present; `build:static` → chunk gone from `.next`;
+`build` again → chunk back.
+
+A missing file and a tree-shaken dependency are indistinguishable to any
+measurement that works by looking for the file.
+
+**Rule:** run `npm run build` immediately before measuring anything in
+`.next`, never after `npm run verify`. And when a measurement suddenly reports
+zero, first prove the artefact still exists — a metric that improves to
+*exactly* nothing is usually absent, not optimised.
+
+**The same trap bites e2e, not just measurement.** A local
+`npx playwright test` served from a post-`verify` `.next` failed the `/`
+canonical assertion with "element(s) not found" — consistently, through a
+retry — and passed the moment `npm run build` ran again. Nothing was wrong
+with the page. So: e2e also gets a fresh `npm run build` first, which is what
+CI does anyway, and a local e2e failure right after `verify` is the stale
+export until proven otherwise.
+
+## The app-shell build will happily ship a library it can never run
+
+EI-272 put three.js behind `next/dynamic` and confirmed it cost 0 bytes before
+paint on the web. `npm run build:static` still emitted **864.8 KB raw of it into
+`.next-static`** — the payload that becomes the desktop app's hot-asset bundle
+— in a build where `/` returns only a redirect script, so the canvas can never
+mount. Dead weight, re-downloaded by every installed client.
+
+`next/dynamic` defers *fetching*; it does not remove the module from the graph.
+The fix is to make the branch statically dead:
+
+```ts
+const IS_APP_SHELL = process.env.NEXT_PUBLIC_APP_SHELL === "1";
+const Scene = IS_APP_SHELL ? () => null : dynamic(() => import("./scene"), { ssr: false });
+```
+
+`NEXT_PUBLIC_*` is inlined at build time, so the comparison folds to a literal
+and the bundler drops the `import()`. `.next-static` went 15M → 14M.
+
+**Rule:** "lazy" is a claim about the web build only. Any dependency the
+app-shell target cannot use has to be excluded by a build-time constant, and
+the exclusion needs an asserted test — grep the export for the library and fail
+if it is there. Nobody notices 800 KB of dead code by reading a diff.
+
+## A "verified by render" comment verifies the model it was written against
+
+The love seat shipped facing the wall. Its build spec carried `rotateY: 180`
+with a comment claiming the flip was "verified by render" — true for the
+Couch_Small2 the room used first, false for the Couch_Medium2 that replaced
+it (which faces +Z at source, like the other kit couches). The comment
+survived the model swap; the verification did not.
+
+**Rule:** when a model file changes under a spec entry, every orientation and
+scale claim in that entry is unverified again, however confident its comment
+sounds. Re-render before keeping any of it.
+
+## An annotation arrow points at pixels, not at scene nodes
+
+Review asked to "remove the cactus" with an arrow into the window corner.
+There was no cactus node — the arrow tip landed where a white-globe floor
+lamp overlapped a paddle-leaf houseplant, and from the camera's one angle
+the pair composited into a single convincing "cactus in a white pot".
+
+**Rule:** before mapping an annotated screenshot's label to a node, crop and
+zoom the arrow's target and list every object that overlaps there from the
+camera's angle. The user names what they see; the scene graph is not what
+they see. If the label and the arrow disagree, suspect an occlusion illusion
+before assuming either is wrong.

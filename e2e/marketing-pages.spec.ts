@@ -62,6 +62,38 @@ for (const page_ of SITE_PAGES) {
   });
 }
 
+/**
+ * The CC-BY models are licensed to Faite *on condition* that they are
+ * credited. The table-driven test above only checks this page's title and
+ * description, so it would stay green if the credits themselves were deleted —
+ * and the failure mode there is a licence violation, not a cosmetic one.
+ *
+ * Keep this list in step with `assets/scene/CREDITS.md`. Anything CC-BY that
+ * ships has to be named in both.
+ */
+test("the colophon credits every CC-BY creator by name", async ({ page }) => {
+  await page.goto("/colophon");
+  const main = page.getByRole("main");
+
+  for (const creator of ["Kell Condon", "Jarlan Perez", "sirkitree", "Tiff Eidmann"]) {
+    await expect(main).toContainText(creator);
+  }
+  // The licence itself has to be named, not just the person.
+  await expect(main).toContainText("CC BY");
+  // Poly Pizza is the source the licence points back to.
+  await expect(main.getByRole("link", { name: "Poly Pizza" }).first()).toBeVisible();
+});
+
+test("the colophon is reachable from the footer", async ({ page }) => {
+  // A credit nobody can navigate to does not satisfy CC-BY.
+  await page.goto("/about");
+  await page
+    .getByRole("contentinfo")
+    .getByRole("link", { name: "Colophon" })
+    .click();
+  await expect(page).toHaveURL(/\/colophon$/);
+});
+
 test("the legal placeholder notice renders on /privacy and /terms", async ({ page }) => {
   await page.goto("/privacy");
   await expect(page.getByRole("note")).toContainText("Placeholder draft");
