@@ -2923,3 +2923,49 @@ actually creates.
 **Measured.** Verify green (157 files, 2428 tests). Gate fully green for the
 first time in six runs: 114 passed, 0 flaky. Eager JS unchanged at 344.5 KB gz;
 three.js 0.0 KB eager.
+
+### EI-280 — the card explains itself, and the loop plays out (2026-09-06)
+
+Three review notes.
+
+**Tooltips, without a tooltip runtime.** Every marker on both cards is now a
+trigger, because a glyph you cannot interrogate is decoration. But
+`components/ui/tooltip.tsx` is Base UI and therefore `"use client"`, and both
+cards are Server Components on purpose — `demo-board.test.ts` fails the build
+if either import graph gains a client directive. So `demo-tooltip.tsx` is
+CSS-only: hover and focus, `group-hover`/`group-focus-within`, the same
+`bg-foreground`/`text-background`/`rounded-md`/`text-xs` as `TooltipContent`.
+
+Stated rather than glossed, what that gives up: no collision detection (every
+one sits in a fixed-width card mid-page with no edge to hit) and no
+`aria-describedby` (which was never the accessible channel — Base UI only sets
+it while OPEN, so `todo-card.tsx` already solves this with permanent `sr-only`
+text, and `sr` here carries the real board's phrasing where the two differ).
+Measured cost: eager JS unchanged at 344.5 KB gz.
+
+**The schedule left the title.** "Water the plants — every Wednesday" became
+"Water the plants" plus a `Repeat` marker whose tooltip says the schedule — a
+real recurring to-do carries a property you interrogate, not a name with its
+cadence stapled on. And "Sell the old TV instead of moving it" is "Upgrade TV".
+
+**The Faite Loop, played out.** The watering beat now rolls: Wed, Sep 9 →
+Thu, Sep 10 (rollover marker appears) → Fri, Sep 11 (Overflow badge), all
+while the plant browns AND droops — a tip off vertical plus a little lost
+height, the same thirst said a second way. At the watering it resets to a
+clean Wednesday, because a recurring to-do that got done is not overdue.
+
+Three equal days packed into the run-up to `COMMIT_AT`, so the act still lands
+before the tick (rule 3) with no new constants. `story-ticks.tsx` imports
+`plantStateAt` rather than re-deriving the schedule: the leaves browning and
+the badge rolling are the same event told twice, and one shared function is
+what guarantees the card never says "in Overflow" over a healthy plant. A test
+asserts exactly that.
+
+**Measured.** Verify green (157 files, 2432 tests). Eager JS 344.5 → 346.0 KB
+gz (+1.5 KB, the rollover layer); three.js still 0.0 KB eager; `npm run scene`
+re-bakes byte-identically. Frame cost over three runs: median 8.4 ms, zero
+frames over 33 ms.
+
+**The flake, again.** `touch-smoke`'s day-track swipe: seven gate runs now,
+green in isolation every time. Untouched by any of this. It needs its own
+ticket.

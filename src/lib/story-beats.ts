@@ -95,6 +95,15 @@ export interface StoryBeat {
    * text; it carries a marker you can interrogate.
    */
   subtaskRepeat?: string;
+  /**
+   * The days this sub-task lands on as it rolls forward, in order.
+   *
+   * The Faite Loop in three dates: scheduled, missed and rolled, missed and
+   * rolled again — at which point it crosses into Overflow. Only the recurring
+   * beat has these, because it is the only to-do in the story that is allowed
+   * to not get done for a while.
+   */
+  subtaskRolls?: string[];
   /** The thing in the room this beat is about (EI-276). */
   focus: BeatFocus;
 }
@@ -145,6 +154,7 @@ export const STORY_BEATS: StoryBeat[] = [
     section: "§2.5",
     subtask: "Water the plants",
     subtaskRepeat: "Every Wednesday",
+    subtaskRolls: ["Wed, Sep 9", "Thu, Sep 10", "Fri, Sep 11"],
     focus: "plant",
   },
   {

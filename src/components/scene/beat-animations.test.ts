@@ -149,7 +149,7 @@ describe("the sample cards coming down", () => {
 
 describe("the watering beat", () => {
   it("arrives healthy, then browns as the copy is read", () => {
-    expect(plantStateAt(0)).toEqual({ thirst: 0, watered: false });
+    expect(plantStateAt(0)).toMatchObject({ thirst: 0, watered: false });
     // Monotonically thirstier all the way to the watering.
     let previous = 0;
     for (let u = 0.01; u < COMMIT_AT; u += 0.005) {
@@ -174,12 +174,47 @@ describe("the watering beat", () => {
     }
   });
 
+  it("rolls Wednesday to Thursday to Friday, then into Overflow", () => {
+    /*
+      The Faite Loop, acted out. A missed recurring to-do does not turn red and
+      does not vanish — it moves to the next day carrying a marker, and after
+      the third it sits in Overflow. Three equal days in the run-up to the
+      watering, so the card and the leaves tell the same story on the same
+      clock.
+    */
+    const seen: number[] = [];
+    for (let u = 0; u < COMMIT_AT; u += 0.001) {
+      const { rolls, inOverflow } = plantStateAt(u);
+      expect(inOverflow, `u=${u.toFixed(3)}`).toBe(rolls >= 2);
+      if (seen[seen.length - 1] !== rolls) seen.push(rolls);
+    }
+    expect(seen).toEqual([0, 1, 2]);
+  });
+
+  it("comes back clean after the watering, not still in Overflow", () => {
+    // A recurring to-do that got done is not overdue; the next occurrence is a
+    // fresh Wednesday. Leaving it at two rolls would make the card claim it is
+    // still late while the plant is visibly green.
+    for (const u of [COMMIT_AT, 0.5, 0.9, 1]) {
+      expect(plantStateAt(u), `u=${u}`).toMatchObject({ rolls: 0, inOverflow: false });
+    }
+  });
+
+  it("is thirstiest exactly when it is deepest in Overflow", () => {
+    // The two signals are the same event told twice; if they diverged, the
+    // card would say "in Overflow" over a healthy plant.
+    const worst = plantStateAt(COMMIT_AT - 0.001);
+    expect(worst.rolls).toBe(2);
+    expect(worst.inOverflow).toBe(true);
+    expect(worst.thirst).toBeGreaterThan(0.95);
+  });
+
   it("is a round trip: green again by the end, and it stays green", () => {
     // A recurring to-do is never finished — the beat returns the plant to
     // where it started rather than leaving it in a new state, because the
     // point is that it will be brown again next Wednesday.
     for (const u of [0.8, 0.9, 1]) {
-      expect(plantStateAt(u), `u=${u}`).toEqual({ thirst: 0, watered: true });
+      expect(plantStateAt(u), `u=${u}`).toMatchObject({ thirst: 0, watered: true });
     }
   });
 

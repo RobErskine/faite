@@ -131,7 +131,8 @@ export const STATIC_PROPS: PropPlacement[] = [
   // white-globe floor lamp and a paddle-leaf cane - which overlapped from the
   // camera's angle into one convincing "cactus in a white pot". Review asked
   // for the cactus gone; both halves of the illusion went with it.
-  { node: "houseplant", position: [2.05, 0, -1.6] },
+  // The big monstera is NOT here — it wilts and recovers during the watering
+  // beat (EI-280), so it needs its own group. See `HOUSEPLANT` below.
 
   // --- the front-right corner ----------------------------------------------
   // The bushy one moved here from the doorway (review: a plant in front of a
@@ -139,6 +140,20 @@ export const STATIC_PROPS: PropPlacement[] = [
   // camera sees most of, beside the couch's far arm.
   { node: "plant_bushy", position: [2.1, 0, 1.85] },
 ];
+
+/**
+ * The corner monstera — the plant the watering beat is about.
+ *
+ * Lifted out of `STATIC_PROPS` so it can droop: thirst tips it off vertical
+ * and settles it a little lower, which is the same signal as the browning
+ * expressed a second way. The three small plants keep their places in the
+ * static list; they change colour with everything else but they are too small
+ * at diorama scale for a tilt to read as anything but a glitch.
+ */
+export const HOUSEPLANT: PropPlacement = {
+  node: "houseplant",
+  position: [2.05, 0, -1.6],
+};
 
 /**
  * The books on the wall shelf — the room's one undecided thing.

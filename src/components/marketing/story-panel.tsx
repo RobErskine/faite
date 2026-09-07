@@ -1,4 +1,4 @@
-import { ListChecks, MapPin, Repeat } from "lucide-react";
+import { CalendarClock, CornerDownRight, ListChecks, MapPin, Repeat } from "lucide-react";
 import { badgeVariants } from "@/components/ui/badge";
 import { priorityRail } from "@/lib/priority";
 import { cn } from "@/lib/utils";
@@ -178,6 +178,22 @@ export function StoryPanel({
                     <Repeat className="size-3" aria-hidden />
                   </DemoTooltip>
                 )}
+                {/*
+                  The rollover marker, hidden until the card has actually
+                  rolled. `story-ticks.tsx` reveals it and rewrites its
+                  tooltip; the server renders day one, where nothing has been
+                  missed yet.
+                */}
+                {subtask.rolls && (
+                  <span data-roll-marker hidden className="contents">
+                    <DemoTooltip
+                      label="Rolled from Wed, Sep 9"
+                      className="mr-1 align-[-0.1875em] text-muted-foreground"
+                    >
+                      <CornerDownRight className="size-3" aria-hidden />
+                    </DemoTooltip>
+                  </span>
+                )}
                 {subtask.location && (
                   <DemoTooltip
                     label={subtask.location}
@@ -188,6 +204,42 @@ export function StoryPanel({
                   </DemoTooltip>
                 )}
                 {subtask.title}
+                {/*
+                  The day the card currently sits on, and — once it has rolled
+                  twice — the Overflow badge. Both are the real board's own
+                  vocabulary: a scheduled date reads through `CalendarClock`,
+                  and Overflow is the urgency channel's destructive variant.
+
+                  Rendered at day one and updated by `story-ticks.tsx`, so a
+                  reader with no JavaScript sees a coherent card rather than an
+                  empty one.
+                */}
+                {subtask.rolls && (
+                  <span className="mt-1.5 flex flex-wrap items-center gap-1">
+                    <span
+                      className={cn(
+                        badgeVariants({ variant: "outline" }),
+                        "num gap-1 text-2xs font-normal",
+                      )}
+                    >
+                      <CalendarClock className="size-2.5" aria-hidden />
+                      <span data-roll-date>{subtask.rolls[0]}</span>
+                    </span>
+                    <span data-roll-overflow hidden className="contents">
+                      <DemoTooltip label="Scheduled Wed, Sep 9 · in Overflow since Fri, Sep 11">
+                        <span
+                          className={cn(
+                            badgeVariants({ variant: "destructive" }),
+                            "num gap-1 text-2xs font-normal",
+                          )}
+                        >
+                          <CornerDownRight className="size-2.5" aria-hidden />
+                          In Overflow
+                        </span>
+                      </DemoTooltip>
+                    </span>
+                  </span>
+                )}
               </span>
             </li>
           );

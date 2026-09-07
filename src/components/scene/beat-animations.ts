@@ -141,11 +141,27 @@ const SWATCHES_GONE_BY = 0.6;
 // ---------------------------------------------------------------------------
 
 export interface PlantState {
-  /** 0 = healthy green, 1 = fully parched brown. */
+  /** 0 = healthy green, 1 = fully parched brown. Drives colour AND droop. */
   thirst: number;
   /** True from the watering onward. */
   watered: boolean;
+  /**
+   * How many times the card has rolled forward: 0 on Wednesday, 1 on
+   * Thursday, 2 on Friday.
+   *
+   * This is the Faite Loop, acted out. A recurring to-do that does not get
+   * done does not turn red and it does not vanish — it moves to the next day,
+   * carrying a marker that says where it came from. Buehler et al. is the
+   * citation for why that is the humane default (§2.4); this beat is where the
+   * room shows it happening rather than the copy asserting it.
+   */
+  rolls: number;
+  /** True on the third day: the card has crossed into Overflow. */
+  inOverflow: boolean;
 }
+
+/** One roll per third of the run-up to the watering: Wed, Thu, Fri. */
+const ROLLS_BEFORE_OVERFLOW = 2;
 
 /**
  * Green → brown → green.
@@ -162,12 +178,34 @@ export interface PlantState {
  */
 export function plantStateAt(u: number): PlantState {
   const RECOVERED_BY = 0.8;
-  if (u <= 0) return { thirst: 0, watered: false };
-  if (u < COMMIT_AT) return { thirst: smooth(u / COMMIT_AT), watered: false };
-  if (u >= RECOVERED_BY) return { thirst: 0, watered: true };
+
+  /*
+    After the watering the card is done, so it is not rolled and not in
+    Overflow — the next occurrence is a fresh Wednesday. Resetting rather than
+    leaving it at two is the whole point of a recurring to-do: it comes back
+    clean, and it will be brown again next week.
+  */
+  const done = { rolls: 0, inOverflow: false };
+
+  if (u <= 0) return { thirst: 0, watered: false, ...done };
+
+  if (u < COMMIT_AT) {
+    // Three equal days in the run-up. `min` rather than a wrapping modulo:
+    // Friday is where it stops rolling and starts sitting in Overflow.
+    const rolls = Math.min(ROLLS_BEFORE_OVERFLOW, Math.floor((u / COMMIT_AT) * 3));
+    return {
+      thirst: smooth(u / COMMIT_AT),
+      watered: false,
+      rolls,
+      inOverflow: rolls >= ROLLS_BEFORE_OVERFLOW,
+    };
+  }
+
+  if (u >= RECOVERED_BY) return { thirst: 0, watered: true, ...done };
   return {
     thirst: 1 - smooth((u - COMMIT_AT) / (RECOVERED_BY - COMMIT_AT)),
     watered: true,
+    ...done,
   };
 }
 

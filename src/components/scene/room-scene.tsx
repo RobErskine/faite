@@ -29,6 +29,7 @@ import {
   CONTACT_SHADOWS,
   FISH,
   BOOKS,
+  HOUSEPLANT,
   LOVESEAT,
   LOVESEAT_SHADOW,
   PRINTS,
@@ -477,6 +478,7 @@ function LivingRoomProps({ progress }: { progress: Progress }) {
   const fish = useRef<THREE.Group>(null);
   const loveseat = useRef<THREE.Group>(null);
   const books = useRef<THREE.Group>(null);
+  const houseplant = useRef<THREE.Group>(null);
 
   /**
    * The leaf materials, with the healthy color they must return to.
@@ -542,6 +544,21 @@ function LivingRoomProps({ progress }: { progress: Progress }) {
     }
 
     /*
+      Droop: the same thirst, said a second way.
+
+      A tip off vertical plus a little loss of height. Both are small — 0.13 rad
+      is about 7.5 degrees — because a houseplant that folds in half reads as a
+      bug rather than as neglect, and the leaves are the part the eye is on.
+      Tilted on Z and X together so the lean is diagonal rather than flat to
+      one axis, which is what stops it looking like the pot was pushed.
+    */
+    if (houseplant.current) {
+      houseplant.current.rotation.z = -0.13 * plant.thirst;
+      houseplant.current.rotation.x = 0.05 * plant.thirst;
+      houseplant.current.scale.y = 1 - 0.08 * plant.thirst;
+    }
+
+    /*
       The loveseat arrives once the measuring is done (EI-280).
 
       Set, not lerped: the pop curve in `couchStateAt` already IS the easing,
@@ -602,6 +619,11 @@ function LivingRoomProps({ progress }: { progress: Progress }) {
         // than once (Placed clones), so node names alone can collide.
         <Placed key={`${p.node}-${i}`} scene={scene} placement={p} />
       ))}
+
+      {/* The group takes the wilt; `Placed` owns the placement. */}
+      <group ref={houseplant}>
+        <Placed scene={scene} placement={HOUSEPLANT} />
+      </group>
 
       {/* The group takes the lift and the scale; `Placed` owns the placement. */}
       <group ref={books}>

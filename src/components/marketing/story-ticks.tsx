@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { STORY_BEATS, TICK_AT } from "@/lib/story-beats";
+import { beatLocalAt, plantStateAt } from "@/components/scene/beat-animations";
 
 /**
  * The sub-tasks tick off as you read past them (EI-278).
@@ -62,8 +63,27 @@ export function StoryTicks() {
     );
     if (panels.length === 0) return;
 
+    /*
+      The rolling sub-task's own pieces, on both copies of the card.
+
+      Imported from `beat-animations.ts` rather than re-derived here: the plant
+      browning and the card rolling are the SAME event told twice, and the one
+      way to guarantee the leaves and the badge never disagree is for both to
+      read the same function.
+    */
+    const rollBeat = STORY_BEATS.find((beat) => beat.subtaskRolls);
+    const rolling = rollBeat?.subtaskRolls
+      ? [...document.querySelectorAll<HTMLElement>("[data-subtask-list]")].map((list) => ({
+          marker: list.querySelector<HTMLElement>("[data-roll-marker]"),
+          date: list.querySelector<HTMLElement>("[data-roll-date]"),
+          overflow: list.querySelector<HTMLElement>("[data-roll-overflow]"),
+        }))
+      : [];
+    const rollDates = rollBeat?.subtaskRolls ?? [];
+
     let raf = 0;
     let last = -1;
+    let lastRolls = -1;
     const frame = () => {
       raf = 0;
 
@@ -99,6 +119,23 @@ export function StoryTicks() {
       // lives in `story-beats.ts` because the scene's beat animations must
       // commit BEFORE this fires, and a shared number is what a test can hold.
       const count = Math.min(n, Math.max(0, Math.floor(t * n + 1 - TICK_AT)));
+
+      if (rollBeat && rollDates.length > 0) {
+        const plant = plantStateAt(beatLocalAt(t, rollBeat.focus));
+        // `inOverflow` folded into the key so the badge cannot lag the date.
+        const key = plant.rolls * 2 + (plant.inOverflow ? 1 : 0);
+        if (key !== lastRolls) {
+          lastRolls = key;
+          for (const row of rolling) {
+            if (row.date) row.date.textContent = rollDates[Math.min(plant.rolls, rollDates.length - 1)];
+            // `hidden` rather than a class: the server renders these hidden,
+            // so the attribute is the single source of "is this showing".
+            row.marker?.toggleAttribute("hidden", plant.rolls === 0);
+            row.overflow?.toggleAttribute("hidden", !plant.inOverflow);
+          }
+        }
+      }
+
       if (count === last) return;
       last = count;
       done.current = count;

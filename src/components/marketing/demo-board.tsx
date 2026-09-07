@@ -118,11 +118,13 @@ export const MOVE_SUBTASKS: {
   title: string;
   location?: string;
   repeat?: string;
+  rolls?: string[];
   done?: boolean;
 }[] = STORY_BEATS.map((beat) => ({
   title: beat.subtask,
   location: beat.subtaskLocation,
   repeat: beat.subtaskRepeat,
+  rolls: beat.subtaskRolls,
 }));
 
 /*
