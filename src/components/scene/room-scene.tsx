@@ -28,6 +28,8 @@ import { applyRoomPalette, readRoomPalette } from "./room-materials";
 import {
   CONTACT_SHADOWS,
   FISH,
+  LOVESEAT,
+  LOVESEAT_SHADOW,
   PRINTS,
   ROOM,
   STATIC_PROPS,
@@ -37,7 +39,13 @@ import {
   type PropPlacement,
 } from "./room-layout";
 import { framingAt } from "./room-camera";
-import { beatLocalAt, paintStateAt, plantStateAt, tvUpgradedAt } from "./beat-animations";
+import {
+  beatLocalAt,
+  couchStateAt,
+  paintStateAt,
+  plantStateAt,
+  tvUpgradedAt,
+} from "./beat-animations";
 
 declare module "react" {
   // Both disables are forced by the shape of React 19's JSX types: the
@@ -376,7 +384,8 @@ function Prints() {
  * the cheapest possible fix, and needs no texture asset. `depthWrite: false`
  * keeps the transparent quads from punching holes in each other.
  */
-function ContactShadows() {
+function ContactShadows({ progress }: { progress: Progress }) {
+  const loveseat = useRef<THREE.MeshBasicMaterial>(null);
   const texture = useMemo(() => {
     const c = document.createElement("canvas");
     c.width = c.height = 128;
@@ -389,6 +398,20 @@ function ContactShadows() {
     return new THREE.CanvasTexture(c);
   }, []);
 
+  useFrame(() => {
+    if (!loveseat.current) return;
+    /*
+      The loveseat's shadow fades in with the loveseat.
+
+      `Math.min(1, …)` deliberately drops the pop's overshoot: the couch may
+      briefly scale past its real size, but a shadow larger than the thing
+      casting it is exactly the tell that this is a scale trick rather than a
+      delivery.
+    */
+    const couch = couchStateAt(beatLocalAt(progress.current, "couch"));
+    loveseat.current.opacity = Math.min(1, couch.loveseatScale);
+  });
+
   return (
     <group>
       {CONTACT_SHADOWS.map((shadow, i) => (
@@ -397,6 +420,22 @@ function ContactShadows() {
           <meshBasicMaterial map={texture} transparent depthWrite={false} />
         </mesh>
       ))}
+      {/*
+        Lives here rather than in the list above so it can share the gradient
+        texture — a flat black quad beside eight soft ones is instantly the
+        odd one out. Opacity starts at 0: a shadow under an absent couch is a
+        hole in the floor.
+      */}
+      <mesh position={LOVESEAT_SHADOW.position} rotation-x={-Math.PI / 2}>
+        <planeGeometry args={LOVESEAT_SHADOW.size} />
+        <meshBasicMaterial
+          ref={loveseat}
+          map={texture}
+          transparent
+          opacity={0}
+          depthWrite={false}
+        />
+      </mesh>
     </group>
   );
 }
@@ -434,6 +473,7 @@ function LivingRoomProps({ progress }: { progress: Progress }) {
   const oldTv = useRef<THREE.Group>(null);
   const newTv = useRef<THREE.Group>(null);
   const fish = useRef<THREE.Group>(null);
+  const loveseat = useRef<THREE.Group>(null);
 
   /**
    * The leaf materials, with the healthy color they must return to.
@@ -498,6 +538,20 @@ function LivingRoomProps({ progress }: { progress: Progress }) {
       leaf.material.color.lerpColors(leaf.healthy, PARCHED, plant.thirst);
     }
 
+    /*
+      The loveseat arrives once the measuring is done (EI-280).
+
+      Set, not lerped: the pop curve in `couchStateAt` already IS the easing,
+      and damping toward it would smear the overshoot into a slow swell — the
+      one thing a delivery should not read as. `visible` is driven off the same
+      number so a zero-scale group stops being drawn rather than being drawn
+      inside out.
+    */
+    const couch = couchStateAt(beatLocalAt(progress.current, "couch"));
+    if (loveseat.current) {
+      loveseat.current.visible = couch.loveseatScale > 0.001;
+      loveseat.current.scale.setScalar(Math.max(0.001, couch.loveseatScale));
+    }
     const upgraded = tvUpgradedAt(progress.current);
     if (oldTv.current) oldTv.current.visible = !upgraded;
     if (newTv.current) newTv.current.visible = upgraded;
@@ -518,6 +572,14 @@ function LivingRoomProps({ progress }: { progress: Progress }) {
         <Placed key={`${p.node}-${i}`} scene={scene} placement={p} />
       ))}
 
+      {/*
+        The loveseat and its shadow, grouped so one scale drives both. Ordered
+        during the measuring beat rather than simply present — see `LOVESEAT`
+        in `room-layout.ts`.
+      */}
+      <group ref={loveseat} visible={false}>
+        <Placed scene={scene} placement={LOVESEAT} />
+      </group>
       <group ref={oldTv}>
         <Placed scene={scene} placement={TV_OLD} />
       </group>
@@ -576,7 +638,7 @@ export default function RoomScene({ progress }: { progress: Progress }) {
 
       <Rig progress={progress} />
       <RoomShell progress={progress} />
-      <ContactShadows />
+      <ContactShadows progress={progress} />
       <Swatches progress={progress} />
       <Prints />
 

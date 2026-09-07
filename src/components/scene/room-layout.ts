@@ -100,7 +100,9 @@ export const STATIC_PROPS: PropPlacement[] = [
   // The second seat that turns "a sofa opposite a TV" into a conversation
   // corner. It floats on the rug's top edge with a walkway behind it -
   // furniture off the wall is how real rooms use their middle.
-  { node: "loveseat", position: [0.25, 0, -1.28] },
+  // The loveseat is NOT here — it arrives during the couch beat (EI-280), so
+  // it needs its own group to scale. See `LOVESEAT` below, and the TVs, which
+  // are out of this list for the same reason.
   // Long axis parallel to the couch, like an oval coffee table actually sits.
   { node: "coffee_table", position: [0.15, 0, 0.3], rotationY: Math.PI / 2 },
   { node: "plant_table", position: [0.15, 0.347, 0.3], rotationY: Math.PI / 2 },
@@ -136,6 +138,28 @@ export const STATIC_PROPS: PropPlacement[] = [
   // camera sees most of, beside the couch's far arm.
   { node: "plant_bushy", position: [2.1, 0, 1.85] },
 ];
+
+/**
+ * The loveseat, which is ordered rather than simply present.
+ *
+ * "Measure the room before ordering the couch" is a to-do about a thing that
+ * does not exist yet, so the room starts without it and it arrives when the
+ * measuring is done. Same coordinates it always had — the point of measuring
+ * is that the piece fits the space you already had in mind.
+ *
+ * Its contact shadow travels with it (`LOVESEAT_SHADOW`): a shadow under an
+ * absent couch is a hole in the floor.
+ */
+export const LOVESEAT: PropPlacement = {
+  node: "loveseat",
+  position: [0.25, 0, -1.28],
+};
+
+/** Lifted out of `CONTACT_SHADOWS` so it can fade in with the loveseat. */
+export const LOVESEAT_SHADOW: { position: Vec3; size: [number, number] } = {
+  position: [0.25, 0.045, -1.28],
+  size: [1.9, 1.0],
+};
 
 /**
  * The two televisions, sharing one spot. The console never changes; the thing
@@ -217,7 +241,8 @@ export const PRINTS: { position: Vec3; size: [number, number] }[] = [
  */
 export const CONTACT_SHADOWS: { position: Vec3; size: [number, number] }[] = [
   { position: [1.72, 0.045, 0.1], size: [1.3, 2.5] }, // couch
-  { position: [0.25, 0.045, -1.28], size: [1.9, 1.0] }, // loveseat
+  // The loveseat's shadow is drawn by the scene alongside the loveseat itself,
+  // since both fade in together — a shadow under nothing is a hole in the floor.
   { position: [0.15, 0.045, 0.3], size: [0.95, 1.5] }, // coffee table
   { position: [-2.62, 0.012, 0.1], size: [0.8, 1.9] }, // console
   { position: [-1.35, 0.012, -2.01], size: [1.55, 0.75] }, // sideboard

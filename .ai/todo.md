@@ -2734,3 +2734,50 @@ eager. Scroll frame cost over three consecutive runs: median 8.4 ms, max 13.6,
 **zero frames over 33 ms**. The first run after a cold load showed one 41 ms
 frame — shader compile for the newly transparent chip materials, gone on every
 subsequent pass.
+
+### EI-280 — the couch arrives (2026-09-06)
+
+"Measure the room before ordering the couch." The room now starts WITHOUT the
+loveseat and pops it into existence, at the coordinates it always had, once the
+measuring is done.
+
+**The ordering rule inverted, on purpose.** Rule 3 says the act comes before
+the tick, and that stays right wherever the to-do IS the thing you watch happen
+— the wall gets painted, the plant gets watered, the old set goes. This beat is
+the exception that proves it: measuring is the task, and the couch is what the
+task EARNS. A couch that arrived before the line ticked would make the
+measuring look like a formality. So `PAYOFF_AT = TICK_AT`, as its own named
+constant with its own test asserting it is at or after the tick — the mirror of
+the test that holds `COMMIT_AT` below it. The asymmetry is a decision on the
+record, not a number that happens to be bigger.
+
+**Retargeted the camera.** The couch framing pointed at the blue couch, which
+was fine when the beat had no act and wrong the moment it did: the loveseat
+arrives three metres away against the back wall, so the pop was happening off
+screen. Now derived from `LOVESEAT.position` — nudging the furniture cannot
+leave the camera looking at where it used to be — and lifted to seat height, so
+before the delivery the shot is the empty space you measured.
+
+**The shadow travels with it.** `LOVESEAT_SHADOW` came out of
+`CONTACT_SHADOWS` and is drawn inside `ContactShadows` instead, so it shares
+the radial-gradient texture — a flat black quad beside eight soft ones is
+instantly the odd one out. Its opacity takes `Math.min(1, scale)`, dropping the
+pop's overshoot: a shadow bigger than the thing casting it is exactly the tell
+that this is a scale trick.
+
+**A bug the test caught, with the algebra to match.** The first overshoot was
+`smoothstep(p) + sin(smoothstep(p)·π) · 0.12`, which looks like a pop and
+provably is not — the bump is largest where the base curve is small and
+vanishes as it reaches 1, so the sum rises monotonically to exactly 1. Its
+derivative `1 + 0.12π·cos(mπ)` has no zero, which is the same statement.
+Failure read "expected 1 to be greater than 1". Replaced with the standard
+back-out curve, `BACK = 2`, peaking ~1.13 at 56% of the pop.
+
+**Measured.** Verify green (157 files, 2413 tests). Eager JS unchanged at
+344.5 KB gz; three.js 0.0 KB eager; `npm run scene` re-bakes byte-identically
+(370.8 KB, 23 nodes) — the loveseat was always in the GLB, only its placement
+moved. Frame cost over three runs: median 8.4–8.5 ms, zero frames over 33 ms.
+
+**Worth flagging:** `e2e/touch-smoke.spec.ts`'s day-track swipe has now flaked
+in four consecutive gate runs and passed in isolation every time. Pre-existing
+and untouched by any of this work, but it is no longer a one-off.

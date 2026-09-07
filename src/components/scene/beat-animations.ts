@@ -172,6 +172,84 @@ export function plantStateAt(u: number): PlantState {
 }
 
 // ---------------------------------------------------------------------------
+// The measuring beat — "Measure the room before ordering the couch"
+// ---------------------------------------------------------------------------
+
+/**
+ * When a beat's PAYOFF lands, as opposed to its act.
+ *
+ * Rule 3 says the act comes before the tick, and that is still right for every
+ * beat where the to-do IS the thing you watch happen: the wall gets painted,
+ * the plant gets watered, the old set goes. This beat is the exception that
+ * proves the rule rather than breaking it.
+ *
+ * "Measure the room before ordering the couch" is a to-do about measuring. The
+ * couch is not the task — it is what the task earns, and it could not honestly
+ * show up first. So the payoff sits ON the tick: you finish measuring, the line
+ * checks off, and the thing you were measuring for arrives.
+ *
+ * Kept as its own named constant, with its own test asserting it is at or after
+ * `TICK_AT`, so the asymmetry is a decision on the record instead of a number
+ * that happens to be bigger than the other one.
+ */
+export const PAYOFF_AT = TICK_AT;
+
+export interface CouchState {
+  /**
+   * Scale for the loveseat, 0 (not ordered) through a slight overshoot to 1.
+   *
+   * 0 rather than a hidden flag because the pop IS the scale: the scene reads
+   * this straight onto the group and hides it below a threshold, so there is
+   * one number to reason about instead of a number and a boolean that can
+   * disagree.
+   */
+  loveseatScale: number;
+  /** True from the delivery onward. Drives the contact shadow's opacity too. */
+  delivered: boolean;
+}
+
+/** How much of the band the pop takes. Short — a delivery is an event. */
+const POP_OVER = 0.18;
+
+/**
+ * The loveseat arrives.
+ *
+ * Nothing, then a pop with a little overshoot, then settled at its real size —
+ * the beat of a box being opened rather than a fade, because furniture does not
+ * fade into a room.
+ *
+ * The overshoot is why this returns a scale rather than a 0..1 progress: the
+ * curve goes ABOVE 1 in the middle, and a caller that assumed a normalised
+ * range would clamp exactly the frames that make it read as a pop.
+ */
+export function couchStateAt(u: number): CouchState {
+  if (u < PAYOFF_AT) return { loveseatScale: 0, delivered: false };
+
+  const p = clamp((u - PAYOFF_AT) / POP_OVER);
+  return { loveseatScale: popIn(p), delivered: true };
+}
+
+/**
+ * 0 → past 1 → settled at 1. The standard "back out" curve.
+ *
+ * The first attempt was `smoothstep(p) + sin(smoothstep(p)·π) · 0.12`, which
+ * looks like an overshoot and provably is not: the bump is largest where the
+ * base curve is small and vanishes as it reaches 1, so the sum rises
+ * monotonically to exactly 1 and never above it. Its derivative
+ * `1 + 0.12π·cos(mπ)` has no zero, which is the algebra saying the same thing.
+ * The test caught it — "expected 1 to be greater than 1".
+ *
+ * `BACK = 2` peaks around 1.13 at roughly 56% of the pop. Enough to read as a
+ * thing landing; short of the cartoon bounce that would make the room look
+ * like a toy.
+ */
+const BACK = 2;
+function popIn(p: number): number {
+  const q = clamp(p) - 1;
+  return 1 + (BACK + 1) * q * q * q + BACK * q * q;
+}
+
+// ---------------------------------------------------------------------------
 // The letting-go beat — "Sell the old TV instead of moving it"
 // ---------------------------------------------------------------------------
 

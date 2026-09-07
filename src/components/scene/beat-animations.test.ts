@@ -5,6 +5,8 @@ import {
   beatBandFor,
   beatLocalAt,
   COMMIT_AT,
+  couchStateAt,
+  PAYOFF_AT,
   paintStateAt,
   plantStateAt,
   tvUpgradedAt,
@@ -25,6 +27,18 @@ describe("the ordering rule", () => {
     // The rule the whole strategy hangs on: a checked-off to-do whose act has
     // not happened yet is a lie told on both halves of the screen at once.
     expect(COMMIT_AT).toBeLessThan(TICK_AT);
+  });
+
+  it("lands a payoff no earlier than the tick", () => {
+    /*
+      The deliberate asymmetry, on the record.
+
+      An ACT is the to-do happening, so it precedes the tick. A PAYOFF is what
+      the to-do earns, so it cannot honestly precede it: the couch is not the
+      measuring, it is what measuring gets you, and a couch that arrived first
+      would make the task look like a formality.
+    */
+    expect(PAYOFF_AT).toBeGreaterThanOrEqual(TICK_AT);
   });
 });
 
@@ -180,6 +194,55 @@ describe("the watering beat", () => {
     for (let u = 0.002; u <= 1; u += 0.002) {
       const next = plantStateAt(u).thirst;
       expect(Math.abs(next - previous), `jump at u=${u.toFixed(3)}`).toBeLessThan(0.05);
+      previous = next;
+    }
+  });
+});
+
+describe("the measuring beat", () => {
+  it("has no loveseat at all until the measuring is done", () => {
+    // The room starts without it: the whole to-do is about a thing that does
+    // not exist yet.
+    for (let u = 0; u < PAYOFF_AT; u += 0.005) {
+      expect(couchStateAt(u), `u=${u.toFixed(3)}`).toEqual({
+        loveseatScale: 0,
+        delivered: false,
+      });
+    }
+  });
+
+  it("pops: overshoots its real size, then settles at exactly 1", () => {
+    // A fade would be wrong — furniture does not fade into a room. The
+    // overshoot is the beat of a box being opened.
+    const peak = Math.max(
+      ...Array.from({ length: 200 }, (_, i) => couchStateAt(PAYOFF_AT + i * 0.001).loveseatScale),
+    );
+    expect(peak).toBeGreaterThan(1);
+    expect(peak).toBeLessThan(1.2);
+
+    for (const u of [0.7, 0.9, 1]) {
+      expect(couchStateAt(u).loveseatScale, `u=${u}`).toBeCloseTo(1, 6);
+      expect(couchStateAt(u).delivered, `u=${u}`).toBe(true);
+    }
+  });
+
+  it("starts the pop from nothing, not from a visible half-couch", () => {
+    // A scale that began at, say, 0.3 would flash a small couch on the first
+    // frame of the delivery.
+    expect(couchStateAt(PAYOFF_AT).loveseatScale).toBeCloseTo(0, 6);
+  });
+
+  it("stays delivered — done stays done", () => {
+    for (const u of [PAYOFF_AT, 0.6, 1]) {
+      expect(couchStateAt(u).delivered, `u=${u}`).toBe(true);
+    }
+  });
+
+  it("is continuous — the couch grows, it does not cut in", () => {
+    let previous = couchStateAt(0).loveseatScale;
+    for (let u = 0.002; u <= 1; u += 0.002) {
+      const next = couchStateAt(u).loveseatScale;
+      expect(Math.abs(next - previous), `jump at u=${u.toFixed(3)}`).toBeLessThan(0.06);
       previous = next;
     }
   });

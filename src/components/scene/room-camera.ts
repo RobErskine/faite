@@ -1,5 +1,5 @@
 import { STORY_BEATS, type BeatFocus } from "@/lib/story-beats";
-import { ROOM, SWATCHES, TV_SPOT, type Vec3 } from "./room-layout";
+import { LOVESEAT, ROOM, SWATCHES, TV_SPOT, type Vec3 } from "./room-layout";
 
 /**
  * Where the camera looks, beat by beat (EI-276).
@@ -99,8 +99,25 @@ export const FRAMINGS: Record<BeatFocus, Framing> = {
     angle: BASE_ANGLE - 0.06,
     height: 8.9,
   },
-  /** The blue couch on the rug — the thing you measure the room for. */
-  couch: { target: [1.6, 0.55, 0.2], zoom: 118, angle: BASE_ANGLE - 0.14, height: 8.8 },
+  /**
+   * The GAP where the loveseat will go — not the couch that is already there.
+   *
+   * This framing pointed at the blue couch, which was wrong once the beat had
+   * an act: the loveseat arrives at `LOVESEAT.position`, three metres away
+   * against the back wall, so the pop was happening off screen. Aimed at the
+   * empty spot instead, the beat reads as intended — you look at the space you
+   * measured, and then the thing you measured for lands in it.
+   *
+   * Position derived from `LOVESEAT` rather than repeated, so nudging the
+   * furniture cannot leave the camera looking at where it used to be. Lifted
+   * to seat height so the shot is the space, not the floor.
+   */
+  couch: {
+    target: [LOVESEAT.position[0], 0.5, LOVESEAT.position[2] + 0.35],
+    zoom: 126,
+    angle: BASE_ANGLE - 0.02,
+    height: 8.7,
+  },
   /** The wall shelf and its books: the bookcase there is a decision about. */
   shelf: { target: [-2.2, 1.45, -0.5], zoom: 124, angle: BASE_ANGLE + 0.22, height: 8.6 },
   /** The console, where the old set is finally replaced. */
