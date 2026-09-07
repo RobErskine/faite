@@ -118,7 +118,16 @@ export const FRAMINGS: Record<BeatFocus, Framing> = {
     angle: BASE_ANGLE - 0.02,
     height: 8.7,
   },
-  /** The wall shelf and its books: the bookcase there is a decision about. */
+  /**
+   * The books on the wall shelf — the one thing in the room you are still
+   * arguing with yourself about.
+   *
+   * There is no bookcase in this room and there never was; the sub-task used
+   * to name one anyway, which is exactly the drift the beat table exists to
+   * prevent. The books are real, they are already up there, and they are small
+   * enough that hesitating over them reads as hesitation rather than as
+   * furniture moving.
+   */
   shelf: { target: [-2.2, 1.45, -0.5], zoom: 124, angle: BASE_ANGLE + 0.22, height: 8.6 },
   /** The console, where the old set is finally replaced. */
   tv: { target: [TV_SPOT[0] + 0.1, TV_SPOT[1] + 0.2, TV_SPOT[2]], zoom: 130, angle: BASE_ANGLE + 0.16, height: 8.4 },

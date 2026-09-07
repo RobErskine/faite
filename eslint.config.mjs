@@ -45,6 +45,16 @@ const eslintConfig = defineConfig([
     // Generated build output — linting it produces thousands of errors from
     // machine-generated code and would keep CI permanently red.
     ".next-static/**",
+    /*
+      Playwright's own output. Both are in `.gitignore`, so CI never sees
+      them — but they are written by any local `npm run e2e`, and eslint lints
+      whatever is on disk. The report bundles a vendored copy of CodeMirror,
+      which alone produces ~257 errors, so `npm run verify` failed for anyone
+      who had run the tests first. Cost three debugging detours before it went
+      in the list.
+    */
+    "playwright-report/**",
+    "test-results/**",
     ".open-next/**",
     ".wrangler/**",
     // Nested git worktrees (`.claude/worktrees/*`) are full checkouts of this

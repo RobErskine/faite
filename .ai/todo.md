@@ -2823,3 +2823,53 @@ zero frames over 33 ms.
 has failed the gate five runs in a row and passed in isolation every single
 time. Pre-existing and untouched by this work, but five for five is a pattern,
 not noise — worth its own ticket.
+
+### EI-280 — the bookcase that never existed (2026-09-06)
+
+Review: "we don't really have a book case here." Correct, and there never was
+one — the sub-task said "Decide about the old bookcase" while the camera
+framed a wall shelf with books on it. That is precisely the drift the beat
+table was built to prevent, and it survived two rounds of review anyway
+because nothing checks a to-do's noun against the room.
+
+Aligned all three, which was the actual ask:
+
+1. **Research** (§2.4, Emmons & King 1988) — people act least on exactly the
+   strivings they think about most. RESEARCH.md calls it "the single best row
+   in this file for the Faite Loop… the item that rolls three times and lands
+   in Overflow."
+2. **Marketing claim** — unchanged, and it was already right: "The things you
+   keep not doing are the things you keep thinking about", with Overflow as
+   the product answer.
+3. **The room** — `BOOKS` lifted out of `STATIC_PROPS` into its own group. The
+   sub-task is now "Decide which books are coming", about an object that is
+   actually up there.
+
+**The act IS the hesitation.** Every other beat animates a decision; this one
+animates the *inability* to make one. The books are picked up and put back
+twice — a cosine, so whole cycles that start and end at rest — and only then
+go. A shelf that simply emptied would have illustrated a decision; a shelf
+whose books keep almost leaving illustrates what the study measured. Faite's
+answer follows: the hesitating stops and the books go, before the tick,
+because deciding is the to-do.
+
+**A rule-3 violation the test caught.** The first version ran the departure
+FROM `COMMIT_AT` over 0.16 of the band. But `popOut` holds near 1 and collapses
+late, so at the tick the books were still at 1.05x, sitting on the shelf, while
+the card claimed the decision was made — `expected 1.0488 to be less than 0.2`.
+Restructured so the whole act finishes BY `COMMIT_AT`, the same shape the old
+television uses. Rule 3 is about what is on screen when the line ticks, not
+about when an animation was allowed to begin.
+
+**Fixed the eslint papercut** that had cost three detours: `playwright-report/`
+and `test-results/` are gitignored, so CI never saw them, but eslint lints
+whatever is on disk and the report vendors a copy of CodeMirror worth ~257
+errors. `npm run verify` failed for anyone who had run the tests first. Two
+lines in `globalIgnores`.
+
+**Measured.** Verify green (157 files, 2426 tests). Eager JS unchanged at
+344.5 KB gz; three.js 0.0 KB eager; `npm run scene` re-bakes byte-identically.
+Frame cost over three runs: median 8.4–8.5 ms, zero frames over 33 ms.
+
+**Every beat now acts out its to-do.** Capture (the wide establishing shot),
+paint, watering, the couch arriving, the books going, the sets swapping.

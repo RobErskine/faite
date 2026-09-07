@@ -11,6 +11,7 @@ import {
   plantStateAt,
   popIn,
   popOut,
+  shelfStateAt,
   tvStateAt,
   VISIBLE_SWATCHES,
 } from "./beat-animations";
@@ -246,6 +247,71 @@ describe("the measuring beat", () => {
       const next = couchStateAt(u).loveseatScale;
       expect(Math.abs(next - previous), `jump at u=${u.toFixed(3)}`).toBeLessThan(0.06);
       previous = next;
+    }
+  });
+});
+
+describe("the ambivalence beat", () => {
+  it("hesitates: picks the books up and puts them back, more than once", () => {
+    /*
+      The act IS the hesitation. Emmons & King measured that people act least
+      on exactly what they think about most, so a shelf that simply emptied
+      would show a decision while the copy describes indecision.
+
+      Counted as direction changes rather than by sampling known peaks, so the
+      test states the behaviour instead of restating the formula.
+    */
+    const lifts: number[] = [];
+    for (let u = 0; u < 0.18; u += 0.0005) lifts.push(shelfStateAt(u).lift);
+
+    let reversals = 0;
+    for (let i = 2; i < lifts.length; i++) {
+      const before = lifts[i - 1] - lifts[i - 2];
+      const after = lifts[i] - lifts[i - 1];
+      if (before > 0 && after < 0) reversals++;
+    }
+    expect(reversals).toBeGreaterThanOrEqual(2);
+    expect(Math.max(...lifts)).toBeGreaterThan(0.05);
+  });
+
+  it("has the books resting on the shelf at the moment they are taken", () => {
+    // Leaving mid-lift reads as fumbling rather than as choosing.
+    expect(shelfStateAt(0)).toEqual({ lift: 0, booksScale: 1, decided: false });
+    // Resting again right before the departure begins, and flat once it does.
+    expect(shelfStateAt(0.1795).lift).toBeLessThan(0.005);
+    expect(shelfStateAt(0.2).lift).toBe(0);
+  });
+
+  it("never lets a hesitation lift the books off-screen", () => {
+    // It is a hand reaching, not furniture moving.
+    for (let u = 0; u <= 1; u += 0.002) {
+      expect(shelfStateAt(u).lift, `u=${u.toFixed(3)}`).toBeGreaterThanOrEqual(0);
+      expect(shelfStateAt(u).lift, `u=${u.toFixed(3)}`).toBeLessThanOrEqual(0.08);
+    }
+  });
+
+  it("decides before the line ticks, because deciding is the to-do", () => {
+    // An act, not a payoff: the sub-task says "decide", so the decision is the
+    // thing being checked off and has to precede the tick (rule 3).
+    expect(shelfStateAt(COMMIT_AT).decided).toBe(true);
+    expect(COMMIT_AT).toBeLessThan(TICK_AT);
+    // Gone BY the commit, not merely starting to go — this is the assertion
+    // that caught the first version, where the books were still at 1.05x on
+    // the shelf at the exact moment the card said the decision was made.
+    expect(shelfStateAt(COMMIT_AT).booksScale).toBe(0);
+    expect(shelfStateAt(TICK_AT).booksScale).toBe(0);
+  });
+
+  it("leaves the shelf empty, and it stays empty", () => {
+    for (const u of [0.5, 0.8, 1]) {
+      expect(shelfStateAt(u).booksScale, `u=${u}`).toBeCloseTo(0, 6);
+      expect(shelfStateAt(u).decided, `u=${u}`).toBe(true);
+    }
+  });
+
+  it("never goes negative — it is fed straight to a scale", () => {
+    for (let u = -0.2; u <= 1.2; u += 0.005) {
+      expect(shelfStateAt(u).booksScale, `u=${u.toFixed(3)}`).toBeGreaterThanOrEqual(0);
     }
   });
 });

@@ -90,7 +90,8 @@ export const STATIC_PROPS: PropPlacement[] = [
   // 0.412, so 1.5 + 0.412). Books replaced the small plant's clone here —
   // review: two identical plants a meter apart read as a copy-paste.
   { node: "wall_shelf", position: [LEFT_WALL_X + 0.06, 1.5, -0.58], rotationY: Math.PI / 2 },
-  { node: "books", position: [LEFT_WALL_X + 0.06, 1.912, -0.58], rotationY: Math.PI / 2 },
+  // The books are NOT here — they hesitate and then leave during the shelf
+  // beat (EI-280), so they need their own group. See `BOOKS` below.
   { node: "door", position: [-HALF_W + 0.1, 0, 1.55], rotationY: Math.PI / 2 },
 
   // --- the seating zone: an L around the coffee table, anchored on the rug -
@@ -138,6 +139,19 @@ export const STATIC_PROPS: PropPlacement[] = [
   // camera sees most of, beside the couch's far arm.
   { node: "plant_bushy", position: [2.1, 0, 1.85] },
 ];
+
+/**
+ * The books on the wall shelf — the room's one undecided thing.
+ *
+ * Lifted out of `STATIC_PROPS` so the shelf beat can raise and lower them:
+ * being picked up and put back IS that beat's animation, because that is what
+ * the research it cites actually measured.
+ */
+export const BOOKS: PropPlacement = {
+  node: "books",
+  position: [LEFT_WALL_X + 0.06, 1.912, -0.58],
+  rotationY: Math.PI / 2,
+};
 
 /**
  * The loveseat, which is ordered rather than simply present.

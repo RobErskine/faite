@@ -28,6 +28,7 @@ import { applyRoomPalette, readRoomPalette } from "./room-materials";
 import {
   CONTACT_SHADOWS,
   FISH,
+  BOOKS,
   LOVESEAT,
   LOVESEAT_SHADOW,
   PRINTS,
@@ -44,6 +45,7 @@ import {
   couchStateAt,
   paintStateAt,
   plantStateAt,
+  shelfStateAt,
   tvStateAt,
 } from "./beat-animations";
 
@@ -474,6 +476,7 @@ function LivingRoomProps({ progress }: { progress: Progress }) {
   const newTv = useRef<THREE.Group>(null);
   const fish = useRef<THREE.Group>(null);
   const loveseat = useRef<THREE.Group>(null);
+  const books = useRef<THREE.Group>(null);
 
   /**
    * The leaf materials, with the healthy color they must return to.
@@ -562,6 +565,18 @@ function LivingRoomProps({ progress }: { progress: Progress }) {
       `visible` follows the scale so a collapsed set stops being drawn instead
       of being drawn inside out at scale 0.
     */
+    /*
+      The books hesitate, then go (EI-280). Lift is applied on top of their
+      placed Y rather than replacing it — `Placed` owns where a prop lives, and
+      an animation that overwrote that would silently un-place it.
+    */
+    const shelf = shelfStateAt(beatLocalAt(progress.current, "shelf"));
+    if (books.current) {
+      books.current.visible = shelf.booksScale > 0.001;
+      books.current.scale.setScalar(Math.max(0.001, shelf.booksScale));
+      books.current.position.y = shelf.lift;
+    }
+
     const tv = tvStateAt(beatLocalAt(progress.current, "tv"));
     if (oldTv.current) {
       oldTv.current.visible = tv.oldScale > 0.001;
@@ -587,6 +602,11 @@ function LivingRoomProps({ progress }: { progress: Progress }) {
         // than once (Placed clones), so node names alone can collide.
         <Placed key={`${p.node}-${i}`} scene={scene} placement={p} />
       ))}
+
+      {/* The group takes the lift and the scale; `Placed` owns the placement. */}
+      <group ref={books}>
+        <Placed scene={scene} placement={BOOKS} />
+      </group>
 
       {/*
         The loveseat and its shadow, grouped so one scale drives both. Ordered

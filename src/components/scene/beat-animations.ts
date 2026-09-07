@@ -272,6 +272,67 @@ export function popOut(p: number): number {
 }
 
 // ---------------------------------------------------------------------------
+// The ambivalence beat — "Decide which books are coming"
+// ---------------------------------------------------------------------------
+
+export interface ShelfState {
+  /** How far the books are lifted off the shelf, in metres. */
+  lift: number;
+  /** Scale — 1 while they are still up there, 0 once the decision is made. */
+  booksScale: number;
+  /** True from the decision onward. */
+  decided: boolean;
+}
+
+/** How many times the books are almost taken before they actually are. */
+const HESITATIONS = 2;
+/** How far a hesitation lifts them. Small: this is a hand reaching, not a move. */
+const LIFT_MAX = 0.07;
+
+/**
+ * The books are picked up, put back, picked up, put back — and then go.
+ *
+ * This is the one beat where the ACT IS THE HESITATION, and that is not a
+ * flourish, it is the finding. Emmons & King measured that people act least on
+ * exactly the strivings they think about most, which is the item that rolls
+ * three times and lands in Overflow (`docs/RESEARCH.md` §2.4). A shelf that
+ * simply emptied would illustrate a decision; a shelf whose books keep almost
+ * leaving illustrates the thing the study actually found.
+ *
+ * Then Faite's answer: Overflow forces the decision rather than letting the
+ * item sit. So the hesitating stops and the books go, before the line ticks —
+ * deciding is the to-do, so it is an act (rule 3), not a payoff.
+ *
+ * The cosine gives whole up-and-down cycles that start AND end at zero, so the
+ * books are resting on the shelf at the moment they are finally taken. Starting
+ * the departure mid-lift would read as fumbling rather than as choosing.
+ */
+export function shelfStateAt(u: number): ShelfState {
+  if (u >= COMMIT_AT) return { lift: 0, booksScale: 0, decided: true };
+
+  if (u >= DECIDE_FROM) {
+    const p = (u - DECIDE_FROM) / (COMMIT_AT - DECIDE_FROM);
+    return { lift: 0, booksScale: Math.max(0, popOut(p)), decided: false };
+  }
+
+  const phase = clamp(u / DECIDE_FROM);
+  const lift = (LIFT_MAX * (1 - Math.cos(phase * 2 * Math.PI * HESITATIONS))) / 2;
+  return { lift, booksScale: 1, decided: false };
+}
+
+/**
+ * Where the hesitating stops and the books actually go.
+ *
+ * The departure has to FINISH by `COMMIT_AT`, not start there — the same shape
+ * the old television uses. The first version ran it from `COMMIT_AT` over 0.16
+ * of the band, and a test caught what that meant: `popOut` holds near 1 and
+ * collapses late, so at the tick the books were still at 1.05× on the shelf
+ * while the card claimed the decision was made. Rule 3 is about what is on
+ * screen when the line ticks, not about when an animation was allowed to begin.
+ */
+const DECIDE_FROM = 0.18;
+
+// ---------------------------------------------------------------------------
 // The letting-go beat — "Sell the old TV instead of moving it"
 // ---------------------------------------------------------------------------
 

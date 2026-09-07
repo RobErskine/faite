@@ -7,13 +7,13 @@
  * it (EI-278), and the hero board opens with that same list. A beat, an
  * object, a claim and a sub-task are one unit, so they live on one row — the
  * alternative is four parallel arrays kept in step by hand, and the failure
- * mode there is silent: the room shows the bookcase while the copy talks about
+ * mode there is silent: the room shows the shelf while the copy talks about
  * paint.
  *
  * # The sub-tasks are the argument, not set dressing
  *
  * The first draft of this table invented five plausible renovation chores —
- * pick a paint color, measure for the couch, sort the bookcase — and they had
+ * pick a paint color, measure for the couch, sort the shelf — and they had
  * nothing to do with the studies beside them. That is backwards. Each row's
  * sub-task now DEMONSTRATES its finding: the beat about scheduling carries a
  * task with a date and a time on it, the beat about recurrence carries a
@@ -143,7 +143,7 @@ export const STORY_BEATS: StoryBeat[] = [
       "People acted least on the goals they felt most torn about, and spent the most time thinking about exactly those.",
     cite: "Emmons & King (1988)",
     section: "§2.4",
-    subtask: "Decide about the old bookcase",
+    subtask: "Decide which books are coming",
     focus: "shelf",
   },
   {
