@@ -37,6 +37,7 @@ import {
   type PropPlacement,
 } from "./room-layout";
 import { framingAt } from "./room-camera";
+import { beatLocalAt, paintStateAt, tvUpgradedAt } from "./beat-animations";
 
 declare module "react" {
   // Both disables are forced by the shape of React 19's JSX types: the
@@ -54,24 +55,12 @@ export type Progress = { current: number };
 
 const SCENE_URL = "/scene/living-room.glb";
 
-/**
- * Maps 0..1 scroll progress onto the beat.
- *
- * 0.00-0.35  wide isometric, bare wall, three swatches
- * 0.35-0.85  push in; the wall cycles through the candidates
- * 0.85-1.00  snap back to bare. The indecision IS the animation.
+/*
+ * The spike's two global-clock animations lived here: `wallColourAt` cycled
+ * candidates across t 0.35–0.85 and snapped back bare, and the TV swapped at a
+ * bare `t > 0.9`. Both moved to `beat-animations.ts` (EI-280), scoped to the
+ * beat whose to-do they act out, with the timing rules tested there.
  */
-function wallColourAt(t: number): string | null {
-  if (t < 0.35 || t > 0.85) return null; // bare - the wall's own theme color
-  const span = (t - 0.35) / 0.5;
-  const n = SWATCHES.candidates.length;
-  return SWATCHES.candidates[Math.min(n - 1, Math.floor(span * n))];
-}
-
-/** The TV is bought late. Before that the console holds the old set. */
-function tvUpgradedAt(t: number): boolean {
-  return t > 0.9;
-}
 
 // --- camera -----------------------------------------------------------------
 
@@ -189,12 +178,14 @@ function RoomShell({ progress }: { progress: Progress }) {
 
   useFrame(() => {
     if (!wall.current) return;
-    const candidate = wallColourAt(progress.current);
-    scratch.set(candidate ?? paletteRef.current.wall);
+    // The paint beat's story (EI-280): bare while the camera arrives, then a
+    // preview per considered chip, then the chosen color for good.
+    const paint = paintStateAt(beatLocalAt(progress.current, "swatches"));
+    scratch.set(paint.wallColor ?? paletteRef.current.wall);
     // A candidate is a paint chip picked in daylight; on a dark-mode wall it
     // would glow. Dim the paint, not the chip - the swatches themselves stay
     // true, like real samples under a lamp.
-    if (candidate && paletteRef.current.dark) scratch.multiplyScalar(0.62);
+    if (paint.wallColor && paletteRef.current.dark) scratch.multiplyScalar(0.62);
     wall.current.color.lerp(scratch, 0.09);
   });
 
@@ -227,18 +218,77 @@ function RoomShell({ progress }: { progress: Progress }) {
   );
 }
 
-/** The three swatches. The whole point of the beat. */
-function Swatches() {
+/**
+ * The three swatches — and, during the paint beat, the performance (EI-280).
+ *
+ * While the beat considers a chip it pops: scales up and lifts off the wall
+ * toward the camera, while `RoomShell` previews its color behind it. When the
+ * pick commits, the chosen chip stays up for the rest of the story — the one
+ * that won, still proud of the wall it now matches.
+ *
+ * Lerped in the frame loop like every other animated thing in the scene, so a
+ * chip eases up and settles rather than teleporting between states.
+ */
+function Swatches({ progress }: { progress: Progress }) {
   const { candidates, size, gap, origin } = SWATCHES;
+  const chips = useRef<(THREE.Mesh | null)[]>([]);
+  const backings = useRef<(THREE.MeshLambertMaterial | null)[]>([]);
+
+  useFrame(() => {
+    const paint = paintStateAt(beatLocalAt(progress.current, "swatches"));
+    for (const [i, chip] of chips.current.entries()) {
+      if (!chip) continue;
+      const active = paint.activeSwatch === i;
+      // The winner holds a quieter lift than a chip mid-consideration: the
+      // decision is made, so the room stops shouting about it.
+      const scale = active ? (paint.committed ? 1.18 : 1.35) : 1;
+      const lift = active ? (paint.committed ? 0.05 : 0.09) : 0;
+      chip.scale.x += (scale - chip.scale.x) * 0.15;
+      chip.scale.y += (scale - chip.scale.y) * 0.15;
+      chip.position.z += (origin[2] + lift - chip.position.z) * 0.15;
+
+      /*
+        The paper behind the chip, shown only while the chip matters.
+
+        Found by looking, not reasoning: the moment the wall takes a chip's
+        color — preview or commit — the chip is a quad of that exact color on
+        a wall of that exact color, at the same angle under the same light,
+        and it VANISHES. The story's payoff frame was the chosen chip
+        dissolving into its own wall. A white card behind the active chip
+        keeps an edge between the sample and the surface, the way a real
+        sample card does.
+      */
+      const backing = backings.current[i];
+      if (backing) backing.opacity += ((active ? 1 : 0) - backing.opacity) * 0.15;
+    }
+  });
+
   return (
     <group>
       {candidates.slice(0, 3).map((c, i) => (
         <mesh
           key={c}
+          ref={(el) => {
+            chips.current[i] = el;
+          }}
           position={[origin[0] + i * (size + gap), origin[1], origin[2]]}
         >
           <planeGeometry args={[size, size]} />
           <meshLambertMaterial color={c} />
+          {/* The backing rides INSIDE the chip so it inherits the pop: a
+              child mesh scales and lifts with its parent, and z is in the
+              chip's own space, so -0.01 keeps it a hair behind at any lift. */}
+          <mesh position={[0, 0, -0.01]} scale={1.16}>
+            <planeGeometry args={[size, size]} />
+            <meshLambertMaterial
+              color="#f6f3ec"
+              transparent
+              opacity={0}
+              ref={(el) => {
+                backings.current[i] = el;
+              }}
+            />
+          </mesh>
         </mesh>
       ))}
     </group>
@@ -429,7 +479,7 @@ export default function RoomScene({ progress }: { progress: Progress }) {
       <Rig progress={progress} />
       <RoomShell progress={progress} />
       <ContactShadows />
-      <Swatches />
+      <Swatches progress={progress} />
       <Prints />
 
       <PropsBoundary>

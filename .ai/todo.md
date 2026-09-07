@@ -2627,3 +2627,55 @@ Eager JS 342.8 → **344.5 KB gz** (+1.7 KB, `story-ticks.tsx`). HTML 14.1 →
 beat *n* ticks item *n* at each beat's own centre, and that the card finishes
 at 6/6. Looked at beat 3 in the browser: camera on the monstera, "Water the
 plants — every Wednesday" struck through, badge 3/6.
+
+## EI-280 — each beat acts out its own to-do (2026-09-06)
+
+The room's two animations were spike remnants on a global clock: the wall
+cycled candidates across t 0.35–0.85 and snapped back bare ("the indecision IS
+the animation"), and the TV swapped at a bare t > 0.9. Now that every section
+IS a to-do, the room acts each one out. The paint beat is the proof of the
+pattern; the strategy is the deliverable.
+
+### The four rules (docs/SCENE.md file map → beat-animations.ts)
+
+1. **Beat-local time.** An animation is a pure function of u — 0 at its band's
+   start, 1 at its end, clamped outside — never of global t. Bands derive from
+   STORY_BEATS, so reordering beats moves the animations with them.
+2. **Pure state, applied thinly.** Same split as room-camera: `paintStateAt(u)`
+   imports no three.js and is unit-tested; the scene lerps toward it.
+3. **The act lands before the tick.** COMMIT_AT (0.3) < TICK_AT (0.4, now a
+   shared constant in lib/story-beats.ts), held by a test — a checked-off to-do
+   whose act has not happened is a lie told on both halves of the screen.
+4. **Done stays done.** u clamps to 1 after the band. The wall stays painted;
+   the snap-back is deleted.
+
+### The paint beat
+
+Camera arrives (u<0.05, bare) → each visible chip pops in turn, scale 1.35 +
+lifted off the wall, while the wall previews its color → at u=0.3 the pick:
+the blue-grey commits (chosen: 2 in room-layout — the wall joins the couch's
+side of the warm-floor/cool-couch contrast), the winner settles to a quieter
+1.18, the line ticks at u=0.4. The TV swap re-scoped to its own band's commit —
+which lands at t≈0.883, within scroll-pixels of the spike's hand-placed 0.9.
+
+### Found by looking, not reasoning
+
+The payoff frame was invisible: the moment the wall takes a chip's color, the
+chip is a quad of that color on a wall of that color under the same light, and
+it VANISHES — the chosen chip dissolved into its own wall. Fixed with a white
+backing card behind the active chip (a child mesh, so it inherits the pop),
+opacity-lerped in and out. Also nested meshes: the backing rides inside the
+chip so scale/lift are inherited and z is in the chip's own space.
+
+### Verified
+
+`npm run verify` green (157 files, 2398 tests — 10 new in
+beat-animations.test.ts). Gate the way CI runs it: 114 passed, 0 flaky.
+three.js still 0.0 KB eager. Scroll frame cost median 8.4 ms, zero over 33 ms —
+unchanged. Looked at in the browser, light and dark, at the considering and
+committed phases.
+
+### Remaining beats (same pattern, not yet built)
+
+Plant: watering. Couch: arriving/settling on the rug. Shelf: books leaving.
+Beat 1 (capture) and the camera's wide shot may be enough as-is.

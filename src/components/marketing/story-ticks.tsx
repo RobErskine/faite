@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { STORY_BEATS } from "@/lib/story-beats";
+import { STORY_BEATS, TICK_AT } from "@/lib/story-beats";
 
 /**
  * The sub-tasks tick off as you read past them (EI-278).
@@ -95,7 +95,10 @@ export function StoryTicks() {
         closing beat is still on screen.
       */
       const n = STORY_BEATS.length;
-      const count = Math.min(n, Math.max(0, Math.floor(t * n + 0.6)));
+      // `1 - TICK_AT` is the same 0.6 the comment above derives; the constant
+      // lives in `story-beats.ts` because the scene's beat animations must
+      // commit BEFORE this fires, and a shared number is what a test can hold.
+      const count = Math.min(n, Math.max(0, Math.floor(t * n + 1 - TICK_AT)));
       if (count === last) return;
       last = count;
       done.current = count;

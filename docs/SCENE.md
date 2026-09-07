@@ -25,6 +25,7 @@ already tells the story.
 | `public/scene/living-room.glb` | The committed build output. 371 KB, 23 nodes, 37 materials. |
 | `src/components/scene/room-layout.ts` | Where every prop sits, in meters. No geometry. |
 | `src/components/scene/room-materials.ts` | Material name → CSS custom property, and the re-tint pass. |
+| `src/components/scene/beat-animations.ts` | What the room DOES during each beat: beat-local time, pure state functions, the commit-before-tick rule. Unit-tested. |
 | `src/components/scene/room-camera.ts` | Which object each beat frames, and the interpolation between them. No three.js, so it is unit-tested. |
 | `src/components/scene/room-scene.tsx` | The R3F canvas: shell, lights, camera rig, placed props, the fish. |
 | `src/components/scene/room-stage.tsx` | The pinned stage, the lazy gate, the scroll listener, the flat fallback. |

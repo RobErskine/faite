@@ -79,6 +79,22 @@ export interface StoryBeat {
   focus: BeatFocus;
 }
 
+/**
+ * How far into a beat's band its sub-task ticks, as a fraction of the band.
+ *
+ * Shared between `story-ticks.tsx` (which checks the line off) and the scene's
+ * beat animations (`components/scene/beat-animations.ts`), because the two are
+ * in a strict order: a beat's decisive moment in the room — the wall taking
+ * its color, the old TV leaving — must land BEFORE its line ticks, or the card
+ * claims something the room has not done yet. A unit test holds each
+ * animation's commit point under this number.
+ *
+ * 0.4 rather than 0.5 for the reason recorded in `story-ticks.tsx`: exactly on
+ * the band centre is a knife edge, and a whole-pixel scroll rounding was
+ * enough to land either side of it.
+ */
+export const TICK_AT = 0.4;
+
 export const STORY_BEATS: StoryBeat[] = [
   {
     headline: "You wrote it down. That is most of it.",

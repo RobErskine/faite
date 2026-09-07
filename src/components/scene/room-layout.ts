@@ -184,6 +184,13 @@ export const SWATCHES = {
    * dark mode.
    */
   bareWall: null as string | null,
+  /**
+   * The candidate that wins (an index into the three VISIBLE chips, i.e.
+   * `candidates.slice(0, 3)`). The blue-grey: the room's one big contrast is
+   * the warm floor against the cool couch, and the wall joining the couch's
+   * side of that argument is the pick that makes the finished room cohere.
+   */
+  chosen: 2,
   size: 0.42,
   gap: 0.16,
   origin: [-1.95, 1.45, -HALF_D + 0.05] as Vec3,
