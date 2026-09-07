@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { STORY_BEATS } from "@/lib/story-beats";
 import { ROOM } from "./room-layout";
-import { framingAt, FRAMINGS, KEYFRAMES } from "./room-camera";
+import { framingAt, FRAMINGS, KEYFRAMES, type CameraState } from "./room-camera";
+
+/** The authored framing, minus the authoring-only flag. */
+const state = ({ target, zoom, angle, height }: (typeof FRAMINGS)[keyof typeof FRAMINGS]): CameraState => ({ target, zoom, angle, height });
 
 /**
  * The camera track, tested without a canvas.
@@ -35,16 +38,31 @@ describe("the beat framings", () => {
     }
   });
 
-  it("keeps every zoom inside the diorama band", () => {
+  it("keeps every zoom inside the diorama band, unless it says otherwise", () => {
     /*
       The constraint `room-scene.tsx` has carried since the spike: pushing to
       132 cropped the walls and floor off every edge and lost the room. 93 is
       the established wide shot; 135 leaves margin under the number that is
       known to break.
+
+      `closeUp` framings opt out on purpose — the watering beat is about the
+      colour of leaves, which do not exist at diorama scale. The exemption is
+      per-framing and must be DECLARED, so widening a zoom without saying you
+      meant to still fails here.
     */
     for (const [name, framing] of Object.entries(FRAMINGS)) {
       expect(framing.zoom, `${name} zoom`).toBeGreaterThanOrEqual(93);
+      if (framing.closeUp) continue;
       expect(framing.zoom, `${name} zoom`).toBeLessThanOrEqual(135);
+    }
+  });
+
+  it("marks a close-up only where the zoom actually needs it", () => {
+    // The other direction: a `closeUp` flag on a framing inside the band is a
+    // stale exemption, and it would silently license a later widening.
+    for (const [name, framing] of Object.entries(FRAMINGS)) {
+      if (!framing.closeUp) continue;
+      expect(framing.zoom, `${name} is marked closeUp but sits in the band`).toBeGreaterThan(135);
     }
   });
 });
@@ -53,10 +71,10 @@ describe("framingAt", () => {
   it("holds the first framing before the first beat and the last after it", () => {
     // Otherwise the camera is still gliding onto the opening shot as the story
     // scrolls into view, and drifts off the new television at the end.
-    expect(framingAt(0)).toEqual(FRAMINGS[STORY_BEATS[0].focus]);
-    expect(framingAt(-1)).toEqual(FRAMINGS[STORY_BEATS[0].focus]);
-    expect(framingAt(1)).toEqual(FRAMINGS[STORY_BEATS[STORY_BEATS.length - 1].focus]);
-    expect(framingAt(2)).toEqual(FRAMINGS[STORY_BEATS[STORY_BEATS.length - 1].focus]);
+    expect(framingAt(0)).toEqual(state(FRAMINGS[STORY_BEATS[0].focus]));
+    expect(framingAt(-1)).toEqual(state(FRAMINGS[STORY_BEATS[0].focus]));
+    expect(framingAt(1)).toEqual(state(FRAMINGS[STORY_BEATS[STORY_BEATS.length - 1].focus]));
+    expect(framingAt(2)).toEqual(state(FRAMINGS[STORY_BEATS[STORY_BEATS.length - 1].focus]));
   });
 
   it("sits exactly on each beat's object at the centre of that beat", () => {
@@ -64,7 +82,7 @@ describe("framingAt", () => {
     // screen, the camera is on the thing that beat is about.
     for (const [i, beat] of STORY_BEATS.entries()) {
       const centre = (i + 0.5) / STORY_BEATS.length;
-      expect(framingAt(centre), beat.headline).toEqual(FRAMINGS[beat.focus]);
+      expect(framingAt(centre), beat.headline).toEqual(state(FRAMINGS[beat.focus]));
     }
   });
 
@@ -81,10 +99,25 @@ describe("framingAt", () => {
       rather than jump, and a camera that teleported between beats would be the
       one thing on screen that did not.
 
-      Sampled densely and compared step to step. The bound is generous because
-      it only has to catch a discontinuity, not police the easing: the largest
-      honest step here is ~1/60th of the distance between two objects.
+      Sampled densely and compared step to step. The bounds are DERIVED from
+      the widest gap between neighbouring keyframes rather than hard-coded:
+      smoothstep's steepest slope is 1.5, and each 0.001 of global progress is
+      `n * 0.001` of one segment — so anything past that times a safety factor
+      is a discontinuity, not easing. Hard-coding "1" broke the moment the
+      plant close-up widened the biggest zoom gap from 12 to 135, which is a
+      test failing for arithmetic rather than for the thing it guards.
     */
+    const n = STORY_BEATS.length;
+    const widest = (pick: (f: (typeof KEYFRAMES)[number]["framing"]) => number) =>
+      Math.max(
+        ...KEYFRAMES.slice(1).map((k, i) => Math.abs(pick(k.framing) - pick(KEYFRAMES[i].framing))),
+      );
+    const ceiling = (gap: number) => gap * 1.5 * n * 0.001 * 2;
+    const targetCeiling = ceiling(
+      widest((f) => Math.hypot(f.target[0], f.target[1], f.target[2])) + 6,
+    );
+    const zoomCeiling = ceiling(widest((f) => f.zoom));
+
     let previous = framingAt(0);
     for (let t = 0.001; t <= 1; t += 0.001) {
       const next = framingAt(t);
@@ -93,8 +126,11 @@ describe("framingAt", () => {
         next.target[1] - previous.target[1],
         next.target[2] - previous.target[2],
       );
-      expect(step, `jump at t=${t.toFixed(3)}`).toBeLessThan(0.05);
-      expect(Math.abs(next.zoom - previous.zoom), `zoom jump at t=${t.toFixed(3)}`).toBeLessThan(1);
+      expect(step, `jump at t=${t.toFixed(3)}`).toBeLessThan(targetCeiling);
+      expect(
+        Math.abs(next.zoom - previous.zoom),
+        `zoom jump at t=${t.toFixed(3)}`,
+      ).toBeLessThan(zoomCeiling);
       previous = next;
     }
   });

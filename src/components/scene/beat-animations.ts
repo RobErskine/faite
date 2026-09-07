@@ -31,6 +31,12 @@ import { SWATCHES } from "./room-layout";
 /** One clamp, used everywhere here. */
 const clamp = (n: number) => (n < 0 ? 0 : n > 1 ? 1 : n);
 
+/** Smoothstep. Eases both ends, so nothing in the room starts or stops abruptly. */
+const smooth = (n: number) => {
+  const x = clamp(n);
+  return x * x * (3 - 2 * x);
+};
+
 /**
  * The decisive moment of a beat, as a fraction of its band.
  *
@@ -75,6 +81,15 @@ export interface PaintState {
   wallColor: string | null;
   /** True from the moment the pick is made, forever. */
   committed: boolean;
+  /**
+   * How visible the sample cards are.
+   *
+   * They come down after the pick — a painted wall does not need chips taped
+   * to it, and leaving them there was the difference between "we chose" and
+   * "we are still choosing". Fades AFTER the line ticks, so the order reads
+   * paint → done → tidy up.
+   */
+  swatchOpacity: number;
 }
 
 /**
@@ -90,16 +105,70 @@ export interface PaintState {
  * one-line change is `wallColor: null` in the considering phase.
  */
 export function paintStateAt(u: number): PaintState {
-  if (u <= CYCLE_FROM) return { activeSwatch: null, wallColor: null, committed: false };
+  if (u <= CYCLE_FROM) {
+    return { activeSwatch: null, wallColor: null, committed: false, swatchOpacity: 1 };
+  }
 
   const chosen = SWATCHES.chosen;
   if (u >= COMMIT_AT) {
-    return { activeSwatch: chosen, wallColor: SWATCHES.candidates[chosen], committed: true };
+    // 1 until the line ticks, then down to nothing over the following stretch.
+    const swatchOpacity =
+      1 - smooth((u - SWATCHES_LEAVE_FROM) / (SWATCHES_GONE_BY - SWATCHES_LEAVE_FROM));
+    return {
+      activeSwatch: chosen,
+      wallColor: SWATCHES.candidates[chosen],
+      committed: true,
+      swatchOpacity,
+    };
   }
 
   const span = (u - CYCLE_FROM) / (COMMIT_AT - CYCLE_FROM);
   const active = Math.min(VISIBLE_SWATCHES - 1, Math.floor(span * VISIBLE_SWATCHES));
-  return { activeSwatch: active, wallColor: SWATCHES.candidates[active], committed: false };
+  return {
+    activeSwatch: active,
+    wallColor: SWATCHES.candidates[active],
+    committed: false,
+    swatchOpacity: 1,
+  };
+}
+
+/** After the pick, the sample cards come down: the task is done. */
+const SWATCHES_LEAVE_FROM = 0.45;
+const SWATCHES_GONE_BY = 0.6;
+
+// ---------------------------------------------------------------------------
+// The recurring beat — "Water the plants — every Wednesday"
+// ---------------------------------------------------------------------------
+
+export interface PlantState {
+  /** 0 = healthy green, 1 = fully parched brown. */
+  thirst: number;
+  /** True from the watering onward. */
+  watered: boolean;
+}
+
+/**
+ * Green → brown → green.
+ *
+ * The plant is already thirsty when you arrive and gets worse as you read,
+ * peaking exactly when the watering happens — then it recovers over the rest
+ * of the beat. A recurring to-do is the one thing in this room that is never
+ * finished, so the beat is a round trip rather than a state change: the point
+ * is that it will be brown again next Wednesday.
+ *
+ * Recovery is slower than the browning (0.3 → 0.8 of the band, against 0 →
+ * 0.3) on purpose. Plants do not perk up instantly, and the asymmetry is what
+ * stops the round trip reading as a flicker.
+ */
+export function plantStateAt(u: number): PlantState {
+  const RECOVERED_BY = 0.8;
+  if (u <= 0) return { thirst: 0, watered: false };
+  if (u < COMMIT_AT) return { thirst: smooth(u / COMMIT_AT), watered: false };
+  if (u >= RECOVERED_BY) return { thirst: 0, watered: true };
+  return {
+    thirst: 1 - smooth((u - COMMIT_AT) / (RECOVERED_BY - COMMIT_AT)),
+    watered: true,
+  };
 }
 
 // ---------------------------------------------------------------------------

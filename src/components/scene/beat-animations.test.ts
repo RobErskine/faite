@@ -6,6 +6,7 @@ import {
   beatLocalAt,
   COMMIT_AT,
   paintStateAt,
+  plantStateAt,
   tvUpgradedAt,
   VISIBLE_SWATCHES,
 } from "./beat-animations";
@@ -51,8 +52,14 @@ describe("beat-local time", () => {
 
 describe("the paint beat", () => {
   it("starts bare, while the camera is still arriving", () => {
-    expect(paintStateAt(0)).toEqual({ activeSwatch: null, wallColor: null, committed: false });
-    expect(paintStateAt(0.04)).toEqual({ activeSwatch: null, wallColor: null, committed: false });
+    for (const u of [0, 0.04]) {
+      expect(paintStateAt(u), `u=${u}`).toMatchObject({
+        activeSwatch: null,
+        wallColor: null,
+        committed: false,
+        swatchOpacity: 1,
+      });
+    }
   });
 
   it("considers every visible chip, in wall order, each previewing on the wall", () => {
@@ -88,6 +95,92 @@ describe("the paint beat", () => {
     for (const u of [COMMIT_AT, 0.5, TICK_AT, 0.9, 1]) {
       expect(paintStateAt(u).wallColor, `u=${u}`).toBe(SWATCHES.candidates[SWATCHES.chosen]);
       expect(paintStateAt(u).committed, `u=${u}`).toBe(true);
+    }
+  });
+});
+
+describe("the sample cards coming down", () => {
+  it("keeps them up through the decision and the tick", () => {
+    // They are the decision being made. Removing them before the line ticks
+    // would leave the beat's most legible prop gone while its copy is on
+    // screen.
+    for (const u of [0.1, COMMIT_AT, TICK_AT]) {
+      expect(paintStateAt(u).swatchOpacity, `u=${u}`).toBe(1);
+    }
+  });
+
+  it("takes them down after it, and they stay down", () => {
+    // A painted wall does not need chips taped to it — leaving them up was the
+    // difference between "we chose" and "we are still choosing".
+    expect(paintStateAt(0.5).swatchOpacity).toBeLessThan(1);
+    expect(paintStateAt(0.5).swatchOpacity).toBeGreaterThan(0);
+    for (const u of [0.6, 0.8, 1]) {
+      expect(paintStateAt(u).swatchOpacity, `u=${u}`).toBe(0);
+    }
+  });
+
+  it("never goes outside 0..1, at any point in the band", () => {
+    // It is fed straight to `material.opacity`, where out-of-range is a
+    // rendering bug rather than a clamp.
+    for (let u = 0; u <= 1; u += 0.005) {
+      const o = paintStateAt(u).swatchOpacity;
+      expect(o, `u=${u.toFixed(3)}`).toBeGreaterThanOrEqual(0);
+      expect(o, `u=${u.toFixed(3)}`).toBeLessThanOrEqual(1);
+    }
+  });
+});
+
+describe("the watering beat", () => {
+  it("arrives healthy, then browns as the copy is read", () => {
+    expect(plantStateAt(0)).toEqual({ thirst: 0, watered: false });
+    // Monotonically thirstier all the way to the watering.
+    let previous = 0;
+    for (let u = 0.01; u < COMMIT_AT; u += 0.005) {
+      const { thirst, watered } = plantStateAt(u);
+      expect(thirst, `u=${u.toFixed(3)}`).toBeGreaterThanOrEqual(previous);
+      expect(watered, `u=${u.toFixed(3)}`).toBe(false);
+      previous = thirst;
+    }
+    expect(previous).toBeGreaterThan(0.9);
+  });
+
+  it("peaks exactly at the watering, then recovers", () => {
+    expect(plantStateAt(COMMIT_AT).thirst).toBeCloseTo(1, 5);
+    expect(plantStateAt(COMMIT_AT).watered).toBe(true);
+
+    let previous = 1;
+    for (let u = COMMIT_AT; u <= 0.8; u += 0.005) {
+      const { thirst, watered } = plantStateAt(u);
+      expect(thirst, `u=${u.toFixed(3)}`).toBeLessThanOrEqual(previous + 1e-9);
+      expect(watered, `u=${u.toFixed(3)}`).toBe(true);
+      previous = thirst;
+    }
+  });
+
+  it("is a round trip: green again by the end, and it stays green", () => {
+    // A recurring to-do is never finished — the beat returns the plant to
+    // where it started rather than leaving it in a new state, because the
+    // point is that it will be brown again next Wednesday.
+    for (const u of [0.8, 0.9, 1]) {
+      expect(plantStateAt(u), `u=${u}`).toEqual({ thirst: 0, watered: true });
+    }
+  });
+
+  it("never leaves 0..1 — it is fed straight to a colour lerp", () => {
+    for (let u = -0.2; u <= 1.2; u += 0.005) {
+      const { thirst } = plantStateAt(u);
+      expect(thirst, `u=${u.toFixed(3)}`).toBeGreaterThanOrEqual(0);
+      expect(thirst, `u=${u.toFixed(3)}`).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("is continuous — no cut between browning and recovering", () => {
+    // The whole ask was green → brown → green as one change, not two.
+    let previous = plantStateAt(0).thirst;
+    for (let u = 0.002; u <= 1; u += 0.002) {
+      const next = plantStateAt(u).thirst;
+      expect(Math.abs(next - previous), `jump at u=${u.toFixed(3)}`).toBeLessThan(0.05);
+      previous = next;
     }
   });
 });

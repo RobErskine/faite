@@ -2679,3 +2679,58 @@ committed phases.
 
 Plant: watering. Couch: arriving/settling on the rug. Shelf: books leaving.
 Beat 1 (capture) and the camera's wide shot may be enough as-is.
+
+### EI-280 follow-up — the paint beat finishes the job, and the plant goes thirsty
+
+Review, and both notes were right.
+
+**Paint.** The chosen blue now goes on BOTH walls — you do not paint one wall
+of a room. The side wall keeps its step of shade rather than matching exactly,
+which is the same rule `--room-wall-side` follows in the bare palette: two
+walls at one value read as a single folded plane and the corner disappears. So
+it is the chosen color, shaded as a second wall under the same light. And the
+sample cards now come down after the pick (opacity 1 → 0 across u 0.45–0.6,
+i.e. after the line ticks): leaving them taped to a painted wall was the
+difference between "we chose" and "we are still choosing".
+
+**The plant.** `plantStateAt(u)` is a round trip — green → brown → green — not
+a state change, because a recurring to-do is the one thing in the room that is
+never finished; the point is that it will be brown again next Wednesday.
+Thirst rises 0 → 1 across u 0 → 0.3, peaking exactly at the watering, then
+recovers to 0 by u 0.8. Recovery is deliberately slower than the browning:
+plants do not perk up instantly, and the asymmetry is what stops the round trip
+reading as a flicker. Applied with `lerpColors` on the shared `Plant_Green` and
+`DarkGreen` material instances, so every leaf in the room turns at once and
+every intermediate frame is a real color.
+
+The healthy green is SNAPSHOT after `applyRoomPalette`, not read from a token
+at use time — the frame loop mutates those same material instances, so once it
+has run the material no longer knows what green it started as. Re-snapshotted
+on every repaint, or a plant recovering after a dark-mode toggle would return
+to the previous theme's green.
+
+**The close-up.** The plant framing went 122 → 255, about 2.1x the diorama wide
+shot. That breaks the "a diorama has to stay a diorama" band the camera test
+enforces, deliberately: the beat's whole subject is the color of some leaves,
+and at 122 the foliage was a thumbnail where brown-or-green was a guess.
+Handled as a DECLARED exception — `closeUp?: true` on the framing — so every
+other framing is still held to 93–135 and a test also fails a `closeUp` flag on
+a framing that does not need one.
+
+That forced a type split worth keeping: `Framing` is what someone authored
+(including the intent flag), `CameraState` is what `framingAt` returns.
+`closeUp` has no meaning a third of the way between two framings, so it does
+not survive interpolation and the type says so.
+
+The continuity test's zoom bound was hard-coded at 1 and broke the moment the
+biggest keyframe-to-keyframe zoom gap went from 12 to 135. Now derived from the
+widest gap × smoothstep's steepest slope — a test that fails for arithmetic
+rather than for the thing it guards is worse than no test.
+
+**Measured.** Verify green (157 files, 2407 tests). Gate: 113 passed, 1 flake
+(`touch-smoke` day-track swipe — the same pre-existing one from three earlier
+runs, green in isolation). Eager JS unchanged at 344.5 KB gz; three.js 0.0 KB
+eager. Scroll frame cost over three consecutive runs: median 8.4 ms, max 13.6,
+**zero frames over 33 ms**. The first run after a cold load showed one 41 ms
+frame — shader compile for the newly transparent chip materials, gone on every
+subsequent pass.

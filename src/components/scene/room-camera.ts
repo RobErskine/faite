@@ -38,6 +38,16 @@ export interface Framing {
   target: Vec3;
   /** Orthographic zoom. See the band note above before widening this. */
   zoom: number;
+  /**
+   * Deliberately outside the diorama band — a close-up, not a room.
+   *
+   * The band exists so the payoff reads as a finished ROOM. One beat opts out:
+   * the watering beat's whole subject is the state of some leaves, and leaves
+   * at diorama scale are a few pixels of green. Marked rather than merely
+   * large, so `room-camera.test.ts` can hold every OTHER framing to the band
+   * and nobody widens one by accident.
+   */
+  closeUp?: true;
   /** Radians around Y, off the room's default three-quarter view. */
   angle: number;
   /** Camera height in metres. Lower reads as stepping toward the object. */
@@ -78,7 +88,17 @@ export const FRAMINGS: Record<BeatFocus, Framing> = {
    * Position from `PROPS` in `room-layout.ts`; aimed above its base so the
    * leaves are centred rather than the pot.
    */
-  plant: { target: [2.05, 0.62, -1.6], zoom: 122, angle: BASE_ANGLE - 0.06, height: 8.9 },
+  plant: {
+    target: [2.05, 0.72, -1.55],
+    // ~2.1x the diorama wide shot. The beat is about the colour of leaves, and
+    // at 122 the monstera was a legible plant but its foliage was still a
+    // thumbnail — brown or green was a guess. This is the one framing that
+    // trades the room away for its subject.
+    zoom: 255,
+    closeUp: true,
+    angle: BASE_ANGLE - 0.06,
+    height: 8.9,
+  },
   /** The blue couch on the rug — the thing you measure the room for. */
   couch: { target: [1.6, 0.55, 0.2], zoom: 118, angle: BASE_ANGLE - 0.14, height: 8.8 },
   /** The wall shelf and its books: the bookcase there is a decision about. */
@@ -117,6 +137,23 @@ const lerp = (a: number, b: number, t: number) => (1 - t) * a + t * b;
 const ease = (t: number) => t * t * (3 - 2 * t);
 
 /**
+ * Where the camera actually is: the numbers, without the authoring intent.
+ *
+ * `closeUp` describes a framing someone WROTE — "I meant to leave the diorama
+ * band here" — and has no meaning a third of the way between two of them. So
+ * it does not survive interpolation, and the type says so rather than leaving
+ * a field that is sometimes present and never trustworthy.
+ */
+export type CameraState = Omit<Framing, "closeUp">;
+
+const stateOf = ({ target, zoom, angle, height }: Framing): CameraState => ({
+  target,
+  zoom,
+  angle,
+  height,
+});
+
+/**
  * The framing at scroll progress `t`, interpolated between keyframes.
  *
  * Holds the first framing before the first keyframe and the last after the
@@ -124,12 +161,12 @@ const ease = (t: number) => t * t * (3 - 2 * t);
  * story scrolls into view and stays on the new television at the end rather
  * than drifting off it.
  */
-export function framingAt(t: number): Framing {
+export function framingAt(t: number): CameraState {
   const p = clamp(t);
   const first = KEYFRAMES[0];
   const last = KEYFRAMES[KEYFRAMES.length - 1];
-  if (p <= first.at) return first.framing;
-  if (p >= last.at) return last.framing;
+  if (p <= first.at) return stateOf(first.framing);
+  if (p >= last.at) return stateOf(last.framing);
 
   let i = 0;
   while (i < KEYFRAMES.length - 2 && p > KEYFRAMES[i + 1].at) i++;

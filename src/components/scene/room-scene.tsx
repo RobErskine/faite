@@ -37,7 +37,7 @@ import {
   type PropPlacement,
 } from "./room-layout";
 import { framingAt } from "./room-camera";
-import { beatLocalAt, paintStateAt, tvUpgradedAt } from "./beat-animations";
+import { beatLocalAt, paintStateAt, plantStateAt, tvUpgradedAt } from "./beat-animations";
 
 declare module "react" {
   // Both disables are forced by the shape of React 19's JSX types: the
@@ -54,6 +54,21 @@ declare module "react" {
 export type Progress = { current: number };
 
 const SCENE_URL = "/scene/living-room.glb";
+
+/**
+ * The materials the watering beat tints — every leaf in the room, and nothing
+ * else. Both names come from the kit's semantic palette (`room-materials.ts`);
+ * the pots are `Black`/`White` and stay put, because a pot does not get thirsty.
+ */
+const LEAF_MATERIALS = new Set(["Plant_Green", "DarkGreen"]);
+
+/**
+ * Where a thirsty leaf goes. A dry, yellowed olive-brown rather than a dead
+ * mid-brown: the plant in this story is neglected for a week, not deceased,
+ * and it has to be able to come back without the recovery reading as a
+ * resurrection.
+ */
+const PARCHED = new THREE.Color("#8a7038");
 
 /*
  * The spike's two global-clock animations lived here: `wallColourAt` cycled
@@ -169,6 +184,7 @@ function useShellPalette(): ShellPalette {
  */
 function RoomShell({ progress }: { progress: Progress }) {
   const wall = useRef<THREE.MeshLambertMaterial>(null);
+  const sideWall = useRef<THREE.MeshLambertMaterial>(null);
   const scratch = useMemo(() => new THREE.Color(), []);
   const palette = useShellPalette();
 
@@ -187,6 +203,23 @@ function RoomShell({ progress }: { progress: Progress }) {
     // true, like real samples under a lamp.
     if (paint.wallColor && paletteRef.current.dark) scratch.multiplyScalar(0.62);
     wall.current.color.lerp(scratch, 0.09);
+
+    /*
+      The side wall gets painted too — you do not paint one wall of a room.
+
+      Kept a step DARKER than the back wall rather than identical, which is the
+      same rule the bare palette follows (`--room-wall-side`): two walls at one
+      value read as a single folded plane and the corner disappears. So this is
+      the chosen color, shaded as a second wall under the same light would be,
+      not a second color.
+    */
+    if (sideWall.current) {
+      scratch.set(paint.wallColor ?? paletteRef.current.side);
+      if (paint.wallColor) {
+        scratch.multiplyScalar(paletteRef.current.dark ? 0.52 : 0.86);
+      }
+      sideWall.current.color.lerp(scratch, 0.09);
+    }
   });
 
   const halfW = ROOM.width / 2;
@@ -211,8 +244,9 @@ function RoomShell({ progress }: { progress: Progress }) {
       <mesh position={[-halfW - 0.06, midY, 0]}>
         <boxGeometry args={[0.12, ROOM.wallHeight, ROOM.depth]} />
         {/* A step darker than the back wall: two walls the same value read as
-            one folded plane, and the corner disappears. */}
-        <meshLambertMaterial color={palette.side} />
+            one folded plane, and the corner disappears. Animated alongside the
+            back wall once the paint beat commits. */}
+        <meshLambertMaterial ref={sideWall} color={palette.side} />
       </mesh>
     </group>
   );
@@ -232,6 +266,7 @@ function RoomShell({ progress }: { progress: Progress }) {
 function Swatches({ progress }: { progress: Progress }) {
   const { candidates, size, gap, origin } = SWATCHES;
   const chips = useRef<(THREE.Mesh | null)[]>([]);
+  const chipMaterials = useRef<(THREE.MeshLambertMaterial | null)[]>([]);
   const backings = useRef<(THREE.MeshLambertMaterial | null)[]>([]);
 
   useFrame(() => {
@@ -259,7 +294,18 @@ function Swatches({ progress }: { progress: Progress }) {
         sample card does.
       */
       const backing = backings.current[i];
-      if (backing) backing.opacity += ((active ? 1 : 0) - backing.opacity) * 0.15;
+      // The backing only ever shows behind an active chip, and only while the
+      // chips themselves are still up.
+      const backingTarget = active ? paint.swatchOpacity : 0;
+      if (backing) backing.opacity += (backingTarget - backing.opacity) * 0.15;
+
+      // And the samples come down once the wall is painted. `visible` is set
+      // from the same number so a fully faded chip stops being drawn at all.
+      const chipMaterial = chipMaterials.current[i];
+      if (chipMaterial) {
+        chipMaterial.opacity += (paint.swatchOpacity - chipMaterial.opacity) * 0.15;
+        chip.visible = chipMaterial.opacity > 0.01;
+      }
     }
   });
 
@@ -274,7 +320,13 @@ function Swatches({ progress }: { progress: Progress }) {
           position={[origin[0] + i * (size + gap), origin[1], origin[2]]}
         >
           <planeGeometry args={[size, size]} />
-          <meshLambertMaterial color={c} />
+          <meshLambertMaterial
+            color={c}
+            transparent
+            ref={(el) => {
+              chipMaterials.current[i] = el;
+            }}
+          />
           {/* The backing rides INSIDE the chip so it inherits the pop: a
               child mesh scales and lifts with its parent, and z is in the
               chip's own space, so -0.01 keeps it a hair behind at any lift. */}
@@ -383,10 +435,43 @@ function LivingRoomProps({ progress }: { progress: Progress }) {
   const newTv = useRef<THREE.Group>(null);
   const fish = useRef<THREE.Group>(null);
 
+  /**
+   * The leaf materials, with the healthy color they must return to.
+   *
+   * Captured after the palette is applied rather than read from a token here:
+   * the frame loop below MUTATES these same material instances, so once it has
+   * run, the material no longer knows what green it started as. The snapshot is
+   * the only place that survives.
+   *
+   * Material instances are shared across meshes by the loader — one
+   * `Plant_Green` for every plant in the room — which is exactly what makes
+   * one assignment tint all of them at once.
+   */
+  const leaves = useRef<{ material: THREE.MeshStandardMaterial; healthy: THREE.Color }[]>([]);
+
   // Re-tint from design tokens, and again whenever the theme class changes.
   // `applyRoomPalette` walks the scene once; this is never per-frame.
   useEffect(() => {
-    const paint = () => applyRoomPalette(scene, readRoomPalette());
+    const paint = () => {
+      applyRoomPalette(scene, readRoomPalette());
+      // Re-snapshot on every repaint: a theme change moves the healthy green,
+      // and a plant recovering to the OLD theme's green would be a quiet bug
+      // that only shows up when someone toggles dark mode mid-story.
+      const found: { material: THREE.MeshStandardMaterial; healthy: THREE.Color }[] = [];
+      const seen = new Set<string>();
+      scene.traverse((obj) => {
+        const mesh = obj as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        for (const raw of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+          const material = raw as THREE.MeshStandardMaterial;
+          if (!material?.name || seen.has(material.uuid)) continue;
+          if (!LEAF_MATERIALS.has(material.name)) continue;
+          seen.add(material.uuid);
+          found.push({ material, healthy: material.color.clone() });
+        }
+      });
+      leaves.current = found;
+    };
     paint();
     const observer = new MutationObserver(paint);
     observer.observe(document.documentElement, {
@@ -400,6 +485,19 @@ function LivingRoomProps({ progress }: { progress: Progress }) {
   // simply there, from the first frame - a room where furniture pops in reads
   // as a software demo, and this has to read as a place someone lives.
   useFrame(({ clock }) => {
+    /*
+      The plant goes thirsty and comes back (EI-280).
+
+      A tint toward `PARCHED` rather than a swap to it: `lerpColors` between the
+      healthy green and the brown means every intermediate frame is a real
+      color, and the round trip green → brown → green reads as one continuous
+      change instead of two cuts.
+    */
+    const plant = plantStateAt(beatLocalAt(progress.current, "plant"));
+    for (const leaf of leaves.current) {
+      leaf.material.color.lerpColors(leaf.healthy, PARCHED, plant.thirst);
+    }
+
     const upgraded = tvUpgradedAt(progress.current);
     if (oldTv.current) oldTv.current.visible = !upgraded;
     if (newTv.current) newTv.current.visible = upgraded;
