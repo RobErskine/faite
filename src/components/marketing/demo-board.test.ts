@@ -96,6 +96,53 @@ describe.each(SOURCES)("$file", ({ file, code }) => {
   });
 });
 
+describe("the board's fidelity to the real one", () => {
+  const board = readFileSync(new URL("demo-board.tsx", dir), "utf8");
+
+  it("never gives a label a color, because the product cannot", () => {
+    /*
+      `createLabel` accepts a decoration and all five of its call sites pass a
+      name and nothing else — there is no colour picker for a label anywhere in
+      Faite, only for lists and tabs. `todo-row-parts.tsx` WILL tint a label
+      that has one, so a hex on a demo label renders convincingly and
+      advertises a feature a new user cannot reproduce. That is the worst kind
+      of marketing bug: it only looks wrong once someone signs up.
+
+      Lists and tabs are exempt — `list-info-dialog.tsx` and
+      `tab-info-dialog.tsx` both mount a `ColorPicker`, so `accentColor` on a
+      column is a real thing a user can do.
+    */
+    const labelDefinitions = board.match(/DemoLabel = \{[^}]*\}/g) ?? [];
+    expect(labelDefinitions.length).toBeGreaterThan(0);
+    for (const definition of labelDefinitions) {
+      expect(definition, "a demo label carries a color").not.toMatch(/#[0-9a-f]{3,8}/i);
+    }
+
+    /*
+      And the story panel, which is where the same hex was written a SECOND
+      time by hand. Fixing only `demo-board.tsx` left a tinted "Home" pill on
+      the card pinned beside the room for the whole story — the most looked-at
+      label on the page.
+    */
+    const panel = stripComments(readFileSync(new URL("story-panel.tsx", dir), "utf8"));
+    expect(panel, "the story panel tints a label").not.toMatch(/name: "[^"]*", color:/);
+    expect(panel).not.toContain("tint(");
+  });
+
+  it("uses list names a real first run actually seeds", () => {
+    // `SEED_LISTS` in `lib/store/repositories.ts`. A visitor who signs up
+    // should recognise the board they were shown; invented column names are a
+    // smaller lie than coloured labels but the same kind.
+    const seeded = ["Backlog", "Brain Dump", "Grocery List", "To Buy", "To Read"];
+    const columns = [...board.matchAll(/^\s{4}title: "([^"]+)",$/gm)].map((m) => m[1]);
+    const planning = columns.filter(
+      (name) => !["Overflow", "Monday", "Tuesday", "Wednesday"].includes(name),
+    );
+    expect(planning.length).toBeGreaterThan(0);
+    for (const name of planning) expect(seeded).toContain(name);
+  });
+});
+
 describe("the live layers", () => {
   const ticks = stripComments(readFileSync(new URL("story-ticks.tsx", dir), "utf8"));
 

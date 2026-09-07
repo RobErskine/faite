@@ -2873,3 +2873,53 @@ Frame cost over three runs: median 8.4–8.5 ms, zero frames over 33 ms.
 
 **Every beat now acts out its to-do.** Capture (the wide establishing shot),
 paint, watering, the couch arriving, the books going, the sets swapping.
+
+### EI-280 — the donation run, and a board that tells the truth (2026-09-06)
+
+Two review notes, both catching the same class of error: the page claiming
+something that is not so.
+
+**"Decide which books are coming" promised a selection the room did not make.**
+All the books left, so "which are coming" advertised a subset that never
+existed. Now "Drop books at the donation center", with `subtaskLocation:
+"Donation Center"` — every book goes, the destination says where, and the
+wording matches the animation exactly.
+
+That also lets the Location field show itself. `story-panel.tsx` renders a map
+pin inside the title's inline flow, the way `TitleMarkers` does on a real card,
+on the one sub-task that is genuinely about going somewhere. The beat's
+citation stays Emmons & King: `docs/RESEARCH.md` §2.3 is the evidence for
+Location (Smith & Vela; Einstein et al.) but a beat can only make one argument,
+so the pin is the product showing itself rather than a second claim.
+
+**The hero board was advertising a feature Faite does not have.** Review:
+"on the /board, we don't have a concept of colored labels like this." Checked
+rather than assumed, and it is worse than a style nit — `createLabel` takes an
+optional decoration and ALL FIVE of its call sites pass a name and nothing
+else. There is no color picker for a label anywhere in the product. But
+`todo-row-parts.tsx` will happily tint one that has a color, so three
+hand-written hexes rendered convincingly and sold something a new user could
+never reproduce. The worst kind of marketing bug: it only looks wrong after
+someone signs up.
+
+Fixed in both places the hex had been written by hand — `demo-board.tsx` and
+`story-panel.tsx`. Fixing only the first would have left a tinted "Home" pill
+on the card pinned beside the room for the entire story, which is the most
+looked-at label on the page.
+
+**Lists and tabs are exempt, and that was worth checking too.** Both mount a
+real `ColorPicker` (`list-info-dialog.tsx`, `tab-info-dialog.tsx`), so a
+colored column accent is something a user can actually produce. Kept.
+
+**And the list names are the seeded ones now.** `SEED_LISTS` creates Backlog,
+Brain Dump, Grocery List, To Buy, To Read. The board had invented "Home" and
+"Errands" — a smaller lie than the colors but the same kind, and a visitor who
+signs up should recognise the board they were shown.
+
+Two new guards in `demo-board.test.ts`: no demo label may carry a hex (checked
+in both files), and every planning-half column name must be one `SEED_LISTS`
+actually creates.
+
+**Measured.** Verify green (157 files, 2428 tests). Gate fully green for the
+first time in six runs: 114 passed, 0 flaky. Eager JS unchanged at 344.5 KB gz;
+three.js 0.0 KB eager.

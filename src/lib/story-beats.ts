@@ -75,6 +75,17 @@ export interface StoryBeat {
    * progress alone.
    */
   subtask: string;
+  /**
+   * A place attached to this beat's sub-task, if it has one.
+   *
+   * Faite's Location field, shown on the one to-do in the story that is
+   * genuinely about going somewhere. `docs/RESEARCH.md` §2.3 is the evidence
+   * for the field itself (Smith & Vela on context-dependent memory; Einstein
+   * et al. on event cues beating time cues) — but the beat's own citation
+   * stays Emmons & King, because a beat can only make one argument at a time.
+   * The pin is the product showing itself, not a second claim.
+   */
+  subtaskLocation?: string;
   /** The thing in the room this beat is about (EI-276). */
   focus: BeatFocus;
 }
@@ -143,7 +154,8 @@ export const STORY_BEATS: StoryBeat[] = [
       "People acted least on the goals they felt most torn about, and spent the most time thinking about exactly those.",
     cite: "Emmons & King (1988)",
     section: "§2.4",
-    subtask: "Decide which books are coming",
+    subtask: "Drop books at the donation center",
+    subtaskLocation: "Donation Center",
     focus: "shelf",
   },
   {

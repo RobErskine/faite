@@ -1,6 +1,5 @@
-import { ListChecks } from "lucide-react";
+import { ListChecks, MapPin } from "lucide-react";
 import { badgeVariants } from "@/components/ui/badge";
-import { edge, tint } from "@/lib/colors";
 import { priorityRail } from "@/lib/priority";
 import { cn } from "@/lib/utils";
 import { DemoCheckbox, MOVE_SUBTASKS, MOVE_TODO_TITLE } from "./demo-board";
@@ -49,7 +48,15 @@ export function StoryPanel({
   flying?: boolean;
 }) {
   const rail = priorityRail(1);
-  const home = { name: "Home", color: "#46a758" };
+  /*
+    Colorless, like every label the product can actually make. `createLabel`
+    takes an optional decoration and no caller anywhere passes one — there is
+    no color picker for a label, only for lists and tabs. This card had a green
+    "Home" pill hardcoded, which is the same invented feature the hero board
+    carried; `demo-board.test.ts` guards that file, and this one is the second
+    place the same hex was written by hand.
+  */
+  const home = { name: "home" };
 
   return (
     <div
@@ -101,11 +108,6 @@ export function StoryPanel({
               </span>
               <span
                 className={cn(badgeVariants({ variant: "secondary" }), "text-2xs font-normal")}
-                style={{
-                  backgroundColor: tint(home.color),
-                  borderColor: edge(home.color),
-                  color: home.color,
-                }}
               >
                 {home.name}
               </span>
@@ -148,6 +150,21 @@ export function StoryPanel({
                     : "text-foreground group-data-done:text-muted-foreground group-data-done:line-through",
                 )}
               >
+                {/*
+                  Faite's Location field, drawn the way `TitleMarkers` draws it
+                  on a real card: a pin inside the title's inline flow, right
+                  before the text, with the place name for screen readers.
+
+                  One sub-task in the story has one, and it is the one that is
+                  actually about going somewhere. A pin on every line would be
+                  decoration; on this line it is the product.
+                */}
+                {subtask.location && (
+                  <span className="mr-1 inline-block align-[-0.1875em] text-muted-foreground">
+                    <MapPin className="size-3" aria-hidden />
+                    <span className="sr-only">Location: {subtask.location}. </span>
+                  </span>
+                )}
                 {subtask.title}
               </span>
             </li>

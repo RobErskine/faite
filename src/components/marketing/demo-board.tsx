@@ -50,8 +50,12 @@ import { cn } from "@/lib/utils";
 
 export interface DemoLabel {
   name: string;
-  /** An `ACCENT_COLORS` value from `lib/colors.ts`. */
-  color: string;
+  /**
+   * Deliberately absent from every label in this file — see the note by the
+   * label constants. The field stays because `todo-row-parts.tsx` supports it
+   * and a future picker might, but a demo label must not use it.
+   */
+  color?: undefined;
 }
 
 export interface DemoTodo {
@@ -103,13 +107,23 @@ export const MOVE_TODO_TITLE = "Plan living room move";
  * quietly stop holding. On the hero none of them are done yet — that is the
  * point of the `0/6`.
  */
-export const MOVE_SUBTASKS: { title: string; done?: boolean }[] = STORY_BEATS.map(
-  (beat) => ({ title: beat.subtask }),
-);
+export const MOVE_SUBTASKS: { title: string; location?: string; done?: boolean }[] =
+  STORY_BEATS.map((beat) => ({ title: beat.subtask, location: beat.subtaskLocation }));
 
-const HOME: DemoLabel = { name: "Home", color: "#46a758" };
-const ERRANDS: DemoLabel = { name: "Errands", color: "#00a2c7" };
-const ADMIN: DemoLabel = { name: "Admin", color: "#6e56cf" };
+/*
+  Labels are COLORLESS, because that is the only kind Faite makes.
+
+  `createLabel` takes an optional decoration and every one of its five call
+  sites passes a name and nothing else — there is no colour picker for a label
+  anywhere in the product, only for lists and tabs (`list-info-dialog.tsx`,
+  `tab-info-dialog.tsx`). `todo-row-parts.tsx` will tint a label that has a
+  colour, so the earlier demo board painted three of them and invented a
+  feature: the hero was advertising something a new user could never reproduce.
+
+  A real label renders as a plain `secondary` pill, which is what these are.
+*/
+const HOME: DemoLabel = { name: "home" };
+const ERRANDS: DemoLabel = { name: "errands" };
 
 /**
  * A believable Wednesday.
@@ -127,7 +141,7 @@ export const DEMO_COLUMNS: DemoColumn[] = [
     pinned: true,
     todos: [
       { title: "Sort through the mail pile", priority: 4, overflowDays: 6 },
-      { title: "Cancel unused subscription", overflowDays: 3, labels: [ADMIN] },
+      { title: "Cancel unused subscription", overflowDays: 3 },
     ],
   },
   {
@@ -157,9 +171,9 @@ export const DEMO_COLUMNS: DemoColumn[] = [
     title: "Tuesday",
     subtitle: "Sep 8",
     todos: [
-      { title: "Schedule dentist appointment", priority: 2, labels: [ADMIN] },
-      { title: "Measure the living room", priority: 3, labels: [HOME] },
-      { title: "Renew passport", deadlineMissed: "Sep 4", labels: [ADMIN] },
+      { title: "Schedule dentist appointment", priority: 2 },
+      { title: "Measure the living room", priority: 3 },
+      { title: "Renew passport", deadlineMissed: "Sep 4" },
     ],
   },
   {
@@ -167,12 +181,25 @@ export const DEMO_COLUMNS: DemoColumn[] = [
     subtitle: "Sep 9",
     todos: [
       { title: "Research flight options", priority: 3 },
-      { title: "Replace the air filter", priority: 4, labels: [HOME] },
+      { title: "Replace the air filter", priority: 4 },
     ],
   },
 ];
 
-/** The planning half: Backlog, then the lists, each in its own color. */
+/**
+ * The planning half.
+ *
+ * These are the lists a real first run actually creates — `SEED_LISTS` in
+ * `lib/store/repositories.ts` seeds Backlog, Brain Dump, Grocery List, To Buy
+ * and To Read. The earlier version invented "Home" and "Errands", which is a
+ * smaller lie than the coloured labels but the same kind: a visitor who signs
+ * up should recognise the board they were shown.
+ *
+ * The column colours ARE real — lists and tabs both have a `ColorPicker`
+ * (`list-info-dialog.tsx`, `tab-info-dialog.tsx`), so a user can produce
+ * exactly this. A brand-new board is uncoloured; this one is a board somebody
+ * has been using, which is the honest thing for a hero to show.
+ */
 export const DEMO_LISTS: DemoColumn[] = [
   {
     title: "Backlog",
@@ -184,19 +211,19 @@ export const DEMO_LISTS: DemoColumn[] = [
     ],
   },
   {
-    title: "Home",
-    accentColor: HOME.color,
+    title: "Brain Dump",
+    accentColor: "#46a758",
     todos: [
       { title: "Fix the squeaky door hinge", priority: 3 },
-      { title: "Sell the old bookcase", priority: 2, labels: [HOME] },
+      { title: "Look into that noise the car makes" },
     ],
   },
   {
-    title: "Errands",
-    accentColor: ERRANDS.color,
+    title: "To Buy",
+    accentColor: "#00a2c7",
     todos: [
-      { title: "Drop donations at the charity shop", priority: 3 },
-      { title: "Pick up paint samples", priority: 2, labels: [ERRANDS] },
+      { title: "Picture hooks", priority: 3, labels: [HOME] },
+      { title: "Bin bags for the donation run" },
     ],
   },
 ];
