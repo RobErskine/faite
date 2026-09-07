@@ -1,8 +1,9 @@
-import { ListChecks, MapPin } from "lucide-react";
+import { ListChecks, MapPin, Repeat } from "lucide-react";
 import { badgeVariants } from "@/components/ui/badge";
 import { priorityRail } from "@/lib/priority";
 import { cn } from "@/lib/utils";
 import { DemoCheckbox, MOVE_SUBTASKS, MOVE_TODO_TITLE } from "./demo-board";
+import { DemoTooltip } from "./demo-tooltip";
 
 /**
  * The product, beside the room.
@@ -94,6 +95,10 @@ export function StoryPanel({
             <span className="mt-1.5 flex flex-wrap items-center gap-1">
               <span
                 className={cn(badgeVariants({ variant: "outline" }), "num gap-1 text-2xs font-normal")}
+                /* The real board explains this count with a native `title`
+                   (`TodoMetaBadges`); matching it keeps the badge interrogable
+                   without nesting a tooltip inside something this small. */
+                title={`${doneThrough} of ${MOVE_SUBTASKS.length} sub-tasks done`}
               >
                 <ListChecks className="size-2.5" aria-hidden />
                 {/*
@@ -159,11 +164,28 @@ export function StoryPanel({
                   actually about going somewhere. A pin on every line would be
                   decoration; on this line it is the product.
                 */}
+                {/*
+                  A recurring to-do carries a repeat MARKER, not "— every
+                  Wednesday" in its title. The schedule is a property you
+                  interrogate, the way `TitleMarkers` presents it on a real
+                  card, not part of the task's name.
+                */}
+                {subtask.repeat && (
+                  <DemoTooltip
+                    label={`Repeats: ${subtask.repeat.toLowerCase()}`}
+                    className="mr-1 align-[-0.1875em] text-muted-foreground"
+                  >
+                    <Repeat className="size-3" aria-hidden />
+                  </DemoTooltip>
+                )}
                 {subtask.location && (
-                  <span className="mr-1 inline-block align-[-0.1875em] text-muted-foreground">
+                  <DemoTooltip
+                    label={subtask.location}
+                    sr={`Location: ${subtask.location}.`}
+                    className="mr-1 align-[-0.1875em] text-muted-foreground"
+                  >
                     <MapPin className="size-3" aria-hidden />
-                    <span className="sr-only">Location: {subtask.location}. </span>
-                  </span>
+                  </DemoTooltip>
                 )}
                 {subtask.title}
               </span>

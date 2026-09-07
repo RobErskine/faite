@@ -86,6 +86,15 @@ export interface StoryBeat {
    * The pin is the product showing itself, not a second claim.
    */
   subtaskLocation?: string;
+  /**
+   * A recurrence summary, if this beat's sub-task repeats.
+   *
+   * The card shows Faite's repeat glyph and puts this in its tooltip, exactly
+   * as `TitleMarkers` does — rather than spelling the schedule out in the
+   * title. A real recurring to-do does not carry "— every Wednesday" in its
+   * text; it carries a marker you can interrogate.
+   */
+  subtaskRepeat?: string;
   /** The thing in the room this beat is about (EI-276). */
   focus: BeatFocus;
 }
@@ -134,7 +143,8 @@ export const STORY_BEATS: StoryBeat[] = [
       "In a twelve-week study of real daily habits, missing a single opportunity did not materially affect how the habit formed.",
     cite: "Lally et al. (2010)",
     section: "§2.5",
-    subtask: "Water the plants — every Wednesday",
+    subtask: "Water the plants",
+    subtaskRepeat: "Every Wednesday",
     focus: "plant",
   },
   {
@@ -165,7 +175,7 @@ export const STORY_BEATS: StoryBeat[] = [
       "Across 31 samples, dropping an unreachable goal was linked to better quality of life (r = 0.08) — and redirecting to a new one more than twice as strongly (r = 0.19).",
     cite: "Barlow, Wrosch & McGrath (2020)",
     section: "§1, §2.8",
-    subtask: "Sell the old TV instead of moving it",
+    subtask: "Upgrade TV",
     focus: "tv",
   },
 ];

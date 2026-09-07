@@ -5,6 +5,7 @@ import { priorityRail } from "@/lib/priority";
 import { STORY_BEATS } from "@/lib/story-beats";
 import { TITLE_CLAMP_CLASS } from "@/lib/title";
 import { cn } from "@/lib/utils";
+import { DemoTooltip } from "./demo-tooltip";
 
 /**
  * The board, on the marketing page, as a picture that is not a picture.
@@ -69,8 +70,14 @@ export interface DemoTodo {
   location?: string;
   /** The loud badge: a deadline already missed. */
   deadlineMissed?: string;
-  /** "In Overflow N days". */
-  overflowDays?: number;
+  /**
+   * The Overflow badge and the dates behind its tooltip.
+   *
+   * Both dates, not just a count, because the real badge explains itself with
+   * "Scheduled X · in Overflow since Y" — a number on its own says how long
+   * without saying since when.
+   */
+  overflow?: { from: string; since: string; days: number };
   /**
    * The sub-tasks behind the `0/6` badge.
    *
@@ -107,8 +114,16 @@ export const MOVE_TODO_TITLE = "Plan living room move";
  * quietly stop holding. On the hero none of them are done yet — that is the
  * point of the `0/6`.
  */
-export const MOVE_SUBTASKS: { title: string; location?: string; done?: boolean }[] =
-  STORY_BEATS.map((beat) => ({ title: beat.subtask, location: beat.subtaskLocation }));
+export const MOVE_SUBTASKS: {
+  title: string;
+  location?: string;
+  repeat?: string;
+  done?: boolean;
+}[] = STORY_BEATS.map((beat) => ({
+  title: beat.subtask,
+  location: beat.subtaskLocation,
+  repeat: beat.subtaskRepeat,
+}));
 
 /*
   Labels are COLORLESS, because that is the only kind Faite makes.
@@ -140,8 +155,15 @@ export const DEMO_COLUMNS: DemoColumn[] = [
     tone: "urgent",
     pinned: true,
     todos: [
-      { title: "Sort through the mail pile", priority: 4, overflowDays: 6 },
-      { title: "Cancel unused subscription", overflowDays: 3 },
+      {
+        title: "Sort through the mail pile",
+        priority: 4,
+        overflow: { from: "Sep 1", since: "Sep 1", days: 6 },
+      },
+      {
+        title: "Cancel unused subscription",
+        overflow: { from: "Sep 1", since: "Sep 4", days: 3 },
+      },
     ],
   },
   {
@@ -305,7 +327,7 @@ function DemoCard({ todo }: { todo: DemoTodo }) {
   const badges =
     todo.labels?.length ||
     todo.deadlineMissed ||
-    todo.overflowDays ||
+    todo.overflow ||
     subtaskTotal > 0;
 
   return (
@@ -345,17 +367,27 @@ function DemoCard({ todo }: { todo: DemoTodo }) {
         )}
       >
         <span className={cn("indent-6 wrap-break-word", TITLE_CLAMP_CLASS)}>
+          {/*
+            Every marker is a tooltip trigger, the way it is on the real board.
+            A glyph you cannot interrogate is decoration; `TitleMarkers` puts
+            each of these behind its own tooltip and so does this.
+          */}
           {todo.deadlineAhead && (
-            <span className="mr-1 inline-block align-[-0.1875em] text-muted-foreground">
+            <DemoTooltip
+              label={`Due ${todo.deadlineAhead}`}
+              className="mr-1 align-[-0.1875em] text-muted-foreground"
+            >
               <CalendarCheck className="size-3" aria-hidden />
-              <span className="sr-only">Due {todo.deadlineAhead}. </span>
-            </span>
+            </DemoTooltip>
           )}
           {todo.location && (
-            <span className="mr-1 inline-block align-[-0.1875em] text-muted-foreground">
+            <DemoTooltip
+              label={todo.location}
+              sr={`Location: ${todo.location}.`}
+              className="mr-1 align-[-0.1875em] text-muted-foreground"
+            >
               <MapPin className="size-3" aria-hidden />
-              <span className="sr-only">Location: {todo.location}. </span>
-            </span>
+            </DemoTooltip>
           )}
           {todo.title}
           {rail && <span className="sr-only"> — {rail.label}</span>}
@@ -366,21 +398,26 @@ function DemoCard({ todo }: { todo: DemoTodo }) {
             {subtaskTotal > 0 && (
               <span
                 className={cn(badgeVariants({ variant: "outline" }), "num gap-1 text-2xs font-normal")}
+                title={`${subtaskDone} of ${subtaskTotal} sub-tasks done`}
               >
                 <ListChecks className="size-2.5" aria-hidden />
                 {subtaskDone}/{subtaskTotal}
               </span>
             )}
-            {todo.overflowDays && (
-              <span
-                className={cn(
-                  badgeVariants({ variant: "destructive" }),
-                  "num gap-1 text-2xs font-normal",
-                )}
+            {todo.overflow && (
+              <DemoTooltip
+                label={`Scheduled ${todo.overflow.from} · in Overflow since ${todo.overflow.since}`}
               >
-                <CornerDownRight className="size-2.5" aria-hidden />
-                In Overflow {todo.overflowDays} days
-              </span>
+                <span
+                  className={cn(
+                    badgeVariants({ variant: "destructive" }),
+                    "num gap-1 text-2xs font-normal",
+                  )}
+                >
+                  <CornerDownRight className="size-2.5" aria-hidden />
+                  In Overflow {todo.overflow.days} days
+                </span>
+              </DemoTooltip>
             )}
             {todo.deadlineMissed && (
               <span
