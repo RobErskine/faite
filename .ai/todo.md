@@ -2781,3 +2781,45 @@ moved. Frame cost over three runs: median 8.4–8.5 ms, zero frames over 33 ms.
 **Worth flagging:** `e2e/touch-smoke.spec.ts`'s day-track swipe has now flaked
 in four consecutive gate runs and passed in isolation every time. Pre-existing
 and untouched by any of this work, but it is no longer a one-off.
+
+### EI-280 — the sets swap with the same pop (2026-09-06)
+
+"Sell the old TV instead of moving it" was still the spike's boolean: one set
+`visible = false`, the other `visible = true`, on the same frame. Now it uses
+the loveseat's pop, once backwards and once forwards.
+
+**The beat's own wording put the halves either side of the tick.** SELLING is
+the to-do, so the old set going is the ACT and lands before the line ticks
+(rule 3). The new television is not the task — it is what selling the old one
+paid for — so it arrives on the payoff, like the couch. That leaves a
+deliberate ~10%-of-band gap where the console holds NOTHING, and it is the most
+honest frame in the beat: the thing is gone, the space is empty, and the room
+sits with that before the replacement shows up. A cross-fade would have hidden
+exactly the part worth showing.
+
+Reassuringly, the beat-derived timing lands where the spike's hand-placed
+constant did: old set out at t ≈ 0.883, new set in at t ≈ 0.900 — the spike
+used `t > 0.9`. A test asserts both, so the coincidence is on the record.
+
+**A comment that was confidently wrong, and the test that proved it.** I wrote
+`popOut` as its own "back in" polynomial and documented it as differing from
+`popIn(1 - p)` — claiming one anticipates at the start and the other swells
+mid-shrink. They are the SAME FUNCTION: `1 - ((BACK+1)p³ - BACK·p²)` expands to
+`1 - 3p³ + 2p²`, and `popIn(1 - p)` expands to `1 - 3p³ + 2p²`. The test
+disagreed with the comment (`expected 0.744 to be less than 0.5`) and the test
+was right. `popOut` is now literally `popIn(1 - clamp(p))`, the comment says so
+and says it used to claim otherwise, and a test pins the two together for
+anyone tempted to re-derive it.
+
+Exactly the shape of `.ai/lessons.md`'s "a comment claimed a behaviour that was
+never implemented" — except here the comment claimed a DISTINCTION that never
+existed.
+
+**Measured.** Verify green (157 files, 2420 tests). Eager JS unchanged at
+344.5 KB gz; three.js 0.0 KB eager. Frame cost over three runs: median 8.4 ms,
+zero frames over 33 ms.
+
+**The flake is now systematic.** `e2e/touch-smoke.spec.ts`'s day-track swipe
+has failed the gate five runs in a row and passed in isolation every single
+time. Pre-existing and untouched by this work, but five for five is a pattern,
+not noise — worth its own ticket.

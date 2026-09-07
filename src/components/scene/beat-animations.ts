@@ -230,6 +230,15 @@ export function couchStateAt(u: number): CouchState {
 }
 
 /**
+ * How far past its resting size a popping object travels. Shared by both
+ * curves below, so a thing arriving and a thing leaving have the same accent.
+ *
+ * 2 peaks around 1.13. Enough to read as a thing landing; short of the cartoon
+ * bounce that would make the room look like a toy.
+ */
+const BACK = 2;
+
+/**
  * 0 → past 1 → settled at 1. The standard "back out" curve.
  *
  * The first attempt was `smoothstep(p) + sin(smoothstep(p)·π) · 0.12`, which
@@ -238,36 +247,75 @@ export function couchStateAt(u: number): CouchState {
  * monotonically to exactly 1 and never above it. Its derivative
  * `1 + 0.12π·cos(mπ)` has no zero, which is the algebra saying the same thing.
  * The test caught it — "expected 1 to be greater than 1".
- *
- * `BACK = 2` peaks around 1.13 at roughly 56% of the pop. Enough to read as a
- * thing landing; short of the cartoon bounce that would make the room look
- * like a toy.
  */
-const BACK = 2;
-function popIn(p: number): number {
+export function popIn(p: number): number {
   const q = clamp(p) - 1;
   return 1 + (BACK + 1) * q * q * q + BACK * q * q;
+}
+
+/**
+ * 1 → past 1 → 0. The pop, played backwards.
+ *
+ * Literally `popIn(1 - p)`, and written that way rather than as its own
+ * polynomial because it IS that: expanding the "back in" form gives
+ * `1 - 3p³ + 2p²`, and substituting `1 - p` into `popIn` gives `1 - 3p³ + 2p²`.
+ * They are the same function. An earlier version of this comment claimed the
+ * two differed — that one anticipated at the start and the other swelled
+ * mid-shrink — which is simply false, and the test that disagreed with it was
+ * right.
+ *
+ * So the exit reads as the arrival in reverse: the set swells a little as it
+ * goes, then collapses. Squash and stretch, out instead of in.
+ */
+export function popOut(p: number): number {
+  return popIn(1 - clamp(p));
 }
 
 // ---------------------------------------------------------------------------
 // The letting-go beat — "Sell the old TV instead of moving it"
 // ---------------------------------------------------------------------------
 
-/**
- * The swap, rescoped from the spike's global `t > 0.9` onto its own beat.
- *
- * (For the tv beat's band, `u >= COMMIT_AT` works out to t ≈ 0.883 — within a
- * few scroll-pixels of where the spike put it, which is reassuring rather than
- * surprising: the spike hand-placed the swap where the last beat happened to
- * be.)
- */
-export function tvUpgradedAt(t: number): boolean {
-  return beatLocalAt(t, "tv") >= COMMIT_AT;
+export interface TvState {
+  /** Scale for the retro set. 1 while it is still yours, 0 once it is sold. */
+  oldScale: number;
+  /** Scale for the flat screen. 0 until it arrives. */
+  newScale: number;
+  /** True once the old set has gone, whether or not the new one has landed. */
+  sold: boolean;
 }
 
-// A compile-time echo of the runtime test: the decisive moment precedes the
-// tick. The real enforcement is in beat-animations.test.ts, where a failure
-// names the rule; this line just refuses to let the constants drift apart
-// silently in a file that forgot to run its tests.
-const _ORDER_HOLDS: true = (COMMIT_AT < TICK_AT) as true;
-void _ORDER_HOLDS;
+/**
+ * The old set leaves, the console sits empty for a moment, the new one lands.
+ *
+ * The two halves sit on opposite sides of the tick, and the beat's own wording
+ * is why: "Sell the old TV instead of moving it". SELLING is the to-do, so the
+ * old set going is the ACT and belongs before the line ticks (rule 3). The new
+ * television is not the task at all — it is what selling the old one paid for
+ * — so it arrives on the payoff, like the couch.
+ *
+ * That leaves a deliberate gap between `COMMIT_AT` and `PAYOFF_AT` where the
+ * console holds nothing. It is the most honest frame in the beat: the thing is
+ * gone, the space is empty, and the room has to sit with that for a moment
+ * before the replacement shows up. A cross-fade would have hidden exactly the
+ * part worth showing.
+ *
+ * (The spike swapped the sets at a bare global `t > 0.9`. The old set now
+ * leaves at t ≈ 0.883 and the new one lands at t ≈ 0.9 — the same instant the
+ * hand-placed constant picked, arrived at from the beat instead.)
+ */
+export function tvStateAt(u: number): TvState {
+  const oldScale = u <= OLD_TV_LEAVES_FROM
+    ? 1
+    : popOut((u - OLD_TV_LEAVES_FROM) / (COMMIT_AT - OLD_TV_LEAVES_FROM));
+  const newScale = u < PAYOFF_AT ? 0 : popIn((u - PAYOFF_AT) / POP_OVER);
+
+  return { oldScale: Math.max(0, oldScale), newScale, sold: u >= COMMIT_AT };
+}
+
+/**
+ * The old set is not whisked away the instant the beat opens — the camera is
+ * still arriving at the console, and a television that vanishes before you have
+ * looked at it vanishes for nobody. Same reasoning as the paint beat's
+ * `CYCLE_FROM`.
+ */
+const OLD_TV_LEAVES_FROM = 0.1;

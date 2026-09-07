@@ -9,7 +9,9 @@ import {
   PAYOFF_AT,
   paintStateAt,
   plantStateAt,
-  tvUpgradedAt,
+  popIn,
+  popOut,
+  tvStateAt,
   VISIBLE_SWATCHES,
 } from "./beat-animations";
 
@@ -248,17 +250,89 @@ describe("the measuring beat", () => {
   });
 });
 
-describe("the tv beat", () => {
-  it("keeps the old set until its own beat's decisive moment", () => {
-    const { start } = beatBandFor("tv");
-    expect(tvUpgradedAt(0)).toBe(false);
-    expect(tvUpgradedAt(start)).toBe(false);
-    expect(tvUpgradedAt(start + (COMMIT_AT - 0.01) / STORY_BEATS.length)).toBe(false);
+describe("the letting-go beat", () => {
+  const u = (local: number) => beatBandFor("tv").start + local / STORY_BEATS.length;
+
+  it("keeps the old set until the selling is done", () => {
+    // The act is SELLING, so it has to land before the line ticks.
+    expect(tvStateAt(0).oldScale).toBe(1);
+    expect(tvStateAt(0.05).oldScale).toBe(1);
+    expect(tvStateAt(COMMIT_AT).oldScale).toBeCloseTo(0, 6);
+    expect(tvStateAt(COMMIT_AT).sold).toBe(true);
   });
 
-  it("swaps at the commit and stays swapped", () => {
-    const { start } = beatBandFor("tv");
-    expect(tvUpgradedAt(start + COMMIT_AT / STORY_BEATS.length)).toBe(true);
-    expect(tvUpgradedAt(1)).toBe(true);
+  it("swells as it goes, then collapses — the pop in reverse", () => {
+    /*
+      Squash and stretch on the way out, the same accent as the arrival.
+
+      This test is the reason `popOut`'s comment is now correct: it originally
+      claimed the curve anticipated at the START and differed from
+      `popIn(1 - p)`. It does not — the two expand to the same polynomial — and
+      this assertion failing at 0.744 is what proved it.
+    */
+    expect(tvStateAt(0.18).oldScale).toBeGreaterThan(1);
+    expect(tvStateAt(0.18).oldScale).toBeLessThan(1.2);
+    // The collapse is late and fast, which is what "back" easing does.
+    expect(tvStateAt(0.29).oldScale).toBeLessThan(0.3);
+  });
+
+  it("is exactly the arrival curve, reversed", () => {
+    // Guards the simplification: if someone re-derives `popOut` as its own
+    // polynomial, this says what it has to equal.
+    for (let p = 0; p <= 1; p += 0.01) {
+      expect(popOut(p), `p=${p.toFixed(2)}`).toBeCloseTo(popIn(1 - p), 12);
+    }
+  });
+
+  it("leaves the console empty between the sale and the delivery", () => {
+    /*
+      The most honest frame in the beat: the thing is gone, the space is empty,
+      and the room sits with that before the replacement arrives. A cross-fade
+      would hide exactly the part worth showing.
+    */
+    for (let local = COMMIT_AT; local < PAYOFF_AT; local += 0.005) {
+      const state = tvStateAt(local);
+      expect(state.oldScale, `u=${local.toFixed(3)}`).toBeCloseTo(0, 6);
+      expect(state.newScale, `u=${local.toFixed(3)}`).toBe(0);
+    }
+  });
+
+  it("pops the new set in on the payoff, overshooting like the couch", () => {
+    expect(tvStateAt(PAYOFF_AT).newScale).toBeCloseTo(0, 6);
+    const peak = Math.max(
+      ...Array.from({ length: 200 }, (_, i) => tvStateAt(PAYOFF_AT + i * 0.001).newScale),
+    );
+    expect(peak).toBeGreaterThan(1);
+    expect(peak).toBeLessThan(1.2);
+  });
+
+  it("ends with exactly one television, at its real size", () => {
+    // Both visible at once, or neither, is the failure this catches.
+    for (const local of [0.7, 0.9, 1]) {
+      expect(tvStateAt(local).oldScale, `u=${local}`).toBeCloseTo(0, 6);
+      expect(tvStateAt(local).newScale, `u=${local}`).toBeCloseTo(1, 6);
+    }
+  });
+
+  it("never shows both sets at a visible size at once", () => {
+    for (let local = 0; local <= 1; local += 0.002) {
+      const { oldScale, newScale } = tvStateAt(local);
+      const both = oldScale > 0.02 && newScale > 0.02;
+      expect(both, `both visible at u=${local.toFixed(3)}`).toBe(false);
+    }
+  });
+
+  it("never goes negative — it is fed straight to a scale", () => {
+    for (let local = -0.2; local <= 1.2; local += 0.005) {
+      expect(tvStateAt(local).oldScale, `u=${local.toFixed(3)}`).toBeGreaterThanOrEqual(0);
+      expect(tvStateAt(local).newScale, `u=${local.toFixed(3)}`).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it("still swaps where the spike hand-placed it, in global terms", () => {
+    // The spike used a bare `t > 0.9`. Reassuring rather than surprising: the
+    // beat-derived timing lands on the same instant.
+    expect(u(COMMIT_AT)).toBeCloseTo(0.883, 3);
+    expect(u(PAYOFF_AT)).toBeCloseTo(0.9, 3);
   });
 });

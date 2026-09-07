@@ -44,7 +44,7 @@ import {
   couchStateAt,
   paintStateAt,
   plantStateAt,
-  tvUpgradedAt,
+  tvStateAt,
 } from "./beat-animations";
 
 declare module "react" {
@@ -552,9 +552,25 @@ function LivingRoomProps({ progress }: { progress: Progress }) {
       loveseat.current.visible = couch.loveseatScale > 0.001;
       loveseat.current.scale.setScalar(Math.max(0.001, couch.loveseatScale));
     }
-    const upgraded = tvUpgradedAt(progress.current);
-    if (oldTv.current) oldTv.current.visible = !upgraded;
-    if (newTv.current) newTv.current.visible = upgraded;
+    /*
+      The old set leaves and the new one lands (EI-280) — the same pop the
+      loveseat uses, once backwards and once forwards, with an empty console
+      between them.
+
+      Set rather than lerped, for the reason `couchStateAt` gives: the curve IS
+      the easing, and damping toward it would smear the accent into a swell.
+      `visible` follows the scale so a collapsed set stops being drawn instead
+      of being drawn inside out at scale 0.
+    */
+    const tv = tvStateAt(beatLocalAt(progress.current, "tv"));
+    if (oldTv.current) {
+      oldTv.current.visible = tv.oldScale > 0.001;
+      oldTv.current.scale.setScalar(Math.max(0.001, tv.oldScale));
+    }
+    if (newTv.current) {
+      newTv.current.visible = tv.newScale > 0.001;
+      newTv.current.scale.setScalar(Math.max(0.001, tv.newScale));
+    }
 
     // The fish swims: a slow bob, clock-driven rather than scroll-driven -
     // the fish does not care what the human is doing, which is the joke.
