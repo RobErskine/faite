@@ -1,4 +1,4 @@
-import { CalendarClock, CornerDownRight, ListChecks, MapPin, Repeat } from "lucide-react";
+import { Bell, CalendarClock, CornerDownRight, ListChecks, MapPin, Repeat } from "lucide-react";
 import { badgeVariants } from "@/components/ui/badge";
 import { priorityRail } from "@/lib/priority";
 import { cn } from "@/lib/utils";
@@ -93,12 +93,16 @@ export function StoryPanel({
           <div className="min-w-0">
             <p className="text-sm leading-snug font-medium">{MOVE_TODO_TITLE}</p>
             <span className="mt-1.5 flex flex-wrap items-center gap-1">
+              {/*
+                A real tooltip rather than the native `title` this used to
+                carry. The board itself uses `title` here, but review asked for
+                every icon on this card to explain itself the same way, and one
+                badge behaving differently from its four neighbours is the kind
+                of inconsistency you only notice by hovering everything.
+              */}
+              <DemoTooltip label={`${doneThrough} of ${MOVE_SUBTASKS.length} sub-tasks done`}>
               <span
                 className={cn(badgeVariants({ variant: "outline" }), "num gap-1 text-2xs font-normal")}
-                /* The real board explains this count with a native `title`
-                   (`TodoMetaBadges`); matching it keeps the badge interrogable
-                   without nesting a tooltip inside something this small. */
-                title={`${doneThrough} of ${MOVE_SUBTASKS.length} sub-tasks done`}
               >
                 <ListChecks className="size-2.5" aria-hidden />
                 {/*
@@ -111,6 +115,7 @@ export function StoryPanel({
                   <span data-subtask-count>{doneThrough}</span>/{MOVE_SUBTASKS.length}
                 </span>
               </span>
+              </DemoTooltip>
               <span
                 className={cn(badgeVariants({ variant: "secondary" }), "text-2xs font-normal")}
               >
@@ -214,17 +219,52 @@ export function StoryPanel({
                   reader with no JavaScript sees a coherent card rather than an
                   empty one.
                 */}
+                {subtask.when && (
+                  <span className="mt-1.5 flex flex-wrap items-center gap-1">
+                    <DemoTooltip label={`Scheduled ${subtask.when.date}`}>
+                      <span
+                        className={cn(
+                          badgeVariants({ variant: "outline" }),
+                          "num gap-1 text-2xs font-normal",
+                        )}
+                      >
+                        <CalendarClock className="size-2.5" aria-hidden />
+                        {subtask.when.date}
+                      </span>
+                    </DemoTooltip>
+                    {/*
+                      The time, as a reminder badge — the board's own way of
+                      showing one. Review shortened this task's title to
+                      "Change paint color", and the beat's entire claim is "a
+                      date and a TIME", so the time had to keep existing
+                      somewhere the reader can see it.
+                    */}
+                    <DemoTooltip label={`Reminder at ${subtask.when.time}`}>
+                      <span
+                        className={cn(
+                          badgeVariants({ variant: "outline" }),
+                          "num gap-1 text-2xs font-normal",
+                        )}
+                      >
+                        <Bell className="size-2.5" aria-hidden />
+                        {subtask.when.time}
+                      </span>
+                    </DemoTooltip>
+                  </span>
+                )}
                 {subtask.rolls && (
                   <span className="mt-1.5 flex flex-wrap items-center gap-1">
-                    <span
-                      className={cn(
-                        badgeVariants({ variant: "outline" }),
-                        "num gap-1 text-2xs font-normal",
-                      )}
-                    >
-                      <CalendarClock className="size-2.5" aria-hidden />
-                      <span data-roll-date>{subtask.rolls[0]}</span>
-                    </span>
+                    <DemoTooltip label="Scheduled for this day">
+                      <span
+                        className={cn(
+                          badgeVariants({ variant: "outline" }),
+                          "num gap-1 text-2xs font-normal",
+                        )}
+                      >
+                        <CalendarClock className="size-2.5" aria-hidden />
+                        <span data-roll-date>{subtask.rolls[0]}</span>
+                      </span>
+                    </DemoTooltip>
                     <span data-roll-overflow hidden className="contents">
                       <DemoTooltip label="Scheduled Wed, Sep 9 · in Overflow since Fri, Sep 11">
                         <span

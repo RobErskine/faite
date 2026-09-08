@@ -191,12 +191,16 @@ describe("the watering beat", () => {
     expect(seen).toEqual([0, 1, 2]);
   });
 
-  it("comes back clean after the watering, not still in Overflow", () => {
-    // A recurring to-do that got done is not overdue; the next occurrence is a
-    // fresh Wednesday. Leaving it at two rolls would make the card claim it is
-    // still late while the plant is visibly green.
+  it("keeps the day it landed on, and its Overflow badge, once done", () => {
+    /*
+      Not reset to a fresh Wednesday, which is what this did first. Whatever is
+      true of the next occurrence, THIS one was scheduled Friday and completed
+      there — and on screen the reset read as a glitch: the date climbs to
+      Friday, the badge appears, and then both silently revert while the row is
+      being ticked.
+    */
     for (const u of [COMMIT_AT, 0.5, 0.9, 1]) {
-      expect(plantStateAt(u), `u=${u}`).toMatchObject({ rolls: 0, inOverflow: false });
+      expect(plantStateAt(u), `u=${u}`).toMatchObject({ rolls: 2, inOverflow: true });
     }
   });
 

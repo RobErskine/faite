@@ -180,14 +180,22 @@ export function plantStateAt(u: number): PlantState {
   const RECOVERED_BY = 0.8;
 
   /*
-    After the watering the card is done, so it is not rolled and not in
-    Overflow — the next occurrence is a fresh Wednesday. Resetting rather than
-    leaving it at two is the whole point of a recurring to-do: it comes back
-    clean, and it will be brown again next week.
-  */
-  const done = { rolls: 0, inOverflow: false };
+    After the watering the card KEEPS the day it landed on, and keeps its
+    Overflow badge.
 
-  if (u <= 0) return { thirst: 0, watered: false, ...done };
+    The first version reset it to a fresh Wednesday, on the theory that a
+    recurring to-do comes back clean. On screen that read as a glitch: the
+    reader watches the date climb to Friday and the badge appear, then both
+    silently revert while the row is being ticked. Whatever is true of the NEXT
+    occurrence, this one was scheduled Friday and completed there — the card
+    should say so.
+  */
+  const landed = { rolls: ROLLS_BEFORE_OVERFLOW, inOverflow: true };
+
+  // BEFORE the beat is not the same as after it: nothing has rolled yet, so
+  // the card is on its original Wednesday. Sharing one constant for both ends
+  // made the sequence open at Friday, which the roll test caught immediately.
+  if (u <= 0) return { thirst: 0, watered: false, rolls: 0, inOverflow: false };
 
   if (u < COMMIT_AT) {
     // Three equal days in the run-up. `min` rather than a wrapping modulo:
@@ -201,11 +209,11 @@ export function plantStateAt(u: number): PlantState {
     };
   }
 
-  if (u >= RECOVERED_BY) return { thirst: 0, watered: true, ...done };
+  if (u >= RECOVERED_BY) return { thirst: 0, watered: true, ...landed };
   return {
     thirst: 1 - smooth((u - COMMIT_AT) / (RECOVERED_BY - COMMIT_AT)),
     watered: true,
-    ...done,
+    ...landed,
   };
 }
 

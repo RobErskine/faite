@@ -2969,3 +2969,39 @@ frames over 33 ms.
 **The flake, again.** `touch-smoke`'s day-track swipe: seven gate runs now,
 green in isolation every time. Untouched by any of this. It needs its own
 ticket.
+
+### EI-280 — review cleanup before merge (2026-09-06)
+
+**The rolled date and the Overflow badge now persist through completion.** They
+used to reset to a fresh Wednesday on the theory that a recurring to-do comes
+back clean. On screen that read as a glitch: the reader watches the date climb
+to Friday and the badge appear, then both silently revert while the row is
+being ticked. Whatever is true of the NEXT occurrence, this one was scheduled
+Friday and completed there. Fixing it exposed a second bug the roll test caught
+instantly — `u <= 0` was sharing the same constant, so the sequence opened at
+Friday instead of Wednesday. Before and after a beat are not the same state.
+
+**"Painter comes Saturday, 9:00am" is "Change paint color"** — and the date and
+time moved into the board's own two badges (`CalendarClock` + `Bell`) rather
+than being dropped. That mattered: the beat's entire claim is "a date and a
+TIME, not just a date", so a shortened title that lost the time would have put
+the copy and the citation back out of step, which is the exact drift this whole
+sequence of tickets has been closing.
+
+**Every badge explains itself now.** The sub-task count, the missed deadline,
+and the labels moved from native `title` (or nothing) to `DemoTooltip`. The
+real board leaves the deadline badge bare, but a red "Deadline Sep 4" beside a
+card scheduled Sep 8 is the one most worth a sentence.
+
+Two bits of dead code went with it: the `tint`/`edge` styling on demo labels
+was resolving to `undefined` on every render now that `DemoLabel.color` is
+typed `undefined`, and it still read to a skimmer as though coloured labels
+were real. `edge` stays imported — the column accent is a genuine feature.
+
+**One placement bug, caught by looking.** The date/time badges rendered ABOVE
+"Change paint color", because the file has two `{subtask.rolls && (` blocks —
+the roll marker before the title and the badge row after it — and the insert
+landed on the first.
+
+**Measured.** Verify green (157 files, 2432 tests). Gate green: 114 passed, 0
+flaky. Eager JS 346.0 KB gz; three.js still 0.0 KB eager.

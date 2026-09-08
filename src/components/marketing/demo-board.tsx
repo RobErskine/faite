@@ -1,6 +1,8 @@
 import { CalendarCheck, CornerDownRight, ListChecks, MapPin } from "lucide-react";
 import { badgeVariants } from "@/components/ui/badge";
-import { edge, tint } from "@/lib/colors";
+// `edge` only — the column accent is a real feature (lists and tabs both have
+// a ColorPicker). `tint` went with the fabricated label colours.
+import { edge } from "@/lib/colors";
 import { priorityRail } from "@/lib/priority";
 import { STORY_BEATS } from "@/lib/story-beats";
 import { TITLE_CLAMP_CLASS } from "@/lib/title";
@@ -119,12 +121,14 @@ export const MOVE_SUBTASKS: {
   location?: string;
   repeat?: string;
   rolls?: string[];
+  when?: { date: string; time: string };
   done?: boolean;
 }[] = STORY_BEATS.map((beat) => ({
   title: beat.subtask,
   location: beat.subtaskLocation,
   repeat: beat.subtaskRepeat,
   rolls: beat.subtaskRolls,
+  when: beat.subtaskWhen,
 }));
 
 /*
@@ -398,13 +402,17 @@ function DemoCard({ todo }: { todo: DemoTodo }) {
         {badges && (
           <span className="mt-1.5 flex flex-wrap items-center gap-1">
             {subtaskTotal > 0 && (
-              <span
-                className={cn(badgeVariants({ variant: "outline" }), "num gap-1 text-2xs font-normal")}
-                title={`${subtaskDone} of ${subtaskTotal} sub-tasks done`}
-              >
-                <ListChecks className="size-2.5" aria-hidden />
-                {subtaskDone}/{subtaskTotal}
-              </span>
+              <DemoTooltip label={`${subtaskDone} of ${subtaskTotal} sub-tasks done`}>
+                <span
+                  className={cn(
+                    badgeVariants({ variant: "outline" }),
+                    "num gap-1 text-2xs font-normal",
+                  )}
+                >
+                  <ListChecks className="size-2.5" aria-hidden />
+                  {subtaskDone}/{subtaskTotal}
+                </span>
+              </DemoTooltip>
             )}
             {todo.overflow && (
               <DemoTooltip
@@ -422,26 +430,33 @@ function DemoCard({ todo }: { todo: DemoTodo }) {
               </DemoTooltip>
             )}
             {todo.deadlineMissed && (
-              <span
-                className={cn(badgeVariants({ variant: "destructive" }), "text-2xs font-normal")}
-              >
-                Deadline <span className="num">{todo.deadlineMissed}</span>
-              </span>
+              // The board leaves this one bare, but a red badge reading
+              // "Deadline Sep 4" beside a card scheduled for Sep 8 is the one
+              // most worth explaining: the date has passed, and that is the
+              // whole reason it is loud.
+              <DemoTooltip label={`Deadline was ${todo.deadlineMissed} — now past`}>
+                <span
+                  className={cn(badgeVariants({ variant: "destructive" }), "text-2xs font-normal")}
+                >
+                  Deadline <span className="num">{todo.deadlineMissed}</span>
+                </span>
+              </DemoTooltip>
             )}
             {todo.labels?.map((label) => (
-              <span
-                key={label.name}
-                className={cn(badgeVariants({ variant: "secondary" }), "text-2xs font-normal")}
-                /* The identity ladder from lib/colors.ts — tint behind, edge
-                   around, the label's own color on the name. */
-                style={{
-                  backgroundColor: tint(label.color),
-                  borderColor: edge(label.color),
-                  color: label.color,
-                }}
-              >
-                {label.name}
-              </span>
+              /*
+                No `tint`/`edge` style any more. `DemoLabel.color` is typed
+                `undefined` because Faite has no way to colour a label, so the
+                identity ladder that used to be applied here was resolving to
+                `undefined` on every render — dead code that still read, to
+                anyone skimming, as though coloured labels were a thing.
+              */
+              <DemoTooltip key={label.name} label={`Label: ${label.name}`}>
+                <span
+                  className={cn(badgeVariants({ variant: "secondary" }), "text-2xs font-normal")}
+                >
+                  {label.name}
+                </span>
+              </DemoTooltip>
             ))}
           </span>
         )}

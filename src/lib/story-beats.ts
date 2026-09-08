@@ -104,6 +104,17 @@ export interface StoryBeat {
    * to not get done for a while.
    */
   subtaskRolls?: string[];
+  /**
+   * A day AND a time on this sub-task, shown as the board's own two badges.
+   *
+   * This beat's whole claim is "a date and a time — not just a date", so the
+   * time cannot simply be dropped when the title is shortened. Review asked
+   * for "Change paint color" instead of "Painter comes Saturday, 9:00am",
+   * which is the better title; putting the when into a scheduled-date badge
+   * and a reminder badge is how the real board carries it anyway, and it keeps
+   * the copy and the citation saying the same thing.
+   */
+  subtaskWhen?: { date: string; time: string };
   /** The thing in the room this beat is about (EI-276). */
   focus: BeatFocus;
 }
@@ -142,7 +153,8 @@ export const STORY_BEATS: StoryBeat[] = [
       "Prompted to write down a date, people did no better than the control group. Prompted to write down a date and a time, vaccination rates rose 4.2 percentage points.",
     cite: "Milkman et al. (2011)",
     section: "§2.3",
-    subtask: "Painter comes Saturday, 9:00am",
+    subtask: "Change paint color",
+    subtaskWhen: { date: "Sat, Sep 12", time: "9:00am" },
     focus: "swatches",
   },
   {
