@@ -207,3 +207,18 @@ export function rawLabelRow(overrides: Record<string, unknown> = {}): Record<str
     ...overrides,
   };
 }
+
+/** A raw `day_notes` row, `version` included. */
+export function rawDayNoteRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    version: 2,
+    id: "daynote:2026-09-08",
+    ownerId: "user-1",
+    createdAt: "2026-09-08T00:00:00.000Z",
+    updatedAt: "2026-09-08T00:00:00.000Z",
+    deletedAt: null,
+    date: "2026-09-08",
+    body: "# Today",
+    ...overrides,
+  };
+}

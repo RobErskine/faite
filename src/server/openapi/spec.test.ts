@@ -106,6 +106,8 @@ describe("buildPublicDocument", () => {
     expect(Object.keys(buildPublicDocument().paths ?? {}).sort()).toEqual(
       [
         "/api/v1/attachments",
+        "/api/v1/day-notes",
+        "/api/v1/day-notes/{date}",
         "/api/v1/labels",
         "/api/v1/labels/{id}",
         "/api/v1/lists",
@@ -126,6 +128,14 @@ describe("buildPublicDocument", () => {
     // EI-242: a write here would have to carry file bytes, and this API is
     // JSON. Uploads go to POST /api/attachments, which is session-only.
     expect(paths["/api/v1/attachments"]).not.toHaveProperty("post");
+  });
+
+  /** Day notes are addressed by DATE, not an opaque id, so they get an upsert
+   * PUT and deliberately no POST or DELETE — see `dayNotePaths`. */
+  it("day notes are an upsert by date, with no POST and no DELETE", () => {
+    const paths = buildPublicDocument().paths ?? {};
+    expect(Object.keys(paths["/api/v1/day-notes/{date}"]).sort()).toEqual(["get", "put"]);
+    expect(Object.keys(paths["/api/v1/day-notes"])).toEqual(["get"]);
   });
 
   it("every item route carries the full GET/PATCH/DELETE trio", () => {

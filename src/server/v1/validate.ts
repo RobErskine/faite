@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { labelSchema, listSchema, tabSchema, todoSchema } from "@/lib/schema";
+import { civilDateSchema, dayNoteSchema, labelSchema, listSchema, tabSchema, todoSchema } from "@/lib/schema";
 
 /**
  * Request validation for `/api/v1/todos` writes (A5, EI-230). Same
@@ -255,4 +255,48 @@ export type UpdateTabRequest = z.infer<typeof updateTabRequestSchema>;
 
 export function parseUpdateTabRequest(body: unknown): UpdateTabRequest | null {
   return parsePatchRequest(tabSchema, UPDATABLE_TAB_FIELDS, body) as UpdateTabRequest | null;
+}
+
+// ------------------------------------------------------------ day notes (A16)
+
+/**
+ * `PUT /api/v1/day-notes/{date}` carries exactly one field. There is no
+ * create/update split at the URL because a day note's id is DERIVED from its
+ * date (`daynote:YYYY-MM-DD`), so the caller always knows the address and the
+ * server decides whether a row exists yet.
+ */
+export const upsertDayNoteRequestSchema = dayNoteSchema.pick({ body: true });
+
+export type UpsertDayNoteRequest = z.infer<typeof upsertDayNoteRequestSchema>;
+
+export function parseUpsertDayNoteRequest(body: unknown): UpsertDayNoteRequest | null {
+  const parsed = upsertDayNoteRequestSchema.safeParse(body);
+  return parsed.success ? parsed.data : null;
+}
+
+/** The `{date}` path segment. Returns `null` for anything that is not a civil
+ * date, so a malformed URL is a 400 rather than a lookup for an id that can
+ * never exist. */
+export function parseCivilDate(value: string): string | null {
+  const parsed = civilDateSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
+/** `?from=&to=` on the range read. Both optional, both inclusive; an absent
+ * bound means unbounded on that side. */
+export const dayNoteRangeSchema = z.object({
+  from: civilDateSchema.optional(),
+  to: civilDateSchema.optional(),
+});
+
+export type DayNoteRange = z.infer<typeof dayNoteRangeSchema>;
+
+export function parseDayNoteRange(params: URLSearchParams): DayNoteRange | null {
+  const raw: Record<string, string> = {};
+  for (const key of ["from", "to"]) {
+    const value = params.get(key);
+    if (value !== null) raw[key] = value;
+  }
+  const parsed = dayNoteRangeSchema.safeParse(raw);
+  return parsed.success ? parsed.data : null;
 }

@@ -3002,6 +3002,328 @@
           }
         }
       }
+    },
+    "/api/v1/day-notes": {
+      "get": {
+        "tags": [
+          "v1"
+        ],
+        "summary": "List day notes in a date range.",
+        "description": "Requires the `read` scope. Days with an empty note are omitted — an empty body is how a cleared note is stored, so it is not a note. Both bounds are inclusive and optional.",
+        "operationId": "listV1DayNotes",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "from",
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Day notes with content, oldest first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DayNote"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "A bound is not a YYYY-MM-DD date.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"invalid-request\" }`."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session and no valid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"unauthenticated\" }`."
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A valid API key without the required scope (A2, EI-227). A cookie session or a full desktop-handoff key never sees this.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"insufficient-scope\" }`."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/day-notes/{date}": {
+      "get": {
+        "tags": [
+          "v1"
+        ],
+        "summary": "Fetch one day's note.",
+        "description": "Requires the `read` scope. Every valid date is addressable: a day with no note answers 200 with an empty body rather than 404.",
+        "operationId": "getV1DayNote",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "date",
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The day's note, possibly empty.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DayNote"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The path segment is not a YYYY-MM-DD date.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"invalid-request\" }`."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session and no valid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"unauthenticated\" }`."
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A valid API key without the required scope (A2, EI-227). A cookie session or a full desktop-handoff key never sees this.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"insufficient-scope\" }`."
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "v1"
+        ],
+        "summary": "Write one day's note.",
+        "description": "Requires the `write` scope. An upsert: the note is created if that day has none. The body is Markdown. Writing an empty body clears the note — and on a day that never had one, does nothing at all.",
+        "operationId": "upsertV1DayNote",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "date",
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "body": {
+                    "default": "",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The stored note.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DayNote"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed date or body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"invalid-request\" }`."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session and no valid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"unauthenticated\" }`."
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A valid API key without the required scope (A2, EI-227). A cookie session or a full desktop-handoff key never sees this.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"insufficient-scope\" }`."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unhandled server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"internal-error\" }`."
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -3622,6 +3944,54 @@
         ],
         "additionalProperties": false
       },
+      "DayNote": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "ownerId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "deletedAt": {
+            "default": null,
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "date": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "body": {
+            "default": "",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "ownerId",
+          "createdAt",
+          "updatedAt",
+          "deletedAt",
+          "date",
+          "body"
+        ],
+        "additionalProperties": false
+      },
       "Attachment": {
         "type": "object",
         "properties": {
@@ -3766,54 +4136,6 @@
           "iconUrl",
           "name",
           "position"
-        ],
-        "additionalProperties": false
-      },
-      "DayNote": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "minLength": 1
-          },
-          "ownerId": {
-            "type": "string",
-            "minLength": 1
-          },
-          "createdAt": {
-            "type": "string"
-          },
-          "updatedAt": {
-            "type": "string"
-          },
-          "deletedAt": {
-            "default": null,
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "date": {
-            "type": "string",
-            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
-          },
-          "body": {
-            "default": "",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "ownerId",
-          "createdAt",
-          "updatedAt",
-          "deletedAt",
-          "date",
-          "body"
         ],
         "additionalProperties": false
       },

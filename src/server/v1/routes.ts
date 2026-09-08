@@ -1,11 +1,14 @@
-import { labelSchema, listSchema, tabSchema, todoSchema, type Todo } from "@/lib/schema";
+import { dayNoteSchema, labelSchema, listSchema, tabSchema, todoSchema, type Todo } from "@/lib/schema";
 import type { ServiceContext } from "@/lib/service/context";
 import { createAuth } from "../auth";
 import { authorizeScope } from "../auth-scopes";
 import { corsHeaders, handleOptions } from "../cors";
 import { durableHlcQueue } from "../service/hlc";
 import {
+  buildCreateDayNoteEntry,
   buildDeleteEntry,
+  buildUpdateDayNoteEntry,
+  dayNoteIdFor,
   buildUpdateLabelEntry,
   buildUpdateListEntry,
   buildUpdateTabEntry,
@@ -16,6 +19,7 @@ import type { UserDurableObject } from "../user-do";
 import { filterTodos, parseTodoQuery } from "./query";
 import { V1_RESOURCES, type V1Kind } from "./resources";
 import {
+  parseCivilDate,
   parseCreateLabelRequest,
   parseCreateListRequest,
   parseCreateTabRequest,
@@ -23,7 +27,9 @@ import {
   parseUpdateLabelRequest,
   parseUpdateListRequest,
   parseUpdateTabRequest,
+  parseDayNoteRange,
   parseUpdateTodoRequest,
+  parseUpsertDayNoteRequest,
 } from "./validate";
 
 /**
@@ -120,6 +126,19 @@ function todoIdsInList(
   id: string,
 ): ReturnType<UserDurableObject["todoIdsInList"]> {
   return stub.todoIdsInList(id);
+}
+
+function listDayNotes(
+  stub: DurableObjectStub<UserDurableObject>,
+): ReturnType<UserDurableObject["listEntities"]> {
+  return stub.listEntities("dayNote");
+}
+
+function getDayNoteRow(
+  stub: DurableObjectStub<UserDurableObject>,
+  id: string,
+): ReturnType<UserDurableObject["getEntity"]> {
+  return stub.getEntity("dayNote", id);
 }
 
 function nextLabelPosition(
@@ -612,6 +631,66 @@ async function handleDeleteTab(
   return new Response(null, { status: 204, headers });
 }
 
+/**
+ * `PUT /api/v1/day-notes/{date}` (A16, EI-296).
+ *
+ * An upsert, not a create/update pair, because a day note's id is DERIVED
+ * from its date — `daynote:YYYY-MM-DD` — so the caller always knows the
+ * address and only the server knows whether a row is there yet.
+ *
+ * **It must read first.** `date` is `notNull()` with no SQL default, so
+ * pushing a bare `{ body }` patch at an id that does not exist hits the DO's
+ * insert-with-`FIELD_DEFAULTS` path (the EI-68 mechanism) and writes a row
+ * with no date — or throws inside `transactionSync`.
+ *
+ * **An empty body on a day with no row is a no-op**, not a new row. That is
+ * `setDayNote`'s own rule, and it matters here more than in the client:
+ * without it, every day a Raycast user merely glanced at would become a
+ * synced row and a sticky-note icon on the board.
+ *
+ * There is no DELETE. Clearing a note is `PUT { body: "" }` — the id is
+ * guaranteed to be recreated the next time that day is opened, so a tombstone
+ * would only buy a resurrect-vs-tombstone race (`dayNoteSchema`).
+ */
+async function handleUpsertDayNote(
+  request: Request,
+  stub: DurableObjectStub<UserDurableObject>,
+  userId: string,
+  date: string,
+  headers: HeadersInit,
+): Promise<Response> {
+  const parsed = parseUpsertDayNoteRequest(await request.json().catch(() => null));
+  if (!parsed) return json({ error: "invalid-request" }, 400, headers);
+
+  const id = dayNoteIdFor(date);
+  const existing = await getDayNoteRow(stub, id);
+
+  if (!existing && parsed.body === "") {
+    // Nothing to write and nothing to clear. Answer with the shape a caller
+    // would have got had the row existed and been empty, so a client can
+    // treat "cleared" and "never written" identically.
+    return json({ date, body: "" }, 200, headers);
+  }
+
+  const nextHlc = await durableHlcQueue(stub, 2);
+  const ctx: ServiceContext = { userId, nextHlc };
+
+  const entries = existing
+    ? // `deletedAt: null` mirrors `setDayNote`: a note written to a day whose
+      // row was tombstoned by some older path has to come back.
+      buildUpdateDayNoteEntry(ctx, date, { body: parsed.body, deletedAt: null })
+    : buildCreateDayNoteEntry(ctx, date, parsed.body);
+
+  const { rejected } = await pushTransportFor(stub, userId)(entries);
+  if (rejected.length > 0) {
+    console.error("v1 upsert-day-note push rejected", rejected);
+    return json({ error: "internal-error" }, 500, headers);
+  }
+
+  const row = await getDayNoteRow(stub, id);
+  return json(row ? dayNoteSchema.parse(row) : null, 200, headers);
+}
+
 export async function handleV1Request(request: Request, env: CloudflareEnv): Promise<Response> {
   if (request.method === "OPTIONS") return handleOptions(request);
 
@@ -620,8 +699,13 @@ export async function handleV1Request(request: Request, env: CloudflareEnv): Pro
   const auth0 = createAuth(env, request);
 
   try {
-    const segment = url.pathname.slice("/api/v1/".length) as keyof typeof V1_RESOURCES;
-    const resource = V1_RESOURCES[segment];
+    // A plain string, with the cast pushed down to the ONE lookup that needs
+    // it. Typing `segment` as `keyof typeof V1_RESOURCES` up here made every
+    // later comparison against a non-resource path (`day-notes`, A16) a
+    // compile error about types with "no overlap" — the routes below are not
+    // all entity collections.
+    const segment = url.pathname.slice("/api/v1/".length);
+    const resource = V1_RESOURCES[segment as keyof typeof V1_RESOURCES];
 
     if (resource && request.method === "GET") {
       const auth = await authorizeScope(auth0, request, "read");
@@ -651,7 +735,7 @@ export async function handleV1Request(request: Request, env: CloudflareEnv): Pro
       return await handleCreateList(request, stub, auth.userId, headers);
     }
 
-    const listIdMatch = /^lists\/([^/]+)$/.exec(segment as string);
+    const listIdMatch = /^lists\/([^/]+)$/.exec(segment);
     if (listIdMatch) {
       const listId = decodeURIComponent(listIdMatch[1]);
 
@@ -676,6 +760,53 @@ export async function handleV1Request(request: Request, env: CloudflareEnv): Pro
       }
     }
 
+    const dayNoteDateMatch = /^day-notes\/([^/]+)$/.exec(segment);
+    if (dayNoteDateMatch) {
+      const date = parseCivilDate(decodeURIComponent(dayNoteDateMatch[1]));
+      if (!date) return json({ error: "invalid-request" }, 400, headers);
+
+      if (request.method === "GET") {
+        const auth = await authorizeScope(auth0, request, "read");
+        if (!auth.ok) return json({ error: auth.error }, auth.status, headers);
+
+        const stub = env.USER_DO.get(env.USER_DO.idFromName(auth.userId));
+        const row = await getDayNoteRow(stub, dayNoteIdFor(date));
+        // A day with no row, and a day whose note was cleared, are the same
+        // thing to a reader — both answer with an empty body rather than 404.
+        // The date is always addressable; only its content varies.
+        if (!row) return json({ date, body: "" }, 200, headers);
+        return json(dayNoteSchema.parse(row), 200, headers);
+      }
+
+      if (request.method === "PUT") {
+        const auth = await authorizeScope(auth0, request, "write");
+        if (!auth.ok) return json({ error: auth.error }, auth.status, headers);
+
+        const stub = env.USER_DO.get(env.USER_DO.idFromName(auth.userId));
+        return await handleUpsertDayNote(request, stub, auth.userId, date, headers);
+      }
+    }
+
+    if (segment === "day-notes" && request.method === "GET") {
+      const auth = await authorizeScope(auth0, request, "read");
+      if (!auth.ok) return json({ error: auth.error }, auth.status, headers);
+
+      const range = parseDayNoteRange(url.searchParams);
+      if (!range) return json({ error: "invalid-request" }, 400, headers);
+
+      const stub = env.USER_DO.get(env.USER_DO.idFromName(auth.userId));
+      const rows = await listDayNotes(stub);
+      const notes = rows
+        .map((row) => dayNoteSchema.parse(row))
+        // An empty body IS the deleted state for a day note (there is no
+        // tombstone), so a range read must not report those as notes.
+        .filter((note) => note.body !== "")
+        .filter((note) => (range.from === undefined ? true : note.date >= range.from))
+        .filter((note) => (range.to === undefined ? true : note.date <= range.to));
+
+      return json(notes, 200, headers);
+    }
+
     if (segment === "labels" && request.method === "POST") {
       const auth = await authorizeScope(auth0, request, "write");
       if (!auth.ok) return json({ error: auth.error }, auth.status, headers);
@@ -692,7 +823,7 @@ export async function handleV1Request(request: Request, env: CloudflareEnv): Pro
       return await handleCreateTab(request, stub, auth.userId, headers);
     }
 
-    const labelIdMatch = /^labels\/([^/]+)$/.exec(segment as string);
+    const labelIdMatch = /^labels\/([^/]+)$/.exec(segment);
     if (labelIdMatch) {
       const labelId = decodeURIComponent(labelIdMatch[1]);
       const scope = request.method === "GET" ? "read" : "write";
@@ -726,7 +857,7 @@ export async function handleV1Request(request: Request, env: CloudflareEnv): Pro
       }
     }
 
-    const tabIdMatch = /^tabs\/([^/]+)$/.exec(segment as string);
+    const tabIdMatch = /^tabs\/([^/]+)$/.exec(segment);
     if (tabIdMatch) {
       const tabId = decodeURIComponent(tabIdMatch[1]);
       const scope = request.method === "GET" ? "read" : "write";
@@ -768,7 +899,7 @@ export async function handleV1Request(request: Request, env: CloudflareEnv): Pro
       return await handleCreateTodo(request, stub, auth.userId, headers);
     }
 
-    const todoIdMatch = /^todos\/([^/]+)$/.exec(segment as string);
+    const todoIdMatch = /^todos\/([^/]+)$/.exec(segment);
     if (todoIdMatch) {
       const todoId = decodeURIComponent(todoIdMatch[1]);
 

@@ -64,9 +64,14 @@ export interface SchemaInfo {
  *
  * This map is the gate the old inline comment on `listEntities` asked for.
  * A kind belongs here only once someone has checked it has BOTH a
- * `deleted_at` column and the sort column named — `settings` (a singleton
- * with neither) and `dayNote` still do not qualify, and adding a kind here
- * without checking reintroduces exactly the footgun this replaced.
+ * `deleted_at` column and the sort column named — `settings`, a singleton
+ * with neither, still does not qualify. Adding a kind here without checking
+ * reintroduces exactly the footgun this replaced.
+ *
+ * `dayNote` was listed as not qualifying until A16 (EI-296). That was simply
+ * wrong: `day_notes` has `...syncableColumns` (so `deleted_at`) and a
+ * `notNull` `date`, which is both halves of the gate. Nothing about the table
+ * changed — only the check that had never been done.
  *
  * Values are interpolated into SQL, so they must stay literal SQL fragments
  * written in this file and never derive from anything a request supplies.
@@ -80,6 +85,9 @@ const ORDER_BY_KIND = {
   // reorder UI. `id` breaks ties because UUIDv7 is time-ordered, so two rows
   // written in the same millisecond still come back deterministically.
   attachment: "created_at, id",
+  // Chronological, which is the only order a day note has. No `position`
+  // column and no reorder UI — the date IS the sort key.
+  dayNote: "date",
 } as const;
 
 export type ListableKind = keyof typeof ORDER_BY_KIND;

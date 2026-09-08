@@ -14,6 +14,7 @@ import {
   makeEnv,
   makeStub,
   pushedEntries,
+  rawDayNoteRow,
   rawLabelRow,
   rawListRow,
   rawTabRow,
@@ -694,6 +695,149 @@ describe("label and tab scope gating", () => {
       v1Request(method, path, method === "GET" || method === "DELETE" ? undefined : { name: "x" }),
       env,
     );
+
+    expect(authorize.mock.calls.map((c) => c[2])).toEqual([scope]);
+  });
+});
+
+describe("day notes", () => {
+  it("GET returns the note for a date", async () => {
+    stub.getEntity.mockResolvedValue(rawDayNoteRow());
+
+    const res = await handleV1Request(v1Request("GET", "/api/v1/day-notes/2026-09-08"), env);
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toMatchObject({ date: "2026-09-08", body: "# Today" });
+  });
+
+  /** Every valid date is addressable — "no note yet" and "note cleared" are
+   * the same thing to a reader, so neither is a 404. */
+  it("GET answers 200 with an empty body for a day that has no note", async () => {
+    const res = await handleV1Request(v1Request("GET", "/api/v1/day-notes/2026-09-09"), env);
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ date: "2026-09-09", body: "" });
+  });
+
+  it("400s a path segment that is not a date, without hitting the store", async () => {
+    const res = await handleV1Request(v1Request("GET", "/api/v1/day-notes/not-a-date"), env);
+
+    expect(res.status).toBe(400);
+    expect(stub.getEntity).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The upsert MUST read first. `date` is notNull with no SQL default, so a
+   * bare `{ body }` patch at an id that does not exist hits the DO's
+   * insert-with-FIELD_DEFAULTS path and writes a row with no date.
+   */
+  it("PUT builds a FULL record when the day has no note yet", async () => {
+    stub.getEntity.mockResolvedValueOnce(null).mockResolvedValue(rawDayNoteRow({ body: "new" }));
+
+    const res = await handleV1Request(
+      v1Request("PUT", "/api/v1/day-notes/2026-09-08", { body: "new" }),
+      env,
+    );
+
+    expect(res.status).toBe(200);
+    const patch = pushedEntries(stub)[0].patch as Record<string, unknown>;
+    expect(patch).toMatchObject({ date: "2026-09-08", body: "new" });
+    expect(patch).toHaveProperty("createdAt");
+  });
+
+  it("PUT sends a sparse patch when the day already has a note", async () => {
+    stub.getEntity.mockResolvedValue(rawDayNoteRow());
+
+    await handleV1Request(
+      v1Request("PUT", "/api/v1/day-notes/2026-09-08", { body: "edited" }),
+      env,
+    );
+
+    const patch = pushedEntries(stub)[0].patch as Record<string, unknown>;
+    expect(Object.keys(patch).sort()).toEqual(["body", "deletedAt", "updatedAt"]);
+    // Never re-sends `date` — the id already encodes it, and a `.default()`
+    // expansion here would be the sparse-patch trap all over again.
+    expect(patch).not.toHaveProperty("date");
+  });
+
+  it("addresses the row by a DERIVED id, not a random one", async () => {
+    stub.getEntity.mockResolvedValue(rawDayNoteRow());
+
+    await handleV1Request(v1Request("PUT", "/api/v1/day-notes/2026-09-08", { body: "x" }), env);
+
+    expect(pushedEntries(stub)[0].entityId).toBe("daynote:2026-09-08");
+  });
+
+  /**
+   * Without this, every day a Raycast user merely glanced at would become a
+   * synced row and a sticky-note icon on the board.
+   */
+  it("PUT with an empty body on a day with no note writes NOTHING", async () => {
+    const res = await handleV1Request(
+      v1Request("PUT", "/api/v1/day-notes/2026-09-09", { body: "" }),
+      env,
+    );
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({ date: "2026-09-09", body: "" });
+    expect(stub.push).not.toHaveBeenCalled();
+  });
+
+  it("PUT with an empty body CLEARS an existing note", async () => {
+    stub.getEntity.mockResolvedValue(rawDayNoteRow());
+
+    await handleV1Request(v1Request("PUT", "/api/v1/day-notes/2026-09-08", { body: "" }), env);
+
+    expect(stub.push).toHaveBeenCalledTimes(1);
+    expect(pushedEntries(stub)[0].patch).toMatchObject({ body: "", deletedAt: null });
+  });
+
+  it("has no DELETE — clearing is a PUT", async () => {
+    const res = await handleV1Request(v1Request("DELETE", "/api/v1/day-notes/2026-09-08"), env);
+    expect(res.status).toBe(404);
+  });
+
+  describe("range read", () => {
+    beforeEach(() => {
+      stub.listEntities.mockResolvedValue([
+        rawDayNoteRow({ id: "daynote:2026-09-01", date: "2026-09-01", body: "a" }),
+        rawDayNoteRow({ id: "daynote:2026-09-05", date: "2026-09-05", body: "" }),
+        rawDayNoteRow({ id: "daynote:2026-09-10", date: "2026-09-10", body: "c" }),
+      ]);
+    });
+
+    const dates = async (res: Response) =>
+      ((await res.json()) as { date: string }[]).map((n) => n.date);
+
+    /** An empty body IS the deleted state — there is no tombstone — so a
+     * cleared note must not come back as a note. */
+    it("omits days whose note was cleared", async () => {
+      const res = await handleV1Request(v1Request("GET", "/api/v1/day-notes"), env);
+      await expect(dates(res)).resolves.toEqual(["2026-09-01", "2026-09-10"]);
+    });
+
+    it("applies inclusive from/to bounds", async () => {
+      const res = await handleV1Request(
+        v1Request("GET", "/api/v1/day-notes?from=2026-09-01&to=2026-09-01"),
+        env,
+      );
+      await expect(dates(res)).resolves.toEqual(["2026-09-01"]);
+    });
+
+    it("400s a malformed bound", async () => {
+      const res = await handleV1Request(v1Request("GET", "/api/v1/day-notes?from=nope"), env);
+      expect(res.status).toBe(400);
+    });
+  });
+
+  it.each([
+    ["GET", "/api/v1/day-notes", "read"],
+    ["GET", "/api/v1/day-notes/2026-09-08", "read"],
+    ["PUT", "/api/v1/day-notes/2026-09-08", "write"],
+  ])("%s %s demands %s", async (method, path, scope) => {
+    stub.getEntity.mockResolvedValue(rawDayNoteRow());
+
+    await handleV1Request(v1Request(method, path, method === "PUT" ? { body: "x" } : undefined), env);
 
     expect(authorize.mock.calls.map((c) => c[2])).toEqual([scope]);
   });

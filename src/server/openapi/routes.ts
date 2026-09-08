@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { ZodOpenApiPathsObject } from "zod-openapi";
-import { attachmentSchema, todoSchema } from "@/lib/schema";
+import { attachmentSchema, civilDateSchema, dayNoteSchema, todoSchema } from "@/lib/schema";
 import { autocompleteRequestSchema, detailsRequestSchema } from "@/server/places/validate";
 import { pushRequestSchema } from "@/server/sync/validate";
 import { contactRequestSchema } from "@/server/contact/validate";
@@ -12,6 +12,8 @@ import {
   createTabRequestSchema,
   updateLabelRequestSchema,
   updateTabRequestSchema,
+  upsertDayNoteRequestSchema,
+  dayNoteRangeSchema,
   createTodoRequestSchema,
   updateListRequestSchema,
   updateTodoRequestSchema,
@@ -994,3 +996,93 @@ export const labelAndTabItemPaths: ZodOpenApiPathsObject = Object.fromEntries(
     ];
   }),
 );
+
+/**
+ * `/api/v1/day-notes` (A16, EI-296) — one Markdown note per calendar day.
+ *
+ * Addressed by DATE, not by an opaque id, because a day note's id is derived
+ * from its date (`daynote:YYYY-MM-DD`). That is what makes `PUT` an upsert
+ * with no create/update split, and why there is no `POST`.
+ *
+ * There is deliberately **no DELETE**: clearing a note is `PUT { body: "" }`.
+ * The id is guaranteed to be recreated the next time that day is opened, so a
+ * tombstone would only buy a resurrect-vs-tombstone race.
+ */
+export const dayNotePaths: ZodOpenApiPathsObject = {
+  "/api/v1/day-notes": {
+    get: {
+      tags: ["v1"],
+      summary: "List day notes in a date range.",
+      description:
+        "Requires the `read` scope. Days with an empty note are omitted — an " +
+        "empty body is how a cleared note is stored, so it is not a note. " +
+        "Both bounds are inclusive and optional.",
+      operationId: "listV1DayNotes",
+      requestParams: { query: dayNoteRangeSchema },
+      responses: {
+        "200": {
+          description: "Day notes with content, oldest first.",
+          content: { "application/json": { schema: z.array(dayNoteSchema) } },
+        },
+        "400": {
+          description: "A bound is not a YYYY-MM-DD date.",
+          content: { "application/json": { schema: errorSchema("invalid-request") } },
+        },
+        "401": unauthenticated,
+        "403": insufficientScope,
+      },
+    },
+  },
+  "/api/v1/day-notes/{date}": {
+    get: {
+      tags: ["v1"],
+      summary: "Fetch one day's note.",
+      description:
+        "Requires the `read` scope. Every valid date is addressable: a day " +
+        "with no note answers 200 with an empty body rather than 404.",
+      operationId: "getV1DayNote",
+      requestParams: { path: z.object({ date: civilDateSchema }) },
+      responses: {
+        "200": {
+          description: "The day's note, possibly empty.",
+          content: { "application/json": { schema: dayNoteSchema } },
+        },
+        "400": {
+          description: "The path segment is not a YYYY-MM-DD date.",
+          content: { "application/json": { schema: errorSchema("invalid-request") } },
+        },
+        "401": unauthenticated,
+        "403": insufficientScope,
+      },
+    },
+    put: {
+      tags: ["v1"],
+      summary: "Write one day's note.",
+      description:
+        "Requires the `write` scope. An upsert: the note is created if that " +
+        "day has none. The body is Markdown. Writing an empty body clears " +
+        "the note — and on a day that never had one, does nothing at all.",
+      operationId: "upsertV1DayNote",
+      requestParams: { path: z.object({ date: civilDateSchema }) },
+      requestBody: {
+        content: { "application/json": { schema: upsertDayNoteRequestSchema } },
+      },
+      responses: {
+        "200": {
+          description: "The stored note.",
+          content: { "application/json": { schema: dayNoteSchema } },
+        },
+        "400": {
+          description: "Malformed date or body.",
+          content: { "application/json": { schema: errorSchema("invalid-request") } },
+        },
+        "401": unauthenticated,
+        "403": insufficientScope,
+        "500": {
+          description: "Unhandled server error.",
+          content: { "application/json": { schema: errorSchema("internal-error") } },
+        },
+      },
+    },
+  },
+};
