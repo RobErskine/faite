@@ -263,6 +263,14 @@ only** (88 tests, `npm run e2e:ci`). The other three columns are deferred to
 a local run or a `workflow_dispatch` — see §8.5 for why those two, and what
 deferring the rest gives up.
 
+### 8.1b `context-menu.spec.ts` — desktop only
+
+Not a coverage trade: right-click menus are disabled on coarse pointers by
+design (`docs/CONTEXT-MENU.md` §3), so there is nothing for the tablet or phone
+projects to assert except the negative — and that lives in
+`touch-affordances.spec.ts`, which already runs on all four of them. `desktop`
+is in the `npm run e2e:ci` gate, so the feature is covered on every PR.
+
 ### 8.2 Why each cell is empty
 
 - **`foundations` on one project.** It asserts the `<head>` viewport meta tag

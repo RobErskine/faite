@@ -376,6 +376,14 @@ device, like the rest of touch (§7).
 
 ### 4.9 The whole row drags; the grip is still a real control
 
+> **The row is also a context-menu trigger** (EI-285). `ContextMenuTrigger`
+> renders the same `<div>`, so `setNodeRef`, the drop indicator's geometry and
+> every data attribute stay on the element that already carried them. Right-click
+> cannot start a drag — dnd-kit's `MouseSensor` refuses button 2 — but macOS
+> Ctrl+click arrives as button 0 with `ctrlKey` and IS tracked, so `startsDrag()`
+> in `todo-card.tsx` refuses it. See docs/CONTEXT-MENU.md §5.
+
+
 Mouse and touch drags start anywhere on the row — `onMouseDown` and
 `onTouchStart` from `useSortable`'s listeners sit on the row element (the names
 follow the sensors; see the warning in §4.11). One thing deliberately stays on the

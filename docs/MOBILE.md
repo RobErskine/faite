@@ -241,7 +241,7 @@ everything.
 | **M1** | Touch remediation on the *existing* desktop layout — the 4 hover-only reveals, `buttonVariants`/`SelectTrigger`/tab-pill coarse sizes, checkbox/resize-handle `::after` hit areas, coarse-tuned dnd-kit sensors + haptic, guard test | **Shipped.** §3, §9, `docs/DRAG-AND-DROP.md` §4.9b. |
 | **M2** | Extract `board.tsx` (2574 lines, no `board.test.tsx`) into `use-board-data`/`use-board-ui-state`/`use-board-actions` + a `DesktopBoard` seam | **Shipped.** See docs/ARCHITECTURE.md §4. |
 | **M3** | The phone shell — scroll-snap pager, bottom segmented control (Days / Lists), compact header, `layout` (the other half of `useViewport()`) finally consumed | **Shipped.** §10. |
-| **M4** | Adaptive overlays — `adaptive-sheet.tsx` swapping `Sheet`↔`Drawer` by layout, full-screen command palette on phone, row `⋯` action sheet (there is no per-row delete today — only in the TodoSheet footer and ⌘K) | Not started |
+| **M4** | Adaptive overlays — `adaptive-sheet.tsx` swapping `Sheet`↔`Drawer` by layout, full-screen command palette on phone, row `⋯` action sheet (per-row delete now exists on desktop via the right-click menu, EI-285 — but touch has no route to it) | Not started — the desktop card menu (docs/CONTEXT-MENU.md) is this row's counterpart and does now offer a per-row delete; when M4 lands the two should share one item list |
 | **M5** | `mention-menu.tsx` → `@floating-ui/react`, BlockNote-on-touch audit | Not started |
 | **M6** | Optional: `Drawer.SwipeArea` swipe-up-for-Lists, `Drawer.Indent` | Not started |
 

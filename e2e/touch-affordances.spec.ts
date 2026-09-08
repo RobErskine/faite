@@ -1,5 +1,6 @@
 import { test, expect } from "./support/fixtures";
 import { switchToLists } from "./support/phone";
+import { longPressDrag } from "./support/touch";
 
 /**
  * Tier A coverage for P1 (docs/MOBILE.md) — the two claims that phase makes:
@@ -92,4 +93,37 @@ test.describe("touch affordances", () => {
     expect(pillBox).not.toBeNull();
     expect(pillBox!.height).toBeGreaterThanOrEqual(44);
   });
+});
+
+/**
+ * The coarse-pointer gate on right-click menus (EI-281).
+ *
+ * Long-press is already dnd-kit's lift here (400ms on a coarse pointer), and
+ * Base UI's own long-press is a hardcoded 500ms that never cancels on drag
+ * activation — so if context menus were ever enabled on touch, a still finger
+ * would get a lifted card AND a menu over it. `board.tsx` disables them via
+ * `ContextMenusEnabled value={!coarse}`; this is what notices if that goes.
+ *
+ * Held for 700ms, comfortably past both thresholds, so a menu would have had
+ * every chance to appear.
+ */
+test("a long-press opens no context menu on a touch device", async ({ page }) => {
+  // `.first()`: the visible window carries the same weekday several weeks out,
+  // so "Tuesday" names five regions.
+  const day = page.getByRole("region", { name: "Tuesday" }).first();
+  await day.getByPlaceholder("Add a to-do").fill("Held down");
+  await page.keyboard.press("Enter");
+
+  const card = page.getByRole("button", { name: "Held down", exact: true });
+  await expect(card).toBeVisible();
+
+  const box = await card.boundingBox();
+  if (!box) throw new Error("card has no box");
+  const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+
+  // Same point start and end: a press-and-hold, not a drag. dnd-kit may well
+  // lift and re-drop the card, which is fine and is not what this asserts.
+  await longPressDrag(page, point, point, { holdMs: 700, steps: 1 });
+
+  await expect(page.getByRole("menu")).toHaveCount(0);
 });
