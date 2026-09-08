@@ -84,6 +84,27 @@ const ORDER_BY_KIND = {
 
 export type ListableKind = keyof typeof ORDER_BY_KIND;
 
+/**
+ * The kinds `nextPosition()` can resolve a fractional index for — i.e. the
+ * ones that actually have a `position` column (A11, EI-291).
+ *
+ * `attachment` is in `ORDER_BY_KIND` but deliberately not here: it has no
+ * `position` column at all and no reorder UI, which is exactly why it sorts
+ * by `created_at, id` above.
+ *
+ * Values are interpolated into SQL, so — same rule as `ORDER_BY_KIND` — they
+ * must stay literal table names written in this file and can never derive
+ * from anything a request supplies.
+ */
+const POSITION_TABLE_BY_KIND = {
+  todo: "todos",
+  list: "lists",
+  label: "labels",
+  tab: "tabs",
+} as const;
+
+export type PositionableKind = keyof typeof POSITION_TABLE_BY_KIND;
+
 // The sweep's judgment calls live in `./attachments/sweep.ts` — pure, and
 // therefore testable without SQLite, R2, or an alarm. What stays here is the
 // mechanical half: run the query, delete, stamp.
@@ -431,6 +452,37 @@ export class UserDurableObject extends DurableObject {
   }
 
   /**
+   * `nextTodoPosition()` generalized to every kind that has a `position`
+   * column (A11, EI-291) — needed because `POST /api/v1/{lists,labels,tabs}`
+   * has the same problem `POST /todos` had: a caller with no board in front
+   * of it has no sibling positions to index between.
+   *
+   * Mirrors the client's `nextListPosition`/`nextLabelPosition`/
+   * `nextTabPosition` (`store/repositories.ts`), which all resolve exactly
+   * the way `nextTodoPosition` does — including both parts that read like
+   * bugs, and for the reasons that method's doc comment already gives: the
+   * max is **global, not scoped**, and **tombstones are included**. Matching
+   * the client is the point; see there for why the tombstone half is also
+   * the safer half.
+   *
+   * `nextTodoPosition()` is kept rather than folded into this: `email/
+   * ingest.ts` and `v1/routes.ts` already call it, and it needs no
+   * per-literal wrapper at those call sites.
+   *
+   * Read-only — allocates no `version`, writes no `field_clocks`. The write
+   * that uses the result still goes through `push()`.
+   */
+  async nextPosition(kind: PositionableKind): Promise<string> {
+    const tableName = POSITION_TABLE_BY_KIND[kind];
+    // Interpolated, never bound — see `POSITION_TABLE_BY_KIND`. SQLite does
+    // not accept a bound parameter for a table name anyway.
+    const [row] = this.ctx.storage.sql
+      .exec<{ position: string }>(`SELECT position FROM ${tableName} ORDER BY position DESC LIMIT 1`)
+      .toArray();
+    return positionAtEnd(row?.position ?? null);
+  }
+
+  /**
    * A durable, collision-free HLC for a server-originated UPDATE (A4,
    * EI-229) — `serverHlcClock`'s in-memory mode is only safe for creates
    * (see that file's header). This is the other mode: `server_last_hlc` in
@@ -486,6 +538,43 @@ export class UserDurableObject extends DurableObject {
       .exec(`SELECT * FROM ${tableName} WHERE deleted_at IS NULL ORDER BY ${orderBy}`)
       .toArray();
     return rows.map((row) => rowFromSqlRow(kind, row));
+  }
+
+  /**
+   * One non-deleted row of any listable kind, by id, or `null` (A11,
+   * EI-291). `getTodo()` generalized — and needed for the same two jobs, now
+   * across five kinds:
+   *
+   * - **404 BEFORE building a push entry.** A patch for an unknown id is
+   *   still accepted by `push()`, which INSERTs it with `FIELD_DEFAULTS`
+   *   placeholders and no `field_clocks` row — the EI-68 mechanism. See
+   *   `getTodo`'s own doc comment for the full reasoning; it applies
+   *   verbatim to lists, labels and tabs.
+   * - **Re-read after a successful push**, so the response body is the row
+   *   in storage rather than a reconstruction of the request. Those differ
+   *   whenever `resolveEntityPush`'s LWW comparison rejects a field.
+   *
+   * A soft-deleted row returns `null`: none of these routes has a writable
+   * `deletedAt`, so there is no way to un-delete through them, and "the
+   * resource is gone" is the more correct REST answer than patching a
+   * tombstone's other fields.
+   *
+   * `getTodo()` and `getAttachment()` are both kept — each has existing
+   * callers, and `getAttachment` additionally serves the bytes route, which
+   * re-checks ownership for a reason its own comment gives.
+   *
+   * Returns the raw camelCase row including `version`, exactly as
+   * `listEntities` does. Callers run it through the entity's own Zod schema,
+   * which strips `version` by never having declared it.
+   */
+  async getEntity(kind: ListableKind, id: string): Promise<Record<string, unknown> | null> {
+    const tableName = TABLE_NAME_BY_KIND[kind];
+    // Interpolated, never bound — module-level constant keyed by a union
+    // type, so it cannot carry request input. `id` IS bound.
+    const [row] = this.ctx.storage.sql
+      .exec(`SELECT * FROM ${tableName} WHERE id = ? AND deleted_at IS NULL`, id)
+      .toArray();
+    return row ? rowFromSqlRow(kind, row) : null;
   }
 
   /**

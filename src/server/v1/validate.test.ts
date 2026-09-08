@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { parseCreateTodoRequest, parseUpdateTodoRequest } from "./validate";
+import { listSchema, tabSchema } from "@/lib/schema";
+import { parseCreateTodoRequest, parsePatchRequest, parseUpdateTodoRequest } from "./validate";
 
 describe("parseCreateTodoRequest", () => {
   it("accepts a minimal request — just a title, every optional field defaulted", () => {
@@ -118,5 +119,58 @@ describe("parseUpdateTodoRequest", () => {
     expect(parseUpdateTodoRequest({ completedAt: "2026-08-20T12:00:00.000Z" })).toEqual({
       completedAt: "2026-08-20T12:00:00.000Z",
     });
+  });
+});
+
+/**
+ * REGRESSION (A11, EI-291). `parseUpdateTodoRequest` is now a wrapper over the
+ * generic `parsePatchRequest`, which A14/A15 reuse for lists, labels and tabs.
+ * These assert the extraction actually generalizes — i.e. that the dynamic
+ * mask still suppresses `.default()` on a schema OTHER than `todoSchema`.
+ *
+ * The stakes are higher here than for todos. A static
+ * `listSchema.partial().parse({ name })` returns EVERY field at its default,
+ * including `isBacklog: false` — which, pushed at the Backlog list, leaves the
+ * account with no backlog at all, a delete guard that never fires again, and
+ * homeless todos with nowhere to land. `tabSchema.isDefault` is the same shape.
+ */
+describe("parsePatchRequest generalizes beyond todos", () => {
+  const LIST_FIELDS = new Set(["name", "color", "emoji", "description", "tabId", "archivedAt"]);
+  const TAB_FIELDS = new Set(["name", "color", "emoji", "description", "archivedAt"]);
+
+  it("a rename patch on a list does NOT expand to isBacklog: false", () => {
+    const patch = parsePatchRequest(listSchema, LIST_FIELDS, { name: "Errands" });
+
+    expect(patch).toEqual({ name: "Errands" });
+    expect(patch).not.toHaveProperty("isBacklog");
+    expect(patch).not.toHaveProperty("color");
+    expect(patch).not.toHaveProperty("tabId");
+  });
+
+  it("a rename patch on a tab does NOT expand to isDefault: false", () => {
+    const patch = parsePatchRequest(tabSchema, TAB_FIELDS, { name: "Work" });
+
+    expect(patch).toEqual({ name: "Work" });
+    expect(patch).not.toHaveProperty("isDefault");
+    expect(patch).not.toHaveProperty("archivedAt");
+  });
+
+  it("drops keys outside the updatable allow-list, so a server-owned field can't be reached", () => {
+    // `isBacklog` is never in a route's `updatable` set — naming it explicitly
+    // must not smuggle it through, and must not count toward "non-empty".
+    expect(parsePatchRequest(listSchema, LIST_FIELDS, { isBacklog: true })).toBeNull();
+    expect(parsePatchRequest(listSchema, LIST_FIELDS, { name: "Errands", isBacklog: true })).toEqual({
+      name: "Errands",
+    });
+  });
+
+  it("still rejects malformed and empty bodies", () => {
+    expect(parsePatchRequest(listSchema, LIST_FIELDS, null)).toBeNull();
+    expect(parsePatchRequest(listSchema, LIST_FIELDS, "nope")).toBeNull();
+    expect(parsePatchRequest(listSchema, LIST_FIELDS, {})).toBeNull();
+  });
+
+  it("still rejects a well-formed key carrying the wrong type", () => {
+    expect(parsePatchRequest(listSchema, LIST_FIELDS, { name: 42 })).toBeNull();
   });
 });

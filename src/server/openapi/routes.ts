@@ -4,7 +4,7 @@ import { attachmentSchema, todoSchema } from "@/lib/schema";
 import { autocompleteRequestSchema, detailsRequestSchema } from "@/server/places/validate";
 import { pushRequestSchema } from "@/server/sync/validate";
 import { contactRequestSchema } from "@/server/contact/validate";
-import { V1_RESOURCES } from "@/server/v1/routes";
+import { V1_RESOURCES } from "@/server/v1/resources";
 import { createTodoRequestSchema, updateTodoRequestSchema } from "@/server/v1/validate";
 import { SYNC_KINDS } from "@/lib/sync/wire";
 

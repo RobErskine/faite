@@ -1,4 +1,4 @@
-import { attachmentSchema, labelSchema, listSchema, tabSchema, todoSchema } from "@/lib/schema";
+import { todoSchema } from "@/lib/schema";
 import type { ServiceContext } from "@/lib/service/context";
 import { createAuth } from "../auth";
 import { authorizeScope } from "../auth-scopes";
@@ -6,6 +6,7 @@ import { corsHeaders, handleOptions } from "../cors";
 import { durableHlcQueue } from "../service/hlc";
 import { createTodo, pushTransportFor, updateTodo } from "../service/todos";
 import type { UserDurableObject } from "../user-do";
+import { V1_RESOURCES, type V1Kind } from "./resources";
 import { parseCreateTodoRequest, parseUpdateTodoRequest } from "./validate";
 
 /**
@@ -35,26 +36,6 @@ import { parseCreateTodoRequest, parseUpdateTodoRequest } from "./validate";
  * the P4 broadcast wakes every connected device for free.
  */
 
-const KIND_BY_PATH = {
-  todos: { kind: "todo", schema: todoSchema },
-  lists: { kind: "list", schema: listSchema },
-  labels: { kind: "label", schema: labelSchema },
-  tabs: { kind: "tab", schema: tabSchema },
-  /**
-   * Read-only, and read-only on purpose (EI-242). A write here would have to
-   * carry file bytes, and this API is JSON — uploads go to
-   * `POST /api/attachments`, which is browser/session-only in v1.
-   *
-   * Each row carries the `id` a consumer needs to fetch the file itself:
-   * `GET /api/attachments/{id}`. That URL is deliberately NOT a field on the
-   * row — the dispatch below returns `schema.parse(row)` verbatim and has
-   * nowhere to inject a derived value, and a stored URL column would be a
-   * second thing to keep true. See `docs/API.md`.
-   */
-  attachments: { kind: "attachment", schema: attachmentSchema },
-} as const;
-
-type V1Kind = (typeof KIND_BY_PATH)[keyof typeof KIND_BY_PATH]["kind"];
 
 function json(body: unknown, status: number, headers: HeadersInit): Response {
   return Response.json(body, { status, headers });
@@ -168,8 +149,8 @@ export async function handleV1Request(request: Request, env: CloudflareEnv): Pro
   const auth0 = createAuth(env, request);
 
   try {
-    const segment = url.pathname.slice("/api/v1/".length) as keyof typeof KIND_BY_PATH;
-    const resource = KIND_BY_PATH[segment];
+    const segment = url.pathname.slice("/api/v1/".length) as keyof typeof V1_RESOURCES;
+    const resource = V1_RESOURCES[segment];
 
     if (resource && request.method === "GET") {
       const auth = await authorizeScope(auth0, request, "read");
@@ -208,6 +189,10 @@ export async function handleV1Request(request: Request, env: CloudflareEnv): Pro
   }
 }
 
-/** Exported for `openapi/routes.ts` — one source of the resource names and
- * their response schemas, so the docs can't drift from the dispatch. */
-export const V1_RESOURCES = KIND_BY_PATH;
+/**
+ * Re-exported for one release so nothing breaks mid-refactor (A11, EI-291).
+ * The map itself now lives in `./resources`, and `openapi/routes.ts` imports
+ * it from there — see that file's header for why the doc generator must not
+ * load this one.
+ */
+export { V1_RESOURCES } from "./resources";
