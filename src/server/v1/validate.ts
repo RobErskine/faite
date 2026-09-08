@@ -56,33 +56,69 @@ export const updateTodoRequestSchema = todoSchema
 export type UpdateTodoRequest = z.infer<typeof updateTodoRequestSchema>;
 
 /**
- * `null` for "malformed" (400) as well as "well-formed but empty" — an empty
- * patch is never a valid PATCH, same rule `buildUpdateTodoEntry` enforces.
+ * The shared PATCH parser (A11, EI-291). Returns `null` for "malformed"
+ * (400) as well as "well-formed but empty" — an empty patch is never a valid
+ * PATCH, the same rule `buildUpdateTodoEntry` enforces.
  *
- * Builds its `.pick()` mask from the keys ACTUALLY PRESENT in `body` —
- * exactly `buildUpdateTodoEntry`'s own pattern, and for the identical
- * reason its comment gives: every `todoSchema` field carries a Zod
- * `.default(...)`, and `.default()` fires for any key Zod's parser
- * considers ABSENT regardless of whether `.partial()` made it optional. A
- * static `todoSchema.pick(ALL_FIELDS).partial()` — this file's FIRST
- * version, caught by this file's own tests before it ever shipped — silently
- * expanded `{ status: "done" }` into a patch touching all thirteen other
- * fields, each reset to its schema default. Sent to `push()`, that would
- * have overwritten a todo's title, description, dates, and list, the exact
- * "the API's write vanishes and looks like a sync bug" failure `docs/API.md`
- * warns a real write-vs-database-write confusion produces — except louder,
- * since here it wouldn't even vanish, it would actively clobber.
+ * **Builds its `.pick()` mask from the keys ACTUALLY PRESENT in `body`**,
+ * rather than from a static `.partial()` schema. That is not a style
+ * preference; it is the whole reason this function exists.
+ *
+ * Every field on these schemas carries a Zod `.default(...)`, and
+ * `.default()` fires for any key Zod's parser considers ABSENT — regardless
+ * of whether `.partial()` made it optional (`.ai/lessons.md`, "A Zod field
+ * with `.default()` fires on ANY absent key"). A static
+ * `todoSchema.pick(ALL_FIELDS).partial()` — this file's FIRST version,
+ * caught by this file's own tests before it ever shipped — silently expanded
+ * `{ status: "done" }` into a patch touching all thirteen other fields, each
+ * reset to its schema default. Sent to `push()`, that would have overwritten
+ * a todo's title, description, dates, and list: the exact "the API's write
+ * vanishes and looks like a sync bug" failure `docs/API.md` warns about,
+ * except louder, since it wouldn't vanish, it would actively clobber.
+ *
+ * **The exposure is worse on the entities A14/A15 add.** `listSchema` has
+ * `isBacklog: z.boolean().default(false)`, so a static-`.partial()` PATCH
+ * that merely renamed a list would also set `isBacklog: false` on the
+ * Backlog list — leaving that account with no backlog, a delete guard that
+ * never fires again, and homeless todos with nowhere to land. `tabSchema`
+ * has the identical shape via `isDefault`. Extracting this once, rather than
+ * hand-writing the mask per entity, is what keeps that from being rediscovered
+ * four more times.
+ *
+ * `updatable` is the allow-list of field names a given route accepts; keys
+ * outside it are dropped before the mask is built, so a caller can never
+ * reach a server-owned field (`id`, `ownerId`, `position`, `deletedAt`) by
+ * naming it.
  */
-export function parseUpdateTodoRequest(body: unknown): UpdateTodoRequest | null {
+export function parsePatchRequest<S extends z.ZodObject<z.ZodRawShape>>(
+  schema: S,
+  updatable: ReadonlySet<string>,
+  body: unknown,
+): Partial<z.infer<S>> | null {
   if (typeof body !== "object" || body === null) return null;
 
-  const keys = Object.keys(body).filter((key) => UPDATABLE_FIELDS.has(key));
+  const keys = Object.keys(body).filter((key) => updatable.has(key));
   if (keys.length === 0) return null;
 
-  const mask = Object.fromEntries(keys.map((key) => [key, true])) as Record<
-    keyof UpdateTodoRequest,
-    true
-  >;
-  const parsed = todoSchema.pick(mask).safeParse(body);
-  return parsed.success ? (parsed.data as UpdateTodoRequest) : null;
+  // The mask is built at RUNTIME from the request's own keys, so its type is
+  // `Record<string, true>` — while Zod v4's `.pick()` wants a mask whose keys
+  // are STATICALLY known to be a subset of the schema's shape. A dynamic mask
+  // can never satisfy that, so cast at this one boundary rather than weaken
+  // the signature or hand-write the mask per entity (which is the thing this
+  // function exists to prevent). Nothing is lost: `updatable` already
+  // guarantees every surviving key names a real field, and `safeParse`
+  // re-checks every VALUE against the real schema either way.
+  const mask = Object.fromEntries(keys.map((key) => [key, true])) as Record<string, true>;
+  const picked = (schema as unknown as {
+    pick(mask: Record<string, true>): z.ZodObject<z.ZodRawShape>;
+  }).pick(mask);
+
+  const parsed = picked.safeParse(body);
+  return parsed.success ? (parsed.data as Partial<z.infer<S>>) : null;
+}
+
+/** `PATCH /api/v1/todos/{id}`. See `parsePatchRequest` for why the mask is
+ * dynamic — this is a three-line wrapper over it, not its own algorithm. */
+export function parseUpdateTodoRequest(body: unknown): UpdateTodoRequest | null {
+  return parsePatchRequest(todoSchema, UPDATABLE_FIELDS, body) as UpdateTodoRequest | null;
 }
