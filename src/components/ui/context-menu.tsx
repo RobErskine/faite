@@ -4,6 +4,7 @@ import * as React from "react"
 import { ContextMenu as ContextMenuPrimitive } from "@base-ui/react/context-menu"
 
 import { cn } from "@/lib/utils"
+import { useMenuOpenRegistration } from "@/lib/menu-open-store"
 import { ChevronRightIcon, CheckIcon } from "lucide-react"
 
 /**
@@ -66,9 +67,30 @@ function ContextMenusEnabled({
  * `handleTouchStart`, so one flag closes off right-click and long-press
  * together and callers never have to think about the two paths separately.
  */
-function ContextMenu({ disabled, ...props }: ContextMenuPrimitive.Root.Props) {
+function ContextMenu({
+  disabled,
+  onOpenChange,
+  ...props
+}: ContextMenuPrimitive.Root.Props) {
   const enabled = React.useContext(ContextMenusEnabledContext)
-  return <ContextMenuPrimitive.Root disabled={disabled || !enabled} {...props} />
+  /*
+    Every context menu reports itself to the open store, so `computeModalOpen`
+    can hold board hotkeys off without a callback prop on every card. Done here
+    rather than at each call site precisely so a menu added later cannot forget
+    — see `menu-open-store.ts` for why ⌘Z behind an open menu is the failure
+    that matters.
+  */
+  const register = useMenuOpenRegistration()
+  return (
+    <ContextMenuPrimitive.Root
+      disabled={disabled || !enabled}
+      onOpenChange={(open, details) => {
+        register(open)
+        onOpenChange?.(open, details)
+      }}
+      {...props}
+    />
+  )
 }
 
 function ContextMenuPortal({ ...props }: ContextMenuPrimitive.Portal.Props) {

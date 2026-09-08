@@ -48,6 +48,8 @@ import { DesktopBoard, type ReadyBoardData } from "./desktop-board";
 import { PhoneBoard } from "./phone-board";
 import { setDayNote } from "@/lib/store/repositories";
 import { boardDragAnnouncements } from "@/lib/dnd-announcements";
+import { useAnyMenuOpen } from "@/lib/menu-open-store";
+import { ContextMenusEnabled } from "@/components/ui/context-menu";
 
 /**
  * Pass A/B/C of `board.tsx`'s extraction (docs/ARCHITECTURE.md, mobile plan
@@ -250,6 +252,13 @@ export function Board() {
     jumpToIndex,
   });
 
+  /*
+    Any open right-click menu counts as a modal. Subscribed here and nowhere
+    else: the store is module-level, so one subscription re-renders the shell
+    while the cards stay untouched. See `lib/menu-open-store.ts`.
+  */
+  const contextMenuOpen = useAnyMenuOpen();
+
   const guardContext = {
     dragging: ui.dragging,
     modalOpen: computeModalOpen({
@@ -263,6 +272,7 @@ export function Board() {
       overdriveSource: ui.overdriveSource,
       helpSheetOpen: ui.helpSheetOpen,
       activityOpen: ui.activityOpen,
+      contextMenuOpen,
     }),
   };
 
@@ -307,7 +317,15 @@ export function Board() {
   }
 
   return (
-    <>
+    /*
+      Context menus are a fine-pointer affordance only (EI-282). On a
+      touch-primary device long-press is already dnd-kit's lift at 400ms, and
+      Base UI's own long-press is a hardcoded 500ms that never cancels on drag
+      activation — so a still finger would get a lifted card AND a menu over
+      it. docs/GESTURES.md has the argument; MOBILE.md's M4 row sheet is the
+      phone's counterpart.
+    */
+    <ContextMenusEnabled value={!coarse}>
     <DndContext
       sensors={actions.sensors}
       collisionDetection={actions.collisionDetection}
@@ -637,7 +655,7 @@ export function Board() {
       onVerdict={actions.handleOverdriveVerdict}
       autoConfirmMs={data.settings?.overdriveAutoConfirmMs ?? 0}
     />
-    </>
+    </ContextMenusEnabled>
   );
 }
 

@@ -27,6 +27,7 @@ const CLOSED: BoardOverlayState = {
   overdriveSource: null,
   helpSheetOpen: false,
   activityOpen: false,
+  contextMenuOpen: false,
 };
 
 /** The "open" value for each field — `true` for booleans, a sentinel string for the rest. */
@@ -41,6 +42,7 @@ const OPEN_VALUE: { [K in keyof BoardOverlayState]: BoardOverlayState[K] } = {
   overdriveSource: OVERFLOW,
   helpSheetOpen: true,
   activityOpen: true,
+  contextMenuOpen: true,
 };
 
 describe("computeModalOpen", () => {
