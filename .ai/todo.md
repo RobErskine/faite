@@ -3005,3 +3005,71 @@ landed on the first.
 
 **Measured.** Verify green (157 files, 2432 tests). Gate green: 114 passed, 0
 flaky. Eager JS 346.0 KB gz; three.js still 0.0 KB eager.
+
+## EI-273 — the homepage merges, and the stack does not (2026-09-07)
+
+The homepage is on `main`. The code landed exactly as reviewed; the *history*
+did not, and that half is the part worth writing down.
+
+### What shipped
+
+Three movements in `src/app/page.tsx`: the board, the room, the board.
+Six beats, each one a `STORY_BEATS` row that the camera, the copy, the ticking
+card and the room's own animation all read from — the single-table design from
+the EI-280 entries above, carried through to the end.
+
+`/spike-3d` is gone. `docs/CONTENT.md` and `src/lib/spelling.test.ts` (EI-279)
+came along for the ride.
+
+### The merge
+
+Six stacked PRs: #90 (EI-274) at the base, then #91, #92, #93, #94, #95 each
+based on the one below. Merging the base with `--delete-branch` did three
+things at once and only one of them was wanted — it squashed EI-274 onto
+`main` (**rewriting** the commit every branch above it carried), deleted
+`rob/ei-274-…`, and therefore made GitHub **close** #91 rather than retarget
+it. #93 went the same way. #92, whose base still existed, merged into
+`rob/ei-275` instead of `main`.
+
+A closed PR whose base branch has been deleted cannot be reopened and cannot
+be retargeted. The replacement, #97, conflicted immediately — for the same
+rewrite — and no CI run ever fired on it.
+
+### The recovery
+
+Stop merging; rebuild the stack as one branch.
+
+```
+git rebase --onto origin/main <ei-274-tip>
+```
+
+That replayed the 15 remaining commits onto the new `main` and dropped the
+duplicated EI-274 work. The branch's own CI never completed, so the thing that
+made it safe to merge was a tree comparison rather than a green check:
+
+```
+git diff --stat d2e4e77 abd87c8   # empty
+```
+
+`d2e4e77` is the commit CI had already passed both `verify` and `e2e` on. An
+empty diff against it means the rebased tree is byte-identical to a tested
+one. Merged as #96.
+
+### Where that leaves `main`
+
+```
+6d18949 feat(EI-280): the paint beat acts out its to-do, and sets the pattern (#96)
+3056cf5 feat(EI-274): the homepage hero is the board itself (#90)
+```
+
+Two squash commits, not one per ticket. PRs #91, #93, #94, #95 and #97 are
+closed rather than merged; their content is in #96. Nothing was lost except
+the per-ticket commit trail, and the Linear tickets carry the per-ticket notes
+instead.
+
+`verify` on `6d18949`: green. `e2e` is skipped on pushes to `main` by design
+(see the comment on the job) — the suite ran on the identical tree.
+
+The rule this produced is in `.ai/lessons.md`: retarget every child PR to
+`main` before merging its parent, and never `--delete-branch` out from under
+one.

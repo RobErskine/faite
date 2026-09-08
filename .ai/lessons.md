@@ -1322,3 +1322,37 @@ trusting a failure downstream of it. One `page.evaluate` reading the media
 query is the difference between "the feature is broken" and "the harness never
 applied the setting". And when the emulation cannot be trusted, look for a
 lever that puts the code in the same branch by a route you control.
+
+## `--delete-branch` on a stacked PR closes its children (EI-273)
+
+The homepage shipped as six stacked PRs — #90 (EI-274) at the base, then #91,
+#92, #93, #94, #95, each based on the one below it. Merging the base with
+`gh pr merge 90 --squash --delete-branch` did three things at once, only one
+of which was intended:
+
+1. It squashed EI-274 onto `main`, **rewriting** that commit — so every branch
+   stacked above it now contained a duplicate of the same work with a
+   different hash, and each one conflicted on the next merge.
+2. It deleted `rob/ei-274-…`, which was the **base branch** of #91.
+3. GitHub therefore **closed** #91 rather than retargeting it. The same
+   happened to #93 further up. #92, whose base was still alive, merged
+   into `rob/ei-275` — not into `main`.
+
+A closed PR whose base branch no longer exists cannot be reopened and cannot
+be retargeted. Five PRs were unrecoverable as PRs; only their commits
+survived. The replacement, #97, conflicted immediately for reason (1), and
+CI never fired on it at all.
+
+What worked was to stop merging and rebuild the stack as one branch:
+`git rebase --onto origin/main <ei-274-tip>` replayed the 15 remaining
+commits onto the new `main` and dropped the duplicated EI-274 work. Before
+merging that, the rebased tree was proved **identical** to the last commit CI
+had actually passed — `git diff --stat d2e4e77 abd87c8`, empty output — which
+is what made it safe to merge a branch whose own CI run had never completed.
+
+**Rule:** never pass `--delete-branch` to a PR that has another PR based on
+it. Retarget every child to `main` first (`gh pr edit <n> --base main`), then
+merge, then delete. And when a squash rewrites a commit that other branches
+carry, do not try to merge the stack forward one PR at a time — rebase the
+whole remainder onto `main` in one move and verify the resulting tree against
+a commit CI has already blessed.
