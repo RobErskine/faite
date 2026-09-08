@@ -166,6 +166,45 @@ about to act on, before it acts.
 
 ---
 
+## 5b. Keyboard chords in the menu
+
+The card menu renders `⌘↵` / `⌘⌫` / `⇧⌘⌫` beside Mark done / Won't do / Delete,
+and **binds them on the menu content itself** (EI-289).
+
+Binding is not optional. While a menu is open, `contextMenuOpen` holds every
+board hotkey off (§4) and the sheet's own handler is not mounted — so nothing
+else in the app could catch these. A rendered hint with nothing behind it would
+simply be a lie.
+
+They are not new shortcuts. The same three chords already mean the same three
+things in `todo-sheet.tsx` and the ⌘K palette; the menu is a third surface
+agreeing with two, and it makes them *discoverable* — the `?` sheet was
+previously the only place they appeared.
+
+**Modifiers only, and this is forced.** Base UI's Menu runs `useTypeahead`
+(`menu/root/MenuRoot.js`), so bare letters inside an open menu already jump to
+matching items. Binding `D` to Delete would fight it. Linear's own menus show
+only modified chords for the same reason. That also rules out numbering the
+Reschedule submenu.
+
+The handler mirrors `todo-sheet.tsx`'s `handleSheetKeyDown` — bail on
+`defaultPrevented`, require exactly one of Ctrl/Meta and never Alt — plus one
+thing the sheet does not need: `stopPropagation()` as well as
+`preventDefault()`, because Base UI's own Enter handler activates whichever
+item is highlighted, and a `⌘↵` aimed at "Mark done" would otherwise ALSO run
+whatever the arrow keys last landed on. Dismissal goes through
+`ContextMenu.Root`'s `actionsRef`.
+
+**The chord is part of each item's accessible name**, not `aria-hidden` —
+matching `DropdownMenuShortcut` — so a screen reader announces "Mark done,
+Ctrl+Enter". The cost is that exact-name test selectors no longer match; use a
+prefix regex.
+
+The list and tab menus deliberately get none: Archive and Delete there have no
+existing chord, so adding one would be invention rather than reinforcement.
+
+---
+
 ## 6. Why there is no action registry
 
 `command-registry.ts` is data because its rows are homogeneous and a second

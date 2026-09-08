@@ -46,6 +46,24 @@ describe("HelpSheet", () => {
     expect(screen.getByText("Mark the current card done")).toBeTruthy();
   });
 
+  /**
+   * The `?` sheet is the only place a user can go LOOKING for a shortcut, so
+   * the context menu's chords have to reach it (EI-289). They do so purely by
+   * being in `shortcuts.ts` — nothing in this component names them — which is
+   * exactly why it is worth asserting rather than assuming.
+   */
+  it("lists the card context menu's chords under To-do card", () => {
+    render(<HelpSheet open onOpenChange={() => {}} hotkeys={HOTKEYS} />);
+    expect(screen.getByText("To-do card")).toBeTruthy();
+    expect(
+      screen.getByText("Mark done (or reopen) from the card's context menu"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("Mark won't do from the card's context menu"),
+    ).toBeTruthy();
+    expect(screen.getByText("Delete from the card's context menu")).toBeTruthy();
+  });
+
   it("renders combos through formatCombo, not a raw combo string", () => {
     render(<HelpSheet open onOpenChange={() => {}} hotkeys={HOTKEYS} />);
     // "mod+k" must never appear literally — it should render as a platform glyph.

@@ -10,6 +10,8 @@ import {
   ContextMenuSubContent,
   ContextMenuSubTrigger,
 } from "@/components/ui/context-menu";
+import { formatCombo } from "@/lib/keyboard";
+import { usePlatform } from "@/lib/use-platform";
 import { quickRescheduleOptions } from "@/lib/quick-reschedule";
 import { formatDay, formatShortDate, type PlacementContext } from "@/lib/scheduling";
 import type { CivilDate, Todo } from "@/lib/schema";
@@ -51,6 +53,9 @@ interface TodoCardMenuProps {
    * to infer it from the highlight.
    */
   selectionCount?: number;
+  /** Dismiss the menu after a chord fires — clicking an item closes it on its
+   * own, but a keyboard shortcut has to say so. */
+  close: () => void;
 }
 
 /** "Sat, Aug 15" — the resolved date beside a reschedule row. */
@@ -64,7 +69,9 @@ export function TodoCardMenu({
   onOpen,
   actions,
   selectionCount = 1,
+  close,
 }: TodoCardMenuProps) {
+  const platform = usePlatform();
   const many = selectionCount > 1;
   /** Suffix rather than pluralized nouns: "Delete 3" beats "Delete 3 to-dos"
    * in a menu, and stays honest when the count is 1 by vanishing entirely. */
@@ -79,8 +86,53 @@ export function TodoCardMenu({
   */
   const rescheduleOptions = quickRescheduleOptions(ctx.today);
 
+  const toggleStatus: Todo["status"] = todo.status === "open" ? "done" : "open";
+
+  /**
+   * The three chords, bound HERE rather than shown and left to something else
+   * (EI-289).
+   *
+   * Nothing else can catch them while a menu is open: board hotkeys are held
+   * off by `contextMenuOpen` in `computeModalOpen` (EI-284), and the sheet's
+   * own handler is not mounted. A hint rendered without this would simply be
+   * a lie.
+   *
+   * Same three chords, same meanings, and the same "local, not a registry
+   * entry" reasoning as `todo-sheet.tsx`'s `handleSheetKeyDown` — they are
+   * meaningless with no menu open, and `GuardContext` has no per-surface
+   * discriminator to scope a global entry with.
+   */
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.defaultPrevented) return;
+    // Exactly one of Ctrl/Meta, never both, never Alt — the rule
+    // `hasExactModifiers` enforces for the global registry, hand-checked here
+    // because that helper only serves the registry.
+    const modOnly = e.metaKey !== e.ctrlKey && !e.altKey;
+    if (!modOnly) return;
+
+    const fire = (run: () => void) => {
+      // `stopPropagation` as well as `preventDefault`: Base UI's own Enter
+      // handler activates whichever item is highlighted, and without this a
+      // ⌘↵ aimed at "Mark done" would ALSO run whatever the arrow keys had
+      // last landed on.
+      e.preventDefault();
+      e.stopPropagation();
+      run();
+      close();
+    };
+
+    if (e.key === "Enter" && !e.shiftKey) {
+      fire(() => actions.onStatus(todo, toggleStatus));
+      return;
+    }
+    if (e.key === "Backspace") {
+      if (e.shiftKey) fire(() => actions.onDelete(todo));
+      else fire(() => actions.onStatus(todo, "dropped"));
+    }
+  };
+
   return (
-    <ContextMenuContent>
+    <ContextMenuContent onKeyDown={handleKeyDown}>
       {/* Opening is about one card by definition, so it steps aside for a batch. */}
       {!many && (
         <>
@@ -94,16 +146,18 @@ export function TodoCardMenu({
 
       <ContextMenuItem
         onClick={() =>
-          actions.onStatus(todo, todo.status === "open" ? "done" : "open")
+          actions.onStatus(todo, toggleStatus)
         }
       >
         <Check />
         {todo.status === "open" ? `Mark${n} done` : `Mark${n} not done`}
+        <ContextMenuShortcut>{formatCombo("mod+enter", platform)}</ContextMenuShortcut>
       </ContextMenuItem>
 
       <ContextMenuItem onClick={() => actions.onStatus(todo, "dropped")}>
         <Ban />
         {`Won't do${n}`}
+        <ContextMenuShortcut>{formatCombo("mod+backspace", platform)}</ContextMenuShortcut>
       </ContextMenuItem>
 
       <ContextMenuSeparator />
@@ -131,6 +185,9 @@ export function TodoCardMenu({
       <ContextMenuItem variant="destructive" onClick={() => actions.onDelete(todo)}>
         <Trash2 />
         {`Delete${n}`}
+        <ContextMenuShortcut>
+          {formatCombo("shift+mod+backspace", platform)}
+        </ContextMenuShortcut>
       </ContextMenuItem>
     </ContextMenuContent>
   );

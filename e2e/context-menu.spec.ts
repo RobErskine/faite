@@ -132,6 +132,54 @@ test.describe("to-do card menu", () => {
     await expect(page.getByRole("menuitem", { name: "Mark done" })).toBeVisible();
   });
 
+  /**
+   * The chords the menu advertises (EI-289).
+   *
+   * `multi-drag.spec.ts` documents that ⌘Z does not fire in this harness at
+   * all, so a modifier chord reaching a handler cannot be assumed here. This
+   * is a POSITIVE assertion for exactly that reason: if the to-do ends up
+   * dropped, the chord genuinely arrived. A "nothing happened" test would be
+   * indistinguishable from the harness swallowing the key.
+   */
+  test("mod+Backspace marks won't do and closes the menu", async ({ page }) => {
+    await seedBacklog(page, ["Water the plants"]);
+    await row(page, "Water the plants").click({ button: "right" });
+    await expect(page.getByRole("menu")).toBeVisible();
+    // Visible is not yet focused. Base UI moves focus to the popup a tick
+    // after it mounts, and a chord pressed before that lands on the document
+    // instead — lessons L421, and the reason this test failed once already.
+    await page.waitForTimeout(250);
+
+    await page.keyboard.press(`${MOD}+Backspace`);
+
+    await expect(page.getByRole("menu")).toBeHidden();
+    // Dropped, so it leaves the default (open-only) view.
+    await expect(card(page, "Water the plants")).toBeHidden();
+    await expect(page.getByRole("button", { name: "Undo" })).toBeVisible();
+  });
+
+  test("shows each chord beside its item", async ({ page }) => {
+    await seedBacklog(page, ["Water the plants"]);
+    await row(page, "Water the plants").click({ button: "right" });
+
+    /*
+      Derived, not hardcoded. `formatCombo` renders Mac glyphs or spelled
+      names depending on `detectPlatform()`, which reads `navigator` — so this
+      is "⌘↵" on a developer's Mac and "Ctrl+Enter" on CI's Linux runner.
+      Asserting either literal makes the test pass on one machine and fail on
+      the other. This mirrors detectPlatform's own check.
+    */
+    const isMac = await page.evaluate(() =>
+      /mac|iphone|ipad/i.test(navigator.platform || navigator.userAgent),
+    );
+    await expect(page.getByRole("menuitem", { name: /^Mark done/ })).toContainText(
+      isMac ? "⌘↵" : "Ctrl+Enter",
+    );
+    await expect(page.getByRole("menuitem", { name: /^Delete/ })).toContainText(
+      isMac ? "⇧⌘⌫" : "Ctrl+Shift+Backspace",
+    );
+  });
+
   test("acts on the whole selection, and says how many", async ({ page }) => {
     await seedBacklog(page, ["One", "Two", "Three"]);
 

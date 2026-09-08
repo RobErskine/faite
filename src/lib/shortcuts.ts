@@ -109,6 +109,27 @@ export const LOCAL_SHORTCUTS: ShortcutEntry[] = [
 
   // --- To-do card -----------------------------------------------------------
   {
+    id: "context-menu-done",
+    combo: "mod+enter",
+    label: "Mark done (or reopen) from the card's context menu",
+    scope: "To-do card",
+    source: "todo-card-menu.tsx",
+  },
+  {
+    id: "context-menu-dropped",
+    combo: "mod+backspace",
+    label: "Mark won't do from the card's context menu",
+    scope: "To-do card",
+    source: "todo-card-menu.tsx",
+  },
+  {
+    id: "context-menu-delete",
+    combo: "shift+mod+backspace",
+    label: "Delete from the card's context menu",
+    scope: "To-do card",
+    source: "todo-card-menu.tsx",
+  },
+  {
     id: "context-menu",
     combo: "contextmenu",
     label: "Open the focused to-do's context menu (also right-click)",

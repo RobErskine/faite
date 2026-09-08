@@ -10,6 +10,7 @@ import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
+import type { Menu as MenuPrimitive } from "@base-ui/react/menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { DragGrip } from "./drag-grip";
@@ -239,6 +240,13 @@ export function TodoCard({
    */
   const checkboxRef = useRef<HTMLSpanElement | null>(null);
 
+  /**
+   * Base UI's imperative handle on this row's context menu, so a keyboard
+   * chord can dismiss it (EI-289). Clicking an item closes the menu on its
+   * own; a shortcut has to say so.
+   */
+  const menuActionsRef = useRef<MenuPrimitive.Root.Actions | null>(null);
+
   useEffect(() => {
     const el = titleRef.current;
     // Absent in happy-dom, which has no layout to observe anyway.
@@ -290,6 +298,7 @@ export function TodoCard({
       byte-for-byte what it was.
     */
     <ContextMenu
+      actionsRef={menuActionsRef}
       disabled={!contextActions}
       onOpenChange={(open) => {
         if (open) contextActions?.onTarget(todo.id);
@@ -699,6 +708,7 @@ export function TodoCard({
         onOpen={onOpen}
         actions={contextActions}
         selectionCount={selectionCount}
+        close={() => menuActionsRef.current?.close()}
       />
     )}
     </ContextMenu>

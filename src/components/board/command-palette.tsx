@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   Command,
@@ -49,15 +49,8 @@ import type {
 import { originOf, type ConfettiOrigin } from "@/lib/celebrate";
 import type { MentionLabelOption, MentionListOption, MentionPick } from "./board-column";
 import { QuickAddPreview } from "./quick-add-preview";
-import { detectPlatform, formatCombo, type Platform } from "@/lib/keyboard";
-
-/** Never changes within a page's life — same rationale as `usePlatform` in todo-sheet.tsx. */
-const subscribeToNothing = () => () => {};
-
-/** Display-only platform sniff, client-safe — see todo-sheet.tsx's `usePlatform`. */
-function usePlatform(): Platform {
-  return useSyncExternalStore(subscribeToNothing, detectPlatform, () => "other");
-}
+import { formatCombo } from "@/lib/keyboard";
+import { usePlatform } from "@/lib/use-platform";
 
 interface CommandPaletteProps {
   open: boolean;

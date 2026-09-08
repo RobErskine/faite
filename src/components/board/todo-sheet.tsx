@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ComponentType } from "react";
 import {
   Archive,
@@ -61,7 +61,8 @@ import { formatEventStamp } from "@/lib/event-time";
 import { formatShortDate, type PlacementContext } from "@/lib/scheduling";
 import { parseQuickAdd } from "@/lib/quick-add";
 import { isTextEntry } from "@/lib/undo";
-import { detectPlatform, formatCombo, type Platform } from "@/lib/keyboard";
+import { formatCombo } from "@/lib/keyboard";
+import { usePlatform } from "@/lib/use-platform";
 import { createLabel } from "@/lib/store/repositories";
 import type { TodoEventKind } from "@/lib/store/todo-events";
 import {
@@ -177,9 +178,6 @@ interface TodoSheetProps {
   onStartSeries?: (rule: RecurrenceRule) => void;
 }
 
-/** Never changes within a page's life — same rationale as `useIsLocalDev` in settings-sheet.tsx. */
-const subscribeToNothing = () => () => {};
-
 /**
  * Display-only platform sniff, client-safe. `Platform` never gates
  * behavior (the keyboard handler below checks the actual event's
@@ -189,10 +187,6 @@ const subscribeToNothing = () => () => {};
  * hydration. `useSyncExternalStore` with an explicit server snapshot is the
  * sanctioned way to say "client-only" here — see `useIsLocalDev`.
  */
-function usePlatform(): Platform {
-  return useSyncExternalStore(subscribeToNothing, detectPlatform, () => "other");
-}
-
 /**
  * Full CRUD for a single todo.
  *
