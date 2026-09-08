@@ -6,7 +6,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { BoardColumn, FILTER_MIN_TODOS } from "./board-column";
 import { dayGroupId, type TodoGroup } from "@/lib/board";
 import { cardStop, groupStop } from "@/lib/column-nav";
-import type { Todo } from "@/lib/schema";
+import type { List, Todo } from "@/lib/schema";
+import { ListColumnMenu } from "./list-column-menu";
 import type { PlacementContext } from "@/lib/scheduling";
 
 /**
@@ -96,6 +97,7 @@ interface HarnessProps {
   actions?: React.ReactNode;
   isColumnDragActive?: boolean;
   isColumnDropTarget?: boolean;
+  headerMenu?: React.ReactNode;
 }
 
 function Harness({ groups, todos, ...rest }: HarnessProps) {
@@ -629,5 +631,70 @@ describe("actions", () => {
       <Harness collapsed actions={<div data-testid="day-overdrive-entry">Overdrive · 7</div>} />,
     );
     expect(screen.queryByTestId("day-overdrive-entry")).toBeNull();
+  });
+});
+
+/**
+ * The header's right-click menu (EI-286).
+ *
+ * The header is also the column's drag surface and its landmark element, so
+ * these guard the two things making it a trigger could silently take away:
+ * that it is still a `<header>`, and that the existing drag/nav tests above
+ * still pass unchanged — which is the real regression test.
+ */
+describe("header context menu", () => {
+  const menu = (
+    <ListColumnMenu
+      list={
+        {
+          id: "l1",
+          name: "Errands",
+          color: null,
+          tabId: "tab1",
+        } as unknown as List
+      }
+      tabsById={new Map()}
+      onSave={vi.fn()}
+      onArchive={vi.fn()}
+      onDelete={vi.fn()}
+      onOpenInfo={vi.fn()}
+    />
+  );
+
+  const headerEl = () => document.querySelector("header") as HTMLElement;
+
+  it("renders no menu without the prop", () => {
+    render(<Harness />);
+    fireEvent.contextMenu(headerEl());
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("opens on right-click when given one", async () => {
+    render(<Harness headerMenu={menu} />);
+    fireEvent.contextMenu(headerEl());
+    expect(await screen.findByRole("menuitem", { name: "Archive" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Delete" })).toBeTruthy();
+  });
+
+  it("keeps the header a real <header>, not a div", () => {
+    render(<Harness headerMenu={menu} />);
+    const el = headerEl();
+    expect(el.tagName).toBe("HEADER");
+    expect(el.getAttribute("data-slot")).toBe("context-menu-trigger");
+  });
+
+  it("offers every accent color plus an explicit none", async () => {
+    render(<Harness headerMenu={menu} />);
+    fireEvent.contextMenu(headerEl());
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Color" }));
+    const swatches = await screen.findAllByRole("menuitemradio");
+    // Hardcoded, not `ACCENT_COLORS.length + 1`: an expectation derived from
+    // the same constant the code maps over cannot fail (lessons L1108).
+    expect(swatches).toHaveLength(11);
+    expect(screen.getByRole("menuitemradio", { name: "Tomato" })).toBeTruthy();
+    expect(screen.getByRole("menuitemradio", { name: "Pink" })).toBeTruthy();
+    // A list with no color of its own says so, and stays selected.
+    const none = screen.getByRole("menuitemradio", { name: "None" });
+    expect(none.getAttribute("aria-checked")).toBe("true");
   });
 });

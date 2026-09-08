@@ -13,6 +13,8 @@ import { AppHeader } from "./app-header";
 import { SignedOutBanner } from "@/components/auth/signed-out-banner";
 import { DesktopUpdateBanner } from "@/components/desktop/update-banner";
 import { BoardColumn } from "./board-column";
+import { ListColumnMenu } from "./list-column-menu";
+import { TabPillMenu } from "./tab-pill-menu";
 import { BoardEmptyBanner } from "./board-empty-banner";
 import { CreateListColumn } from "./create-list-column";
 import { DateNav } from "./date-nav";
@@ -327,6 +329,7 @@ export function DesktopBoard({
                   selectedIds={selectedIds}
                   movingIds={movingIds}
                   onSelect={actions.handleSelect}
+                  contextActions={actions.todoContextActions}
             rejectsDrop
             pinned
             collapsed={overflowCollapsed}
@@ -489,6 +492,7 @@ export function DesktopBoard({
                   selectedIds={selectedIds}
                   movingIds={movingIds}
                   onSelect={actions.handleSelect}
+                  contextActions={actions.todoContextActions}
                 />
               );
             })}
@@ -601,6 +605,7 @@ export function DesktopBoard({
                   selectedIds={selectedIds}
                   movingIds={movingIds}
                   onSelect={actions.handleSelect}
+                  contextActions={actions.todoContextActions}
               recurrenceSummaries={recurrenceSummaries}
               subtaskCounts={subtaskCounts}
               attachmentCounts={attachmentCounts}
@@ -650,6 +655,15 @@ export function DesktopBoard({
             isListDragActive={!!activeList}
             onSelect={selectTab}
             onOpenInfo={setInfoTabId}
+            renderMenu={(tab) => (
+              <TabPillMenu
+                tab={tab}
+                onSave={actions.handleSaveTab}
+                onArchive={actions.handleArchiveTab}
+                onDelete={actions.handleDeleteTab}
+                onOpenInfo={() => setInfoTabId(tab.id)}
+              />
+            )}
             onCreate={(name) => void handleCreateTab(name)}
             onOpenArchive={() => setArchivedOpen(true)}
           />
@@ -695,12 +709,23 @@ export function DesktopBoard({
                   selectedIds={selectedIds}
                   movingIds={movingIds}
                   onSelect={actions.handleSelect}
+                  contextActions={actions.todoContextActions}
                   recurrenceSummaries={recurrenceSummaries}
                   subtaskCounts={subtaskCounts}
                   attachmentCounts={attachmentCounts}
                   reorderListId={column.list.id}
                   reservesGripSlot
                   onOpenInfo={() => setInfoListId(column.list.id)}
+                  headerMenu={
+                    <ListColumnMenu
+                      list={column.list}
+                      tabsById={tabsById}
+                      onSave={actions.handleSaveList}
+                      onArchive={actions.handleArchiveList}
+                      onDelete={actions.handleDeleteList}
+                      onOpenInfo={() => setInfoListId(column.list.id)}
+                    />
+                  }
                   isColumnDropTarget={columnDropTargetId === column.list.id}
                   isColumnDragActive={!!activeList}
                   // The list's own color wins, falling back to its tab's. A

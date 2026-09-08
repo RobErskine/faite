@@ -109,6 +109,40 @@ export const LOCAL_SHORTCUTS: ShortcutEntry[] = [
 
   // --- To-do card -----------------------------------------------------------
   {
+    id: "context-menu-done",
+    combo: "mod+enter",
+    label: "Mark done (or reopen) from the card's context menu",
+    scope: "To-do card",
+    source: "todo-card-menu.tsx",
+  },
+  {
+    id: "context-menu-dropped",
+    combo: "mod+backspace",
+    label: "Mark won't do from the card's context menu",
+    scope: "To-do card",
+    source: "todo-card-menu.tsx",
+  },
+  {
+    id: "context-menu-delete",
+    combo: "shift+mod+backspace",
+    label: "Delete from the card's context menu",
+    scope: "To-do card",
+    source: "todo-card-menu.tsx",
+  },
+  {
+    id: "context-menu",
+    combo: "contextmenu",
+    label: "Open the focused to-do's context menu (also right-click)",
+    scope: "To-do card",
+    // Not bound by this app: the platform turns the Menu key into a
+    // `contextmenu` event and Base UI's trigger answers it. Listed anyway,
+    // because a shortcut left out of this catalog is invisible to anyone who
+    // goes looking (docs/KEYBOARD.md §5). Shift+F10 is the same gesture on
+    // Windows hardware; Chromium does not synthesize it, so only the Menu key
+    // is asserted in e2e.
+    source: "platform → Base UI ContextMenu.Trigger, docs/CONTEXT-MENU.md",
+  },
+  {
     id: "open-todo",
     combo: "enter",
     label: "Open the focused to-do",

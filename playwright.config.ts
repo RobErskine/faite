@@ -61,6 +61,7 @@ const SPECS = {
   activityTimeline: "**/activity-timeline.spec.ts",
   attachments: "**/attachments.spec.ts",
   linkPreview: "**/link-preview.spec.ts",
+  contextMenu: "**/context-menu.spec.ts",
   touchAffordances: "**/touch-affordances.spec.ts",
   touchSmoke: "**/touch-smoke.spec.ts",
 } as const;
@@ -155,6 +156,10 @@ export default defineConfig({
         SPECS.overdrive,
         SPECS.activityTimeline,
         SPECS.attachments,
+        // `desktop` only: context menus are disabled on coarse pointers.
+        // The negative case lives in touchAffordances, which runs everywhere
+        // else. See docs/E2E.md §8.
+        SPECS.contextMenu,
         SPECS.linkPreview,
       ],
     },

@@ -76,6 +76,22 @@ background, if one ever existed, should scroll it horizontally and nothing
 else) and left in place rather than also stripped, since removing it
 demonstrated no behavior change either way during the fix.
 
+## Why no long-press context menu
+
+Same shape of argument as swipe-actions below, and the same conclusion: the
+gesture is already taken.
+
+dnd-kit's `TouchSensor` lifts a card at 400ms on a coarse pointer. Base UI's
+context menu opens at a hardcoded `LONG_PRESS_DELAY` of 500ms with no prop to
+change it, and clears its timer only on a >10px `touchmove` — never on drag
+activation. A still finger therefore gets both: a lifted card and a menu over
+it. Retuning the sensor does not resolve that, it only picks which one breaks.
+
+So `board.tsx` disables context menus on coarse pointers entirely
+(`ContextMenusEnabled value={!coarse}`), and the P4/M4 row `⋯` action sheet is
+the replacement here too. `docs/CONTEXT-MENU.md` §3 is the full argument;
+`e2e/touch-affordances.spec.ts` holds the negative assertion.
+
 ## Why no swipe-actions on cards (swipe-to-complete/delete)
 
 dnd-kit's `TouchSensor` (`{delay: 250, tolerance: 8}` on coarse pointers,

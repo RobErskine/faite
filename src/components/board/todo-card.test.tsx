@@ -4,7 +4,8 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { DndContext } from "@dnd-kit/core";
 import { SortableContext } from "@dnd-kit/sortable";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { TodoCard } from "./todo-card";
+import { TodoCard, startsDrag } from "./todo-card";
+import type { TodoContextActions } from "./todo-card-menu";
 import { cardStop, type NavKey } from "@/lib/column-nav";
 import type { ReminderPreset, Todo } from "@/lib/schema";
 import type { PlacementContext } from "@/lib/scheduling";
@@ -84,6 +85,8 @@ interface HarnessProps {
   isSelected?: boolean;
   isGhosted?: boolean;
   onSelect?: (id: string, m: { additive: boolean; range: boolean }) => void;
+  contextActions?: TodoContextActions;
+  selectionCount?: number;
 }
 
 function Harness({
@@ -101,6 +104,8 @@ function Harness({
   isSelected,
   isGhosted,
   onSelect,
+  contextActions,
+  selectionCount,
 }: HarnessProps) {
   return (
     <TooltipProvider>
@@ -115,6 +120,8 @@ function Harness({
             isSelected={isSelected}
             isGhosted={isGhosted}
             onSelect={onSelect}
+            contextActions={contextActions}
+            selectionCount={selectionCount}
             onToggle={onToggle}
             onOpen={onOpen}
             onNavigate={onNavigate}
@@ -753,5 +760,181 @@ describe("the checkbox's promise", () => {
     // Second arg is the confetti origin — null here, because this test stubs
     // no rect and happy-dom has no layout. Irrelevant to what it is asserting.
     expect(onToggle).toHaveBeenCalledWith(done, null);
+  });
+});
+
+/**
+ * The right-click menu (EI-285).
+ *
+ * The composition question these answer is not "does a menu appear" but "is
+ * the row still the row" — the trigger renders the card's own `<div>`, so a
+ * regression here would show up as a card that silently stopped dragging or
+ * stopped taking arrow-key focus, with the menu working fine.
+ */
+describe("context menu", () => {
+  const actions = (): TodoContextActions => ({
+    onTarget: vi.fn(),
+    onStatus: vi.fn(),
+    onDelete: vi.fn(),
+    onReschedule: vi.fn(),
+  });
+
+  const row = () => document.querySelector("[data-todo-row]") as HTMLElement;
+
+  /**
+   * Names are matched as prefixes from EI-289 onward: the chord hint is part
+   * of each item's accessible NAME, not `aria-hidden`, so a screen reader
+   * announces "Mark done, Ctrl+Enter". That is the house pattern
+   * (`DropdownMenuShortcut` is not hidden either) and it is worth keeping —
+   * but it means exact-name lookups no longer match.
+   */
+  it("opens on right-click when wired", async () => {
+    render(<Harness contextActions={actions()} />);
+    fireEvent.contextMenu(row());
+    expect(await screen.findByRole("menuitem", { name: /^Mark done/ })).toBeTruthy();
+  });
+
+  it("renders no menu at all without contextActions", () => {
+    render(<Harness />);
+    fireEvent.contextMenu(row());
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("keeps the row's drag ref, nav stop and data hooks on the trigger itself", () => {
+    render(<Harness contextActions={actions()} />);
+    const el = row();
+    // A wrapper element would leave these on a child and quietly break the
+    // selection listener, arrow-key nav and dnd-kit's measurement.
+    expect(el.getAttribute("data-slot")).toBe("context-menu-trigger");
+    expect(el.getAttribute("data-nav-stop")).toBe(cardStop("t1"));
+    expect(el.getAttribute("tabindex")).toBe("-1");
+  });
+
+  it("tells the board which card was hit, before opening", () => {
+    const a = actions();
+    render(<Harness contextActions={a} />);
+    fireEvent.contextMenu(row());
+    expect(a.onTarget).toHaveBeenCalledWith("t1");
+  });
+
+  it("offers to reopen a settled to-do rather than complete it again", async () => {
+    render(
+      <Harness
+        todo={todo({ status: "done", completedAt: "2026-08-14T21:41:00.000Z" })}
+        contextActions={actions()}
+      />,
+    );
+    fireEvent.contextMenu(row());
+    expect(await screen.findByRole("menuitem", { name: /^Mark not done/ })).toBeTruthy();
+  });
+
+  it("says how many to-dos a batch will touch", async () => {
+    render(<Harness contextActions={actions()} selectionCount={3} />);
+    fireEvent.contextMenu(row());
+    expect(await screen.findByRole("menuitem", { name: /^Mark 3 done/ })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: /^Delete 3/ })).toBeTruthy();
+    // Opening one to-do is meaningless for a batch, so it steps aside.
+    expect(screen.queryByRole("menuitem", { name: "Edit" })).toBeNull();
+  });
+
+  it("keeps Edit for a single card", async () => {
+    render(<Harness contextActions={actions()} />);
+    fireEvent.contextMenu(row());
+    expect(await screen.findByRole("menuitem", { name: "Edit" })).toBeTruthy();
+  });
+
+  /**
+   * The drag guard is asserted as a pure function, not by simulating a press.
+   *
+   * A control case proved dnd-kit's MouseSensor never activates under
+   * happy-dom — not even for a plain drag — so "expect no drag to have
+   * started" passes here whether or not the guard exists. Three such
+   * assertions were written and deleted; this is what replaced them. The real
+   * pointer behavior is e2e's job.
+   */
+  /**
+   * The chords the menu advertises (EI-289). These must be bound ON the menu:
+   * board hotkeys are held off while it is open, and the sheet's handler is
+   * not mounted, so a rendered hint with nothing behind it would be a lie.
+   *
+   * The three positive cases double as the control: if a chord reaches the
+   * handler at all, the harness can deliver one — which is what makes the
+   * negative cases below meaningful rather than vacuous.
+   */
+  describe("keyboard chords", () => {
+    const openMenu = async (a: TodoContextActions, todo?: Todo) => {
+      render(<Harness contextActions={a} todo={todo} />);
+      fireEvent.contextMenu(row());
+      return await screen.findByRole("menu");
+    };
+
+    it("marks done on mod+Enter", async () => {
+      const a = actions();
+      const menu = await openMenu(a);
+      fireEvent.keyDown(menu, { key: "Enter", metaKey: true });
+      expect(a.onStatus).toHaveBeenCalledWith(expect.objectContaining({ id: "t1" }), "done");
+    });
+
+    it("reopens a settled to-do on mod+Enter, matching the item's own label", async () => {
+      const a = actions();
+      const menu = await openMenu(
+        a,
+        todo({ status: "done", completedAt: "2026-08-14T21:41:00.000Z" }),
+      );
+      fireEvent.keyDown(menu, { key: "Enter", metaKey: true });
+      expect(a.onStatus).toHaveBeenCalledWith(expect.objectContaining({ id: "t1" }), "open");
+    });
+
+    it("marks won't do on mod+Backspace", async () => {
+      const a = actions();
+      const menu = await openMenu(a);
+      fireEvent.keyDown(menu, { key: "Backspace", metaKey: true });
+      expect(a.onStatus).toHaveBeenCalledWith(expect.objectContaining({ id: "t1" }), "dropped");
+    });
+
+    it("deletes on shift+mod+Backspace, and does not also drop", async () => {
+      const a = actions();
+      const menu = await openMenu(a);
+      fireEvent.keyDown(menu, { key: "Backspace", metaKey: true, shiftKey: true });
+      expect(a.onDelete).toHaveBeenCalledWith(expect.objectContaining({ id: "t1" }));
+      expect(a.onStatus).not.toHaveBeenCalled();
+    });
+
+    it("ignores the same keys unmodified", async () => {
+      const a = actions();
+      const menu = await openMenu(a);
+      fireEvent.keyDown(menu, { key: "Enter" });
+      fireEvent.keyDown(menu, { key: "Backspace" });
+      expect(a.onStatus).not.toHaveBeenCalled();
+      expect(a.onDelete).not.toHaveBeenCalled();
+    });
+
+    /** Exactly one of Ctrl/Meta and never Alt — the rule the sheet and the
+     * global registry both apply. ⌥⌘↵ is a different chord, not this one. */
+    it("ignores Alt-modified and both-modifier presses", async () => {
+      const a = actions();
+      const menu = await openMenu(a);
+      fireEvent.keyDown(menu, { key: "Enter", metaKey: true, altKey: true });
+      fireEvent.keyDown(menu, { key: "Enter", metaKey: true, ctrlKey: true });
+      expect(a.onStatus).not.toHaveBeenCalled();
+    });
+
+    it("shows the chord beside each item it belongs to", async () => {
+      await openMenu(actions());
+      const done = screen.getByRole("menuitem", { name: /Mark done/ });
+      const wont = screen.getByRole("menuitem", { name: /Won't do/ });
+      const del = screen.getByRole("menuitem", { name: /Delete/ });
+      // happy-dom reports a non-Mac platform, so these render the spelled form.
+      expect(done.textContent).toContain("Ctrl+Enter");
+      expect(wont.textContent).toContain("Ctrl+Backspace");
+      expect(del.textContent).toContain("Ctrl+Shift+Backspace");
+    });
+  });
+
+  it("refuses a right-click, and macOS Ctrl+click, but not Ctrl elsewhere", () => {
+    expect(startsDrag({ button: 2, ctrlKey: false }, "other")).toBe(false);
+    expect(startsDrag({ button: 0, ctrlKey: true }, "mac")).toBe(false);
+    expect(startsDrag({ button: 0, ctrlKey: true }, "other")).toBe(true);
+    expect(startsDrag({ button: 0, ctrlKey: false }, "mac")).toBe(true);
   });
 });

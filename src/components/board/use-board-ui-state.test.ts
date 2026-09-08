@@ -27,6 +27,7 @@ const CLOSED: BoardOverlayState = {
   overdriveSource: null,
   helpSheetOpen: false,
   activityOpen: false,
+  contextMenuOpen: false,
 };
 
 describe("useBoardUiState deep links (EI-149)", () => {

@@ -36,6 +36,7 @@ reasoning — two copies drift, and the stale one always wins the argument.
 | [OVERDRIVE.md](OVERDRIVE.md) | The Overflow triage overlay: keyboard and thumb burn-down, writing only through existing repositories. |
 | [DRAG-AND-DROP.md](DRAG-AND-DROP.md) | The dnd-kit model across the calendar and planning halves. Includes deliberate non-bugs and reverted "improvements" — read before changing drag behavior. |
 | [COMMAND-PALETTE.md](COMMAND-PALETTE.md) | ⌘K and search: cmdk's re-filtering constraint, row actions, quick-add tokens. |
+| [CONTEXT-MENU.md](CONTEXT-MENU.md) | Right-click menus: why they are fine-pointer only, the modal guard, and the traps in Base UI's context-menu primitive. |
 | [KEYBOARD.md](KEYBOARD.md) | The shortcut catalog and guard model. §5 is the recipe for adding one — required reading, per `AGENTS.md`. |
 | [DAY-NOTES.md](DAY-NOTES.md) | The day sheet's timeline filter and the BlockNote notes editor. |
 | [LINK-PREVIEW.md](LINK-PREVIEW.md) | Link preview cards in the Notes field, and the card/inline toggle. |

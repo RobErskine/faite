@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useSyncExternalStore } from "react";
+import { useMemo } from "react";
 import {
   Sheet,
   SheetContent,
@@ -8,17 +8,9 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { detectPlatform, formatCombo, type Hotkey, type Platform } from "@/lib/keyboard";
+import { formatCombo, type Hotkey } from "@/lib/keyboard";
+import { usePlatform } from "@/lib/use-platform";
 import { shortcutCatalog, type ShortcutEntry } from "@/lib/shortcuts";
-
-/** Never changes within a page's life — same rationale as `usePlatform` in todo-sheet.tsx. */
-const subscribeToNothing = () => () => {};
-
-/** Display-only platform sniff, client-safe. See todo-sheet.tsx's `usePlatform` for why
- * this needs `useSyncExternalStore` rather than reading `navigator` directly. */
-function usePlatform(): Platform {
-  return useSyncExternalStore(subscribeToNothing, detectPlatform, () => "other");
-}
 
 /** Display order — most-used surfaces first, library-owned last (there are none here;
  * this sheet only lists shortcuts this app owns, per EI-84/§1's "do not re-bind" list). */

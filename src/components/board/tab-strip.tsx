@@ -5,6 +5,7 @@ import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { Archive, ArrowUp, Info, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { tabDragId, tabDropId, type TabCount } from "@/lib/board";
 import { edge, tint } from "@/lib/colors";
 import type { Tab } from "@/lib/schema";
@@ -36,6 +37,8 @@ interface TabStripProps {
   isListDragActive: boolean;
   onSelect: (tabId: string) => void;
   onOpenInfo: (tabId: string) => void;
+  /** Right-click menu for a pill (EI-288). Omit for none. */
+  renderMenu?: (tab: Tab) => React.ReactNode;
   onCreate: (name: string) => void;
   onOpenArchive: () => void;
 }
@@ -63,6 +66,7 @@ export function TabStrip({
   isListDragActive,
   onSelect,
   onOpenInfo,
+  renderMenu,
   onCreate,
   onOpenArchive,
 }: TabStripProps) {
@@ -161,6 +165,7 @@ export function TabStrip({
             count={counts.get(tab.id) ?? { lists: 0, items: 0, assigned: 0 }}
             onSelect={() => onSelect(tab.id)}
             onOpenInfo={() => onOpenInfo(tab.id)}
+            menu={renderMenu?.(tab)}
           />
         ))}
 
@@ -254,6 +259,7 @@ interface TabPillProps {
   count: TabCount;
   onSelect: () => void;
   onOpenInfo: () => void;
+  menu?: React.ReactNode;
 }
 
 function TabPill({
@@ -266,6 +272,7 @@ function TabPill({
   count,
   onSelect,
   onOpenInfo,
+  menu,
 }: TabPillProps) {
   const { setNodeRef, isOver } = useDroppable({ id: tabDropId(tab.id) });
 
@@ -296,8 +303,19 @@ function TabPill({
     `${plural(count.items, "item", "items")}` +
     (count.assigned > 0 ? `, plus ${plural(count.assigned, "item", "items")} assigned to a day` : "");
 
+  /*
+    The pill's own div becomes the context-menu trigger — same reasoning as a
+    to-do row (docs/CONTEXT-MENU.md §5): the droppable ref and `data-tab-pill`
+    stay on the element that already carried them.
+
+    Unlike a card, this element is ALSO a Base UI `TooltipTrigger`, so two
+    `useRender` components compose here — the exact shape of lessons L747,
+    where the outer one silently swallowed the inner's handlers. Both halves
+    are asserted in `e2e/context-menu.spec.ts` against a real hover, since
+    neither happy-dom nor `locator.hover()` can open a Base UI tooltip.
+  */
   const pill = (
-    <div
+    <ContextMenuTrigger
       ref={setNodeRef}
       data-tab-pill={tab.id}
       className={cn(
@@ -402,11 +420,12 @@ function TabPill({
           style={{ backgroundColor: edge(tab.color) }}
         />
       )}
-    </div>
+    </ContextMenuTrigger>
   );
 
 
   return (
+    <ContextMenu disabled={!menu}>
     <Tooltip>
       <TooltipTrigger render={pill} />
       <TooltipContent>
@@ -423,6 +442,8 @@ function TabPill({
         )}
       </TooltipContent>
     </Tooltip>
+    {menu}
+    </ContextMenu>
   );
 }
 

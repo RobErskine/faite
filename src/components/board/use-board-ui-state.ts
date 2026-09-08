@@ -48,6 +48,13 @@ export interface BoardOverlayState {
    * same as every other sheet regardless, for consistency with the rest of
    * this list rather than because it holds anything undo could corrupt. */
   activityOpen: boolean;
+  /** Any right-click context menu (EI-284). Base UI owns focus and Escape
+   * inside its popup but not ⌘Z, which would otherwise bubble to `document`
+   * and rewrite the board behind a menu whose items still describe the
+   * pre-undo card — and can tombstone a row between opening the menu and
+   * clicking an item, which `mutate()` throws on. Fed by
+   * `useAnyMenuOpen` in `lib/menu-open-store.ts`. */
+  contextMenuOpen: boolean;
 }
 
 /**
@@ -71,7 +78,8 @@ export function computeModalOpen(state: BoardOverlayState): boolean {
     !!state.openDay ||
     state.overdriveSource !== null ||
     state.helpSheetOpen ||
-    state.activityOpen
+    state.activityOpen ||
+    state.contextMenuOpen
   );
 }
 
@@ -405,6 +413,12 @@ export function useBoardUiState() {
       if (e.metaKey || e.ctrlKey || e.shiftKey) return;
       const target = e.target as Element | null;
       if (target?.closest?.("[data-todo-row]")) return;
+      // A context menu popup is portaled to <body>, so a click on one of its
+      // items is not inside any row and would read as "clicked elsewhere" —
+      // clearing the very selection the item is about to act on, before it
+      // acts (EI-285). The menu is not "outside"; it belongs to the row that
+      // opened it.
+      if (target?.closest?.('[role="menu"]')) return;
       clearSelection();
     };
     const onKeyDown = (e: KeyboardEvent) => {

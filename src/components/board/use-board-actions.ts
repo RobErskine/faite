@@ -18,7 +18,8 @@ import {
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { toast } from "sonner";
-import type { List, Tab, Todo } from "@/lib/schema";
+import type { CivilDate, List, Tab, Todo } from "@/lib/schema";
+import type { TodoContextActions } from "./todo-card-menu";
 import { celebrate, type ConfettiOrigin } from "@/lib/celebrate";
 import { effectiveListColor } from "@/lib/colors";
 import {
@@ -1534,6 +1535,208 @@ export function useBoardActions(
     [listsById, materializeIfNeeded, celebrateDone],
   );
 
+  /**
+   * A right-click landed on `todoId`, before its menu opens (EI-285).
+   *
+   * Same rule `handleDragStart` already applies to a lift: touching a card
+   * that is NOT in the selection means the selection is no longer what this
+   * gesture is about, so it goes. One rule for both gestures beats two,
+   * and it is what makes `targetsFor` below safe to state so simply.
+   *
+   * Clearing rather than re-selecting to one card: a menu about a single row
+   * should leave no highlight behind it once dismissed.
+   */
+  const handleContextTarget = useCallback(
+    (todoId: string) => {
+      if (selectedIds.has(todoId)) return;
+      if (selectedIds.size > 0) clearSelection();
+    },
+    [selectedIds, clearSelection],
+  );
+
+  /**
+   * What a card's menu acts on: the whole selection when the card is part of
+   * one, otherwise just that card.
+   *
+   * Reads `selectedTodos` — the DERIVED, board-ordered list — never
+   * `selectedIds`. Identical reasoning to `handleDragStart`: a to-do that has
+   * been deleted, archived, filtered out or carried to another tab leaves that
+   * list by simply not appearing, and a stale id reaching `mutate()` is how it
+   * throws on a missing row.
+   */
+  const targetsFor = useCallback(
+    (todo: Todo): Todo[] =>
+      selectedIds.has(todo.id) && selectedIds.size > 1 ? [...selectedTodos] : [todo],
+    [selectedIds, selectedTodos],
+  );
+
+  /**
+   * The context menu's status write — Mark done / not done / Won't do
+   * (EI-285), over one card or a whole selection.
+   *
+   * Deliberately not routed through `handleToggle` or `handleSheetStatus`:
+   * both write exactly one row and raise their own toast, so a batch of five
+   * would stack five toasts and five undo entries, and ⌘Z would then reverse
+   * one fifth of what just happened. One `pushUndo` with N steps is what makes
+   * a single ⌘Z put all of them back — the same shape as the multi-drag branch
+   * above.
+   */
+  const handleContextStatus = useCallback(
+    (todo: Todo, status: Todo["status"]) => {
+      const targets = targetsFor(todo);
+      if (targets.length === 0) return;
+      const forward = statusPatch(status);
+      const label =
+        targets.length === 1
+          ? `${STATUS_VERB[status]} “${short(targets[0].title)}”`
+          : `${STATUS_VERB[status]} ${targets.length} to-dos`;
+      const entryId = pushUndo(
+        label,
+        targets.map((t) => ({
+          kind: "todo" as const,
+          entityId: t.id,
+          patch: inversePatch(t, forward),
+        })),
+      );
+      void (async () => {
+        try {
+          for (const t of targets) {
+            await materializeIfNeeded(t);
+            const eventId = await setTodoStatus(t.id, status);
+            if (eventId) attachEventIds(entryId, [eventId]);
+          }
+        } finally {
+          clearSelection();
+        }
+      })();
+      // Same rule as `handleToggle`: only a departure needs a toast.
+      // Reopening puts a card back where you can see it, and announcing
+      // something already visible is noise.
+      if (status !== "open") {
+        toast.success(label, {
+          duration: 6000,
+          action: { label: "Undo", onClick: () => void undoById(entryId) },
+        });
+      }
+      // Confetti is a single-card celebration; a batch of five would be a mess.
+      if (status === "done" && targets.length === 1) celebrateDone(targets[0], null);
+    },
+    [targetsFor, materializeIfNeeded, celebrateDone, clearSelection],
+  );
+
+  /** The context menu's delete, over one card or a whole selection (EI-285). */
+  const handleContextDelete = useCallback(
+    (todo: Todo) => {
+      const targets = targetsFor(todo);
+      if (targets.length === 0) return;
+      // A recurring occurrence reads as "skip this one" rather than "deleted",
+      // the same distinction `handleDelete` draws. A mixed batch is described
+      // by the commoner truth: things went away.
+      const label =
+        targets.length === 1
+          ? targets[0].recurrenceParentId
+            ? `Skipped “${short(targets[0].title)}”`
+            : `Deleted “${short(targets[0].title)}”`
+          : `Deleted ${targets.length} to-dos`;
+      const entryId = pushUndo(
+        label,
+        targets.map((t) => ({
+          kind: "todo" as const,
+          entityId: t.id,
+          patch: { deletedAt: null },
+        })),
+      );
+      void (async () => {
+        try {
+          for (const t of targets) {
+            await materializeIfNeeded(t);
+            // Attachments are tombstoned with their to-do and are only known
+            // once the delete has read them, so they join the entry after the
+            // fact — exactly like `handleDelete`. Without this, ⌘Z restores
+            // the to-do with its files silently detached, which reads as data
+            // loss rather than as an undo.
+            const attachmentIds = await deleteTodo(t.id);
+            appendUndoSteps(
+              entryId,
+              attachmentIds.map((attachmentId) => ({
+                kind: "attachment" as const,
+                entityId: attachmentId,
+                patch: { deletedAt: null },
+              })),
+            );
+          }
+        } finally {
+          clearSelection();
+        }
+      })();
+      toast.success(label, {
+        duration: 8000,
+        action: { label: "Undo", onClick: () => void undoById(entryId) },
+      });
+    },
+    [targetsFor, materializeIfNeeded, clearSelection],
+  );
+
+  /**
+   * The context menu's quick reschedule (EI-285), over one card or a whole
+   * selection.
+   *
+   * A sibling of `handleOverdriveVerdict`'s `scheduled` arm rather than a
+   * reuse of it. That function's own doc comment states an invariant —
+   * "Overdrive's one write path" — which a second, unrelated caller would make
+   * false; it deliberately raises no toast because the overlay does its own;
+   * and it cannot batch. A menu reschedule MUST toast: the card leaves its
+   * column, so nothing on screen would otherwise confirm what happened.
+   */
+  const handleReschedule = useCallback(
+    (todo: Todo, date: CivilDate) => {
+      const targets = targetsFor(todo);
+      if (targets.length === 0) return;
+      const label =
+        targets.length === 1
+          ? `Scheduled “${short(targets[0].title)}” for ${formatShortDate(date)}`
+          : `Scheduled ${targets.length} to-dos for ${formatShortDate(date)}`;
+      const entryId = pushUndo(
+        label,
+        targets.map((t) => ({
+          kind: "todo" as const,
+          entityId: t.id,
+          patch: inversePatch(t, schedulePatch(date, t.scheduledDate)),
+        })),
+      );
+      void (async () => {
+        try {
+          for (const t of targets) {
+            await materializeIfNeeded(t);
+            await scheduleTodo(t.id, date, t.scheduledDate);
+          }
+        } finally {
+          clearSelection();
+        }
+      })();
+      toast.success(label, {
+        duration: 6000,
+        action: { label: "Undo", onClick: () => void undoById(entryId) },
+      });
+    },
+    [targetsFor, materializeIfNeeded, clearSelection],
+  );
+
+  /**
+   * The four handlers a card's menu needs, as one stable object — a card takes
+   * `contextActions` or nothing, rather than four optional callbacks that
+   * could be wired up half-way.
+   */
+  const todoContextActions = useMemo<TodoContextActions>(
+    () => ({
+      onTarget: handleContextTarget,
+      onStatus: handleContextStatus,
+      onDelete: handleContextDelete,
+      onReschedule: handleReschedule,
+    }),
+    [handleContextTarget, handleContextStatus, handleContextDelete, handleReschedule],
+  );
+
   const handleToggleLabel = useCallback(
     (todoId: string, labelId: string) => {
       const before = todosById.get(todoId);
@@ -1770,6 +1973,11 @@ export function useBoardActions(
     handleOverdriveVerdict,
     handleToggleLabel,
     handleDelete,
+    handleContextTarget,
+    handleContextStatus,
+    handleContextDelete,
+    handleReschedule,
+    todoContextActions,
     handleAddSubtask,
     handleSaveList,
     handleArchiveList,

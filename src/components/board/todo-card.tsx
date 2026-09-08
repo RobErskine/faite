@@ -9,6 +9,8 @@ import type {
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
+import type { Menu as MenuPrimitive } from "@base-ui/react/menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { DragGrip } from "./drag-grip";
@@ -21,6 +23,31 @@ import { rollEventsFor } from "@/lib/rollover-events";
 import type { Label as LabelRecord, ReminderPreset, Todo } from "@/lib/schema";
 import type { PlacementContext } from "@/lib/scheduling";
 import { originOf, type ConfettiOrigin } from "@/lib/celebrate";
+import { detectPlatform, type Platform } from "@/lib/keyboard";
+import { TodoCardMenu, type TodoContextActions } from "./todo-card-menu";
+
+/**
+ * Whether a `mousedown` on the row should start a drag.
+ *
+ * Pure and exported because the behavior cannot be observed from a unit test
+ * any other way: dnd-kit's MouseSensor never activates under happy-dom (no
+ * layout), so asserting "no drag started" there passes whether or not this
+ * guard exists. docs/KEYBOARD.md §9's rule — extract the decision and test
+ * that, rather than simulating an event and testing the browser.
+ *
+ * Button 2 is belt-and-braces: dnd-kit refuses it already. The case that
+ * matters is macOS Ctrl+click, which arrives as button 0 with `ctrlKey` and
+ * IS tracked, so a 4px twitch would lift the card out from under the menu it
+ * just opened. Off a Mac the same press opens no menu and is the
+ * additive-select modifier, so it must still be able to drag.
+ */
+export function startsDrag(
+  event: { button: number; ctrlKey: boolean },
+  platform: Platform,
+): boolean {
+  if (event.button !== 0) return false;
+  return !(event.ctrlKey && platform === "mac");
+}
 
 interface TodoCardProps {
   todo: Todo;
@@ -39,6 +66,14 @@ interface TodoCardProps {
   timezone?: string;
   /** Part of the Cmd/Ctrl+click multi-selection (EI-194). */
   isSelected?: boolean;
+  /**
+   * Right-click menu wiring (EI-285). Omit for no menu — the day sheet's
+   * timeline passes nothing, since Delete there would toast an undo the open
+   * sheet covers up.
+   */
+  contextActions?: TodoContextActions;
+  /** Size of the selection this card belongs to, for the menu's labels. */
+  selectionCount?: number;
   /**
    * Being carried by a multi-drag, but is not the card under the cursor.
    * Ghosted like the lifted row so the whole run visibly leaves together.
@@ -119,6 +154,8 @@ export function TodoCard({
   isSelected,
   isGhosted,
   onSelect,
+  contextActions,
+  selectionCount,
   isAway,
   showInsertionLine,
   isLanding,
@@ -203,6 +240,13 @@ export function TodoCard({
    */
   const checkboxRef = useRef<HTMLSpanElement | null>(null);
 
+  /**
+   * Base UI's imperative handle on this row's context menu, so a keyboard
+   * chord can dismiss it (EI-289). Clicking an item closes the menu on its
+   * own; a shortcut has to say so.
+   */
+  const menuActionsRef = useRef<MenuPrimitive.Root.Actions | null>(null);
+
   useEffect(() => {
     const el = titleRef.current;
     // Absent in happy-dom, which has no layout to observe anyway.
@@ -241,7 +285,26 @@ export function TodoCard({
   }, [todo.status]);
 
   return (
-    <div
+    /*
+      The row itself IS the trigger — `ContextMenuTrigger` renders a plain
+      `<div>` and takes every div prop, so nothing wraps the card and nothing
+      moves. That matters more than it looks: `setNodeRef`, the drop
+      indicator's geometry, `data-todo-row`, `data-nav-stop` and the arrow-key
+      focus target all stay on the element that already carried them. It is
+      also why L747 cannot repeat here — only ONE Base UI `useRender`
+      component is in play, where that bug needed two composed together.
+
+      `ContextMenu` (the root) renders no DOM at all, so the card's layout is
+      byte-for-byte what it was.
+    */
+    <ContextMenu
+      actionsRef={menuActionsRef}
+      disabled={!contextActions}
+      onOpenChange={(open) => {
+        if (open) contextActions?.onTarget(todo.id);
+      }}
+    >
+    <ContextMenuTrigger
       ref={setNodeRef}
       style={{ transform: CSS.Translate.toString(transform), transition }}
       /*
@@ -259,7 +322,18 @@ export function TodoCard({
         250ms delay, nothing activates — so taps on the checkbox and title
         behave exactly as before, and a swipe still scrolls the column.
       */
-      onMouseDown={startMouseDrag}
+      /*
+        Right-click never drags: dnd-kit's MouseSensor already refuses button
+        2 outright. The case it does NOT cover is macOS Ctrl+click, which
+        arrives as button 0 with `ctrlKey` set — MouseSensor starts tracking
+        it happily, so a 4px twitch while the menu is open would lift the card
+        out from under it. Ctrl+drag stays live on Windows/Linux, where it is
+        the additive-select modifier and opens no menu.
+      */
+      onMouseDown={(e) => {
+        if (!startsDrag(e, detectPlatform())) return;
+        startMouseDrag?.(e);
+      }}
       onTouchStart={startTouchDrag}
       /*
         Multi-select (EI-194). Capture phase on the ROW is the only place this
@@ -626,6 +700,17 @@ export function TodoCard({
           attachmentCount={attachmentCount}
         />
       </button>
-    </div>
+    </ContextMenuTrigger>
+    {contextActions && (
+      <TodoCardMenu
+        todo={todo}
+        ctx={ctx}
+        onOpen={onOpen}
+        actions={contextActions}
+        selectionCount={selectionCount}
+        close={() => menuActionsRef.current?.close()}
+      />
+    )}
+    </ContextMenu>
   );
 }
