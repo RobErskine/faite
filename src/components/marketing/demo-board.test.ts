@@ -102,7 +102,7 @@ describe("the board's fidelity to the real one", () => {
   it("never gives a label a color, because the product cannot", () => {
     /*
       `createLabel` accepts a decoration and all five of its call sites pass a
-      name and nothing else — there is no colour picker for a label anywhere in
+      name and nothing else — there is no color picker for a label anywhere in
       Faite, only for lists and tabs. `todo-row-parts.tsx` WILL tint a label
       that has one, so a hex on a demo label renders convincingly and
       advertises a feature a new user cannot reproduce. That is the worst kind
@@ -131,8 +131,8 @@ describe("the board's fidelity to the real one", () => {
 
   it("uses list names a real first run actually seeds", () => {
     // `SEED_LISTS` in `lib/store/repositories.ts`. A visitor who signs up
-    // should recognise the board they were shown; invented column names are a
-    // smaller lie than coloured labels but the same kind.
+    // should recognize the board they were shown; invented column names are a
+    // smaller lie than colored labels but the same kind.
     const seeded = ["Backlog", "Brain Dump", "Grocery List", "To Buy", "To Read"];
     const columns = [...board.matchAll(/^\s{4}title: "([^"]+)",$/gm)].map((m) => m[1]);
     const planning = columns.filter(
@@ -147,7 +147,7 @@ describe("the live layers", () => {
   const ticks = stripComments(readFileSync(new URL("story-ticks.tsx", dir), "utf8"));
 
   it("ticks sub-tasks without React state", () => {
-    // Same rule as the scene (docs/SCENE.md §4). `useState` here would
+    // Same rule as the scene (docs/SCENE.md §2). `useState` here would
     // re-render the panel and its six rows on every scroll frame to change
     // one integer.
     expect(ticks).toContain('"use client"');
@@ -184,7 +184,7 @@ describe("the flying copy", () => {
   });
 
   it("never writes scroll position into React state", () => {
-    // Same rule as the scene (docs/SCENE.md §4). `useState` here would
+    // Same rule as the scene (docs/SCENE.md §2). `useState` here would
     // re-render the subtree on every scroll frame.
     expect(travel).not.toContain("useState");
   });

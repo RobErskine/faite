@@ -15,7 +15,7 @@ import { beatLocalAt, plantStateAt } from "@/components/scene/beat-animations";
  *
  * # It writes DOM, not state
  *
- * Same rule as the scene (`docs/SCENE.md` §4) and `card-travel.tsx`. Scroll
+ * Same rule as the scene (`docs/SCENE.md` §2) and `card-travel.tsx`. Scroll
  * goes to a ref; the rAF loop toggles `data-done` on the rows and rewrites one
  * number in the badge. Putting the count in React state would re-render the
  * panel — and, through it, six list items and their checkboxes — on every
@@ -104,10 +104,10 @@ export function StoryTicks() {
         ended on an unfinished plan, which is the opposite of the point.
 
         `+ 0.6` puts each threshold 40% into its band — just before the copy
-        centres, so the line is already checked by the time you are reading the
+        centers, so the line is already checked by the time you are reading the
         sentence it belongs to. Not `+ 0.5`, which puts the threshold exactly
-        ON the centre and makes the result knife-edge: sampled at the six exact
-        centres it returned 0,1,2,3,5,6 instead of 1..6, because rounding the
+        ON the center and makes the result knife-edge: sampled at the six exact
+        centers it returned 0,1,2,3,5,6 instead of 1..6, because rounding the
         scroll target to a whole pixel landed a hair under the boundary four
         times out of six.
 

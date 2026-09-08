@@ -147,7 +147,7 @@ export const STATIC_PROPS: PropPlacement[] = [
  * Lifted out of `STATIC_PROPS` so it can droop: thirst tips it off vertical
  * and settles it a little lower, which is the same signal as the browning
  * expressed a second way. The three small plants keep their places in the
- * static list; they change colour with everything else but they are too small
+ * static list; they change color with everything else but they are too small
  * at diorama scale for a tilt to read as anything but a glitch.
  */
 export const HOUSEPLANT: PropPlacement = {
@@ -211,7 +211,7 @@ export const TV_NEW: PropPlacement = {
  * The fish, split out of the bowl's GLB by `build-room.mjs` so it can swim.
  * Same coordinates as the bowl — the split preserves their shared origin, so
  * placing both at one spot nests the fish back inside the glass. The scene
- * bobs it a few millimetres on Y; everything else in the room holds still,
+ * bobs it a few millimeters on Y; everything else in the room holds still,
  * which is exactly what makes one small motion read as life.
  */
 export const FISH: PropPlacement = {
@@ -239,7 +239,7 @@ export const SWATCHES = {
   bareWall: null as string | null,
   /**
    * The candidate that wins (an index into the three VISIBLE chips, i.e.
-   * `candidates.slice(0, 3)`). The blue-grey: the room's one big contrast is
+   * `candidates.slice(0, VISIBLE_SWATCHES)`). The blue-gray: the room's one big contrast is
    * the warm floor against the cool couch, and the wall joining the couch's
    * side of that argument is the pick that makes the finished room cohere.
    */

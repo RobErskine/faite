@@ -6,6 +6,12 @@ doc is the operations reference: what `SITE_PAGES` is, the metadata contract
 built on top of it, the static-export constraints every page here has to
 respect, and the one-paragraph recipe for adding a ninth page correctly.
 
+**`/` is the exception.** It has a `SITE_PAGES` row like the others and obeys
+the same metadata contract, but its *content* is a scroll-driven story rather
+than a prose page — see [HOMEPAGE.md](HOMEPAGE.md), and [SCENE.md](SCENE.md)
+for the room in it. Nothing in this doc applies to that content; everything in
+it applies to the row.
+
 ---
 
 ## 1. `SITE_PAGES` — one table, five readers

@@ -1356,3 +1356,34 @@ merge, then delete. And when a squash rewrites a commit that other branches
 carry, do not try to merge the stack forward one PR at a time — rebase the
 whole remainder onto `main` in one move and verify the resulting tree against
 a commit CI has already blessed.
+
+## `npm run verify` leaves `.next` serving the app shell (EI-273)
+
+Seven homepage e2e tests failed after a documentation pass that changed no
+routing code. The failures read like real breakage: headings "not found", and
+an `error-context.md` snapshot showing the board's *"Welcome to Faite"* dialog
+where the marketing page should have been.
+
+The page under test had never rendered. `npm run verify` runs `build` and then
+`build:static`, and `build:static` is the Capacitor/Tauri target — it sets
+`NEXT_PUBLIC_APP_SHELL=1`, under which `src/app/page.tsx` returns nothing but
+`window.location.replace("/board")`. It leaves that render in `.next`. So
+`npx next start` served an app-shell `/`, every visit bounced to the board, and
+the specs asserted against the wrong page.
+
+`docs/WORKFLOW.md` §4 already prints `npm run build` as the first line of the
+local-CI recipe. It was skipped because `verify` had *just* built — which is
+exactly when it is most necessary and least obviously so.
+
+This is the same root cause as `docs/SCENE.md`'s trap #1, where `build:static`
+pruning `.next/static/chunks` makes a lazily-imported library measure as 0 KB.
+Same mechanism, different symptom, and the e2e symptom is far more convincing:
+a bundle measurement that looks too good invites a second look, while seven
+red tests invite a bug hunt.
+
+**Rule:** `.next` after `npm run verify` is the **app-shell** build, not the
+web build. Anything that reads `.next` afterward — `next start`, a bundle
+measurement, a manual smoke test — needs a bare `npm run build` first. And
+when a whole file's worth of e2e tests fails at once after a change that could
+not have caused it, check *which build is being served* before reading a single
+trace.

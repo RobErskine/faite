@@ -11,7 +11,7 @@ the way the Dia mark does. Nothing on the board reads as generic shadcn.
 
 ---
 
-## 1. Colour grammar
+## 1. Color grammar
 
 Every color on the board belongs to exactly one channel. A channel means one
 thing. If a new element needs color, it takes the channel that already means
@@ -55,7 +55,7 @@ Two pairings, selected by `data-font` on `<html>`:
 
 | id | Sans / heading | Mono / numeric | Role |
 |---|---|---|---|
-| `editorial` (default for new accounts) | Source Sans 3 / **Source Serif 4** | IBM Plex Mono | the stylised first impression |
+| `editorial` (default for new accounts) | Source Sans 3 / **Source Serif 4** | IBM Plex Mono | the stylized first impression |
 | `hyperlegible` | Atkinson Hyperlegible Next | Atkinson Hyperlegible Mono | the clear option, purpose-designed for low-vision readers |
 
 Removed ids (`precision`, `systematic`) still parse: `normalizeFontPairing()`
@@ -181,7 +181,7 @@ a row. In short:
 
 Reuse, do not invent:
 
-- Colour: `--background`, `--foreground`, `--muted-foreground`, the surface
+- Color: `--background`, `--foreground`, `--muted-foreground`, the surface
   and line tokens above, and the spectrum in one place per page at most.
 - Type: `font-heading` for headings, `font-sans` for body, `num` for any
   date. The site renders in the default pairing; do not add a third family.
@@ -191,13 +191,35 @@ Reuse, do not invent:
   that covers area. Do not add streak, count, or "N% of to-dos" claims;
   `docs/RESEARCH.md` §4 lists the banned ones.
 
+### The homepage story is the one sanctioned exception to §4
+
+`/` runs a scroll-driven 3D room and a card that flies across the page. That
+breaks two rules above on purpose, and the exception does not generalize:
+
+- **"Nothing runs longer than 260 ms"** does not apply to scroll-driven motion.
+  Nothing here has a duration at all — every value is a pure function of scroll
+  position, so the reader sets the pace and can stop, reverse, or skip it. That
+  is a different thing from an animation that plays at you, and it is why the
+  policy's real concern (waiting on the UI) never arises.
+- **"Prefer a color or opacity change to a layout change"** is broken
+  deliberately by `card-travel.tsx`, which reflows width and height once a
+  frame on one small subtree. `scale()` is the cheaper, wrong answer: it would
+  zoom the title from 14px to 35px and blur every glyph, when what the card
+  does is widen and unfold. See `docs/HOMEPAGE.md` §5.
+
+Everything else holds, and two of them harder than elsewhere: **the state must
+be correct with the motion removed** (reduced motion, no WebGL and no
+JavaScript each render a true static story, not an empty shell), and **no
+gamification** — the card ticks off a plan being finished, and there is no
+streak, score, or percentage anywhere in it.
+
 ## 7. Decisions log
 
 | Date | Decision | Reason |
 |---|---|---|
 | 2026-09-03 | **A.** Priority rail goes achromatic: thickness and opacity only. | The old rail's red, orange, blue, and cyan were the same hues as the list presets and the urgency red. A Tomato "VIP" list next to a red "In Overflow" badge and a red P1 rail could not be told apart. Red now means urgency only. |
 | 2026-09-03 | **B.** Spectrum = peach → rose → lavender → sky, low chroma. `--spectrum-solid` = lavender. | A pop of color in the Dia style that no list preset owns. Four fixed places, never a fill. |
-| 2026-09-03 | **C.** Two pairings: Editorial and Hyperlegible. Precision and Systematic removed. | Four pairings diluted the identity. One stylised, one clear. |
+| 2026-09-03 | **C.** Two pairings: Editorial and Hyperlegible. Precision and Systematic removed. | Four pairings diluted the identity. One stylized, one clear. |
 | 2026-09-03 | **D.** Editorial is the default for new accounts. Existing rows keep their stored value. | The serif heading is the first impression that matches the brief. Existing users see no change. |
 | 2026-09-03 | Users keep full control of list colors, Tomato included. | A list color is the user's, not the app's. The app keeps its own red out of the presets' way by owning only urgency. |
 | 2026-09-03 | Backlog and Overflow keep their names. | Both are e2e names and both are understood. |
@@ -210,3 +232,6 @@ Reuse, do not invent:
 | 2026-09-05 | Overflow and Backlog get `bg-surface-0` back, and `RailHandle` gets a resting `border-line-faint` hairline. | The Air pass made both rails' resize edges invisible until hover — "difficult to see the edges to grab in order to resize them." A tinted region plus a hairline handle restores discoverability without reintroducing a bordered panel. |
 | 2026-09-05 | Overflow gets a real empty state (`OverflowEmptyState`): "No items", a Collapse button on desktop, an (i) tooltip explaining what Overflow is. | Overflow has no quick-add row, so an empty Overflow rendered nothing at all — no cue it was the empty state and not a loading gap. |
 | 2026-09-05 | The `⌘K` palette opens at `top-20`, not `top-1/3`. | It should read as the header's own search field growing open, not as an unrelated dialog appearing mid-page. |
+| 2026-09-07 | **The homepage hero is the board itself** — a hand-written Server Component echo (`demo-board.tsx`), cropped by the fold rather than scaled down. | A screenshot goes stale and a video cannot be flown across the page on scroll. Rendering the board as HTML costs `/` zero client JS *and* lets one card physically travel into the story. A desktop board shrunk to fit is a picture of something broken, not a smaller picture of the truth. |
+| 2026-09-07 | **The demo board may not show a feature the product does not have.** Colored labels removed; column accents kept. | There is no label color picker in Faite, but `todo-row-parts.tsx` will happily tint a label that carries a hex — so the fabricated ones rendered convincingly. That only looks wrong *after* someone signs up. Lists and tabs both mount a real `ColorPicker`, so a column accent is honest. Enforced by `demo-board.test.ts`. |
+| 2026-09-07 | **Scroll-driven motion on `/` is exempt from the 260 ms ceiling**, and `card-travel.tsx` may reflow one subtree per frame. | Neither is an animation that plays at you: the reader sets the pace and can stop or reverse it. `scale()` would have been cheaper and wrong — it blurs every glyph while zooming a 14px title to 35px, when what the card does is widen and unfold. §6 has the full carve-out. |

@@ -46,7 +46,7 @@ describe("the beat framings", () => {
       known to break.
 
       `closeUp` framings opt out on purpose — the watering beat is about the
-      colour of leaves, which do not exist at diorama scale. The exemption is
+      color of leaves, which do not exist at diorama scale. The exemption is
       per-framing and must be DECLARED, so widening a zoom without saying you
       meant to still fails here.
     */
@@ -77,16 +77,16 @@ describe("framingAt", () => {
     expect(framingAt(2)).toEqual(state(FRAMINGS[STORY_BEATS[STORY_BEATS.length - 1].focus]));
   });
 
-  it("sits exactly on each beat's object at the centre of that beat", () => {
-    // The claim the whole ticket rests on: when a beat's copy is centred on
+  it("sits exactly on each beat's object at the center of that beat", () => {
+    // The claim the whole ticket rests on: when a beat's copy is centered on
     // screen, the camera is on the thing that beat is about.
     for (const [i, beat] of STORY_BEATS.entries()) {
-      const centre = (i + 0.5) / STORY_BEATS.length;
-      expect(framingAt(centre), beat.headline).toEqual(state(FRAMINGS[beat.focus]));
+      const center = (i + 0.5) / STORY_BEATS.length;
+      expect(framingAt(center), beat.headline).toEqual(state(FRAMINGS[beat.focus]));
     }
   });
 
-  it("puts one keyframe per beat, at that beat's centre", () => {
+  it("puts one keyframe per beat, at that beat's center", () => {
     expect(KEYFRAMES).toHaveLength(STORY_BEATS.length);
     for (const [i, key] of KEYFRAMES.entries()) {
       expect(key.at).toBeCloseTo((i + 0.5) / STORY_BEATS.length, 10);

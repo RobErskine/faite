@@ -45,7 +45,7 @@
  *
  * A name, not a vector, because this module is content: it is imported by
  * `page.tsx`, by the hero board, and by an e2e spec, and none of them has any
- * business carrying metres. `room-camera.ts` resolves these to a framing
+ * business carrying meters. `room-camera.ts` resolves these to a framing
  * against `room-layout.ts`, which is the one place the room's geometry lives.
  */
 export type BeatFocus = "room" | "swatches" | "plant" | "couch" | "shelf" | "tv";
@@ -130,7 +130,7 @@ export interface StoryBeat {
  * animation's commit point under this number.
  *
  * 0.4 rather than 0.5 for the reason recorded in `story-ticks.tsx`: exactly on
- * the band centre is a knife edge, and a whole-pixel scroll rounding was
+ * the band center is a knife edge, and a whole-pixel scroll rounding was
  * enough to land either side of it.
  */
 export const TICK_AT = 0.4;

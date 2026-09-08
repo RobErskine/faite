@@ -42,6 +42,8 @@ or read **[docs/README.md](docs/README.md)** for the complete index.
 | work on email capture — forwarding mail into Backlog | **[EMAIL-INGEST.md](docs/EMAIL-INGEST.md)** — the flow, the trust model, and the privacy invariants |
 | touch attachments, R2, or anything that moves file bytes | **[ATTACHMENTS.md](docs/ATTACHMENTS.md)** — the two-plane split, the ordering invariant, the limits and why they are not higher |
 | add a marketing/legal/support page, or touch `SITE_PAGES`, sitemap, robots, or the contact form | **[SITE.md](docs/SITE.md)** — the route table, the metadata contract, and how to add a page |
+| change the homepage — a story beat, the hero board, the card that flies | **[HOMEPAGE.md](docs/HOMEPAGE.md)** — the one table it all derives from, the zero-client-JS rule, and the known limits |
+| touch the 3D room, a model, or a `--room-*` token | **[SCENE.md](docs/SCENE.md)** — the bake pipeline, the load invariants, what the room does per beat, and the CC-BY chain |
 
 Split by design: **rationale lives in ARCHITECTURE, setup in SETUP, operations
 in the subsystem doc.** No file repeats another's reasoning — two copies drift,

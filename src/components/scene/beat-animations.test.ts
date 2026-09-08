@@ -222,7 +222,7 @@ describe("the watering beat", () => {
     }
   });
 
-  it("never leaves 0..1 — it is fed straight to a colour lerp", () => {
+  it("never leaves 0..1 — it is fed straight to a color lerp", () => {
     for (let u = -0.2; u <= 1.2; u += 0.005) {
       const { thirst } = plantStateAt(u);
       expect(thirst, `u=${u.toFixed(3)}`).toBeGreaterThanOrEqual(0);
@@ -298,7 +298,7 @@ describe("the ambivalence beat", () => {
       would show a decision while the copy describes indecision.
 
       Counted as direction changes rather than by sampling known peaks, so the
-      test states the behaviour instead of restating the formula.
+      test states the behavior instead of restating the formula.
     */
     const lifts: number[] = [];
     for (let u = 0; u < 0.18; u += 0.0005) lifts.push(shelfStateAt(u).lift);
@@ -363,7 +363,7 @@ describe("the letting-go beat", () => {
     expect(tvStateAt(0).oldScale).toBe(1);
     expect(tvStateAt(0.05).oldScale).toBe(1);
     expect(tvStateAt(COMMIT_AT).oldScale).toBeCloseTo(0, 6);
-    expect(tvStateAt(COMMIT_AT).sold).toBe(true);
+    expect(tvStateAt(COMMIT_AT).gone).toBe(true);
   });
 
   it("swells as it goes, then collapses — the pop in reverse", () => {

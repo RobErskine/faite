@@ -116,6 +116,15 @@ with "no such table", which looks like a code bug.
   server already on :3000 aborts the run. **Do not believe a local e2e failure
   until it survives this command**, or `--workers=1`. `docs/E2E.md` §9 has the
   measurements.
+
+  **`npm run build` on the first line is not optional, and skipping it after
+  `npm run verify` fails in a way that looks like a real bug.** `verify` runs
+  `build` and then `build:static`, and the second one leaves `.next` holding
+  the **app-shell** render — where `/` is nothing but
+  `window.location.replace("/board")`. `next start` then serves that, so every
+  homepage spec fails with the board's welcome dialog in the snapshot and
+  headings that are "not found" because the page under test never rendered.
+  Seven failures, none of them real. Rebuild the web target first.
 - `npm run verify` — broader, slower, and **not** the gate. It is a convenience
   script, not a mirror of `.github/workflows/ci.yml`; read the workflow's step
   list before claiming a change is CI-clean.
