@@ -22,16 +22,16 @@ import type { Priority, Todo } from "./schema";
  * rounds to 1 or 2 device pixels depending on the display — a rail that
  * changes thickness when you move the window to another monitor. The pair that
  * shares a thickness (P3/P4) is told apart by P4 being dotted, which survives
- * every colour-vision deficiency and both themes because it is not a colour.
+ * every color-vision deficiency and both themes because it is not a color.
  *
  * The rail is drawn in `--foreground`, so it inverts with the theme and always
  * holds full contrast against its column. `opacity` below is applied to the
- * span, not baked into a colour, so the same values serve both themes.
+ * span, not baked into a color, so the same values serve both themes.
  */
 export interface PriorityRail {
   /** Rail thickness in px. */
   width: number;
-  /** 0–1. Applied to the rail span; the colour is always `--foreground`. */
+  /** 0–1. Applied to the rail span; the color is always `--foreground`. */
   opacity: number;
   /** Dotted rather than solid — the second channel for the 1px pair. */
   dotted: boolean;

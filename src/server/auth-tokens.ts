@@ -28,7 +28,7 @@ import { extractBearerCredential } from "./bearer";
  * `/api/v1/*` themselves, in addition to (not instead of) the session this
  * plugin resolves. A desktop-handoff key is created with
  * `auth-scopes.ts`'s `DESKTOP_KEY_PERMISSIONS` (full: read/write/sync/
- * places) — unchanged behaviour, no regression. `defaultPermissions` below
+ * places) — unchanged behavior, no regression. `defaultPermissions` below
  * (`{ api: ["read"] }`) is what any OTHER key gets — the narrow default a
  * user-generated key (A3) needs, satisfying `/api/v1` reads and rejected by
  * `authorizeScope` everywhere else.

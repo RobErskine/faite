@@ -4,13 +4,13 @@ Source models for the homepage story scene (EI-272). `npm run scene` reads
 `models/` and writes `public/scene/living-room.glb`.
 
 **Four of these are CC-BY, and that is a condition of use, not a courtesy.**
-CC0 waives everything — you may ship it uncredited. CC-BY grants the licence
+CC0 waives everything — you may ship it uncredited. CC-BY grants the license
 *only* if attribution is given. So the credits below have to reach a user, not
 just sit in this file: they render at `/colophon`, which is linked from the
 marketing footer. If a CC-BY model is added here and not added there, the page
 is shipping something it is not licensed to ship.
 
-Attribution follows the standard CC form — **title, creator, licence, source.**
+Attribution follows the standard CC form — **title, creator, license, source.**
 
 | Model | Title | Creator | Licence | Source |
 |---|---|---|---|---|
@@ -24,7 +24,7 @@ Attribution follows the standard CC form — **title, creator, licence, source.*
 ## Adding a model
 
 1. Drop the `.obj` + `.mtl` (or `.glb`) into `models/`.
-2. Add a row above with all four fields. A missing licence is a blocker, not a
+2. Add a row above with all four fields. A missing license is a blocker, not a
    TODO.
 3. If it is CC-BY, add it to `src/app/colophon/page.tsx` in the same commit.
 4. Add it to `SCENE_MODELS` in `scripts/scene/build-room.mjs` with its target

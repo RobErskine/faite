@@ -216,7 +216,7 @@ export function formatCombo(combo: string, platform: Platform): string {
 /**
  * Best-effort platform sniff for DISPLAY ONLY.
  *
- * Never gate behaviour on this — `mod` already resolves to whichever of
+ * Never gate behavior on this — `mod` already resolves to whichever of
  * Ctrl/Meta the user actually pressed, so a wrong guess here costs a cosmetic
  * glyph rather than a dead shortcut.
  */

@@ -67,7 +67,7 @@ describe("playwright.config.ts spec coverage", () => {
     expect(
       empty,
       `${empty.join(", ")} has no testMatch, so it silently runs every spec — ` +
-        `which is the 180-run behaviour EI-187 removed.`,
+        `which is the 180-run behavior EI-187 removed.`,
     ).toEqual([]);
   });
 });

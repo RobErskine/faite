@@ -127,7 +127,7 @@ interface TodoSheetProps {
    * simply shows no roll rows.
    */
   ctx?: PlacementContext;
-  /** Live AND archived lists, so a `moved` event still colours its dot after
+  /** Live AND archived lists, so a `moved` event still colors its dot after
    * the target list is filed. Mirrors `DaySheet`'s `listsById`. Also backs the
    * derived Tab field below (EI-62) — see `tabForTodo` (`lib/board.ts`). */
   listsById?: ReadonlyMap<string, List>;
@@ -182,7 +182,7 @@ const subscribeToNothing = () => () => {};
 
 /**
  * Display-only platform sniff, client-safe. `Platform` never gates
- * behaviour (the keyboard handler below checks the actual event's
+ * behavior (the keyboard handler below checks the actual event's
  * modifiers), only which glyphs the footer tooltips show — but `navigator`
  * doesn't exist during the static export's prerender, so reading it
  * directly would still render one string server-side and swap in another on
@@ -1065,7 +1065,7 @@ function historyDetail(event: TodoTimelineEvent): string | null {
 
 /** The accent dot uses the list FROM THE PAYLOAD, not the todo's current
  * list — otherwise every dot on a single todo's timeline is the same
- * colour and says nothing about what actually happened. Every other kind
+ * color and says nothing about what actually happened. Every other kind
  * has no natural list association, so it gets no accent. */
 function historyAccent(
   event: TodoTimelineEvent,

@@ -34,7 +34,7 @@ on:
 # result was ever looked at. Cancel the older ones (EI-187).
 #
 # `main` is deliberately exempt via the `github.ref` half of the key: every
-# push to main gets its own concurrency group, so a merge is never cancelled
+# push to main gets its own concurrency group, so a merge is never canceled
 # by the merge behind it and each commit on main keeps an independent result.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}

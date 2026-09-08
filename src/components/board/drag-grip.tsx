@@ -19,7 +19,7 @@ import { cn } from "@/lib/utils";
  * an absolutely positioned `::before` costs nothing in layout, and pointer
  * events on it still resolve to the button.
  *
- * The expansion stops 2px short of the neighbouring control on a card, so
+ * The expansion stops 2px short of the neighboring control on a card, so
  * widening it further would start stealing clicks from the checkbox.
  *
  * Hover is a color change, not a background: a filled box around a 12px icon

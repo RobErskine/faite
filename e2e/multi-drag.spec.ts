@@ -52,7 +52,7 @@ const firstDay = (page: import("@playwright/test").Page) =>
  * A real pointer drag, in steps, past dnd-kit's 4px `MouseSensor` threshold.
  *
  * The nudge before the long move matters: dnd-kit only activates once the
- * pointer has travelled 4px from `mousedown`, and a single jump to the
+ * pointer has traveled 4px from `mousedown`, and a single jump to the
  * destination can be delivered as one event that both crosses the threshold
  * and lands, leaving no frame in which collision detection ever ran.
  */

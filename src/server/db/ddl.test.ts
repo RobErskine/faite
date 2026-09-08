@@ -62,7 +62,7 @@ describe("replayDdl", () => {
   });
 
   /**
-   * The behaviour the whole migration ledger exists because of: a second
+   * The behavior the whole migration ledger exists because of: a second
    * `CREATE TABLE IF NOT EXISTS` cannot deliver a new column. Modelling it
    * faithfully is what lets the parity test detect a missing migration —
    * a replayer that "helpfully" merged the two would report the schema the

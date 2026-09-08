@@ -2317,3 +2317,691 @@ matched by the `desktop` project, so no `playwright.config.ts` change — and
 asserts the board's text against the raw response body rather than the
 hydrated DOM: rendering it on the client would keep every locator green and
 fail that line.
+
+## EI-275 — the room moves to the homepage (2026-09-06)
+
+Sub B of EI-273. `/spike-3d` is gone — route, `PRIVATE_ROUTES` entry, and the
+"nothing here ships" premise with it. `src/components/spike/` is now
+`src/components/scene/`, and the eslint override's `files` glob moved with it,
+as `docs/SCENE.md` §11 said it would have to.
+
+`/` is three movements: the hero board (EI-274), the room, and the board
+again. The closing beat offers `/board` first and `/signup` second — the board
+works with no account, so leading with sign-up would contradict the sentence
+directly above the buttons.
+
+### The beat table
+
+`src/lib/story-beats.ts` is new and is the point of the refactor: one row per
+beat carrying headline, body, citation **and the sub-task it ticks**. EI-276
+(camera), EI-277 (copy) and EI-278 (ticks) all read it, and three parallel
+arrays kept in step by hand fail silently — the room showing the bookcase
+while the copy talks about paint. `MOVE_SUBTASKS` in `demo-board.tsx` is now
+derived from it rather than written out twice.
+
+### The panel
+
+`RoomStage` gained a `panel` slot; `story-panel.tsx` fills it with the "Plan
+living room move" card and its five sub-tasks. It takes `doneThrough` as a
+prop and renders a correct static state from it, which is deliberately the
+cheap way round: EI-278 adds the live layer on top of something already right,
+so its degrade-gracefully requirement is satisfied by construction instead of
+by a second code path.
+
+### The stage is sticky at every width now
+
+It was `md:sticky`. Stacked and unpinned on a phone, the room scrolled away
+after one screen and never came back — a decorative picture at the top of an
+article, with the page's actual argument (this room, and the list doing it, at
+once) only ever made on a desktop. Now it pins to the top 45vh, the beats read
+underneath it, and the camera keeps moving the whole way down. `bg-background`
+on the outer box is what makes that safe: sticky elements stay in flow, so the
+beats scroll up behind it, and `bg-muted/30` is a tint, not a backdrop.
+
+The panel takes the opposite call and is sticky only from `md:` up. Two sticky
+elements do not fit on 844px — 45vh plus ~250px leaves a third of a viewport
+for copy — and the room wins that trade: it is the thing that changes, and
+EI-278's ticking degrades to a static card by design whereas a room that
+cannot be seen degrades to nothing. Beat blocks are `min-h-[55vh]` on phone
+(the clear region below the stage) and 80vh from `md:` up.
+
+### Measured
+
+`npm run build` immediately before measuring.
+
+| `/` | eager JS (gz) | HTML (gz) | three.js eager |
+|---|---|---|---|
+| before (hero only) | 340.5 KB | 10.9 KB | — |
+| after (hero + story) | 342.2 KB | 13.9 KB | **0.0 KB** |
+
+The whole story costs 1.7 KB of eager JS — `RoomStage` itself, since its
+`panel` and `children` cross from `page.tsx` as an RSC payload and stay server
+HTML. three.js is 241.4 KB gz **lazy**, fetched in a `requestAnimationFrame`
+after first paint on a device that passes `canUseWebGL()`. `.next-static`
+greps clean of it, `/` there is still only `window.location.replace("/board")`,
+and the GLB stays out of the desktop payload via the existing `/scene/`
+exclusion.
+
+### Verified
+
+`npm run verify` green (154 files, 2359 tests). The gate run the way CI runs
+it — production build, `E2E_SERVER="npx next start -p 3100"`, `CI=1` — is
+green: 111 passed, 1 flaky (`touch-smoke`'s day-track swipe, pre-existing and
+untouched, green on retry). Four new e2e tests in `marketing-pages.spec.ts`:
+the story's beats/citations/sub-tasks table-driven off `STORY_BEATS`, the
+closing CTAs, `/spike-3d` returning 404, and the flat page under
+`javaScriptEnabled: false`.
+
+That last one started as `reducedMotion: "reduce"` and did not work — see the
+new entry in `.ai/lessons.md`. The option was set and
+`matchMedia("(prefers-reduced-motion: reduce)").matches` still read `false` in
+the page, so the canvas mounted and the test failed for a reason unrelated to
+its own name.
+
+## EI-278 (part) — the card travels (2026-09-06)
+
+The hero board's "Plan living room move" now leaves the board on scroll,
+crosses the page, widens, unfolds its five sub-tasks, and lands in the panel
+beside the room. Before this the two were unconnected pictures of the same
+to-do and the reader had no reason to link them.
+
+`src/components/marketing/card-travel.tsx`: FLIP, with both ends measured
+live every frame rather than remembered, so a resize or a reflow mid-scroll
+self-corrects on the next frame. Four things interpolate — translate, width,
+the sub-task list's height, and opacity. The two real cards are never moved;
+a third server-rendered copy flies between them.
+
+### Two things that were wrong first, and the measurements that showed it
+
+**The window was timed off the story alone** (`t = 1 - storyTop / vh`). Correct
+on paper. In the browser the board row sits ~445px down a 100vh hero, so by a
+third of the way across it had left the top of the screen — the card appeared
+to arrive from nowhere, having never been seen to leave. Now the start is
+pinned to the ORIGIN (a quarter down, board still plainly there) and the end to
+the STORY (just past half, panel plainly there), both in document coordinates
+because a viewport-relative window that moves as you scroll through it is
+circular.
+
+**Geometry eased across the full range**, so at t=0.92 the copy sat at y=535
+while the panel it was dissolving into sat at y=556. Two near-identical cards
+21px apart at half opacity each read as a ghost, not a handoff. Geometry now
+runs over the middle band only (`(t - FADE) / (1 - 2·FADE)`), so it is exactly
+on the origin for the whole fade-in and exactly on the target for the whole
+fade-out. Measured after: 0px at both ends.
+
+A third thing worth recording: the first browser measurement of the fix showed
+the OLD numbers exactly (left 587 where the old formula predicts 587). The dev
+server had not recompiled. A "fix that did not work" is worth one check that
+the code under test is the code running.
+
+### Deliberately not done
+
+`scale()`. Cheaper, and wrong: it would zoom the title from 14px to 35px and
+blur every glyph on the way, when what the card actually does is widen and
+unfold. Width and height cost layout on one small subtree once a frame, which
+is the trade.
+
+### Also
+
+The hero is `min-h-dvh` now, so the board is the only thing on screen and the
+fold is a real edge rather than wherever the content stopped.
+
+### Measured
+
+| `/` | eager JS (gz) | HTML (gz) | three.js eager |
+|---|---|---|---|
+| before | 342.2 KB | 13.9 KB | 0.0 KB |
+| after | 342.8 KB | 14.1 KB | 0.0 KB |
+
++0.6 KB of JS. The flying copy duplicates the whole panel in the HTML and costs
+0.2 KB gzipped, because it is a byte-for-byte repeat.
+
+### Verified
+
+`npm run verify` green (155 files, 2375 tests). The gate the way CI runs it:
+113 passed, 0 flaky. Off entirely under reduced motion, with no JavaScript, and
+below `md` — confirmed on a 390px viewport that the copy stays hidden at every
+scroll position and neither real card's opacity is ever touched.
+
+The new e2e asserts the handoff is exact (2px) at both ends, and was proved
+non-vacuous by restoring the old timing formula, which fails it.
+
+**Still open on EI-278:** the live sub-task ticks.
+
+## EI-276 — the camera frames what each beat is about (2026-09-06)
+
+Sub C of EI-273. The spike's rig did one continuous push-in aimed at the middle
+of the room the whole way down, so the room did the same thing under every
+beat — the copy talked about paint while the camera looked at the couch. Now
+each beat names an object and the camera goes there.
+
+### The mapping
+
+| beat | frames | sub-task |
+|---|---|---|
+| You wrote it down | the whole room, undecided | Get everything out of my head |
+| A date and a time | the paint swatches | Pick a paint color, book the painter |
+| Never going to finish on Tuesday | the blue couch on the rug | Measure the room before ordering the couch |
+| The things you keep not doing | the wall shelf and its books | Decide about the old bookcase |
+| Letting go / sending it back | the console, where the TV swaps | Sell or donate what is not coming |
+
+Uses only objects already in the room, so no new models and no new CC-BY chain.
+The last two land on the scene's two existing animations: the wall-colour cycle
+(t 0.35–0.85, still the indecision it always was) and `tvUpgradedAt` (t > 0.9).
+
+### Named, not positioned
+
+`focus` on `StoryBeat` is a name — `"swatches"`, `"couch"` — not a vector.
+`lib/story-beats.ts` is content: `page.tsx`, the hero board and an e2e spec all
+import it, and none of them has any business carrying metres.
+`components/scene/room-camera.ts` resolves the name against `room-layout.ts`.
+
+That split also makes the track testable. `framingAt()` is pure arithmetic with
+no three.js import, so eight unit tests cover what would actually regress — a
+beat pointing at the wrong object, a keyframe off by half a band, a zoom
+widened past the point where the room stops being a room. What is left in the
+Rig is four lines of damping, and no unit test can tell you those look right;
+that is what SCENE.md's "look at the room" step is for.
+
+### Two decisions
+
+**Pans more than it zooms.** The spike's constraint still holds — pushing to
+132 cropped the walls off every edge and lost the room. The framings stay in a
+93–135 band (a test enforces it) and the work of "look at this" is done by
+moving what the camera aims at.
+
+**Keyframes at the CENTRE of each beat's band, not its edges.** A beat's copy
+is centred in its band, so the camera is on the object exactly when the
+sentence about it is centred on screen. Keying the edges would have the camera
+arrive at each object just as its paragraph left.
+
+### One bug worth recording
+
+`toEqual` on a framing at a beat centre failed by a float bit. `a + (b - a) * t`
+does not return exactly `b` at t=1; `(1 - t) * a + t * b` does. A camera landing
+1e-16 short of the object is invisible on screen and fatal to the one assertion
+the whole track exists to support.
+
+### Deliberately not done
+
+**A per-beat static frame under reduced motion**, which EI-276's acceptance
+criteria ask for. Reduced motion currently gets `StaticStage` and never mounts
+the canvas at all — rendering WebGL for someone who asked for stillness to show
+them a still is the wrong trade, and the flat stage already tells the story.
+Flagged rather than silently decided either way.
+
+### Measured
+
+Scroll frame cost through the whole story: median **8.4 ms**, max 22.0 ms,
+**zero frames over 33 ms** (spike baseline: median 8.3 ms). Caveat worth
+keeping: dev build, synthetic rAF-driven scroll, and the measuring loop itself
+competes for the frame — so the median and the over-33ms count are the
+trustworthy numbers, not p95.
+
+Eager JS unchanged at 342.8 KB gz; three.js still 0.0 KB eager. The camera code
+adds 1.2 KB to the lazy chunk (241.4 → 242.6 KB gz).
+
+### Verified
+
+`npm run verify` green (156 files, 2383 tests). The gate the way CI runs it:
+113 passed, 0 flaky. Looked at in the browser at beats 2, 4 and 5 — swatch
+wall, wall shelf, and the console with the new set.
+
+## EI-277 + EI-278 — the story matches the research (2026-09-06)
+
+Review caught the real problem: the five sub-tasks were plausible renovation
+chores I invented, and they had nothing to do with the studies beside them.
+Pick a paint color, measure for the couch, sort the bookcase — a to-do list
+that happened to sit next to some citations. Backwards.
+
+### Rebuilt from `docs/RESEARCH.md` §2, six beats
+
+Each row's sub-task now DEMONSTRATES its finding, and each maps to a Faite
+feature via §3's feature→section table:
+
+| beat | §2 | frames | sub-task |
+|---|---|---|---|
+| You wrote it down | 2.1 capture | the room | Get the whole move out of my head |
+| A date and a time | 2.3 scheduling | swatches | Painter comes Saturday, 9:00am |
+| Miss one, no streak | 2.5 recurring | **the plant** | Water the plants — every Wednesday |
+| Never finishing Tuesday | 2.4 rollover | couch | Measure the room before ordering the couch |
+| Keep not doing / keep thinking | 2.4 ambivalence | shelf | Decide about the old bookcase |
+| Letting go / sending back | 1, 2.8 | tv | Sell the old TV instead of moving it |
+
+Read down the sub-task column and it is one plan for one move. Read across a
+row and the room, the study and the to-do all make the same point. The
+recurring beat is the one that was missing entirely, and it is the one that
+needed the room's monstera — a plant that needs watering every Wednesday is
+the only thing in that room that is never finished.
+
+Five beats became six, so `BeatFocus` gained `plant` and `room-camera.ts` a
+framing for it. The monstera over the three smaller plants: at diorama scale
+the ones on the console and the coffee table read as texture, not as something
+you could have a to-do about.
+
+### EI-277: the claim in front of the citation
+
+`StoryBeat` gained `claim` and `section`. Each beat now prints the finding in
+plain language and then the surname — rendered as `<figure>`/`<figcaption>`,
+because the citation is the attribution FOR the claim above it and that is the
+one relationship the markup can carry.
+
+Quotes are paraphrased with the quotation marks dropped, which
+`docs/RESEARCH.md` rule 1 explicitly allows. Partly length, partly that the
+Lally quote contains "behaviour" and `spelling.test.ts` scans string literals —
+a verbatim quote is exempt per `docs/CONTENT.md` §3, but the test cannot know
+that, so not putting quotation marks around a paraphrase is the honest fix.
+Every number traces to a §2 row; nothing from §4 appears.
+
+### EI-278: the live ticks, and two thresholds that were wrong
+
+`story-ticks.tsx` toggles `data-done` from the scroll loop on both copies of
+the card. `DemoCheckbox` gained a `live` mode so the mark is in the DOM and
+revealed by CSS — a conditional `{done && …}` cannot be turned on by an
+attribute, and the server still decides what a no-JS reader keeps.
+
+**`floor(t·n)` was wrong at both ends.** It ticks a beat only once the reader
+has scrolled clear of it, so the card lags a section behind the screen; and the
+last band ends at t=1, so the sixth line checked on the final pixel. Measured:
+at t=0.99 the card read 5/6 and the page ended on an unfinished plan.
+
+**`+ 0.5` was still wrong.** That puts the threshold exactly on the band
+centre, which is knife-edge: sampled at the six exact centres it returned
+0,1,2,3,5,6 instead of 1..6, because rounding the scroll target to a whole
+pixel landed a hair under the boundary four times out of six. `+ 0.6` puts it
+40% in — checked by the time you are reading the sentence, complete at t=0.9.
+
+**A third, smaller one:** wrapping the count in its own span made `/6` a
+separate flex child of an `inline-flex gap-1` badge, which rendered "3 /6".
+
+### Measured
+
+Eager JS 342.8 → **344.5 KB gz** (+1.7 KB, `story-ticks.tsx`). HTML 14.1 →
+15.8 KB gz — six beats instead of five, each carrying a claim. three.js still
+**0.0 KB eager**.
+
+### Verified
+
+`npm run verify` green (156 files, 2388 tests). The gate the way CI runs it:
+113 passed, 1 flaky (`overdrive`, pre-existing and untouched). New e2e asserts
+beat *n* ticks item *n* at each beat's own centre, and that the card finishes
+at 6/6. Looked at beat 3 in the browser: camera on the monstera, "Water the
+plants — every Wednesday" struck through, badge 3/6.
+
+## EI-280 — each beat acts out its own to-do (2026-09-06)
+
+The room's two animations were spike remnants on a global clock: the wall
+cycled candidates across t 0.35–0.85 and snapped back bare ("the indecision IS
+the animation"), and the TV swapped at a bare t > 0.9. Now that every section
+IS a to-do, the room acts each one out. The paint beat is the proof of the
+pattern; the strategy is the deliverable.
+
+### The four rules (docs/SCENE.md file map → beat-animations.ts)
+
+1. **Beat-local time.** An animation is a pure function of u — 0 at its band's
+   start, 1 at its end, clamped outside — never of global t. Bands derive from
+   STORY_BEATS, so reordering beats moves the animations with them.
+2. **Pure state, applied thinly.** Same split as room-camera: `paintStateAt(u)`
+   imports no three.js and is unit-tested; the scene lerps toward it.
+3. **The act lands before the tick.** COMMIT_AT (0.3) < TICK_AT (0.4, now a
+   shared constant in lib/story-beats.ts), held by a test — a checked-off to-do
+   whose act has not happened is a lie told on both halves of the screen.
+4. **Done stays done.** u clamps to 1 after the band. The wall stays painted;
+   the snap-back is deleted.
+
+### The paint beat
+
+Camera arrives (u<0.05, bare) → each visible chip pops in turn, scale 1.35 +
+lifted off the wall, while the wall previews its color → at u=0.3 the pick:
+the blue-grey commits (chosen: 2 in room-layout — the wall joins the couch's
+side of the warm-floor/cool-couch contrast), the winner settles to a quieter
+1.18, the line ticks at u=0.4. The TV swap re-scoped to its own band's commit —
+which lands at t≈0.883, within scroll-pixels of the spike's hand-placed 0.9.
+
+### Found by looking, not reasoning
+
+The payoff frame was invisible: the moment the wall takes a chip's color, the
+chip is a quad of that color on a wall of that color under the same light, and
+it VANISHES — the chosen chip dissolved into its own wall. Fixed with a white
+backing card behind the active chip (a child mesh, so it inherits the pop),
+opacity-lerped in and out. Also nested meshes: the backing rides inside the
+chip so scale/lift are inherited and z is in the chip's own space.
+
+### Verified
+
+`npm run verify` green (157 files, 2398 tests — 10 new in
+beat-animations.test.ts). Gate the way CI runs it: 114 passed, 0 flaky.
+three.js still 0.0 KB eager. Scroll frame cost median 8.4 ms, zero over 33 ms —
+unchanged. Looked at in the browser, light and dark, at the considering and
+committed phases.
+
+### Remaining beats (same pattern, not yet built)
+
+Plant: watering. Couch: arriving/settling on the rug. Shelf: books leaving.
+Beat 1 (capture) and the camera's wide shot may be enough as-is.
+
+### EI-280 follow-up — the paint beat finishes the job, and the plant goes thirsty
+
+Review, and both notes were right.
+
+**Paint.** The chosen blue now goes on BOTH walls — you do not paint one wall
+of a room. The side wall keeps its step of shade rather than matching exactly,
+which is the same rule `--room-wall-side` follows in the bare palette: two
+walls at one value read as a single folded plane and the corner disappears. So
+it is the chosen color, shaded as a second wall under the same light. And the
+sample cards now come down after the pick (opacity 1 → 0 across u 0.45–0.6,
+i.e. after the line ticks): leaving them taped to a painted wall was the
+difference between "we chose" and "we are still choosing".
+
+**The plant.** `plantStateAt(u)` is a round trip — green → brown → green — not
+a state change, because a recurring to-do is the one thing in the room that is
+never finished; the point is that it will be brown again next Wednesday.
+Thirst rises 0 → 1 across u 0 → 0.3, peaking exactly at the watering, then
+recovers to 0 by u 0.8. Recovery is deliberately slower than the browning:
+plants do not perk up instantly, and the asymmetry is what stops the round trip
+reading as a flicker. Applied with `lerpColors` on the shared `Plant_Green` and
+`DarkGreen` material instances, so every leaf in the room turns at once and
+every intermediate frame is a real color.
+
+The healthy green is SNAPSHOT after `applyRoomPalette`, not read from a token
+at use time — the frame loop mutates those same material instances, so once it
+has run the material no longer knows what green it started as. Re-snapshotted
+on every repaint, or a plant recovering after a dark-mode toggle would return
+to the previous theme's green.
+
+**The close-up.** The plant framing went 122 → 255, about 2.1x the diorama wide
+shot. That breaks the "a diorama has to stay a diorama" band the camera test
+enforces, deliberately: the beat's whole subject is the color of some leaves,
+and at 122 the foliage was a thumbnail where brown-or-green was a guess.
+Handled as a DECLARED exception — `closeUp?: true` on the framing — so every
+other framing is still held to 93–135 and a test also fails a `closeUp` flag on
+a framing that does not need one.
+
+That forced a type split worth keeping: `Framing` is what someone authored
+(including the intent flag), `CameraState` is what `framingAt` returns.
+`closeUp` has no meaning a third of the way between two framings, so it does
+not survive interpolation and the type says so.
+
+The continuity test's zoom bound was hard-coded at 1 and broke the moment the
+biggest keyframe-to-keyframe zoom gap went from 12 to 135. Now derived from the
+widest gap × smoothstep's steepest slope — a test that fails for arithmetic
+rather than for the thing it guards is worse than no test.
+
+**Measured.** Verify green (157 files, 2407 tests). Gate: 113 passed, 1 flake
+(`touch-smoke` day-track swipe — the same pre-existing one from three earlier
+runs, green in isolation). Eager JS unchanged at 344.5 KB gz; three.js 0.0 KB
+eager. Scroll frame cost over three consecutive runs: median 8.4 ms, max 13.6,
+**zero frames over 33 ms**. The first run after a cold load showed one 41 ms
+frame — shader compile for the newly transparent chip materials, gone on every
+subsequent pass.
+
+### EI-280 — the couch arrives (2026-09-06)
+
+"Measure the room before ordering the couch." The room now starts WITHOUT the
+loveseat and pops it into existence, at the coordinates it always had, once the
+measuring is done.
+
+**The ordering rule inverted, on purpose.** Rule 3 says the act comes before
+the tick, and that stays right wherever the to-do IS the thing you watch happen
+— the wall gets painted, the plant gets watered, the old set goes. This beat is
+the exception that proves it: measuring is the task, and the couch is what the
+task EARNS. A couch that arrived before the line ticked would make the
+measuring look like a formality. So `PAYOFF_AT = TICK_AT`, as its own named
+constant with its own test asserting it is at or after the tick — the mirror of
+the test that holds `COMMIT_AT` below it. The asymmetry is a decision on the
+record, not a number that happens to be bigger.
+
+**Retargeted the camera.** The couch framing pointed at the blue couch, which
+was fine when the beat had no act and wrong the moment it did: the loveseat
+arrives three metres away against the back wall, so the pop was happening off
+screen. Now derived from `LOVESEAT.position` — nudging the furniture cannot
+leave the camera looking at where it used to be — and lifted to seat height, so
+before the delivery the shot is the empty space you measured.
+
+**The shadow travels with it.** `LOVESEAT_SHADOW` came out of
+`CONTACT_SHADOWS` and is drawn inside `ContactShadows` instead, so it shares
+the radial-gradient texture — a flat black quad beside eight soft ones is
+instantly the odd one out. Its opacity takes `Math.min(1, scale)`, dropping the
+pop's overshoot: a shadow bigger than the thing casting it is exactly the tell
+that this is a scale trick.
+
+**A bug the test caught, with the algebra to match.** The first overshoot was
+`smoothstep(p) + sin(smoothstep(p)·π) · 0.12`, which looks like a pop and
+provably is not — the bump is largest where the base curve is small and
+vanishes as it reaches 1, so the sum rises monotonically to exactly 1. Its
+derivative `1 + 0.12π·cos(mπ)` has no zero, which is the same statement.
+Failure read "expected 1 to be greater than 1". Replaced with the standard
+back-out curve, `BACK = 2`, peaking ~1.13 at 56% of the pop.
+
+**Measured.** Verify green (157 files, 2413 tests). Eager JS unchanged at
+344.5 KB gz; three.js 0.0 KB eager; `npm run scene` re-bakes byte-identically
+(370.8 KB, 23 nodes) — the loveseat was always in the GLB, only its placement
+moved. Frame cost over three runs: median 8.4–8.5 ms, zero frames over 33 ms.
+
+**Worth flagging:** `e2e/touch-smoke.spec.ts`'s day-track swipe has now flaked
+in four consecutive gate runs and passed in isolation every time. Pre-existing
+and untouched by any of this work, but it is no longer a one-off.
+
+### EI-280 — the sets swap with the same pop (2026-09-06)
+
+"Sell the old TV instead of moving it" was still the spike's boolean: one set
+`visible = false`, the other `visible = true`, on the same frame. Now it uses
+the loveseat's pop, once backwards and once forwards.
+
+**The beat's own wording put the halves either side of the tick.** SELLING is
+the to-do, so the old set going is the ACT and lands before the line ticks
+(rule 3). The new television is not the task — it is what selling the old one
+paid for — so it arrives on the payoff, like the couch. That leaves a
+deliberate ~10%-of-band gap where the console holds NOTHING, and it is the most
+honest frame in the beat: the thing is gone, the space is empty, and the room
+sits with that before the replacement shows up. A cross-fade would have hidden
+exactly the part worth showing.
+
+Reassuringly, the beat-derived timing lands where the spike's hand-placed
+constant did: old set out at t ≈ 0.883, new set in at t ≈ 0.900 — the spike
+used `t > 0.9`. A test asserts both, so the coincidence is on the record.
+
+**A comment that was confidently wrong, and the test that proved it.** I wrote
+`popOut` as its own "back in" polynomial and documented it as differing from
+`popIn(1 - p)` — claiming one anticipates at the start and the other swells
+mid-shrink. They are the SAME FUNCTION: `1 - ((BACK+1)p³ - BACK·p²)` expands to
+`1 - 3p³ + 2p²`, and `popIn(1 - p)` expands to `1 - 3p³ + 2p²`. The test
+disagreed with the comment (`expected 0.744 to be less than 0.5`) and the test
+was right. `popOut` is now literally `popIn(1 - clamp(p))`, the comment says so
+and says it used to claim otherwise, and a test pins the two together for
+anyone tempted to re-derive it.
+
+Exactly the shape of `.ai/lessons.md`'s "a comment claimed a behaviour that was
+never implemented" — except here the comment claimed a DISTINCTION that never
+existed.
+
+**Measured.** Verify green (157 files, 2420 tests). Eager JS unchanged at
+344.5 KB gz; three.js 0.0 KB eager. Frame cost over three runs: median 8.4 ms,
+zero frames over 33 ms.
+
+**The flake is now systematic.** `e2e/touch-smoke.spec.ts`'s day-track swipe
+has failed the gate five runs in a row and passed in isolation every single
+time. Pre-existing and untouched by this work, but five for five is a pattern,
+not noise — worth its own ticket.
+
+### EI-280 — the bookcase that never existed (2026-09-06)
+
+Review: "we don't really have a book case here." Correct, and there never was
+one — the sub-task said "Decide about the old bookcase" while the camera
+framed a wall shelf with books on it. That is precisely the drift the beat
+table was built to prevent, and it survived two rounds of review anyway
+because nothing checks a to-do's noun against the room.
+
+Aligned all three, which was the actual ask:
+
+1. **Research** (§2.4, Emmons & King 1988) — people act least on exactly the
+   strivings they think about most. RESEARCH.md calls it "the single best row
+   in this file for the Faite Loop… the item that rolls three times and lands
+   in Overflow."
+2. **Marketing claim** — unchanged, and it was already right: "The things you
+   keep not doing are the things you keep thinking about", with Overflow as
+   the product answer.
+3. **The room** — `BOOKS` lifted out of `STATIC_PROPS` into its own group. The
+   sub-task is now "Decide which books are coming", about an object that is
+   actually up there.
+
+**The act IS the hesitation.** Every other beat animates a decision; this one
+animates the *inability* to make one. The books are picked up and put back
+twice — a cosine, so whole cycles that start and end at rest — and only then
+go. A shelf that simply emptied would have illustrated a decision; a shelf
+whose books keep almost leaving illustrates what the study measured. Faite's
+answer follows: the hesitating stops and the books go, before the tick,
+because deciding is the to-do.
+
+**A rule-3 violation the test caught.** The first version ran the departure
+FROM `COMMIT_AT` over 0.16 of the band. But `popOut` holds near 1 and collapses
+late, so at the tick the books were still at 1.05x, sitting on the shelf, while
+the card claimed the decision was made — `expected 1.0488 to be less than 0.2`.
+Restructured so the whole act finishes BY `COMMIT_AT`, the same shape the old
+television uses. Rule 3 is about what is on screen when the line ticks, not
+about when an animation was allowed to begin.
+
+**Fixed the eslint papercut** that had cost three detours: `playwright-report/`
+and `test-results/` are gitignored, so CI never saw them, but eslint lints
+whatever is on disk and the report vendors a copy of CodeMirror worth ~257
+errors. `npm run verify` failed for anyone who had run the tests first. Two
+lines in `globalIgnores`.
+
+**Measured.** Verify green (157 files, 2426 tests). Eager JS unchanged at
+344.5 KB gz; three.js 0.0 KB eager; `npm run scene` re-bakes byte-identically.
+Frame cost over three runs: median 8.4–8.5 ms, zero frames over 33 ms.
+
+**Every beat now acts out its to-do.** Capture (the wide establishing shot),
+paint, watering, the couch arriving, the books going, the sets swapping.
+
+### EI-280 — the donation run, and a board that tells the truth (2026-09-06)
+
+Two review notes, both catching the same class of error: the page claiming
+something that is not so.
+
+**"Decide which books are coming" promised a selection the room did not make.**
+All the books left, so "which are coming" advertised a subset that never
+existed. Now "Drop books at the donation center", with `subtaskLocation:
+"Donation Center"` — every book goes, the destination says where, and the
+wording matches the animation exactly.
+
+That also lets the Location field show itself. `story-panel.tsx` renders a map
+pin inside the title's inline flow, the way `TitleMarkers` does on a real card,
+on the one sub-task that is genuinely about going somewhere. The beat's
+citation stays Emmons & King: `docs/RESEARCH.md` §2.3 is the evidence for
+Location (Smith & Vela; Einstein et al.) but a beat can only make one argument,
+so the pin is the product showing itself rather than a second claim.
+
+**The hero board was advertising a feature Faite does not have.** Review:
+"on the /board, we don't have a concept of colored labels like this." Checked
+rather than assumed, and it is worse than a style nit — `createLabel` takes an
+optional decoration and ALL FIVE of its call sites pass a name and nothing
+else. There is no color picker for a label anywhere in the product. But
+`todo-row-parts.tsx` will happily tint one that has a color, so three
+hand-written hexes rendered convincingly and sold something a new user could
+never reproduce. The worst kind of marketing bug: it only looks wrong after
+someone signs up.
+
+Fixed in both places the hex had been written by hand — `demo-board.tsx` and
+`story-panel.tsx`. Fixing only the first would have left a tinted "Home" pill
+on the card pinned beside the room for the entire story, which is the most
+looked-at label on the page.
+
+**Lists and tabs are exempt, and that was worth checking too.** Both mount a
+real `ColorPicker` (`list-info-dialog.tsx`, `tab-info-dialog.tsx`), so a
+colored column accent is something a user can actually produce. Kept.
+
+**And the list names are the seeded ones now.** `SEED_LISTS` creates Backlog,
+Brain Dump, Grocery List, To Buy, To Read. The board had invented "Home" and
+"Errands" — a smaller lie than the colors but the same kind, and a visitor who
+signs up should recognise the board they were shown.
+
+Two new guards in `demo-board.test.ts`: no demo label may carry a hex (checked
+in both files), and every planning-half column name must be one `SEED_LISTS`
+actually creates.
+
+**Measured.** Verify green (157 files, 2428 tests). Gate fully green for the
+first time in six runs: 114 passed, 0 flaky. Eager JS unchanged at 344.5 KB gz;
+three.js 0.0 KB eager.
+
+### EI-280 — the card explains itself, and the loop plays out (2026-09-06)
+
+Three review notes.
+
+**Tooltips, without a tooltip runtime.** Every marker on both cards is now a
+trigger, because a glyph you cannot interrogate is decoration. But
+`components/ui/tooltip.tsx` is Base UI and therefore `"use client"`, and both
+cards are Server Components on purpose — `demo-board.test.ts` fails the build
+if either import graph gains a client directive. So `demo-tooltip.tsx` is
+CSS-only: hover and focus, `group-hover`/`group-focus-within`, the same
+`bg-foreground`/`text-background`/`rounded-md`/`text-xs` as `TooltipContent`.
+
+Stated rather than glossed, what that gives up: no collision detection (every
+one sits in a fixed-width card mid-page with no edge to hit) and no
+`aria-describedby` (which was never the accessible channel — Base UI only sets
+it while OPEN, so `todo-card.tsx` already solves this with permanent `sr-only`
+text, and `sr` here carries the real board's phrasing where the two differ).
+Measured cost: eager JS unchanged at 344.5 KB gz.
+
+**The schedule left the title.** "Water the plants — every Wednesday" became
+"Water the plants" plus a `Repeat` marker whose tooltip says the schedule — a
+real recurring to-do carries a property you interrogate, not a name with its
+cadence stapled on. And "Sell the old TV instead of moving it" is "Upgrade TV".
+
+**The Faite Loop, played out.** The watering beat now rolls: Wed, Sep 9 →
+Thu, Sep 10 (rollover marker appears) → Fri, Sep 11 (Overflow badge), all
+while the plant browns AND droops — a tip off vertical plus a little lost
+height, the same thirst said a second way. At the watering it resets to a
+clean Wednesday, because a recurring to-do that got done is not overdue.
+
+Three equal days packed into the run-up to `COMMIT_AT`, so the act still lands
+before the tick (rule 3) with no new constants. `story-ticks.tsx` imports
+`plantStateAt` rather than re-deriving the schedule: the leaves browning and
+the badge rolling are the same event told twice, and one shared function is
+what guarantees the card never says "in Overflow" over a healthy plant. A test
+asserts exactly that.
+
+**Measured.** Verify green (157 files, 2432 tests). Eager JS 344.5 → 346.0 KB
+gz (+1.5 KB, the rollover layer); three.js still 0.0 KB eager; `npm run scene`
+re-bakes byte-identically. Frame cost over three runs: median 8.4 ms, zero
+frames over 33 ms.
+
+**The flake, again.** `touch-smoke`'s day-track swipe: seven gate runs now,
+green in isolation every time. Untouched by any of this. It needs its own
+ticket.
+
+### EI-280 — review cleanup before merge (2026-09-06)
+
+**The rolled date and the Overflow badge now persist through completion.** They
+used to reset to a fresh Wednesday on the theory that a recurring to-do comes
+back clean. On screen that read as a glitch: the reader watches the date climb
+to Friday and the badge appear, then both silently revert while the row is
+being ticked. Whatever is true of the NEXT occurrence, this one was scheduled
+Friday and completed there. Fixing it exposed a second bug the roll test caught
+instantly — `u <= 0` was sharing the same constant, so the sequence opened at
+Friday instead of Wednesday. Before and after a beat are not the same state.
+
+**"Painter comes Saturday, 9:00am" is "Change paint color"** — and the date and
+time moved into the board's own two badges (`CalendarClock` + `Bell`) rather
+than being dropped. That mattered: the beat's entire claim is "a date and a
+TIME, not just a date", so a shortened title that lost the time would have put
+the copy and the citation back out of step, which is the exact drift this whole
+sequence of tickets has been closing.
+
+**Every badge explains itself now.** The sub-task count, the missed deadline,
+and the labels moved from native `title` (or nothing) to `DemoTooltip`. The
+real board leaves the deadline badge bare, but a red "Deadline Sep 4" beside a
+card scheduled Sep 8 is the one most worth a sentence.
+
+Two bits of dead code went with it: the `tint`/`edge` styling on demo labels
+was resolving to `undefined` on every render now that `DemoLabel.color` is
+typed `undefined`, and it still read to a skimmer as though coloured labels
+were real. `edge` stays imported — the column accent is a genuine feature.
+
+**One placement bug, caught by looking.** The date/time badges rendered ABOVE
+"Change paint color", because the file has two `{subtask.rolls && (` blocks —
+the roll marker before the title and the badge row after it — and the insert
+landed on the first.
+
+**Measured.** Verify green (157 files, 2432 tests). Gate green: 114 passed, 0
+flaky. Eager JS 346.0 KB gz; three.js still 0.0 KB eager.

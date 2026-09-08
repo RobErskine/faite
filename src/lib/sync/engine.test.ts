@@ -117,7 +117,7 @@ describe("runSyncCycle", () => {
    *
    * This test exists because that generic handling is precisely what makes it
    * easy to break later — someone tidying the loop has no local signal that
-   * a whole recovery mode rides on it. Before this behaviour existed, a
+   * a whole recovery mode rides on it. Before this behavior existed, a
    * stranded device pulled nothing, forever, silently.
    */
   it("re-pulls from 0 when the server reports its storage was reset", async () => {

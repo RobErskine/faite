@@ -1,14 +1,14 @@
 # The 3D room scene
 
-The isometric living room on `/spike-3d` — how it is built, why it is built
-that way, and what to do to it next.
+The isometric living room on `/` — how it is built, why it is built that way,
+and what to do to it next.
 
 Rationale for the homepage story itself lives in `docs/RESEARCH.md`; the
 point-in-time spike record with the original measurements is
 `.ai/ei-272-3d-spike-runbook.md`. This file is the standing procedure.
 
 **The one-line summary:** a Node script bakes 22 CC0/CC-BY models into one
-371 KB GLB of named nodes; a layout file places those nodes in metres; a
+371 KB GLB of named nodes; a layout file places those nodes in meters; a
 runtime pass re-tints them from CSS tokens; and the whole canvas is an
 enhancement loaded strictly after first paint, on top of a flat page that
 already tells the story.
@@ -20,15 +20,21 @@ already tells the story.
 | File | Role |
 |---|---|
 | `assets/scene/models/*.obj,.mtl,.glb` | Vendored sources. ~350 KB of plain text, no textures anywhere. |
-| `assets/scene/CREDITS.md` | Title / creator / licence / source per model. A missing licence is a blocker. |
+| `assets/scene/CREDITS.md` | Title / creator / license / source per model. A missing license is a blocker. |
 | `scripts/scene/build-room.mjs` | `npm run scene`. Reads the sources, writes one merged GLB. |
 | `public/scene/living-room.glb` | The committed build output. 371 KB, 23 nodes, 37 materials. |
-| `src/components/spike/room-layout.ts` | Where every prop sits, in metres. No geometry. |
-| `src/components/spike/room-materials.ts` | Material name → CSS custom property, and the re-tint pass. |
-| `src/components/spike/room-scene.tsx` | The R3F canvas: shell, lights, camera rig, placed props, the fish. |
-| `src/components/spike/room-stage.tsx` | The pinned stage, the lazy gate, the scroll listener, the flat fallback. |
-| `src/components/spike/webgl.ts` | Capability + reduced-motion probe. |
-| `src/app/spike-3d/page.tsx` | Server Component. Headline and beats. No client JS. |
+| `src/components/scene/room-layout.ts` | Where every prop sits, in meters. No geometry. |
+| `src/components/scene/room-materials.ts` | Material name → CSS custom property, and the re-tint pass. |
+| `src/components/scene/beat-animations.ts` | What the room DOES during each beat: beat-local time, pure state functions, the commit-before-tick rule. Unit-tested. |
+| `src/components/scene/room-camera.ts` | Which object each beat frames, and the interpolation between them. No three.js, so it is unit-tested. |
+| `src/components/scene/room-scene.tsx` | The R3F canvas: shell, lights, camera rig, placed props, the fish. |
+| `src/components/scene/room-stage.tsx` | The pinned stage, the lazy gate, the scroll listener, the flat fallback. |
+| `src/components/scene/webgl.ts` | Capability + reduced-motion probe. |
+| `src/app/page.tsx` | Server Component. The hero board, the beats, the closing CTA. No client JS of its own. |
+| `src/lib/story-beats.ts` | One row per beat: headline, body, citation, and the sub-task it ticks. |
+| `src/components/marketing/story-panel.tsx` | The card pinned beside the room. Server Component. |
+| `src/components/marketing/story-ticks.tsx` | Ticks each sub-task off as its beat is read. Renders nothing. |
+| `src/components/marketing/card-travel.tsx` | Flies a copy of that card from the hero board into the panel on scroll. Client, and the only thing it renders is position. |
 | `src/app/globals.css` | The `--room-*` token block, light and dark. |
 
 Generated output is **committed**, same convention as `assets/icons/`
@@ -84,7 +90,9 @@ because the server was localhost** — a real deploy adds a round trip. And the
 frame numbers were taken against a dozen untextured boxes, *not* the finished
 room; the GLB is flat-shaded and unlit-cheap so the cost should stay flat, but
 **re-measure on the live deploy before trusting it**. Scripts:
-`scripts/spike/measure-page.mjs` and `measure-deferred.mjs`.
+`scripts/spike/measure-page.mjs` and `measure-deferred.mjs`. The directory name
+is historical: they were written for the EI-272 spike and kept their path so
+the runbook and `.ai/lessons.md` still point at files that exist.
 
 INP is not measured and is not meaningful here: the page has no tap targets,
 and scroll is not an INP interaction. Frame cost is the real proxy.
@@ -117,7 +125,7 @@ it is excluded there.**
 
 ### The CC-BY chain must not break
 
-CC0 waives everything. **CC-BY grants the licence only if attribution is
+CC0 waives everything. **CC-BY grants the license only if attribution is
 given**, so a CC-BY model whose credit is not on a page a user can reach is a
 model this project is not licensed to ship. Three places, one change:
 
@@ -135,32 +143,32 @@ Jarlan Perez, sirkitree, Tiff Eidmann — all via Poly Pizza.
 ## 5. The asset pipeline (`npm run scene`)
 
 Pure Node, no Blender. That is deliberate: these models are 60–750 faces each
-with **no textures anywhere** — every material is a flat colour — so the
+with **no textures anywhere** — every material is a flat color — so the
 conversion is a few hundred lines of arithmetic, and keeping it
 dependency-free means the build works in CI and on any machine.
 
-### The normalisation contract
+### The normalization contract
 
-Every model is normalised so placement code can treat them all identically:
+Every model is normalized so placement code can treat them all identically:
 
 1. **Orientation** — rotated so its front faces **+Z**.
-2. **Scale** — scaled so the axis named by `fit` measures `size` **metres**.
-3. **Origin** — centred on X/Z, sitting on **Y = 0**.
+2. **Scale** — scaled so the axis named by `fit` measures `size` **meters**.
+3. **Origin** — centered on X/Z, sitting on **Y = 0**.
 
 So a position in `room-layout.ts` is a position in a real room. Sizes are
 real-world and belong in the build spec; **never scale at placement time**, or
-the scene stops being in metres and every later coordinate becomes a magic
+the scene stops being in meters and every later coordinate becomes a magic
 number.
 
 ### Spec options
 
 | Option | Effect |
 |---|---|
-| `fit` + `size` | The axis to measure and its target size in metres, applied **after** `rotateY`. |
+| `fit` + `size` | The axis to measure and its target size in meters, applied **after** `rotateY`. |
 | `rotateY` | Degrees, applied first, to bring the model's front round to +Z. |
 | `rename` | Namespaces this model's materials. |
-| `squash` | Scales Y/Z after normalising. Grounding and centring survive it. |
-| `split` | Lifts one material's geometry into its own sibling node, after normalisation. |
+| `squash` | Scales Y/Z after normalising. Grounding and centering survive it. |
+| `split` | Lifts one material's geometry into its own sibling node, after normalization. |
 
 **`rename` is not cosmetic.** The Quaternius kit gives the couch and the rug
 the same `DarkRed`, so without namespacing a blue couch forces a blue rug.
@@ -169,7 +177,7 @@ across models** — the two televisions already own a `mat*` range, so any new
 Poly Pizza asset must rename every material it brings.
 
 **`split` is what makes the fish swim.** The fish is its own material inside
-the bowl's GLB. Splitting after the shared normalisation means both nodes keep
+the bowl's GLB. Splitting after the shared normalization means both nodes keep
 the same origin, so placing them at one position nests the fish back inside
 the glass — and `room-scene.tsx` can then animate one without the other. The
 pair must be given the **same `position` and the same `rotationY`**, or the
@@ -179,12 +187,12 @@ fish swims through the wall of its bowl.
 
 `.obj` + `.mtl` goes through `parseObj`/`parseMtl`. `.glb` goes through
 `parseGlb`, which is deliberately minimal — it handles strided accessors but
-throws loudly on node transforms, and reads flat `baseColorFactor` colours
+throws loudly on node transforms, and reads flat `baseColorFactor` colors
 only. It carries the **alpha** through, which is what makes the fish bowl's
 glass glass: any material with alpha < 1 is emitted `BLEND` and
 `doubleSided`, or it renders as an opaque dome.
 
-Both paths converge on the same `{ groups, colours }` shape, so nothing
+Both paths converge on the same `{ groups, colors }` shape, so nothing
 downstream knows which format a model came from.
 
 ---
@@ -217,7 +225,7 @@ stays behind under nothing.
 
 The whole kit shares a semantic material palette (`Wood`, `White`,
 `Plant_Green`, …) and carries no textures, which is what lets the room read
-its colours from CSS custom properties at runtime rather than baking one look
+its colors from CSS custom properties at runtime rather than baking one look
 into the GLB. The scene follows light/dark, and the design system can move
 without a re-export.
 
@@ -229,11 +237,11 @@ Rules:
   and drop the orphaned tokens from both this file and `globals.css`.
 - **Tokens must be hex.** `Color.setStyle` accepts hex, `rgb()` and `hsl()`;
   give it `oklch()` or `light-dark()` and it throws, the catch keeps the baked
-  colour, and the whole token system silently does nothing while looking like
+  color, and the whole token system silently does nothing while looking like
   it works.
 - Light and dark are two blocks, not one `light-dark()` call. **The room does
   not invert at night, it dims** — same hues, lower lightness.
-- An unmapped material keeps the colour baked into the GLB, so the failure
+- An unmapped material keeps the color baked into the GLB, so the failure
   mode is a slightly-off prop, never an invisible one. The televisions' and
   the books' own liveries are unmapped **on purpose**: a CRT should look like
   a CRT in any theme.
@@ -264,7 +272,7 @@ Rules:
 Every composition bug on this scene was found by eye and none by a test. The
 suite cannot tell you the sofa faces the wall.
 
-Run the dev server, open `/spike-3d`, screenshot it, and crop in on what you
+Run the dev server, open `/`, scroll into the story, screenshot it, and crop in on what you
 changed. Two failures worth knowing about, both recorded in `.ai/lessons.md`:
 
 - **A "verified by render" comment verifies the model it was written against.**
@@ -299,7 +307,7 @@ something that looked wrong:
   rattles in. The room lost square footage (6×5 → 5.4×4.6 m) rather than
   inflating every prop past its real size.
 - **Matched pairs read as a hotel lobby.** Two identical lamps in opposite
-  corners, two clones of the same plant a metre apart — vary the silhouette.
+  corners, two clones of the same plant a meter apart — vary the silhouette.
 - **The camera gets a vote on scale.** The book stack is 0.48 m, larger than
   life, because the honest 0.35 m read as specks at diorama distance. This is
   the *only* sanctioned exception to §5's real-world-size rule, and it belongs
@@ -315,7 +323,7 @@ something that looked wrong:
 1. **`npm run build:static` prunes `.next/static/chunks`** even though it
    writes to `.next-static`. Measuring `.next` after `npm run verify` (which
    runs `build` *then* `build:static`) reports a lazily-imported library as
-   0 KB — a measurement artefact, not a win. **Run `npm run build` immediately
+   0 KB — a measurement artifact, not a win. **Run `npm run build` immediately
    before measuring.**
 
 2. **R3F v9 does not augment the global JSX namespace** — React 19 removed it.
@@ -329,7 +337,7 @@ something that looked wrong:
    into a `useMemo` trips the same rule; a ref trips `react-hooks/refs`
    instead. Three attempts, three rules, worse code each time. Resolved with a
    **directory-scoped override** in `eslint.config.mjs` — if this code moves
-   out of `src/components/spike/`, the override's `files` glob moves with it.
+   out of `src/components/scene/`, the override's `files` glob moves with it.
 
 4. **three.js logs one `THREE.Clock` → `THREE.Timer` deprecation warning** from
    inside R3F. Not ours; it will clear on an R3F release.
@@ -338,22 +346,35 @@ something that looked wrong:
 
 ## 12. Status and what is next
 
-The scene lives behind `/spike-3d`, which is **deployed deliberately** so it
-can be measured on real hardware. The route is listed in `PRIVATE_ROUTES`
-(`src/lib/site.ts`), not `SITE_PAGES`: it is never indexed and never linked
-from the marketing navigation, so it carries no metadata contract. Reaching it
-means typing the URL. `site.test.ts` asserts the two lists together account for
-every route under `src/app`, so the route cannot quietly disappear from both.
+The scene is **on the homepage** (EI-275). `/spike-3d` is gone — the route,
+its `PRIVATE_ROUTES` entry, and the throwaway premise with them — and
+`src/components/scene/` moved to `src/components/scene/`, taking the eslint
+override's `files` glob along.
+
+`/` is the demanding home the spike was always measuring for: its entire
+audience is a cold-cache first-time visitor, because `redirectIfKnownDevice`
+sends everyone who has used the board before to `/board` ahead of paint. The
+load invariants in §4 are load-bearing now rather than exploratory.
+
+The story is three movements — the board (`demo-board.tsx`), the room, the
+board again — and the room is the middle one. `RoomStage` gained a `panel`
+slot for the card pinned beside it, and its stage is now sticky at every
+width rather than `md:` and up; everything else about the load path is
+unchanged from the spike.
 
 Open work, in the order it should happen:
 
 1. **Re-measure on the live deploy** with the real GLB — §3's frame numbers
-   were taken against procedural boxes. This is the reason the route is live.
-2. Decide whether the scene moves onto `/` and, if so, move
-   `src/components/spike/` to a real directory, taking the eslint override's
-   `files` glob with it.
-3. Consider Draco/meshopt compression if the GLB grows much past 371 KB. It is
+   were taken against procedural boxes, on localhost.
+2. ~~Per-beat camera framing~~ **done** (EI-276). Each beat names an object in
+   `src/lib/story-beats.ts` (`focus`), `src/components/scene/room-camera.ts`
+   turns that name into a framing, and `Rig` damps toward it. The zoom band is
+   the constraint to respect if you add a beat: see that file's header, and its
+   test, which fails past 135.
+3. ~~The live sub-task ticks~~ **done** (EI-278). `story-ticks.tsx` toggles
+   `data-done` from the scroll loop, on both copies of the card, reading the
+   same box `RoomStage` measures — which is what keeps "the room frames the
+   plant" and "the watering line ticks" the same moment.
+4. Consider Draco/meshopt compression if the GLB grows much past 371 KB. It is
    currently uncompressed indexed geometry; the dedupe in `indexGeometry`
    already took it from 455 KB.
-4. Retire `/spike-3d` once one of the above lands — delete its `PRIVATE_ROUTES`
-   entry and the route together.

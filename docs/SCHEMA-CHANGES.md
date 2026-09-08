@@ -4,7 +4,7 @@
 labels, projects, tabs, or settings — or before adding a new entity kind.**
 
 A field in Faite is not declared in one place. It is declared in four, and
-three *more* files derive behaviour from those declarations. Sync then
+three *more* files derive behavior from those declarations. Sync then
 replicates it to a per-user Durable Object that has its own storage, its own
 schema, and its own migration story. Getting one of the seven wrong usually
 does not produce a type error; it produces a runtime failure on one device,

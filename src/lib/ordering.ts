@@ -4,7 +4,7 @@ import { generateKeyBetween, generateNKeysBetween } from "fractional-indexing";
  * Ordering via fractional indexing.
  *
  * Each item stores a `position` string that sorts lexicographically. Moving an
- * item writes ONE field on ONE record — not a renumbering of its neighbours.
+ * item writes ONE field on ONE record — not a renumbering of its neighbors.
  *
  * This matters most for sync (P3): two devices reordering the same list while
  * offline generate different keys rather than fighting over the same integer
@@ -25,7 +25,7 @@ export function positionAtEnd(last: Position | null): Position {
 }
 
 /**
- * Position for an item dropped between two neighbours.
+ * Position for an item dropped between two neighbors.
  *
  * Pass null for `before` when dropping at the top, or null for `after` when
  * dropping at the bottom.
@@ -55,7 +55,7 @@ export function byPosition<T extends { position: Position }>(a: T, b: T): number
  * Resolve the position for moving an item into `index` within `ordered`.
  *
  * `ordered` must already be sorted and must EXCLUDE the item being moved —
- * otherwise the item's own position becomes one of its own neighbours and the
+ * otherwise the item's own position becomes one of its own neighbors and the
  * result can land on the wrong side of it.
  */
 export function positionForIndex(
@@ -117,9 +117,9 @@ export function positionForDropOnItem<T extends { id: string; position: Position
  * to agree, or a one-card selection would land somewhere a plain drag would
  * not. There is a test pinning that.
  *
- * `draggedIds` excludes EVERY mover from the neighbour list, not just the one
+ * `draggedIds` excludes EVERY mover from the neighbor list, not just the one
  * under the cursor. Leaving the others in would let a mover become its own
- * run's neighbour and interleave the result with cards that are about to move
+ * run's neighbor and interleave the result with cards that are about to move
  * out from between them.
  */
 export function positionsForDropOnItem<T extends { id: string; position: Position }>(

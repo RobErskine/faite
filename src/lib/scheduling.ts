@@ -287,7 +287,7 @@ export function buildWindow(today: CivilDate, visibleDays: number): CivilDate[] 
  * Then one override: if the resulting day is not in `ctx.visibleWindow`, the
  * todo renders in the planning half instead, flagged with `awayDate`.
  *
- * This used to be normal behaviour, tied to the 1/3/5/7-day toggle: the
+ * This used to be normal behavior, tied to the 1/3/5/7-day toggle: the
  * window was always exactly `settings.visibleDays` long, so scheduling
  * something for next week routinely bounced it here. It is now a safety
  * valve only. The board grows `visibleWindow` (via `contextFromSettings`'s

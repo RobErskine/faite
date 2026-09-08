@@ -32,7 +32,7 @@ import { BOOTSTRAP_STATEMENTS } from "./bootstrap";
  * which PRAGMAs Cloudflare's SQLite happens to permit — a question training
  * data is unreliable about (see `.ai/lessons.md`).
  *
- * ## The contract every migration must honour
+ * ## The contract every migration must honor
  *
  * 1. **`id` starts at 1 and increases by exactly 1.** Enforced by
  *    `assertMigrationsWellFormed`, which runs in a test, not at boot.
@@ -86,7 +86,7 @@ export const USER_DB_MIGRATIONS: readonly UserDbMigration[] = [
     name: "settings-add-view-prefs",
     statements: [
       // NOT NULL with a DEFAULT, matching the Zod defaults: every existing row
-      // must come out of this ALTER with the behaviour it had before the
+      // must come out of this ALTER with the behavior it had before the
       // setting existed — open-only, weekends shown.
       `ALTER TABLE settings ADD COLUMN visible_statuses text DEFAULT '["open"]' NOT NULL`,
       "ALTER TABLE settings ADD COLUMN show_weekends integer DEFAULT true NOT NULL",
@@ -222,7 +222,7 @@ export const USER_DB_MIGRATIONS: readonly UserDbMigration[] = [
       // first-run seed and P1's entity are one change in practice, and one
       // migration is cheaper than two. Same NOT NULL + DEFAULT reasoning as
       // migration 3/7: every existing row comes out unseeded, matching the
-      // Zod default and the actual behaviour before this field existed.
+      // Zod default and the actual behavior before this field existed.
       "ALTER TABLE settings ADD COLUMN reminder_presets_seeded integer DEFAULT false NOT NULL",
     ],
   },
@@ -242,7 +242,7 @@ export const USER_DB_MIGRATIONS: readonly UserDbMigration[] = [
     statements: [
       // NOT NULL with a DEFAULT matching the Zod default, same reasoning as
       // migration 3/7/11: every existing row comes out with the exact
-      // behaviour it had before these were settings — the hardcoded
+      // behavior it had before these were settings — the hardcoded
       // `OVERDRIVE_MIN_TODOS` constant's value, and auto-confirm OFF.
       "ALTER TABLE settings ADD COLUMN overdrive_min_todos integer DEFAULT 5 NOT NULL",
       "ALTER TABLE settings ADD COLUMN overdrive_auto_confirm_ms integer DEFAULT 0 NOT NULL",
@@ -337,7 +337,7 @@ export const USER_DB_MIGRATIONS: readonly UserDbMigration[] = [
     statements: [
       // NOT NULL with a DEFAULT matching the Zod default, same reasoning as
       // migrations 3/7/11/13: every existing row comes out with the exact
-      // behaviour it had before this was a setting — confetti off.
+      // behavior it had before this was a setting — confetti off.
       "ALTER TABLE settings ADD COLUMN good_job_mode integer NOT NULL DEFAULT 0",
     ],
   },

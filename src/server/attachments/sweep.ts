@@ -8,7 +8,7 @@
  * SQLite, R2, or an alarm.
  *
  * What is left in the DO is the mechanical part — run the query, call
- * `R2.delete`, stamp `swept_at`. What lives here is every judgement that
+ * `R2.delete`, stamp `swept_at`. What lives here is every judgment that
  * could be wrong.
  */
 

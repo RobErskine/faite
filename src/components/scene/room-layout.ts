@@ -1,9 +1,9 @@
 /**
- * EI-272 — where everything sits, in metres.
+ * EI-272 — where everything sits, in meters.
  *
  * Placement lives here rather than baked into the GLB on purpose. The GLB is
  * produced by `scripts/scene/build-room.mjs`, which drops every prop at the
- * origin, normalised: front facing +Z, scaled to a real-world size, centred on
+ * origin, normalized: front facing +Z, scaled to a real-world size, centered on
  * X/Z and sitting on Y=0. So a position below is a position in a real room,
  * and it can be nudged without re-running the build.
  *
@@ -35,12 +35,12 @@ export type PropPlacement = {
   /** Node name in the GLB, from `SCENE_MODELS` in `scripts/scene/build-room.mjs`. */
   node: string;
   position: Vec3;
-  /** Y rotation in radians, applied on top of the model's normalised +Z facing. */
+  /** Y rotation in radians, applied on top of the model's normalized +Z facing. */
   rotationY?: number;
 };
 
 /**
- * Floor extent in metres. The camera framing in `room-scene.tsx` assumes this.
+ * Floor extent in meters. The camera framing in `room-scene.tsx` assumes this.
  *
  * 5.4 x 4.6, down from 6 x 5: review feedback was that the console and TV
  * looked toy-sized against the room, and they were - a 6 m wall will do that
@@ -58,13 +58,13 @@ const HALF_W = ROOM.width / 2; // walls' inner faces: x = -3.0, z = -2.5
 const HALF_D = ROOM.depth / 2;
 
 /**
- * The console's top surface, in metres.
+ * The console's top surface, in meters.
  *
  * `Shelf_Small1` measures 1.944 x 0.577 units at source, so its height is
  * 0.297 of its width; scaled to a 1.5 m console that puts the top at 0.445 m.
  * The television and the small plant both stand on this. **If the console's
  * target size changes in `build-room.mjs`, this number changes with it** — the
- * models are normalised to sit on Y=0, so nothing else corrects for it.
+ * models are normalized to sit on Y=0, so nothing else corrects for it.
  */
 const CONSOLE_TOP = 0.445;
 
@@ -72,7 +72,8 @@ const CONSOLE_TOP = 0.445;
 const LEFT_WALL_X = -HALF_W + 0.2;
 
 /** Where the TV stands, whichever TV it currently is. */
-const TV_SPOT: Vec3 = [-HALF_W + 0.38, CONSOLE_TOP, 0.1];
+/** Exported so `room-camera.ts` can frame the console without repeating it. */
+export const TV_SPOT: Vec3 = [-HALF_W + 0.38, CONSOLE_TOP, 0.1];
 
 /**
  * The room. Everything is present from the first frame - the only thing that
@@ -87,9 +88,10 @@ export const STATIC_PROPS: PropPlacement[] = [
   // ONE shelf (review: the stacked pair read as a hovering cabinet), over the
   // console's plant end, with the book stack on its top surface (unit height
   // 0.412, so 1.5 + 0.412). Books replaced the small plant's clone here —
-  // review: two identical plants a metre apart read as a copy-paste.
+  // review: two identical plants a meter apart read as a copy-paste.
   { node: "wall_shelf", position: [LEFT_WALL_X + 0.06, 1.5, -0.58], rotationY: Math.PI / 2 },
-  { node: "books", position: [LEFT_WALL_X + 0.06, 1.912, -0.58], rotationY: Math.PI / 2 },
+  // The books are NOT here — they hesitate and then leave during the shelf
+  // beat (EI-280), so they need their own group. See `BOOKS` below.
   { node: "door", position: [-HALF_W + 0.1, 0, 1.55], rotationY: Math.PI / 2 },
 
   // --- the seating zone: an L around the coffee table, anchored on the rug -
@@ -99,7 +101,9 @@ export const STATIC_PROPS: PropPlacement[] = [
   // The second seat that turns "a sofa opposite a TV" into a conversation
   // corner. It floats on the rug's top edge with a walkway behind it -
   // furniture off the wall is how real rooms use their middle.
-  { node: "loveseat", position: [0.25, 0, -1.28] },
+  // The loveseat is NOT here — it arrives during the couch beat (EI-280), so
+  // it needs its own group to scale. See `LOVESEAT` below, and the TVs, which
+  // are out of this list for the same reason.
   // Long axis parallel to the couch, like an oval coffee table actually sits.
   { node: "coffee_table", position: [0.15, 0, 0.3], rotationY: Math.PI / 2 },
   { node: "plant_table", position: [0.15, 0.347, 0.3], rotationY: Math.PI / 2 },
@@ -127,7 +131,8 @@ export const STATIC_PROPS: PropPlacement[] = [
   // white-globe floor lamp and a paddle-leaf cane - which overlapped from the
   // camera's angle into one convincing "cactus in a white pot". Review asked
   // for the cactus gone; both halves of the illusion went with it.
-  { node: "houseplant", position: [2.05, 0, -1.6] },
+  // The big monstera is NOT here — it wilts and recovers during the watering
+  // beat (EI-280), so it needs its own group. See `HOUSEPLANT` below.
 
   // --- the front-right corner ----------------------------------------------
   // The bushy one moved here from the doorway (review: a plant in front of a
@@ -135,6 +140,55 @@ export const STATIC_PROPS: PropPlacement[] = [
   // camera sees most of, beside the couch's far arm.
   { node: "plant_bushy", position: [2.1, 0, 1.85] },
 ];
+
+/**
+ * The corner monstera — the plant the watering beat is about.
+ *
+ * Lifted out of `STATIC_PROPS` so it can droop: thirst tips it off vertical
+ * and settles it a little lower, which is the same signal as the browning
+ * expressed a second way. The three small plants keep their places in the
+ * static list; they change colour with everything else but they are too small
+ * at diorama scale for a tilt to read as anything but a glitch.
+ */
+export const HOUSEPLANT: PropPlacement = {
+  node: "houseplant",
+  position: [2.05, 0, -1.6],
+};
+
+/**
+ * The books on the wall shelf — the room's one undecided thing.
+ *
+ * Lifted out of `STATIC_PROPS` so the shelf beat can raise and lower them:
+ * being picked up and put back IS that beat's animation, because that is what
+ * the research it cites actually measured.
+ */
+export const BOOKS: PropPlacement = {
+  node: "books",
+  position: [LEFT_WALL_X + 0.06, 1.912, -0.58],
+  rotationY: Math.PI / 2,
+};
+
+/**
+ * The loveseat, which is ordered rather than simply present.
+ *
+ * "Measure the room before ordering the couch" is a to-do about a thing that
+ * does not exist yet, so the room starts without it and it arrives when the
+ * measuring is done. Same coordinates it always had — the point of measuring
+ * is that the piece fits the space you already had in mind.
+ *
+ * Its contact shadow travels with it (`LOVESEAT_SHADOW`): a shadow under an
+ * absent couch is a hole in the floor.
+ */
+export const LOVESEAT: PropPlacement = {
+  node: "loveseat",
+  position: [0.25, 0, -1.28],
+};
+
+/** Lifted out of `CONTACT_SHADOWS` so it can fade in with the loveseat. */
+export const LOVESEAT_SHADOW: { position: Vec3; size: [number, number] } = {
+  position: [0.25, 0.045, -1.28],
+  size: [1.9, 1.0],
+};
 
 /**
  * The two televisions, sharing one spot. The console never changes; the thing
@@ -174,15 +228,22 @@ export const FISH: PropPlacement = {
  * rectangle is a painted rectangle.
  */
 export const SWATCHES = {
-  /** Candidate colours the beat cycles through, then abandons. Muted,
+  /** Candidate colors the beat cycles through, then abandons. Muted,
    *  interior-paint chips rather than primaries. */
   candidates: ["#b6bfae", "#cfae94", "#a8b8c6", "#c9a9a6"],
   /**
-   * `null` means "the wall's own colour" - which is a theme token now, read at
+   * `null` means "the wall's own color" - which is a theme token now, read at
    * runtime by `RoomShell`, so it cannot be a hex here without forking from
    * dark mode.
    */
   bareWall: null as string | null,
+  /**
+   * The candidate that wins (an index into the three VISIBLE chips, i.e.
+   * `candidates.slice(0, 3)`). The blue-grey: the room's one big contrast is
+   * the warm floor against the cool couch, and the wall joining the couch's
+   * side of that argument is the pick that makes the finished room cohere.
+   */
+  chosen: 2,
   size: 0.42,
   gap: 0.16,
   origin: [-1.95, 1.45, -HALF_D + 0.05] as Vec3,
@@ -209,7 +270,8 @@ export const PRINTS: { position: Vec3; size: [number, number] }[] = [
  */
 export const CONTACT_SHADOWS: { position: Vec3; size: [number, number] }[] = [
   { position: [1.72, 0.045, 0.1], size: [1.3, 2.5] }, // couch
-  { position: [0.25, 0.045, -1.28], size: [1.9, 1.0] }, // loveseat
+  // The loveseat's shadow is drawn by the scene alongside the loveseat itself,
+  // since both fade in together — a shadow under nothing is a hole in the floor.
   { position: [0.15, 0.045, 0.3], size: [0.95, 1.5] }, // coffee table
   { position: [-2.62, 0.012, 0.1], size: [0.8, 1.9] }, // console
   { position: [-1.35, 0.012, -2.01], size: [1.55, 0.75] }, // sideboard

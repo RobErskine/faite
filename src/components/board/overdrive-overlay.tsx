@@ -105,14 +105,14 @@ function directionForVerdict(kind: Verdict["kind"]): Direction {
  * responsive — get it wrong in either direction and the animation spends
  * part of its runtime moving something the user can't see:
  *
- * - **`tall:` (the centred dialog, §9)** clips at the popup's own edge
+ * - **`tall:` (the centered dialog, §9)** clips at the popup's own edge
  *   (`overflow-hidden`), a box barely wider than the card itself. `150%` —
  *   of the card's OWN box, which is what a `%` translate resolves against —
  *   clears it with margin. A viewport-sized value here would fling the card
  *   out of sight in the animation's first fraction and then animate nothing
  *   for the rest, reading as a dead pause.
  * - **Below `tall:` (full-bleed)** the clipping box is the whole viewport
- *   and the card sits centred in it with room on either side, so `150%` of
+ *   and the card sits centered in it with room on either side, so `150%` of
  *   the card would leave a sliver still on screen at the end — that was
  *   round 4a's bug exactly. `150vw`/`150vh` is what guarantees clearance
  *   there regardless of how wide the screen is next to the card.
@@ -574,7 +574,7 @@ function OverdriveOverlayContent({
       }}
     >
       {/*
-        A centred DIALOG, not the full-screen sheet this used to be (round
+        A centered DIALOG, not the full-screen sheet this used to be (round
         5). The board behind it is driven by `useLiveQuery`, and Overdrive
         writes through the same repository functions every other surface
         does — so with the board actually visible, the Overflow column
@@ -602,7 +602,7 @@ function OverdriveOverlayContent({
         **Only where there's vertical room for it** (`tall:`, ≥40rem high —
         see the variant's own note in `globals.css`). Below that the old
         full-bleed presentation is kept verbatim: a landscape phone is 343px
-        tall, so a centred dialog there has no room for itself AND the
+        tall, so a centered dialog there has no room for itself AND the
         decision toast beneath it, and the toast lands on top of the button
         row instead — the exact collision §8b describes, reintroduced by
         shrinking the surface. There's also nothing to gain: the phone board
@@ -622,7 +622,7 @@ function OverdriveOverlayContent({
           // landscape phones (734px). It has to be neutralised AT the same
           // variant to be neutralised at all.
           "inset-0 h-dvh w-full max-w-none translate-x-0 translate-y-0 rounded-none sm:max-w-none",
-          // Tall enough for a dialog: centred, with the board around it.
+          // Tall enough for a dialog: centered, with the board around it.
           "tall:inset-auto tall:top-1/2 tall:left-1/2 tall:h-auto tall:max-h-[85dvh]",
           "tall:w-[calc(100%-2rem)] tall:max-w-2xl tall:sm:max-w-2xl",
           "tall:-translate-x-1/2 tall:-translate-y-1/2 tall:rounded-xl",

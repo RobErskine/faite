@@ -26,10 +26,10 @@ const eslintConfig = defineConfig([
     // camera in a useMemo, own it in a ref) just trips a different rule in the
     // same family. Three attempts, three rules; the code got worse each time.
     //
-    // Scoped to the spike directory so the rules keep their teeth everywhere
-    // else. If the 3D scene ships, this override moves to its real directory
-    // and this comment moves with it.
-    files: ["src/components/spike/**/*.tsx"],
+    // Scoped to the scene directory so the rules keep their teeth everywhere
+    // else. The scene shipped (EI-275), so this override moved here from
+    // `src/components/spike/` along with the code.
+    files: ["src/components/scene/**/*.tsx"],
     rules: {
       "react-hooks/immutability": "off",
       "react-hooks/refs": "off",
@@ -45,6 +45,16 @@ const eslintConfig = defineConfig([
     // Generated build output — linting it produces thousands of errors from
     // machine-generated code and would keep CI permanently red.
     ".next-static/**",
+    /*
+      Playwright's own output. Both are in `.gitignore`, so CI never sees
+      them — but they are written by any local `npm run e2e`, and eslint lints
+      whatever is on disk. The report bundles a vendored copy of CodeMirror,
+      which alone produces ~257 errors, so `npm run verify` failed for anyone
+      who had run the tests first. Cost three debugging detours before it went
+      in the list.
+    */
+    "playwright-report/**",
+    "test-results/**",
     ".open-next/**",
     ".wrangler/**",
     // Nested git worktrees (`.claude/worktrees/*`) are full checkouts of this

@@ -14,14 +14,14 @@ function VerifyEmailContent() {
 
   useEffect(() => {
     if (!token) return;
-    let cancelled = false;
+    let canceled = false;
 
     void authClient.$fetch("/verify-email", { query: { token } }).then(({ error }) => {
-      if (!cancelled) setStatus(error ? "error" : "verified");
+      if (!canceled) setStatus(error ? "error" : "verified");
     });
 
     return () => {
-      cancelled = true;
+      canceled = true;
     };
   }, [token]);
 

@@ -47,8 +47,9 @@ a shortcut left out of it is invisible to users who go looking for it. See
 
 # The 3D scene ships other people's work
 
-The room on `/spike-3d` is built from vendored models, four of them **CC-BY**.
-CC-BY grants the licence *only* if attribution is given, so a credit that no
+The room in the homepage story is built from vendored models, four of them
+**CC-BY**.
+CC-BY grants the license *only* if attribution is given, so a credit that no
 user can reach means the site is shipping something it is not licensed to
 ship. Adding a CC-BY model touches three files in one commit:
 `assets/scene/CREDITS.md`, `src/app/colophon/page.tsx`, and the creator list in
@@ -60,7 +61,21 @@ see `src/lib/desktop/bundle-assets.test.ts`), and scroll must drive the camera
 through a **ref**, never React state.
 
 `docs/SCENE.md` is the whole procedure — read it before touching
-`scripts/scene/`, `src/components/spike/`, or any `--room-*` token.
+`scripts/scene/`, `src/components/scene/`, or any `--room-*` token.
+
+# Faite is written in American English
+
+`color`, `organize`, `canceled`, `center`, `license`, `gray` — in visible copy,
+`aria-label`s, screen-reader announcements, toast text, and comments.
+`src/lib/spelling.test.ts` fails on a British spelling in any **string literal
+or JSX text** under `src/`; it deliberately ignores comments, identifiers and
+test names, so a green build is not proof a comment got it right.
+
+Some spellings are **not ours to change**, and correcting one is an error:
+verbatim quotes in `docs/RESEARCH.md`, published paper titles (Lally et al. is
+"*Modelling* habit formation"), package names (`@img/colour` is real), licence
+names like "CC BY", and creator names. `docs/CONTENT.md` §3 is the full list;
+§5 is how to add a word.
 
 # Issues live in Linear, not GitHub
 

@@ -428,7 +428,7 @@ describe("timeline", () => {
     expect(card.getAttribute("style") ?? "").not.toContain("background-color");
   });
 
-  it("leaves the wash off when the list has no colour", () => {
+  it("leaves the wash off when the list has no color", () => {
     render(<Harness todos={[todo({ id: "a", listId: "unknown" })]} />);
     const wrapper = screen.getByText("a").closest("[data-nav-stop]")!.parentElement!;
     expect(wrapper.style.backgroundColor).toBe("");

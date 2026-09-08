@@ -30,12 +30,12 @@ const STATE_COPY: Record<NotificationSupportState, string> = {
 const subscribeToNothing = () => () => {};
 
 /** Move a preset one slot toward the start or end of `ordered` — writes a
- * single new `position` between its new neighbours, per lib/ordering.ts. */
+ * single new `position` between its new neighbors, per lib/ordering.ts. */
 function moveRow(ordered: ReminderPreset[], index: number, direction: -1 | 1) {
   const target = index + direction;
   if (target < 0 || target >= ordered.length) return null;
-  // Position the moved row on the far side of its new neighbour, using the
-  // neighbour just past THAT one as the other bound.
+  // Position the moved row on the far side of its new neighbor, using the
+  // neighbor just past THAT one as the other bound.
   const beforeIndex = direction === -1 ? target - 1 : target;
   const afterIndex = direction === -1 ? target : target + 1;
   const before = ordered[beforeIndex]?.position ?? null;

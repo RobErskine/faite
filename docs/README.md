@@ -34,7 +34,7 @@ reasoning — two copies drift, and the stale one always wins the argument.
 |---|---|
 | [FAITE-LOOP.md](FAITE-LOOP.md) | The product's core mechanic — rollover to today, then Overflow. Config, computation, visibility. |
 | [OVERDRIVE.md](OVERDRIVE.md) | The Overflow triage overlay: keyboard and thumb burn-down, writing only through existing repositories. |
-| [DRAG-AND-DROP.md](DRAG-AND-DROP.md) | The dnd-kit model across the calendar and planning halves. Includes deliberate non-bugs and reverted "improvements" — read before changing drag behaviour. |
+| [DRAG-AND-DROP.md](DRAG-AND-DROP.md) | The dnd-kit model across the calendar and planning halves. Includes deliberate non-bugs and reverted "improvements" — read before changing drag behavior. |
 | [COMMAND-PALETTE.md](COMMAND-PALETTE.md) | ⌘K and search: cmdk's re-filtering constraint, row actions, quick-add tokens. |
 | [KEYBOARD.md](KEYBOARD.md) | The shortcut catalog and guard model. §5 is the recipe for adding one — required reading, per `AGENTS.md`. |
 | [DAY-NOTES.md](DAY-NOTES.md) | The day sheet's timeline filter and the BlockNote notes editor. |
@@ -48,14 +48,15 @@ reasoning — two copies drift, and the stale one always wins the argument.
 
 | Doc | Covers |
 |---|---|
-| [DESIGN.md](DESIGN.md) | The spec of record for how Faite looks and moves: colour grammar (one meaning per channel), type roles and the two pairings, surface tiers, motion policy, what the marketing site may reuse, and the decisions log. |
+| [CONTENT.md](CONTENT.md) | How Faite is written: American English, what counts as user-facing, the exceptions that are not ours to change, and the test that enforces it. |
+| [DESIGN.md](DESIGN.md) | The spec of record for how Faite looks and moves: color grammar (one meaning per channel), type roles and the two pairings, surface tiers, motion policy, what the marketing site may reuse, and the decisions log. |
 | [MOBILE.md](MOBILE.md) | Mobile responsiveness, phases M-1…M6. A separate axis from P0–P7. |
 | [GESTURES.md](GESTURES.md) | PhoneBoard's touch model, and why it is CSS scroll-snap rather than a JS carousel. |
 | [RESIZE-UI.md](RESIZE-UI.md) | The draggable seam between the calendar and planning halves. |
 | [DESKTOP.md](DESKTOP.md) | The Tauri v2 desktop shell, milestones D0–D6 — including hot asset bundles (§14), which is how a web deploy reaches an installed `.app`. |
 | [DESKTOP-SYNC-TIMER-SPIKE.md](DESKTOP-SYNC-TIMER-SPIKE.md) | The D2 spike: hidden-webview `setInterval` death and three measured mitigations. |
 | [SITE.md](SITE.md) | Marketing, legal and support pages: the `SITE_PAGES` table, the metadata contract, static-export constraints. |
-| [SCENE.md](SCENE.md) | The 3D room on `/spike-3d`: the bake pipeline, placement in metres, token re-tinting, the load invariants, and the CC-BY chain. |
+| [SCENE.md](SCENE.md) | The 3D room on the homepage: the bake pipeline, placement in meters, token re-tinting, the load invariants, and the CC-BY chain. |
 | [RESEARCH.md](RESEARCH.md) | The cited evidence base for marketing claims — verbatim quote, relevance, primary link, and the claims we deliberately do not make. |
 
 ## Build and operations

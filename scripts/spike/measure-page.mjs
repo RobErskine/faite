@@ -16,7 +16,7 @@
  * `npm run build:static` prunes `.next/static/chunks` even though it writes to
  * `.next-static` — so measuring `.next` after `npm run verify` (which runs
  * build, then build:static) reports chunks that are simply gone, and a lazily
- * imported library reads as 0 KB. That is a measurement artefact, not a win.
+ * imported library reads as 0 KB. That is a measurement artifact, not a win.
  */
 import { gzipSync } from "node:zlib";
 import { readFileSync, existsSync } from "node:fs";

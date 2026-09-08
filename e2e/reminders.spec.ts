@@ -6,7 +6,7 @@ import { switchToLists } from "./support/phone";
  * `switchToLists()` is the only phone-specific step, reaching Backlog and
  * Settings exactly as `core-flows.spec.ts` does.
  *
- * Tier A: asserts behaviour (what got written, what renders), not pixels.
+ * Tier A: asserts behavior (what got written, what renders), not pixels.
  * Card-badge assertions reopen the todo through ⌘K's search rather than
  * hunting for it in a day column — `PhoneBoard` shows exactly one day at a
  * time (defaulting to today), so a todo scheduled for tomorrow is correctly

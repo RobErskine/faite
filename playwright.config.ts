@@ -171,7 +171,7 @@ export default defineConfig({
       use: { ...devices["iPad Mini"], defaultBrowserType: "chromium" },
       // Tablet renders the same two-half layout as desktop, just narrower,
       // so its distinct value is the coarse-pointer affordances plus the
-      // cross-viewport behaviour contract — not a third copy of the feature
+      // cross-viewport behavior contract — not a third copy of the feature
       // specs desktop and phone already cover.
       testMatch: [SPECS.coreFlows, SPECS.touchAffordances],
     },
@@ -194,7 +194,7 @@ export default defineConfig({
         SPECS.attachments,
         // Also both gate projects: the toggle is driven by clicking a link to
         // move the text cursor into it (`getLinkAtSelection()`), not a real
-        // mouse hover, so it needs no touch-specific behaviour to verify here.
+        // mouse hover, so it needs no touch-specific behavior to verify here.
         SPECS.linkPreview,
       ],
     },

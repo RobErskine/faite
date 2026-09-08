@@ -5469,7 +5469,7 @@ type ResponseRefusalDoneEvent = {
     sequence_number: number;
     type: "response.refusal.done";
 };
-type ResponseStatus = "completed" | "failed" | "in_progress" | "cancelled" | "queued" | "incomplete";
+type ResponseStatus = "completed" | "failed" | "in_progress" | "canceled" | "queued" | "incomplete";
 type ResponseStreamEvent = ResponseCompletedEvent | ResponseCreatedEvent | ResponseErrorEvent | ResponseFunctionCallArgumentsDeltaEvent | ResponseFunctionCallArgumentsDoneEvent | ResponseFailedEvent | ResponseIncompleteEvent | ResponseOutputItemAddedEvent | ResponseOutputItemDoneEvent | ResponseReasoningTextDeltaEvent | ResponseReasoningTextDoneEvent | ResponseRefusalDeltaEvent | ResponseRefusalDoneEvent | ResponseTextDeltaEvent | ResponseTextDoneEvent;
 type ResponseCompletedEvent = {
     response: Response;

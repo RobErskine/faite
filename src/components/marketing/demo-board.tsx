@@ -1,9 +1,13 @@
 import { CalendarCheck, CornerDownRight, ListChecks, MapPin } from "lucide-react";
 import { badgeVariants } from "@/components/ui/badge";
-import { edge, tint } from "@/lib/colors";
+// `edge` only — the column accent is a real feature (lists and tabs both have
+// a ColorPicker). `tint` went with the fabricated label colours.
+import { edge } from "@/lib/colors";
 import { priorityRail } from "@/lib/priority";
+import { STORY_BEATS } from "@/lib/story-beats";
 import { TITLE_CLAMP_CLASS } from "@/lib/title";
 import { cn } from "@/lib/utils";
+import { DemoTooltip } from "./demo-tooltip";
 
 /**
  * The board, on the marketing page, as a picture that is not a picture.
@@ -31,7 +35,7 @@ import { cn } from "@/lib/utils";
  *
  * # What it does reuse
  *
- * The parts that carry meaning rather than behaviour, so the demo cannot drift
+ * The parts that carry meaning rather than behavior, so the demo cannot drift
  * from the product's own vocabulary: `priorityRail` (the achromatic rail,
  * docs/DESIGN.md §7), `tint`/`edge` (the identity ladder, §1),
  * `badgeVariants`, `TITLE_CLAMP_CLASS`, and the surface/type utilities from
@@ -49,8 +53,12 @@ import { cn } from "@/lib/utils";
 
 export interface DemoLabel {
   name: string;
-  /** An `ACCENT_COLORS` value from `lib/colors.ts`. */
-  color: string;
+  /**
+   * Deliberately absent from every label in this file — see the note by the
+   * label constants. The field stays because `todo-row-parts.tsx` supports it
+   * and a future picker might, but a demo label must not use it.
+   */
+  color?: undefined;
 }
 
 export interface DemoTodo {
@@ -64,10 +72,16 @@ export interface DemoTodo {
   location?: string;
   /** The loud badge: a deadline already missed. */
   deadlineMissed?: string;
-  /** "In Overflow N days". */
-  overflowDays?: number;
   /**
-   * The sub-tasks behind the `0/5` badge.
+   * The Overflow badge and the dates behind its tooltip.
+   *
+   * Both dates, not just a count, because the real badge explains itself with
+   * "Scheduled X · in Overflow since Y" — a number on its own says how long
+   * without saying since when.
+   */
+  overflow?: { from: string; since: string; days: number };
+  /**
+   * The sub-tasks behind the `0/6` badge.
    *
    * Declared as text rather than a count because EI-278 ticks them off one by
    * one as the story scrolls, and the hero card is where that list starts.
@@ -84,7 +98,7 @@ export interface DemoColumn {
   emphasis?: boolean;
   /** Overflow: a rule under the title and a tinted count. */
   tone?: "urgent";
-  /** A list column's own colour, drawn as the header's 2px accent. */
+  /** A list column's own color, drawn as the header's 2px accent. */
   accentColor?: string;
   /** Overflow and Backlog — the pinned rails, on their own faint tint. */
   pinned?: boolean;
@@ -94,23 +108,43 @@ export interface DemoColumn {
 export const MOVE_TODO_TITLE = "Plan living room move";
 
 /**
- * The five sub-tasks, in the order the room does them.
+ * The sub-tasks, in the order the story does them.
  *
- * One per story beat, so EI-276's camera, EI-277's copy and EI-278's ticks all
- * read off the same list. On the hero none of them are done yet — that is the
- * point of the `0/5`.
+ * DERIVED from `STORY_BEATS`, not written out again here: one sub-task per
+ * beat is the identity EI-278 relies on to tick them from scroll progress, and
+ * a second hand-maintained copy of the list is exactly how that identity would
+ * quietly stop holding. On the hero none of them are done yet — that is the
+ * point of the `0/6`.
  */
-export const MOVE_SUBTASKS: { title: string; done?: boolean }[] = [
-  { title: "Get everything out of my head and onto the list" },
-  { title: "Pick a paint colour and book the painter" },
-  { title: "Measure the room before ordering the couch" },
-  { title: "Decide about the old bookcase" },
-  { title: "Sell or donate what is not coming with us" },
-];
+export const MOVE_SUBTASKS: {
+  title: string;
+  location?: string;
+  repeat?: string;
+  rolls?: string[];
+  when?: { date: string; time: string };
+  done?: boolean;
+}[] = STORY_BEATS.map((beat) => ({
+  title: beat.subtask,
+  location: beat.subtaskLocation,
+  repeat: beat.subtaskRepeat,
+  rolls: beat.subtaskRolls,
+  when: beat.subtaskWhen,
+}));
 
-const HOME: DemoLabel = { name: "Home", color: "#46a758" };
-const ERRANDS: DemoLabel = { name: "Errands", color: "#00a2c7" };
-const ADMIN: DemoLabel = { name: "Admin", color: "#6e56cf" };
+/*
+  Labels are COLORLESS, because that is the only kind Faite makes.
+
+  `createLabel` takes an optional decoration and every one of its five call
+  sites passes a name and nothing else — there is no colour picker for a label
+  anywhere in the product, only for lists and tabs (`list-info-dialog.tsx`,
+  `tab-info-dialog.tsx`). `todo-row-parts.tsx` will tint a label that has a
+  colour, so the earlier demo board painted three of them and invented a
+  feature: the hero was advertising something a new user could never reproduce.
+
+  A real label renders as a plain `secondary` pill, which is what these are.
+*/
+const HOME: DemoLabel = { name: "home" };
+const ERRANDS: DemoLabel = { name: "errands" };
 
 /**
  * A believable Wednesday.
@@ -127,8 +161,15 @@ export const DEMO_COLUMNS: DemoColumn[] = [
     tone: "urgent",
     pinned: true,
     todos: [
-      { title: "Sort through the mail pile", priority: 4, overflowDays: 6 },
-      { title: "Cancel unused subscription", overflowDays: 3, labels: [ADMIN] },
+      {
+        title: "Sort through the mail pile",
+        priority: 4,
+        overflow: { from: "Sep 1", since: "Sep 1", days: 6 },
+      },
+      {
+        title: "Cancel unused subscription",
+        overflow: { from: "Sep 1", since: "Sep 4", days: 3 },
+      },
     ],
   },
   {
@@ -158,9 +199,9 @@ export const DEMO_COLUMNS: DemoColumn[] = [
     title: "Tuesday",
     subtitle: "Sep 8",
     todos: [
-      { title: "Schedule dentist appointment", priority: 2, labels: [ADMIN] },
-      { title: "Measure the living room", priority: 3, labels: [HOME] },
-      { title: "Renew passport", deadlineMissed: "Sep 4", labels: [ADMIN] },
+      { title: "Schedule dentist appointment", priority: 2 },
+      { title: "Measure the living room", priority: 3 },
+      { title: "Renew passport", deadlineMissed: "Sep 4" },
     ],
   },
   {
@@ -168,12 +209,25 @@ export const DEMO_COLUMNS: DemoColumn[] = [
     subtitle: "Sep 9",
     todos: [
       { title: "Research flight options", priority: 3 },
-      { title: "Replace the air filter", priority: 4, labels: [HOME] },
+      { title: "Replace the air filter", priority: 4 },
     ],
   },
 ];
 
-/** The planning half: Backlog, then the lists, each in its own colour. */
+/**
+ * The planning half.
+ *
+ * These are the lists a real first run actually creates — `SEED_LISTS` in
+ * `lib/store/repositories.ts` seeds Backlog, Brain Dump, Grocery List, To Buy
+ * and To Read. The earlier version invented "Home" and "Errands", which is a
+ * smaller lie than the coloured labels but the same kind: a visitor who signs
+ * up should recognise the board they were shown.
+ *
+ * The column colours ARE real — lists and tabs both have a `ColorPicker`
+ * (`list-info-dialog.tsx`, `tab-info-dialog.tsx`), so a user can produce
+ * exactly this. A brand-new board is uncoloured; this one is a board somebody
+ * has been using, which is the honest thing for a hero to show.
+ */
 export const DEMO_LISTS: DemoColumn[] = [
   {
     title: "Backlog",
@@ -181,26 +235,86 @@ export const DEMO_LISTS: DemoColumn[] = [
     pinned: true,
     todos: [
       { title: "Draft blog post outline" },
-      { title: "Organise the garage", priority: 4 },
+      { title: "Organize the garage", priority: 4 },
     ],
   },
   {
-    title: "Home",
-    accentColor: HOME.color,
+    title: "Brain Dump",
+    accentColor: "#46a758",
     todos: [
       { title: "Fix the squeaky door hinge", priority: 3 },
-      { title: "Sell the old bookcase", priority: 2, labels: [HOME] },
+      { title: "Look into that noise the car makes" },
     ],
   },
   {
-    title: "Errands",
-    accentColor: ERRANDS.color,
+    title: "To Buy",
+    accentColor: "#00a2c7",
     todos: [
-      { title: "Drop donations at the charity shop", priority: 3 },
-      { title: "Pick up paint samples", priority: 2, labels: [ERRANDS] },
+      { title: "Picture hooks", priority: 3, labels: [HOME] },
+      { title: "Bin bags for the donation run" },
     ],
   },
 ];
+
+/**
+ * The board's checkbox, as a picture of one.
+ *
+ * A `span`, not `ui/checkbox.tsx` — that one is `"use client"` and nothing on
+ * this page has anything to tick. Same 16px square, same square corners (see
+ * that file for why a 4px radius is wrong at this size), same `--primary` fill
+ * when checked.
+ *
+ * Exported because the story panel (`story-panel.tsx`) ticks the same boxes
+ * the hero board draws, and two hand-rolled checkmarks would drift apart.
+ */
+export function DemoCheckbox({
+  done,
+  live,
+  className,
+}: {
+  done?: boolean;
+  /**
+   * Take the checked state from the nearest ancestor carrying `data-done`
+   * rather than from the `done` prop.
+   *
+   * The story's sub-tasks are ticked by `story-ticks.tsx`, which toggles an
+   * attribute from a scroll loop rather than re-rendering React. So the mark
+   * has to be in the DOM already and revealed by CSS — a conditional `{done &&
+   * …}` cannot be turned on by an attribute. The `done` prop still decides
+   * what the SERVER renders, which is what a reader with no JavaScript keeps.
+   */
+  live?: boolean;
+  className?: string;
+}) {
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        "flex size-4 shrink-0 items-center justify-center rounded-none border transition-colors",
+        done ? "border-primary bg-primary" : "border-muted-foreground",
+        live && "group-data-done:border-primary group-data-done:bg-primary",
+        className,
+      )}
+    >
+      {(done || live) && (
+        <svg
+          viewBox="0 0 16 16"
+          className={cn(
+            "size-3 text-primary-foreground transition-opacity",
+            live && !done && "opacity-0 group-data-done:opacity-100",
+          )}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2.5}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M3.5 8.5 6.5 11.5 12.5 4.5" />
+        </svg>
+      )}
+    </span>
+  );
+}
 
 /**
  * A card row.
@@ -219,11 +333,19 @@ function DemoCard({ todo }: { todo: DemoTodo }) {
   const badges =
     todo.labels?.length ||
     todo.deadlineMissed ||
-    todo.overflowDays ||
+    todo.overflow ||
     subtaskTotal > 0;
 
   return (
-    <div className="group relative block border-b border-border/60 py-2 pr-2 pl-3 last:border-b-0">
+    <div
+      /*
+        The one card the homepage story follows (EI-278). `card-travel.tsx`
+        measures this element every frame and flies a copy of it from here into
+        the story's panel; nothing here changes if that never runs.
+      */
+      data-travel-origin={todo.title === MOVE_TODO_TITLE ? "" : undefined}
+      className="group relative block border-b border-border/60 py-2 pr-2 pl-3 last:border-b-0"
+    >
       {rail && (
         <span
           aria-hidden
@@ -242,32 +364,7 @@ function DemoCard({ todo }: { todo: DemoTodo }) {
         />
       )}
 
-      {/*
-        A span, not `<Checkbox>` — that one is `"use client"`, and a hero has
-        nothing to tick. Same 16px square, same square corners, same
-        `--primary` fill when checked.
-      */}
-      <span
-        aria-hidden
-        className={cn(
-          "absolute top-2.5 left-3 flex size-4 shrink-0 items-center justify-center rounded-none border",
-          done ? "border-primary bg-primary" : "border-muted-foreground",
-        )}
-      >
-        {done && (
-          <svg
-            viewBox="0 0 16 16"
-            className="size-3 text-primary-foreground"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={2.5}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M3.5 8.5 6.5 11.5 12.5 4.5" />
-          </svg>
-        )}
-      </span>
+      <DemoCheckbox done={done} className="absolute top-2.5 left-3" />
 
       <div
         className={cn(
@@ -276,17 +373,27 @@ function DemoCard({ todo }: { todo: DemoTodo }) {
         )}
       >
         <span className={cn("indent-6 wrap-break-word", TITLE_CLAMP_CLASS)}>
+          {/*
+            Every marker is a tooltip trigger, the way it is on the real board.
+            A glyph you cannot interrogate is decoration; `TitleMarkers` puts
+            each of these behind its own tooltip and so does this.
+          */}
           {todo.deadlineAhead && (
-            <span className="mr-1 inline-block align-[-0.1875em] text-muted-foreground">
+            <DemoTooltip
+              label={`Due ${todo.deadlineAhead}`}
+              className="mr-1 align-[-0.1875em] text-muted-foreground"
+            >
               <CalendarCheck className="size-3" aria-hidden />
-              <span className="sr-only">Due {todo.deadlineAhead}. </span>
-            </span>
+            </DemoTooltip>
           )}
           {todo.location && (
-            <span className="mr-1 inline-block align-[-0.1875em] text-muted-foreground">
+            <DemoTooltip
+              label={todo.location}
+              sr={`Location: ${todo.location}.`}
+              className="mr-1 align-[-0.1875em] text-muted-foreground"
+            >
               <MapPin className="size-3" aria-hidden />
-              <span className="sr-only">Location: {todo.location}. </span>
-            </span>
+            </DemoTooltip>
           )}
           {todo.title}
           {rail && <span className="sr-only"> — {rail.label}</span>}
@@ -295,45 +402,61 @@ function DemoCard({ todo }: { todo: DemoTodo }) {
         {badges && (
           <span className="mt-1.5 flex flex-wrap items-center gap-1">
             {subtaskTotal > 0 && (
-              <span
-                className={cn(badgeVariants({ variant: "outline" }), "num gap-1 text-2xs font-normal")}
-              >
-                <ListChecks className="size-2.5" aria-hidden />
-                {subtaskDone}/{subtaskTotal}
-              </span>
+              <DemoTooltip label={`${subtaskDone} of ${subtaskTotal} sub-tasks done`}>
+                <span
+                  className={cn(
+                    badgeVariants({ variant: "outline" }),
+                    "num gap-1 text-2xs font-normal",
+                  )}
+                >
+                  <ListChecks className="size-2.5" aria-hidden />
+                  {subtaskDone}/{subtaskTotal}
+                </span>
+              </DemoTooltip>
             )}
-            {todo.overflowDays && (
-              <span
-                className={cn(
-                  badgeVariants({ variant: "destructive" }),
-                  "num gap-1 text-2xs font-normal",
-                )}
+            {todo.overflow && (
+              <DemoTooltip
+                label={`Scheduled ${todo.overflow.from} · in Overflow since ${todo.overflow.since}`}
               >
-                <CornerDownRight className="size-2.5" aria-hidden />
-                In Overflow {todo.overflowDays} days
-              </span>
+                <span
+                  className={cn(
+                    badgeVariants({ variant: "destructive" }),
+                    "num gap-1 text-2xs font-normal",
+                  )}
+                >
+                  <CornerDownRight className="size-2.5" aria-hidden />
+                  In Overflow {todo.overflow.days} days
+                </span>
+              </DemoTooltip>
             )}
             {todo.deadlineMissed && (
-              <span
-                className={cn(badgeVariants({ variant: "destructive" }), "text-2xs font-normal")}
-              >
-                Deadline <span className="num">{todo.deadlineMissed}</span>
-              </span>
+              // The board leaves this one bare, but a red badge reading
+              // "Deadline Sep 4" beside a card scheduled for Sep 8 is the one
+              // most worth explaining: the date has passed, and that is the
+              // whole reason it is loud.
+              <DemoTooltip label={`Deadline was ${todo.deadlineMissed} — now past`}>
+                <span
+                  className={cn(badgeVariants({ variant: "destructive" }), "text-2xs font-normal")}
+                >
+                  Deadline <span className="num">{todo.deadlineMissed}</span>
+                </span>
+              </DemoTooltip>
             )}
             {todo.labels?.map((label) => (
-              <span
-                key={label.name}
-                className={cn(badgeVariants({ variant: "secondary" }), "text-2xs font-normal")}
-                /* The identity ladder from lib/colors.ts — tint behind, edge
-                   around, the label's own colour on the name. */
-                style={{
-                  backgroundColor: tint(label.color),
-                  borderColor: edge(label.color),
-                  color: label.color,
-                }}
-              >
-                {label.name}
-              </span>
+              /*
+                No `tint`/`edge` style any more. `DemoLabel.color` is typed
+                `undefined` because Faite has no way to colour a label, so the
+                identity ladder that used to be applied here was resolving to
+                `undefined` on every render — dead code that still read, to
+                anyone skimming, as though coloured labels were a thing.
+              */
+              <DemoTooltip key={label.name} label={`Label: ${label.name}`}>
+                <span
+                  className={cn(badgeVariants({ variant: "secondary" }), "text-2xs font-normal")}
+                >
+                  {label.name}
+                </span>
+              </DemoTooltip>
             ))}
           </span>
         )}
@@ -405,7 +528,7 @@ function DemoColumnView({ column, dayTrack }: { column: DemoColumn; dayTrack?: b
 
 /**
  * The whole thing: the calendar half over the planning half, the two-track
- * shape a returning user would recognise from `/board` itself.
+ * shape a returning user would recognize from `/board` itself.
  *
  * `aria-hidden` with a caption instead: this is a picture of software, and
  * every string in it is a sample. Read aloud it would be forty to-dos of noise

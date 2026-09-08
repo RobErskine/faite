@@ -1,11 +1,12 @@
 "use client";
 
 /**
- * EI-272 spike. The pinned stage: sticky canvas on the left, beats scrolling
- * past on the right.
+ * The homepage story: sticky room on the left, product panel and beats
+ * scrolling past on the right.
  *
- * This component is the actual subject of the spike. It has to prove three
- * things at once:
+ * Landed as the EI-272 spike, promoted to `/` by EI-275 unchanged in every
+ * way that matters — the three invariants it was built to prove are now the
+ * three invariants the homepage depends on:
  *
  *  1. three.js is in its own chunk, fetched only after the page has painted
  *     and only on a device that can use it. `next/dynamic` + `ssr: false`,
@@ -14,7 +15,12 @@
  *  2. Scrolling writes to a ref, never to state. React renders this subtree
  *     once; `useFrame` reads the ref at 60fps.
  *  3. The flat version is the real page. Reduced-motion and no-WebGL users
- *     get the static panel, and it says the same thing.
+ *     get the static stage, and it says the same thing.
+ *
+ * `children` and `panel` arrive as an RSC payload from `app/page.tsx`, which
+ * is still a Server Component: this file being `"use client"` costs the story
+ * its own ~2 KB, not the copy inside it. That is what keeps invariant 1 true
+ * now that the story shares a page with the hero.
  */
 
 import dynamic from "next/dynamic";
@@ -39,7 +45,22 @@ const RoomScene = IS_APP_SHELL
   ? () => null
   : dynamic(() => import("./room-scene"), { ssr: false, loading: () => null });
 
-export function RoomStage({ children }: { children: ReactNode }) {
+export function RoomStage({
+  panel,
+  children,
+}: {
+  /**
+   * The product, pinned above the copy: the "Plan living room move" card and
+   * its sub-tasks. Sticky rather than scrolling with the beats, so the room
+   * on the left and the list on the right are on screen together for the
+   * whole story — the entire reason the two halves are side by side.
+   *
+   * A slot rather than something this component builds, because it is board
+   * UI and this file is the scene. EI-278 makes what is inside it move.
+   */
+  panel?: ReactNode;
+  children: ReactNode;
+}) {
   const section = useRef<HTMLDivElement>(null);
   const progress = useRef(0);
   const [enabled, setEnabled] = useState(false);
@@ -89,9 +110,24 @@ export function RoomStage({ children }: { children: ReactNode }) {
         exactly half the viewport and meets its left and bottom edges. A card
         with a rounded border reads as a component demo; an edge-to-edge stage
         reads as a place.
+
+        Sticky at EVERY width, not just `md:`. Stacked and unpinned, the room
+        scrolls away after one screen and never comes back — so the phone gets
+        a decorative picture at the top of an article, and the argument the
+        page is making (this room, and the list that is doing it, at the same
+        time) is only ever made on a desktop. Pinned to the top 45vh instead,
+        the beats read underneath it and the camera keeps moving the whole way
+        down.
+
+        `bg-background` on the outer box is what makes that safe: a sticky
+        element stays in flow, so the beats scroll UP BEHIND this one, and
+        `bg-muted/30` is a tint, not a backdrop — the copy would have shown
+        straight through it.
       */}
-      <div className="top-0 h-[60vh] bg-muted/30 md:sticky md:h-dvh">
-        {enabled ? <RoomScene progress={progress} /> : <StaticStage />}
+      <div className="sticky top-0 h-[45vh] bg-background md:h-dvh">
+        <div className="h-full bg-muted/30">
+          {enabled ? <RoomScene progress={progress} /> : <StaticStage />}
+        </div>
       </div>
 
       {/*
@@ -101,7 +137,28 @@ export function RoomStage({ children }: { children: ReactNode }) {
         beside it does not.
       */}
       <div className="flex flex-col px-6 sm:px-10 lg:px-16">
-        <div className="flex w-full max-w-xl flex-col">{children}</div>
+        <div className="flex w-full max-w-xl flex-col">
+          {panel && (
+            /*
+              Pinned beside the room on a desktop; a card that scrolls by once,
+              above the beats, on a phone.
+
+              Two sticky elements do not fit on a 844px screen — the room's
+              45vh and this card's ~250px would leave about a third of a
+              viewport for the copy. The room wins that trade: it is the thing
+              that changes as you scroll, and EI-278's ticking degrades to a
+              static card by design (its own ticket says so) whereas a room
+              that cannot be seen degrades to nothing.
+
+              `bg-background` where it IS pinned is load bearing, not
+              decoration: a sticky element stays in flow, so the beats scroll
+              underneath this one rather than being pushed by it, and without
+              an opaque backdrop the two would overprint.
+            */
+            <div className="z-10 bg-background pt-6 pb-4 md:sticky md:top-0">{panel}</div>
+          )}
+          {children}
+        </div>
       </div>
     </div>
   );

@@ -51,7 +51,7 @@ interface TodoCardProps {
   /** Draw the drop indicator immediately above this card. */
   showInsertionLine?: boolean;
   /**
-   * This row is mid-flight: the drag overlay is still travelling to it. Held
+   * This row is mid-flight: the drag overlay is still traveling to it. Held
    * invisible so the ghost and the real row are never both on screen, but kept
    * in layout so the column does not resize under the animation.
    */
@@ -380,7 +380,7 @@ export function TodoCard({
           border eats the content box, so a P1 card's checkbox and title would
           sit 3px right of a P4's. Inside one column that reads as broken
           alignment rather than as encoding.
-        - The row already has `border-b`. A 3px coloured left border mitres
+        - The row already has `border-b`. A 3px colored left border mitres
           against it into a visible diagonal wedge in the corner — worst exactly
           at P1, where the rail is thickest.
         - The insertion line below is positioned against the PADDING box, so a
@@ -437,7 +437,7 @@ export function TodoCard({
       {draggable && (
       <DragGrip
         className={cn(
-          // `top-2.5` centres a 12px glyph on the first line of `text-sm
+          // `top-2.5` centers a 12px glyph on the first line of `text-sm
           // leading-snug` inside `py-1.5`.
           "absolute left-0 top-3",
           // Full strength rather than DragGrip's resting /30: at rest it is not
@@ -460,7 +460,7 @@ export function TodoCard({
 
       {/*
         Out of flow, in the gutter right after the grip, so the title can wrap
-        beneath it. `top-2` centres a 16px box on the first line of `text-sm
+        beneath it. `top-2` centers a 16px box on the first line of `text-sm
         leading-snug` inside `py-1.5`.
 
         `after:-inset-x-1` narrows the shadcn base's 12px horizontal hit

@@ -32,7 +32,7 @@ export function DesktopAuthProvider() {
   useEffect(() => {
     if (!isDesktopShell()) return;
 
-    let cancelled = false;
+    let canceled = false;
     let unlisten: (() => void) | undefined;
 
     async function exchange(code: string): Promise<void> {
@@ -56,12 +56,12 @@ export function DesktopAuthProvider() {
         toast.error("Couldn't finish signing in — try again from the account menu.");
       });
     }).then((fn) => {
-      if (cancelled) fn();
+      if (canceled) fn();
       else unlisten = fn;
     });
 
     return () => {
-      cancelled = true;
+      canceled = true;
       unlisten?.();
     };
   }, [refetch]);

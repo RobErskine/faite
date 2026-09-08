@@ -64,19 +64,19 @@ function TextPreview({ attachment }: { attachment: Attachment }) {
   // set-state-in-effect rule is pointing at: a synchronous setState in an
   // effect body is a render the component could have started in.
   useEffect(() => {
-    let cancelled = false;
+    let canceled = false;
     fetchAttachmentText(attachment.id)
       .then((result) => {
         // The dialog can be closed, or switched to another attachment, while
         // this is in flight — writing state then would show one file's
         // contents under another file's name.
-        if (!cancelled) setState({ status: "ready", ...result });
+        if (!canceled) setState({ status: "ready", ...result });
       })
       .catch(() => {
-        if (!cancelled) setState({ status: "error" });
+        if (!canceled) setState({ status: "error" });
       });
     return () => {
-      cancelled = true;
+      canceled = true;
     };
   }, [attachment.id]);
 
