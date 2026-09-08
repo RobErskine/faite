@@ -12,6 +12,7 @@ import { AppHeader } from "./app-header";
 import { SignedOutBanner } from "@/components/auth/signed-out-banner";
 import { BoardColumn } from "./board-column";
 import { ListColumnMenu } from "./list-column-menu";
+import { TabPillMenu } from "./tab-pill-menu";
 import { BoardEmptyBanner } from "./board-empty-banner";
 import { CreateListColumn } from "./create-list-column";
 import { DateNav } from "./date-nav";
@@ -348,6 +349,15 @@ export function PhoneBoard({
               isListDragActive={!!activeList}
               onSelect={selectTab}
               onOpenInfo={setInfoTabId}
+            renderMenu={(tab) => (
+              <TabPillMenu
+                tab={tab}
+                onSave={actions.handleSaveTab}
+                onArchive={actions.handleArchiveTab}
+                onDelete={actions.handleDeleteTab}
+                onOpenInfo={() => setInfoTabId(tab.id)}
+              />
+            )}
               onCreate={(name) => void handleCreateTab(name)}
               onOpenArchive={() => setArchivedOpen(true)}
             />

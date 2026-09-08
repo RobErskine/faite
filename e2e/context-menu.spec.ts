@@ -1,5 +1,6 @@
 import { test, expect } from "./support/fixtures";
 import type { Page } from "@playwright/test";
+import { realHover } from "./support/hover";
 
 /**
  * Right-click context menus (EI-281 — the card menu EI-285, the list column
@@ -191,6 +192,45 @@ test.describe("list column menu", () => {
     // so the assertion cannot move with the thing it is checking.
     await expect(page.getByRole("menuitemradio")).toHaveCount(11);
     await expect(page.getByRole("menuitemradio", { name: "Tomato" })).toBeVisible();
+  });
+});
+
+/**
+ * The tab pill composes TWO Base UI `useRender` components —
+ * `TooltipTrigger render={<ContextMenuTrigger/>}` — which is the exact shape
+ * of `.ai/lessons.md` L747, where the outer one silently swallowed the
+ * inner's pointer handlers and eleven happy-dom assertions still passed.
+ *
+ * So both halves are asserted here, in a real browser, and the CONTROL case
+ * is load-bearing: `locator.hover()` cannot open a Base UI tooltip (see
+ * support/hover.ts), so "the tooltip did not open" would otherwise be
+ * indistinguishable from "this harness cannot open one".
+ */
+test.describe("tab pill — two composed triggers", () => {
+  const pill = (page: Page) => page.locator("[data-tab-pill]").first();
+
+  test("CONTROL: the pill's tooltip still opens on a real hover", async ({ page }) => {
+    await realHover(page, pill(page));
+    await expect(page.locator('[data-slot="tooltip-content"]')).toHaveCount(1);
+  });
+
+  test("and the context menu still opens on right-click", async ({ page }) => {
+    await pill(page).click({ button: "right" });
+    await expect(page.getByRole("menu")).toBeVisible();
+    for (const name of ["Tab settings…", "Color", "Archive", "Delete"]) {
+      await expect(page.getByRole("menuitem", { name })).toBeVisible();
+    }
+  });
+
+  test("a nested button inside the trigger still gets its click", async ({
+    page,
+  }) => {
+    // The strongest of the three: this is an ordinary button INSIDE the
+    // composed trigger. If the outer `useRender` swallowed anything, a plain
+    // left-click on a child is where it would show, and neither the tooltip
+    // nor the menu test above would notice.
+    await pill(page).getByRole("button", { name: "Tab options for My Lists" }).click();
+    await expect(page.getByRole("dialog")).toBeVisible();
   });
 });
 

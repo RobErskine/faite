@@ -1,32 +1,24 @@
 "use client";
 
-import { Archive, Settings2, Palette, Trash2 } from "lucide-react";
+import { Archive, Settings2, Trash2 } from "lucide-react";
 import {
   ContextMenuContent,
   ContextMenuItem,
-  ContextMenuRadioGroup,
-  ContextMenuRadioItem,
   ContextMenuSeparator,
-  ContextMenuSub,
-  ContextMenuSubContent,
-  ContextMenuSubTrigger,
 } from "@/components/ui/context-menu";
-import { ACCENT_COLORS, effectiveListColor } from "@/lib/colors";
+import { effectiveListColor } from "@/lib/colors";
 import type { List, Tab } from "@/lib/schema";
+import { ColorSubmenu } from "./color-submenu";
 import type { ListPatch } from "./list-info-dialog";
 
 /**
  * A list column header's right-click menu (EI-286).
  *
  * Every action already has a home in `ListInfoDialog`; this is the shortcut to
- * the three that are worth reaching without opening it. Rename, description
- * and the default reminder deliberately stay in the dialog — they need a text
- * field, and a menu is the wrong shape for typing.
+ * the three worth reaching without opening it. Rename, description and the
+ * default reminder deliberately stay in the dialog — they need a text field,
+ * and a menu is the wrong shape for typing.
  */
-
-/** Matches `ListInfoDialog`'s own sentinel for "no color of its own". */
-const NONE = "__none__";
-
 interface ListColumnMenuProps {
   list: List;
   tabsById: ReadonlyMap<string, Tab>;
@@ -45,17 +37,16 @@ export function ListColumnMenu({
   onOpenInfo,
 }: ListColumnMenuProps) {
   /*
-    What the list renders as today when it has no color of its own — its tab's.
-    Shown as the swatch on the "None" row so the inherited color is visible
-    rather than implied, matching `color-picker.tsx`'s treatment.
+    What the list would render as with no color of its own — its tab's. Shown
+    on the "None" row so the inherited color is visible rather than implied,
+    matching `color-picker.tsx`'s treatment.
   */
   const inherited = effectiveListColor({ ...list, color: null }, tabsById);
 
   return (
     <ContextMenuContent>
-      {/* First, because it is the route to everything this menu leaves out —
-          including a custom color. A native color input inside a popup is a
-          focus-restoration trap, so the picker stays in the dialog. */}
+      {/* First, because it is the route to everything this menu leaves out,
+          including an arbitrary color. */}
       <ContextMenuItem onClick={onOpenInfo}>
         <Settings2 />
         List settings…
@@ -63,33 +54,11 @@ export function ListColumnMenu({
 
       <ContextMenuSeparator />
 
-      <ContextMenuSub>
-        <ContextMenuSubTrigger>
-          <Palette />
-          Color
-        </ContextMenuSubTrigger>
-        <ContextMenuSubContent>
-          {/* A radio group, not plain items: exactly one color is in effect,
-              and the checkmark is what makes the current one findable. */}
-          <ContextMenuRadioGroup
-            value={list.color ?? NONE}
-            onValueChange={(value) =>
-              onSave(list, { color: value === NONE ? null : String(value) })
-            }
-          >
-            <ContextMenuRadioItem value={NONE}>
-              <Swatch color={inherited} />
-              {inherited ? "None (from tab)" : "None"}
-            </ContextMenuRadioItem>
-            {ACCENT_COLORS.map((color) => (
-              <ContextMenuRadioItem key={color.value} value={color.value}>
-                <Swatch color={color.value} />
-                {color.name}
-              </ContextMenuRadioItem>
-            ))}
-          </ContextMenuRadioGroup>
-        </ContextMenuSubContent>
-      </ContextMenuSub>
+      <ColorSubmenu
+        value={list.color ?? null}
+        inherited={inherited}
+        onChange={(color) => onSave(list, { color })}
+      />
 
       <ContextMenuSeparator />
 
@@ -104,16 +73,5 @@ export function ListColumnMenu({
         Delete
       </ContextMenuItem>
     </ContextMenuContent>
-  );
-}
-
-/** A color dot. `aria-hidden` — the name beside it is what gets announced. */
-function Swatch({ color }: { color: string | null | undefined }) {
-  return (
-    <span
-      aria-hidden
-      className="size-3.5 shrink-0 rounded-full ring-1 ring-foreground/10"
-      style={color ? { backgroundColor: color } : undefined}
-    />
   );
 }

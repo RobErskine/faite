@@ -16,9 +16,13 @@ constraints particular to menus.
 | --- | --- |
 | To-do card (`todo-card-menu.tsx`) | Edit · Mark done / not done · Won't do · Reschedule ▸ · Delete |
 | List column header (`list-column-menu.tsx`) | List settings… · Color ▸ · Archive · Delete |
+| Tab pill (`tab-pill-menu.tsx`) | Tab settings… · Color ▸ · Archive · Delete |
 
-Nothing else, yet. Tab pills, day/Overflow/Backlog headers, archived-list rows,
+Nothing else, yet. Day/Overflow/Backlog headers, archived-list rows,
 attachment rows and sheet subtask rows are all plausible and all unbuilt.
+
+The Color ▸ submenu is shared (`color-submenu.tsx`) — two call sites is what
+earns the extraction; the item lists are not.
 
 Two targets were considered and **declined**, which is worth writing down so
 they are not "fixed" later:
@@ -126,6 +130,16 @@ A context menu's anchor is a synthetic `DOMRect` of width 0 for a mouse (10 for
 touch), so copying that class renders a zero-width popup — which presents as
 "the menu never opened", sending you to look in entirely the wrong place. Use
 `min-w-44`. There is a test.
+
+**The tab pill composes two `useRender` components.** It is both a
+`TooltipTrigger` and a `ContextMenuTrigger`, which is precisely the shape of
+L747 — where the outer one silently swallowed the inner's handlers and eleven
+happy-dom assertions still passed. Three assertions in
+`e2e/context-menu.spec.ts` cover it in a real browser: the tooltip still opens
+(under `realHover`, since `locator.hover()` cannot open a Base UI tooltip at
+all — that test is the CONTROL), the menu still opens, and a nested button
+inside the trigger still receives a plain click. Add a third composed
+primitive anywhere and write the same three.
 
 **The row IS the trigger.** `ContextMenuTrigger` renders a plain `<div>` and
 takes every div prop, so a card's existing root element becomes the trigger
