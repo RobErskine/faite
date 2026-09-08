@@ -1,11 +1,12 @@
-import { todoSchema } from "@/lib/schema";
+import { todoSchema, type Todo } from "@/lib/schema";
 import type { ServiceContext } from "@/lib/service/context";
 import { createAuth } from "../auth";
 import { authorizeScope } from "../auth-scopes";
 import { corsHeaders, handleOptions } from "../cors";
 import { durableHlcQueue } from "../service/hlc";
-import { createTodo, pushTransportFor, updateTodo } from "../service/todos";
+import { createTodo, deleteTodo, pushTransportFor, updateTodo } from "../service/todos";
 import type { UserDurableObject } from "../user-do";
+import { filterTodos, parseTodoQuery } from "./query";
 import { V1_RESOURCES, type V1Kind } from "./resources";
 import { parseCreateTodoRequest, parseUpdateTodoRequest } from "./validate";
 
@@ -65,6 +66,23 @@ function listEntities(
     case "attachment":
       return stub.listEntities("attachment");
   }
+}
+
+/**
+ * Same `never`-through-the-RPC-proxy workaround as `listEntities` below, and
+ * the same fix: an explicit return-type annotation on a top-level function.
+ *
+ * Needed here specifically because `handleDeleteTodo` READS a field off the
+ * result (`title`, for the deleted-event snapshot). The other call sites only
+ * null-check it, so they never provoked the failure — `Property 'title' does
+ * not exist on type 'never'` was the only symptom, pointing at the property
+ * rather than at the call.
+ */
+function getTodoRow(
+  stub: DurableObjectStub<UserDurableObject>,
+  id: string,
+): ReturnType<UserDurableObject["getTodo"]> {
+  return stub.getTodo(id);
 }
 
 async function handleCreateTodo(
@@ -141,6 +159,55 @@ async function handleUpdateTodo(
   return json(todo ? todoSchema.parse(todo) : null, 200, headers);
 }
 
+/**
+ * `DELETE /api/v1/todos/{id}` (A13, EI-293).
+ *
+ * A soft delete is FOUR things, not one field — see `buildDeleteTodoEntry`
+ * for why each one is load-bearing. The dependents are read here, BEFORE the
+ * HLC queue is built, because `durableHlcQueue` pre-fetches a fixed N and
+ * throws if a builder overruns it. All of it lands in one `push()`.
+ */
+async function handleDeleteTodo(
+  stub: DurableObjectStub<UserDurableObject>,
+  userId: string,
+  id: string,
+  headers: HeadersInit,
+): Promise<Response> {
+  // 404 BEFORE building a push entry, same rule the PATCH path follows —
+  // see `getTodo`'s doc comment for why an unknown/tombstoned id must never
+  // reach `push()` as a patch.
+  const existing = await getTodoRow(stub, id);
+  if (!existing) return json({ error: "not-found" }, 404, headers);
+
+  const [childIds, attachmentIds] = await Promise.all([
+    stub.childTodoIds(id),
+    stub.attachmentIdsForTodo(id),
+  ]);
+
+  // One stamp per child, one per attachment, one for the `deleted` event,
+  // one for the todo's own tombstone. Over-requested by one, matching the
+  // convention the create/update paths already use.
+  const entryCount = childIds.length + attachmentIds.length + 2;
+  const nextHlc = await durableHlcQueue(stub, entryCount + 1);
+  const ctx: ServiceContext = { userId, nextHlc };
+
+  const title = typeof existing.title === "string" ? existing.title : "";
+  const { rejected } = await deleteTodo(
+    ctx,
+    id,
+    { title, childIds, attachmentIds },
+    pushTransportFor(stub, userId),
+  );
+  if (rejected.length > 0) {
+    console.error("v1 delete-todo push rejected", rejected);
+    return json({ error: "internal-error" }, 500, headers);
+  }
+
+  // 204, not 200 — `getTodo` filters tombstones, so there is nothing left to
+  // return. Deliberately asymmetric with POST/PATCH, which both echo the row.
+  return new Response(null, { status: 204, headers });
+}
+
 export async function handleV1Request(request: Request, env: CloudflareEnv): Promise<Response> {
   if (request.method === "OPTIONS") return handleOptions(request);
 
@@ -158,11 +225,18 @@ export async function handleV1Request(request: Request, env: CloudflareEnv): Pro
 
       const stub = env.USER_DO.get(env.USER_DO.idFromName(auth.userId));
       const rows = await listEntities(stub, resource.kind);
-      return json(
-        rows.map((row) => resource.schema.parse(row)),
-        200,
-        headers,
-      );
+      const parsed = rows.map((row) => resource.schema.parse(row));
+
+      // Filters are todo-only (A13, EI-293). The other four resources are
+      // small enough that a filter would be answering a question nobody
+      // asked — and every one of them a client could ask locally.
+      if (resource.kind === "todo") {
+        const query = parseTodoQuery(url.searchParams);
+        if (!query) return json({ error: "invalid-request" }, 400, headers);
+        return json(filterTodos(parsed as Todo[], query), 200, headers);
+      }
+
+      return json(parsed, 200, headers);
     }
 
     if (segment === "todos" && request.method === "POST") {
@@ -174,12 +248,34 @@ export async function handleV1Request(request: Request, env: CloudflareEnv): Pro
     }
 
     const todoIdMatch = /^todos\/([^/]+)$/.exec(segment as string);
-    if (todoIdMatch && request.method === "PATCH") {
-      const auth = await authorizeScope(auth0, request, "write");
-      if (!auth.ok) return json({ error: auth.error }, auth.status, headers);
+    if (todoIdMatch) {
+      const todoId = decodeURIComponent(todoIdMatch[1]);
 
-      const stub = env.USER_DO.get(env.USER_DO.idFromName(auth.userId));
-      return await handleUpdateTodo(request, stub, auth.userId, decodeURIComponent(todoIdMatch[1]), headers);
+      if (request.method === "GET") {
+        const auth = await authorizeScope(auth0, request, "read");
+        if (!auth.ok) return json({ error: auth.error }, auth.status, headers);
+
+        const stub = env.USER_DO.get(env.USER_DO.idFromName(auth.userId));
+        const todo = await stub.getTodo(todoId);
+        if (!todo) return json({ error: "not-found" }, 404, headers);
+        return json(todoSchema.parse(todo), 200, headers);
+      }
+
+      if (request.method === "PATCH") {
+        const auth = await authorizeScope(auth0, request, "write");
+        if (!auth.ok) return json({ error: auth.error }, auth.status, headers);
+
+        const stub = env.USER_DO.get(env.USER_DO.idFromName(auth.userId));
+        return await handleUpdateTodo(request, stub, auth.userId, todoId, headers);
+      }
+
+      if (request.method === "DELETE") {
+        const auth = await authorizeScope(auth0, request, "write");
+        if (!auth.ok) return json({ error: auth.error }, auth.status, headers);
+
+        const stub = env.USER_DO.get(env.USER_DO.idFromName(auth.userId));
+        return await handleDeleteTodo(stub, auth.userId, todoId, headers);
+      }
     }
 
     return json({ error: "not-found" }, 404, headers);

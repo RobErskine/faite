@@ -5,6 +5,7 @@ import { autocompleteRequestSchema, detailsRequestSchema } from "@/server/places
 import { pushRequestSchema } from "@/server/sync/validate";
 import { contactRequestSchema } from "@/server/contact/validate";
 import { V1_RESOURCES } from "@/server/v1/resources";
+import { todoQuerySchema } from "@/server/v1/query";
 import { createTodoRequestSchema, updateTodoRequestSchema } from "@/server/v1/validate";
 import { SYNC_KINDS } from "@/lib/sync/wire";
 
@@ -550,6 +551,11 @@ export const v1Paths: ZodOpenApiPathsObject = Object.fromEntries(
           "Requires the `read` scope — every cookie session and every API " +
           "key has it by default. Soft-deleted rows are never included.",
         operationId: `listV1${kind[0].toUpperCase()}${kind.slice(1)}s`,
+        // Filters are todo-only (A13, EI-293), and documented from the SAME
+        // Zod object the route parses with — imported, never redefined. That
+        // is this file's own rule, and the reason `V1_RESOURCES` is imported
+        // rather than restated.
+        ...(kind === "todo" ? { requestParams: { query: todoQuerySchema } } : {}),
         responses: {
           "200": {
             // Not every resource has a `position` — attachments sort by
@@ -558,7 +564,9 @@ export const v1Paths: ZodOpenApiPathsObject = Object.fromEntries(
             description:
               path === "attachments"
                 ? "attachments, oldest first."
-                : `${path}, in board order.`,
+                : kind === "todo"
+                  ? "todos, in board order, after any filters. Omitting `limit` returns every match — there is no implicit page size."
+                  : `${path}, in board order.`,
             content: { "application/json": { schema: z.array(schema) } },
           },
           "401": unauthenticated,
@@ -610,6 +618,54 @@ export const v1Paths: ZodOpenApiPathsObject = Object.fromEntries(
 
 export const patchTodoPath: ZodOpenApiPathsObject = {
   "/api/v1/todos/{id}": {
+    get: {
+      tags: ["v1"],
+      summary: "Fetch one todo.",
+      description: "Requires the `read` scope. A soft-deleted todo 404s.",
+      operationId: "getV1Todo",
+      requestParams: { path: z.object({ id: z.string() }) },
+      responses: {
+        "200": {
+          description: "The todo.",
+          content: { "application/json": { schema: V1_RESOURCES.todos.schema } },
+        },
+        "401": unauthenticated,
+        "403": insufficientScope,
+        "404": {
+          description: "No such todo, or it is deleted.",
+          content: { "application/json": { schema: errorSchema("not-found") } },
+        },
+        "500": {
+          description: "Unhandled server error.",
+          content: { "application/json": { schema: errorSchema("internal-error") } },
+        },
+      },
+    },
+    delete: {
+      tags: ["v1"],
+      summary: "Delete a todo.",
+      description:
+        "Requires the `write` scope. A soft delete: the todo is tombstoned, " +
+        "its sub-todos are ORPHANED rather than deleted, and its attachment " +
+        "rows are tombstoned too — the stored files themselves are left for " +
+        "the orphan sweep to collect, so the delete stays undoable. All of " +
+        "it lands in one push; see docs/API.md.",
+      operationId: "deleteV1Todo",
+      requestParams: { path: z.object({ id: z.string() }) },
+      responses: {
+        "204": { description: "Deleted. No body — the row is gone from every read." },
+        "401": unauthenticated,
+        "403": insufficientScope,
+        "404": {
+          description: "No such todo, or it was already deleted.",
+          content: { "application/json": { schema: errorSchema("not-found") } },
+        },
+        "500": {
+          description: "Unhandled server error.",
+          content: { "application/json": { schema: errorSchema("internal-error") } },
+        },
+      },
+    },
     patch: {
       tags: ["v1"],
       summary: "Patch an existing todo.",

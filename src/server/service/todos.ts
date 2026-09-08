@@ -2,8 +2,10 @@ import type { PushEntry, PushResponse } from "@/lib/sync/wire";
 import { SYNC_PROTOCOL_VERSION } from "@/lib/sync/wire";
 import {
   buildCreateTodoEntry,
+  buildDeleteTodoEntry,
   buildUpdateTodoEntry,
   type CreateTodoInput,
+  type DeleteTodoInput,
   type UpdateTodoInput,
 } from "@/lib/service/todos";
 import type { ServiceContext } from "@/lib/service/context";
@@ -83,4 +85,23 @@ export async function updateTodo(
   push: PushTransport,
 ): Promise<PushResponse> {
   return push(buildUpdateTodoEntry(ctx, id, patch));
+}
+
+/**
+ * Soft-delete a todo via the sync push path (A13, EI-293). Orphans its
+ * children, tombstones its attachment ROWS (never the R2 bytes), logs a
+ * `deleted` event with a title snapshot, and tombstones the todo — all in
+ * ONE push, so the DO applies them in one `transactionSync`.
+ *
+ * `input` is resolved by the caller from the DO before this is called, which
+ * is also what lets the route size its `durableHlcQueue` correctly. See
+ * `buildDeleteTodoEntry` for the full reasoning on each of the four parts.
+ */
+export async function deleteTodo(
+  ctx: ServiceContext,
+  id: string,
+  input: DeleteTodoInput,
+  push: PushTransport,
+): Promise<PushResponse> {
+  return push(buildDeleteTodoEntry(ctx, id, input));
 }

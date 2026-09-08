@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { encodeHlc } from "@/lib/sync/hlc-core";
 import type { ServiceContext } from "@/lib/service/context";
-import { buildCreateTodoEntry } from "@/lib/service/todos";
+import { buildCreateTodoEntry, buildDeleteTodoEntry } from "@/lib/service/todos";
 import { SYNC_PROTOCOL_VERSION, type PushResponse } from "@/lib/sync/wire";
 import { groupByEntity, resolveEntityPush, validateEntries } from "../sync/push";
-import { createTodo, type PushTransport } from "./todos";
+import { createTodo, deleteTodo, type PushTransport } from "./todos";
 
 function fakeContext(): ServiceContext {
   let counter = 0;
@@ -68,6 +68,97 @@ describe("createTodo (server adapter)", () => {
     // entity id — `todoId` must come from the built entry itself.
     expect(todoId).toBe(entries[0].entityId);
     expect(todoId).not.toBe(response.acked[0]);
+  });
+});
+
+/**
+ * A13 (EI-293). A soft delete is FOUR things, not one field — mirroring
+ * `repositories.ts`'s `deleteTodo`. Each assertion below stands in for one
+ * silent parity gap a `{ deletedAt }`-only route would have shipped.
+ */
+describe("buildDeleteTodoEntry", () => {
+  const input = { title: "Buy milk", childIds: ["c1", "c2"], attachmentIds: ["a1"] };
+
+  it("orphans children, tombstones attachment ROWS, logs the event, tombstones the todo", () => {
+    const entries = buildDeleteTodoEntry(fakeContext(), "t1", input);
+
+    // 2 children + 1 attachment + 1 event + the todo itself.
+    expect(entries).toHaveLength(5);
+
+    const children = entries.filter((e) => e.kind === "todo" && e.entityId !== "t1");
+    expect(children.map((e) => e.entityId)).toEqual(["c1", "c2"]);
+    // ORPHANED, not deleted — deleting a parent has never deleted sub-todos.
+    for (const child of children) {
+      expect(child.patch).toMatchObject({ parentId: null });
+      expect(child.patch).not.toHaveProperty("deletedAt");
+    }
+
+    const attachment = entries.find((e) => e.kind === "attachment")!;
+    expect(attachment.entityId).toBe("a1");
+    expect(attachment.patch).toMatchObject({ deletedAt: expect.any(String) });
+
+    const event = entries.find((e) => e.kind === "todoEvent")!;
+    expect(event.patch).toMatchObject({ kind: "deleted", todoId: "t1" });
+    expect(JSON.parse((event.patch as { payload: string }).payload)).toEqual({
+      v: 1,
+      title: "Buy milk",
+    });
+
+    const tombstone = entries.find((e) => e.kind === "todo" && e.entityId === "t1")!;
+    expect(tombstone.patch).toMatchObject({ deletedAt: expect.any(String) });
+  });
+
+  it("truncates the title snapshot at 200 characters", () => {
+    const entries = buildDeleteTodoEntry(fakeContext(), "t1", { ...input, title: "x".repeat(500) });
+    const event = entries.find((e) => e.kind === "todoEvent")!;
+    const payload = JSON.parse((event.patch as { payload: string }).payload);
+
+    expect(payload.title).toHaveLength(200);
+  });
+
+  it("a childless, attachment-less todo is still two entries — event plus tombstone", () => {
+    const entries = buildDeleteTodoEntry(fakeContext(), "t1", {
+      title: "Solo",
+      childIds: [],
+      attachmentIds: [],
+    });
+
+    expect(entries).toHaveLength(2);
+    expect(entries.map((e) => e.kind)).toEqual(["todoEvent", "todo"]);
+  });
+
+  it("every entry gets its own HLC stamp", () => {
+    const entries = buildDeleteTodoEntry(fakeContext(), "t1", input);
+    expect(new Set(entries.map((e) => e.hlc)).size).toBe(entries.length);
+  });
+
+  it("the whole batch survives the real push pipeline unrejected", () => {
+    const entries = buildDeleteTodoEntry(fakeContext(), "t1", input);
+
+    const { accepted, rejected } = validateEntries(entries);
+    expect(rejected).toEqual([]);
+    expect(accepted).toHaveLength(5);
+
+    // `deletedAt` must survive `sanitizePatch` — if it were SERVER_ONLY the
+    // whole route would silently no-op.
+    const todoGroup = groupByEntity(accepted).find(
+      (g) => g.kind === "todo" && g.entityId === "t1",
+    )!;
+    expect(resolveEntityPush({}, todoGroup).apply.deletedAt).toEqual(expect.any(String));
+  });
+});
+
+describe("deleteTodo (server adapter)", () => {
+  it("hands the ENTIRE batch to the transport in ONE call", async () => {
+    // One `push()` means one `transactionSync` in the DO. Splitting it could
+    // leave children orphaned with the parent still standing.
+    const response: PushResponse = { acked: [], rejected: [], highestVersion: 1, conflicts: [] };
+    const push = vi.fn<PushTransport>().mockResolvedValue(response);
+
+    await deleteTodo(fakeContext(), "t1", { title: "T", childIds: ["c1"], attachmentIds: ["a1"] }, push);
+
+    expect(push).toHaveBeenCalledTimes(1);
+    expect(push.mock.calls[0][0]).toHaveLength(4);
   });
 });
 
