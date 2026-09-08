@@ -13,6 +13,7 @@ import { AppHeader } from "./app-header";
 import { SignedOutBanner } from "@/components/auth/signed-out-banner";
 import { DesktopUpdateBanner } from "@/components/desktop/update-banner";
 import { BoardColumn } from "./board-column";
+import { ListColumnMenu } from "./list-column-menu";
 import { BoardEmptyBanner } from "./board-empty-banner";
 import { CreateListColumn } from "./create-list-column";
 import { DateNav } from "./date-nav";
@@ -705,6 +706,16 @@ export function DesktopBoard({
                   reorderListId={column.list.id}
                   reservesGripSlot
                   onOpenInfo={() => setInfoListId(column.list.id)}
+                  headerMenu={
+                    <ListColumnMenu
+                      list={column.list}
+                      tabsById={tabsById}
+                      onSave={actions.handleSaveList}
+                      onArchive={actions.handleArchiveList}
+                      onDelete={actions.handleDeleteList}
+                      onOpenInfo={() => setInfoListId(column.list.id)}
+                    />
+                  }
                   isColumnDropTarget={columnDropTargetId === column.list.id}
                   isColumnDragActive={!!activeList}
                   // The list's own color wins, falling back to its tab's. A

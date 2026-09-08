@@ -34,6 +34,7 @@ import { DragGrip } from "./drag-grip";
 import { QuickAddPreview, type QuickAddChip } from "./quick-add-preview";
 import { TodoCard } from "./todo-card";
 import type { TodoContextActions } from "./todo-card-menu";
+import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
 
 /**
  * A grouped column's order is COMPUTED, so nothing shifts to preview an insertion.
@@ -216,6 +217,12 @@ interface BoardColumnProps {
   /** Right-click menu wiring for this column's cards (EI-285). Omit for none. */
   contextActions?: TodoContextActions;
   /**
+   * Right-click menu for this column's HEADER (EI-286) — a rendered
+   * `<ContextMenuContent>`, or nothing for a column with no menu (days,
+   * Overflow, Backlog for now).
+   */
+  headerMenu?: React.ReactNode;
+  /**
    * Dropping here will be refused (Overflow). Styled as a rejecting target so
    * the outcome is obvious before the pointer is released.
    */
@@ -364,6 +371,7 @@ export function BoardColumn({
   movingIds,
   onSelect,
   contextActions,
+  headerMenu,
   rejectsDrop,
   reorderListId,
   reservesGripSlot,
@@ -715,7 +723,19 @@ export function BoardColumn({
       data-drop-indicator={isColumnDragActive && isColumnDropTarget ? "" : undefined}
       data-day-column={dayTrackColumn ? "" : undefined}
     >
-      <header
+      <ContextMenu disabled={!headerMenu}>
+      <ContextMenuTrigger
+        /*
+          The header must stay a `<header>` — it is the column's landmark — so
+          this is the one place `render` is used rather than letting the
+          trigger be its own div. A plain element, which is the shape that
+          already works elsewhere; the ref stays on the trigger, where Base UI
+          merges it with its own, rather than on a cloned child.
+
+          No conflict with the drag surface below: dnd-kit refuses button 2,
+          and coarse pointers get no menu at all.
+        */
+        render={<header />}
         ref={setDragRef}
         /*
           The whole header is the drag surface, matching a card's whole row
@@ -867,7 +887,9 @@ export function BoardColumn({
             {actions}
           </>
         )}
-      </header>
+      </ContextMenuTrigger>
+      {headerMenu}
+      </ContextMenu>
 
       {/*
         DEADLINES DUE THIS DAY.

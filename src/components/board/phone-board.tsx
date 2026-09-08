@@ -11,6 +11,7 @@ import { OVERDRIVE_MIN_TODOS } from "@/lib/overdrive";
 import { AppHeader } from "./app-header";
 import { SignedOutBanner } from "@/components/auth/signed-out-banner";
 import { BoardColumn } from "./board-column";
+import { ListColumnMenu } from "./list-column-menu";
 import { BoardEmptyBanner } from "./board-empty-banner";
 import { CreateListColumn } from "./create-list-column";
 import { DateNav } from "./date-nav";
@@ -436,6 +437,16 @@ export function PhoneBoard({
                   attachmentCounts={attachmentCounts}
                   reorderListId={column.list.id}
                   onOpenInfo={() => setInfoListId(column.list.id)}
+                  headerMenu={
+                    <ListColumnMenu
+                      list={column.list}
+                      tabsById={tabsById}
+                      onSave={actions.handleSaveList}
+                      onArchive={actions.handleArchiveList}
+                      onDelete={actions.handleDeleteList}
+                      onOpenInfo={() => setInfoListId(column.list.id)}
+                    />
+                  }
                   isColumnDropTarget={columnDropTargetId === column.list.id}
                   isColumnDragActive={!!activeList}
                   accentColor={effectiveListColor(column.list, tabsById)}
