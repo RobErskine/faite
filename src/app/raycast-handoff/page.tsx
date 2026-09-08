@@ -41,6 +41,21 @@ type Status = "checking-session" | "ready" | "error";
  */
 const RAYCAST_DEEP_LINK = "raycast://extensions/Rob/faite/connect-account";
 
+/**
+ * Raycast deep links do NOT accept arbitrary query params. The documented set
+ * is `launchType`, `arguments`, `context` and `fallbackText` — anything else
+ * is dropped silently, so an obvious-looking `?code=…` would produce a link
+ * that opens the command with no code and no error to explain why.
+ *
+ * `context` is the right channel: it arrives as `props.launchContext` in the
+ * command, it is URL-encoded JSON, and unlike `arguments` it does not require
+ * declaring a matching argument in the manifest.
+ */
+function deepLinkFor(code: string): string {
+  const context = encodeURIComponent(JSON.stringify({ code }));
+  return `${RAYCAST_DEEP_LINK}?context=${context}`;
+}
+
 function RaycastHandoffForm() {
   const router = useRouter();
   const { data: session, isPending } = useSession();
@@ -65,7 +80,7 @@ function RaycastHandoffForm() {
       .then((response) => (response.ok ? response.json() : Promise.reject(response.status)))
       .then((body: { code: string }) => {
         if (canceled) return;
-        setDeepLink(`${RAYCAST_DEEP_LINK}?code=${encodeURIComponent(body.code)}`);
+        setDeepLink(deepLinkFor(body.code));
         setStatus("ready");
       })
       .catch(() => {
