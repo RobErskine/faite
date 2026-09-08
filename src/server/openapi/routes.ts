@@ -297,6 +297,70 @@ const placesPaths: ZodOpenApiPathsObject = {
 
 // ---- /api/desktop/* -------------------------------------------------------
 
+/**
+ * `/api/raycast/*` (A18, EI-298) — the extension's one-click connect.
+ *
+ * INTERNAL ONLY, like `desktopPaths`. These are not a public contract: the
+ * code format, the TTL and the deep-link target are all free to change with
+ * the extension that consumes them, and documenting them publicly would
+ * invite a third party to build against a handshake meant for one client.
+ */
+const raycastPaths: ZodOpenApiPathsObject = {
+  "/api/raycast/handoff": {
+    post: {
+      tags: ["raycast"],
+      summary: "Mint a one-time code for the Raycast extension.",
+      description:
+        "Cookie session only — called from the system browser right after " +
+        "sign-in. Mints a `read`+`write` API key (never `sync` or `places`, " +
+        "unlike the desktop handoff) and returns an encrypted, short-lived " +
+        "code. The key itself never appears in the response, so it never " +
+        "reaches a URL or browser history.",
+      operationId: "raycastHandoff",
+      responses: {
+        "200": {
+          description: "A one-time code to put in the raycast:// deep link.",
+          content: { "application/json": { schema: z.object({ code: z.string() }) } },
+        },
+        "401": {
+          description: "No session.",
+          content: { "application/json": { schema: errorSchema("unauthenticated") } },
+        },
+      },
+    },
+  },
+  "/api/raycast/exchange": {
+    post: {
+      tags: ["raycast"],
+      summary: "Trade a one-time code for the real API key.",
+      description:
+        "Called by the extension from Node — no cookie, no Origin. The code " +
+        "is TTL-bounded (60s) rather than single-use. A code minted by the " +
+        "DESKTOP handoff is rejected here: the two flows use different HKDF " +
+        "domain separators precisely so a narrower grant cannot be redeemed " +
+        "for a wider one.",
+      operationId: "raycastExchange",
+      requestBody: {
+        content: { "application/json": { schema: z.object({ code: z.string() }) } },
+      },
+      responses: {
+        "200": {
+          description: "The API key.",
+          content: { "application/json": { schema: z.object({ token: z.string() }) } },
+        },
+        "400": {
+          description: "No code in the body.",
+          content: { "application/json": { schema: errorSchema("invalid-request") } },
+        },
+        "401": {
+          description: "Unknown, tampered, expired, or minted for a different flow.",
+          content: { "application/json": { schema: errorSchema("invalid-or-expired-code") } },
+        },
+      },
+    },
+  },
+};
+
 const desktopPaths: ZodOpenApiPathsObject = {
   "/api/desktop/handoff": {
     post: {
@@ -874,6 +938,7 @@ export const internalOnlyPaths: ZodOpenApiPathsObject = {
   ...syncPaths,
   ...placesPaths,
   ...desktopPaths,
+  ...raycastPaths,
   ...emailPaths,
   ...contactPaths,
   ...attachmentPaths,

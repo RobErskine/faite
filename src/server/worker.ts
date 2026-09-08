@@ -27,6 +27,7 @@ import { createAuth } from "./auth";
 import { handleContactRequest } from "./contact/routes";
 import { handleOptions, withCors } from "./cors";
 import { handleDesktopRequest } from "./desktop/routes";
+import { handleRaycastRequest } from "./raycast/routes";
 import { handleEmail } from "./email/ingest";
 import { handleEmailRequest } from "./email/routes";
 import { handleLinkPreviewRequest } from "./link-preview/routes";
@@ -81,6 +82,13 @@ export default {
       // `/api/auth`, since that prefix goes straight to Better Auth's own
       // handler above and these two routes are ours. See ./desktop/routes.ts.
       return handleDesktopRequest(request, env);
+    }
+    if (pathname.startsWith("/api/raycast")) {
+      // A18's one-click connect for the Raycast extension. Its own prefix
+      // beside `/api/desktop` rather than folded into it — the two mint keys
+      // with DIFFERENT scopes, and that difference should be visible in the
+      // URL rather than buried in a shared handler. See ./raycast/routes.ts.
+      return handleRaycastRequest(request, env);
     }
     if (pathname.startsWith("/api/sync")) {
       // Same reasoning as /api/auth above: EI-46's push/pull routes read

@@ -35,6 +35,31 @@ export const DESKTOP_KEY_PERMISSIONS: Record<string, ApiScope[]> = {
   api: ["read", "write", "sync", "places"],
 };
 
+/** Display only, like `DESKTOP_KEY_NAME` — see `scopeGranted`'s SECURITY note
+ * for why a key's name can never be part of its grant. */
+export const RAYCAST_KEY_NAME = "Faite for Raycast";
+
+/**
+ * Granted to every key `/api/raycast/handoff` mints (A18, EI-298).
+ *
+ * **Deliberately narrower than the desktop key: `read` + `write`, never
+ * `sync` or `places`.** The desktop shell is "this is me, on my own device"
+ * and replicates the whole board, so it needs the CRDT transport. Raycast is
+ * a third-party client talking to the public API — it has no local store to
+ * reconcile, so `sync` would grant it the ability to write history it has no
+ * way to compute correctly, and `places` would hand a paid Google upstream to
+ * an integration that never asks for one.
+ *
+ * This matches what a user can already mint by hand in Settings (the
+ * `read-write` configuration), which is the point: the handoff removes the
+ * copy-paste, not the ceiling. `auth-tokens.ts`'s `USER_KEY_PERMISSIONS`
+ * comment says never to widen a user-facing key past this, and this is a
+ * user-facing key.
+ */
+export const RAYCAST_KEY_PERMISSIONS: Record<string, ApiScope[]> = {
+  api: ["read", "write"],
+};
+
 /**
  * Pure: does this permission set satisfy `scope`? Split out from
  * `authorizeScope` so the actual access-control decision — the part a bug

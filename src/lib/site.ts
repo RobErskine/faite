@@ -170,6 +170,12 @@ export const PRIVATE_ROUTES: readonly string[] = [
   // or nothing at all, same reasoning as `/board`.
   "/desktop-handoff",
   "/background-sync",
+  // The Raycast extension's equivalent of `/desktop-handoff` (A18, EI-298).
+  // It IS reached in a real browser tab, unlike the two above — but only as
+  // a redirect target mid-handoff, and it renders a loading state until a
+  // one-time code comes back. Nothing to index, and a crawler that landed
+  // here would mint a key it can never use.
+  "/raycast-handoff",
   // Where sign-out lands in an app-shell build (docs/DESKTOP.md §11). Not
   // indexable for the same reason as the two above: on the web this route is
   // never navigated to at all — sign-out goes to `/` there.
