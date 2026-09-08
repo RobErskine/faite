@@ -1427,3 +1427,40 @@ longer answer "did the caller supply this?" — only the raw body can, via
 must mean different things. And a parser test is not a route test: if a route
 makes a decision, something has to call the route and assert the decision,
 not the parse that fed it.
+
+## A mock cannot tell you the real call signature (EI-299)
+
+`mintApiKey` clears a key's expiry with a second call, because
+`createApiKey({ expiresIn: null })` silently means "90 days" rather than
+"never". Four unit tests covered that dance — create-then-update, the update
+failing, the create failing, no update for a finite expiry — and all four
+passed against a `vi.fn()`.
+
+Run against the real plugin, **every read-write key 404'd on the second
+call.** `updateApiKey` resolves a configuration from the request's own
+`configId`, defaulting to `"default"`, then rejects the key outright if
+`configIdMatches(apiKey.configId, lookupOpts.configId)` fails. A key created
+with `configId: "read-write"` is simply not findable by an update that omits
+it.
+
+So "Never" + "Write" — precisely what a real integration asks for — would
+have produced a 90-day key and a warning toast, for every user who ticked the
+box. The two most-used options, broken together, with a green suite.
+
+The mock could not have caught it. It answered whatever it was asked, so the
+test proved only that the code called `update` the way the test expected the
+code to call `update` — a tautology wearing a spy's clothes. Nothing in the
+signature said `configId` was part of the key's IDENTITY for lookup rather
+than a creation-time detail; that only shows up in the plugin's source, or in
+a 404.
+
+The fix that outlives it: `MintDeps.update` now types `configId` as
+**required**, so the mock has to demand what the real endpoint demands. A
+fake whose type is looser than the real thing is a fake that can lie.
+
+**Rule:** a test against a mocked third-party endpoint verifies your
+intention, never the contract. When the mocked thing is a real HTTP endpoint
+you can reach, run it once for real before believing the suite — and when it
+turns out the fake was more permissive than the original, tighten the fake's
+TYPE rather than just fixing the call, so the next caller cannot repeat it.
+`scripts/v1-smoke/` exists for exactly this class of gap.

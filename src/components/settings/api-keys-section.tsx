@@ -13,6 +13,19 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  DEFAULT_EXPIRY_OPTION,
+  EXPIRY_OPTIONS,
+  mintApiKey,
+  type ExpiryOption,
+} from "@/lib/api-key-expiry";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { authClient, useSession } from "@/lib/auth-client";
@@ -93,7 +106,15 @@ function ApiKeyRowItem({ apiKey, onRevoked }: { apiKey: ApiKeyRow; onRevoked: ()
           {apiKey.prefix ?? ""}
           {apiKey.start ?? ""}… · <span>{scopeSummary(apiKey.permissions)}</span> · created{" "}
           {formatDate(apiKey.createdAt)}
-          {apiKey.expiresAt && <> · expires {formatDate(apiKey.expiresAt)}</>}
+          {apiKey.expiresAt ? (
+            <> · expires {formatDate(apiKey.expiresAt)}</>
+          ) : (
+            // A null `expiresAt` is a key that never expires (A19, EI-299).
+            // Before that existed every key had one, so this branch is new —
+            // without it a permanent key rendered as if it had no expiry
+            // information at all, which reads like a bug.
+            <> · never expires</>
+          )}
         </p>
       </div>
       <div className="flex items-center gap-2">
@@ -190,6 +211,7 @@ export function ApiKeysSection() {
   const [loadError, setLoadError] = useState(false);
   const [name, setName] = useState("");
   const [write, setWrite] = useState(false);
+  const [expiry, setExpiry] = useState<ExpiryOption>(DEFAULT_EXPIRY_OPTION);
   const [creating, setCreating] = useState(false);
   const [newKey, setNewKey] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
@@ -223,17 +245,38 @@ export function ApiKeysSection() {
     // `auth-tokens.ts` by name — it's the only scope-related field the
     // client is allowed to set at all (see this file's header comment).
     const configId: KeyConfigId = write ? "read-write" : "default";
-    const { data, error } = await authClient.apiKey.create({ name: trimmed, configId });
+
+    // The two-call dance for "Never" lives in `mintApiKey` — see there for
+    // why `create({ expiresIn: null })` silently means 90 days, and why a
+    // third plugin configuration was the wrong way to fix it.
+    const result = await mintApiKey(
+      {
+        create: (payload) => authClient.apiKey.create(payload),
+        update: (payload) => authClient.apiKey.update(payload),
+      },
+      { name: trimmed, configId, expiry },
+    );
     setCreating(false);
-    if (error || !data) {
-      toast.error("Couldn't create key", {
-        description: error?.message ?? "Something went wrong. Please try again.",
-      });
+
+    if (!result.ok) {
+      toast.error("Couldn't create key", { description: result.message });
       return;
     }
+
+    if (result.expiryWarning) {
+      // The key EXISTS and works — it just expires in 90 days rather than
+      // never. Saying "couldn't create key" would be a lie that makes the
+      // user mint a second one; tell them the real state instead.
+      toast.warning("Key created, but it expires in 90 days", {
+        description:
+          "Setting it to never expire didn't go through. You can create a new key and try again.",
+      });
+    }
+
     setName("");
     setWrite(false);
-    setNewKey(data.key);
+    setExpiry(DEFAULT_EXPIRY_OPTION);
+    setNewKey(result.key);
     refresh();
   };
 
@@ -327,6 +370,24 @@ export function ApiKeysSection() {
               Write — create and update todos (needed for MCP tools)
             </Label>
           </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Label htmlFor="api-key-expiry" className="font-normal">
+            Expires
+          </Label>
+          <Select value={expiry} onValueChange={(value) => setExpiry(value as ExpiryOption)}>
+            <SelectTrigger id="api-key-expiry" className="w-40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {EXPIRY_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
