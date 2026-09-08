@@ -71,7 +71,7 @@ describe("isAllowedWsOrigin — CSWSH defense", () => {
 });
 
 describe("isWebSocketUpgrade", () => {
-  it("matches case-insensitively, since header VALUES are not normalised", () => {
+  it("matches case-insensitively, since header VALUES are not normalized", () => {
     expect(isWebSocketUpgrade("websocket")).toBe(true);
     expect(isWebSocketUpgrade("WebSocket")).toBe(true);
     expect(isWebSocketUpgrade("WEBSOCKET")).toBe(true);

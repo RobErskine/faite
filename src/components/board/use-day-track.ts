@@ -170,11 +170,11 @@ function whenTrackReady(
   trackRef: React.RefObject<HTMLDivElement | null>,
   setup: (track: HTMLDivElement) => (() => void) | void,
 ): () => void {
-  let cancelled = false;
+  let canceled = false;
   let raf = 0;
   let cleanup: (() => void) | void;
   const attempt = () => {
-    if (cancelled) return;
+    if (canceled) return;
     const track = trackRef.current;
     if (!track) {
       raf = requestAnimationFrame(attempt);
@@ -184,7 +184,7 @@ function whenTrackReady(
   };
   attempt();
   return () => {
-    cancelled = true;
+    canceled = true;
     if (raf) cancelAnimationFrame(raf);
     cleanup?.();
   };

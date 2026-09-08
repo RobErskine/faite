@@ -201,7 +201,7 @@ export const collisionDetection: CollisionDetection = (args) => {
      * case that resolved before this shipped still resolves identically.
      *
      * `kind === "day"` also decides three things by omission, and each is the
-     * behaviour we want rather than an oversight:
+     * behavior we want rather than an oversight:
      *   - Overflow parses as `{kind:"overflow"}`, so it refuses a list drop
      *     exactly as it refuses a card drop (§5.1).
      *   - A day GROUP is a `daygroup:` id, outside `parseColumnId` entirely,
@@ -688,7 +688,7 @@ export function useBoardActions(
     setActiveList(null);
     setActiveTab(null);
     setOverId(null);
-    // The snapshot goes; the SELECTION deliberately stays. Escape cancelled
+    // The snapshot goes; the SELECTION deliberately stays. Escape canceled
     // the lift, not the picking — a second Escape clears the selection via
     // the document listener in `use-board-ui-state.ts`.
     setActiveSelectionIds(null);
@@ -796,7 +796,7 @@ export function useBoardActions(
    * halves of the board are ordered by different rules entirely (§4.13), so
    * "everything between a card in Tuesday and a card in Backlog" has no answer
    * a user would predict. `rangeSelectionIds` returns null for that, and
-   * falling through to a plain toggle is the behaviour that needs no
+   * falling through to a plain toggle is the behavior that needs no
    * explaining.
    */
   const handleSelect = useCallback(
@@ -1240,7 +1240,7 @@ export function useBoardActions(
       }
 
       /*
-       * Excludes the dragged item so it cannot become its own neighbour, and
+       * Excludes the dragged item so it cannot become its own neighbor, and
        * reads the target's index from that same filtered list — the two must
        * agree or a card dragged downward past its target lands one slot below
        * the insertion line that was just drawn above it (EI-191).
@@ -1540,7 +1540,7 @@ export function useBoardActions(
       if (!before) return;
       // toggleTodoLabel rewrites the whole array, so the inverse is simply the
       // array as it stands — no need to know which way the toggle went.
-      pushUndo(`Labelled “${short(before.title)}”`, [
+      pushUndo(`Labeled “${short(before.title)}”`, [
         { kind: "todo", entityId: todoId, patch: { labelIds: before.labelIds } },
       ]);
       void (async () => {

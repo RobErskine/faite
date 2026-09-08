@@ -20,7 +20,7 @@ import { createTodo, seedIfEmpty } from "./repositories";
 
 const OWNER = "real-user-1";
 
-/** Every key this must leave alone, with a value we can recognise. */
+/** Every key this must leave alone, with a value we can recognize. */
 const KEPT = {
   "faite:last-hlc": "2026-08-29T00:00:00.000Z-0000-node",
   "faite:node-id": "node-abc",
@@ -94,7 +94,7 @@ describe("clearDeviceData", () => {
 
     // `last-hlc` and `node-id` are the dangerous two: restarting the clock
     // risks losing a future LWW comparison against a row this device already
-    // pushed, and the node id is what `planDrain` uses to recognise its own
+    // pushed, and the node id is what `planDrain` uses to recognize its own
     // entries. `theme`/`font` are read pre-paint by layout.tsx, so clearing
     // them is a visible wrong-theme flash for the next person.
     for (const [key, value] of Object.entries(KEPT)) {

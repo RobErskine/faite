@@ -58,7 +58,7 @@ describe("fetchPlaceSuggestions", () => {
     vi.unstubAllEnvs();
   });
 
-  it("forwards the AbortSignal so a stale in-flight lookup can be cancelled", () => {
+  it("forwards the AbortSignal so a stale in-flight lookup can be canceled", () => {
     const fetchMock = stubFetch(200, { suggestions: [] });
     const controller = new AbortController();
     void fetchPlaceSuggestions("cafe", TOKEN, controller.signal);
@@ -80,7 +80,7 @@ describe("fetchPlaceDetails", () => {
   });
 
   it("takes no AbortSignal — it must land even after the popup closes", () => {
-    // If this call is cancelled the session is abandoned, and every
+    // If this call is canceled the session is abandoned, and every
     // autocomplete in it reverts to per-request pricing. See §4 of
     // docs/LOCATION.md §5.
     const fetchMock = stubFetch(200, {});

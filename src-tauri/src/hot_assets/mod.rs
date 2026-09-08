@@ -256,7 +256,7 @@ fn activate_staged(layout: &Layout) {
 ///
 /// The failure being caught is "the frontend never came up". Asking that same
 /// frontend to notice its own absence, on a timer it would also have failed to
-/// start, is circular. So the judgement happens at the *next* launch, by the
+/// start, is circular. So the judgment happens at the *next* launch, by the
 /// shell, from a file on disk — the one vantage point that survives whatever
 /// went wrong.
 ///
@@ -323,7 +323,7 @@ fn enforce_probation(layout: &Layout) {
 ///
 /// Deliberately blunt: it removes the refuse-list too. That list exists to
 /// stop a known-bad bundle coming back, but if the user has reached for this,
-/// the shell's own judgement is what they are overriding. Starting completely
+/// the shell's own judgment is what they are overriding. Starting completely
 /// clean is more predictable than starting clean-except-for-one-file.
 ///
 /// **No board data is touched.** Bundles are downloaded frontend code; the
@@ -514,7 +514,7 @@ fn stage_verified(layout: &Layout, manifest: &Manifest, archive: &[u8]) -> Resul
 ///
 /// `Ok(None)` means "nothing to write" (a bare `./`), which is not an error.
 /// Anything that is not a normal path component — `..`, a root, a Windows
-/// prefix — is refused outright rather than normalised away, because a
+/// prefix — is refused outright rather than normalized away, because a
 /// publisher with a legitimate reason to emit one does not exist.
 fn safe_relative_path(path: &Path) -> Result<Option<PathBuf>, String> {
   let mut safe = PathBuf::new();
@@ -669,7 +669,7 @@ mod tests {
     }
   }
 
-  /// Deliberately blunt. The refuse-list is the shell's own judgement about a
+  /// Deliberately blunt. The refuse-list is the shell's own judgment about a
   /// bad bundle, and reaching for this menu item is the user overriding that —
   /// starting completely clean beats clean-except-for-one-file.
   #[test]

@@ -39,7 +39,7 @@ export const STORY_BEATS: StoryBeat[] = [
     headline: "A date and a time. Not just a date.",
     body: "Prompted to write down a date, people did no better than the control group. Prompted to write down a date and a time, they did measurably better.",
     cite: "Milkman et al. (2011)",
-    subtask: "Pick a paint colour and book the painter",
+    subtask: "Pick a paint color and book the painter",
   },
   {
     headline: "You were never going to finish on Tuesday.",

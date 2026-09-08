@@ -58,7 +58,7 @@ export const SETTINGS_ENTITY_ID = "settings";
  * what keeps a tab switch from ever touching the outbox at all.
  *
  * `backlogWidth`/`backlogCollapsed`/`overflowWidth`/`overflowCollapsed` are
- * excluded for the same reason as `activeTabId`, but for a different flavour
+ * excluded for the same reason as `activeTabId`, but for a different flavor
  * of "device, not account": the right rail width for a laptop is not the
  * right rail width for a wide monitor signed into the same account, so a
  * synced value would fight the user on every device switch.
@@ -91,7 +91,7 @@ export const SETTINGS_SYNCED_FIELDS: ReadonlySet<string> = new Set([
   // seed (EI-106 P3), so it must sync or a second device would re-seed the
   // five defaults the first device already customized or deleted.
   "reminderPresetsSeeded",
-  // Overdrive tunables (EI-103) — a triage-behaviour preference, same
+  // Overdrive tunables (EI-103) — a triage-behavior preference, same
   // category as `overflowAfterDays` above, not a screen-dimension fact like
   // the excluded rail widths. Both sync so the ramp habits a user builds on
   // one device follow them to another.

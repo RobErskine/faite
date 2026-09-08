@@ -128,12 +128,12 @@ function LinkPreviewCard({
   useEffect(() => {
     if (!online) return;
 
-    let cancelled = false;
+    let canceled = false;
     fetchLinkPreview(url).then((result) => {
-      if (!cancelled) setMeta(result);
+      if (!canceled) setMeta(result);
     });
     return () => {
-      cancelled = true;
+      canceled = true;
     };
   }, [url, online]);
 

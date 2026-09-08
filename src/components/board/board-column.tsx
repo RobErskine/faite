@@ -662,7 +662,7 @@ export function BoardColumn({
           The Air pass: today is the one surface that steps up from the page
           (paired with `shadow-card` from desktop-board.tsx). Every other day
           column is transparent — open air on one continuous paper, separated
-          from its neighbours by the track's gap and its own header alone.
+          from its neighbors by the track's gap and its own header alone.
         */
         dayTrackColumn && !collapsed && emphasis && "bg-surface-1",
         // The collapsed strip is a click target and has to read as one — the
@@ -735,7 +735,7 @@ export function BoardColumn({
           // across its whole width and not just over the grip.
           dragListName !== null && "cursor-grab active:cursor-grabbing",
           // Only drawn when the tab has a color, so an uncolored tab keeps
-          // the original headers rather than gaining a grey rule.
+          // the original headers rather than gaining a gray rule.
           accentColor && !collapsed && "border-b-2",
           // Overflow: the urgency channel's rule, so the queue reads as
           // pressure. Same 2px as a tab accent, different meaning.
@@ -778,7 +778,7 @@ export function BoardColumn({
                 Grip sits immediately left of the name, matching a todo row. The
                 empty slot on Backlog is deliberate: it cannot be reordered, but
                 without the reserved space its title would sit flush left while
-                every neighbouring column's title was indented past a grip.
+                every neighboring column's title was indented past a grip.
 
                 The header drags on its own now, so the grip is no longer the only
                 way in — but it stays a real control because it is the keyboard
@@ -1296,7 +1296,7 @@ function TodoGroupSection({
           "type-eyebrow",
           "cursor-pointer transition-colors hover:bg-foreground/5",
           "focus-ring",
-          // An uncolored list keeps the ordinary rule rather than gaining a grey
+          // An uncolored list keeps the ordinary rule rather than gaining a gray
           // one — the same rule the column header's tab accent follows.
           !group.color && "border-border/60",
         )}

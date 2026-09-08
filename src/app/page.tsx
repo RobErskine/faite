@@ -143,7 +143,7 @@ export default function Home() {
                   /*
                     Shorter blocks on a phone, where the stage is pinned across
                     the top 45vh and only the bottom 55vh is clear. A block
-                    sized to the clear region keeps each beat centred in the
+                    sized to the clear region keeps each beat centered in the
                     part of the screen the reader can actually see it in; at
                     80vh the copy spent most of its travel either behind the
                     room or below the fold.

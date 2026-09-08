@@ -4,7 +4,7 @@ import type { SyncTransport } from "./transport";
 import type { PullResponse, PushRequest, PushResponse } from "./wire";
 import { SYNC_PROTOCOL_VERSION } from "./wire";
 
-function labelled(label: string): SyncTransport & { calls: string[] } {
+function labeled(label: string): SyncTransport & { calls: string[] } {
   const calls: string[] = [];
   return {
     calls,
@@ -23,8 +23,8 @@ const request: PushRequest = { protocol: SYNC_PROTOCOL_VERSION, entries: [] };
 
 describe("createFallbackTransport", () => {
   it("uses the primary while it is ready", async () => {
-    const ws = labelled("ws");
-    const http = labelled("http");
+    const ws = labeled("ws");
+    const http = labeled("http");
     const transport = createFallbackTransport(ws, http, () => true);
 
     expect((await transport.push(request)).acked).toEqual(["ws"]);
@@ -34,8 +34,8 @@ describe("createFallbackTransport", () => {
   });
 
   it("uses the fallback while the primary is not ready", async () => {
-    const ws = labelled("ws");
-    const http = labelled("http");
+    const ws = labeled("ws");
+    const http = labeled("http");
     const transport = createFallbackTransport(ws, http, () => false);
 
     expect((await transport.push(request)).acked).toEqual(["http"]);
@@ -45,8 +45,8 @@ describe("createFallbackTransport", () => {
   });
 
   it("re-checks readiness on EVERY call, not once at construction", async () => {
-    const ws = labelled("ws");
-    const http = labelled("http");
+    const ws = labeled("ws");
+    const http = labeled("http");
     let ready = false;
     const transport = createFallbackTransport(ws, http, () => ready);
 
@@ -65,8 +65,8 @@ describe("createFallbackTransport", () => {
     // pull must silently land on HTTP. This is the scenario per-call routing
     // exists for -- per-cycle routing would need a policy for it and this
     // design simply doesn't have the case.
-    const ws = labelled("ws");
-    const http = labelled("http");
+    const ws = labeled("ws");
+    const http = labeled("http");
     let ready = true;
     const transport = createFallbackTransport(ws, http, () => ready);
 
@@ -87,7 +87,7 @@ describe("createFallbackTransport", () => {
       push: async () => { throw new Error("socket exploded"); },
       pull: async () => { throw new Error("socket exploded"); },
     };
-    const http = labelled("http");
+    const http = labeled("http");
     const transport = createFallbackTransport(failing, http, () => true);
 
     await expect(transport.push(request)).rejects.toThrow("socket exploded");

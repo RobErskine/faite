@@ -15,7 +15,7 @@ import { localEvent } from "@/lib/sync/hlc-core";
  * `field_clocks` rows yet, so `resolveEntityPush` has nothing to compare the
  * incoming clock against, and every field is applied unconditionally. This
  * is every EXISTING call site (`src/server/email/ingest.ts`) — unchanged,
- * same signature, same behaviour, because creates never needed the fix.
+ * same signature, same behavior, because creates never needed the fix.
  *
  * **Server-originated UPDATES need the other mode.** Those DO race a real
  * client clock, and the in-memory adapter resets on every isolate recycle —

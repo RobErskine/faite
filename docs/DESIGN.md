@@ -6,15 +6,15 @@ of them the same day. The marketing site consults §6 before it invents anything
 
 The brief (2026-09-03): Notion's utility, MyMind's calm design and whimsy, the
 reliability of a Casio F-91W. Snappy and native. The hand-drawn cursive F stays
-black and white; the app gets one low-chroma "spectrum" as its pop of colour,
+black and white; the app gets one low-chroma "spectrum" as its pop of color,
 the way the Dia mark does. Nothing on the board reads as generic shadcn.
 
 ---
 
 ## 1. Colour grammar
 
-Every colour on the board belongs to exactly one channel. A channel means one
-thing. If a new element needs colour, it takes the channel that already means
+Every color on the board belongs to exactly one channel. A channel means one
+thing. If a new element needs color, it takes the channel that already means
 that thing, or it stays achromatic.
 
 | Channel | Means | Implemented by | Where it appears | Never |
@@ -22,9 +22,9 @@ that thing, or it stays achromatic.
 | **Identity hue** (user-chosen per tab or list, including Tomato) | "belongs to X" | `src/lib/colors.ts`: `wash()` 5%, `tint()` 12%, `edge()` 35%; `effectiveListColor()` | wash behind a run of rows, tint on group and tab headers, edge rule under a column title, label chips, confetti | on `text-2xs` text; on a card body |
 | **Urgent** (`--urgent`, an alias of `--destructive`) | "needs a verdict now" | `--urgent`, `--urgent-foreground`, `--urgent-soft`; `badgeVariants({ variant: "destructive" })` | In Overflow badge, missed Deadline, `×N` missed occurrences, N due banner, drop-refused outline, the Overflow rail's edge rule | a second red anywhere. Users may pick Tomato for a list; the app itself adds no other red |
 | **Priority** | importance | `src/lib/priority.ts` `PRIORITY_RAILS` | the card's left rail: P1 3px, P2 2px, P3 1px, P4 1px dotted, all `--foreground` at falling opacity | hue. Thickness and opacity carry all four levels (decision A) |
-| **Spectrum** (`--spectrum`, `--spectrum-solid`) | "Faite, here, now" | `hairline-spectrum` utility; `--spectrum-solid` for rings | four places only: the F mark on hover and focus, the today column's top hairline, the checked-box flash, the focus ring | a fill, a text colour, a badge, a fifth place |
+| **Spectrum** (`--spectrum`, `--spectrum-solid`) | "Faite, here, now" | `hairline-spectrum` utility; `--spectrum-solid` for rings | four places only: the F mark on hover and focus, the today column's top hairline, the checked-box flash, the focus ring | a fill, a text color, a badge, a fifth place |
 | **Status** (`--warning`, `--info`, `--success`, each with `-foreground` and `-soft`) | system state | `bg-warning-soft text-warning-foreground` and siblings | desktop and auth banners, toasts | board content |
-| **Form** (strike-through, dim) | done / dropped | `line-through` on `done`; `opacity-70` on `dropped` (`todo-card.tsx`) | rows | colour. `dropped` never gets the strike; a strike says "this got done" |
+| **Form** (strike-through, dim) | done / dropped | `line-through` on `done`; `opacity-70` on `dropped` (`todo-card.tsx`) | rows | color. `dropped` never gets the strike; a strike says "this got done" |
 
 The identity ladder is a ladder because the gaps are the point: a rule at 35%,
 the header under it at 12%, the field behind the cards at 5%. Wash and tint
@@ -34,7 +34,7 @@ theme or the other. Label chips are the one exception: the chip's text takes
 the label's hue, on a tint of the same hue.
 
 The spectrum is peach → rose → lavender → sky at low chroma. It is a hairline
-and a flash. It never covers area. Dia's rule applies: things change colour,
+and a flash. It never covers area. Dia's rule applies: things change color,
 not position.
 
 ## 2. Type roles
@@ -139,7 +139,7 @@ utility (`ui/button.tsx`), not shadcn's `border-ring ring-3 ring-ring/50`.
 
 | Token | Value | Use |
 |---|---|---|
-| `--dur-fast` | 100 ms | hover, fill, colour |
+| `--dur-fast` | 100 ms | hover, fill, color |
 | `--dur-base` | 180 ms | the strike, the check flash, a card scaling in |
 | `--dur-slow` | 260 ms | a drop settling |
 | `--ease-out-soft` | `cubic-bezier(.22, 1, .36, 1)` | anything that lands |
@@ -155,10 +155,10 @@ Rules:
 - An animation keys on a **transition**, never on a state. A row that mounts
   already done renders the static strike. See `.ai/lessons.md` on the
   render-time `lastSeen` pattern; no `useEffect` for this.
-- The spectrum changes colour, not position.
+- The spectrum changes color, not position.
 - No streaks, counters, or progress gamification. `docs/RESEARCH.md` §2.9 and
   §4 are binding.
-- Snappy and native: prefer a colour or opacity change to a layout change.
+- Snappy and native: prefer a color or opacity change to a layout change.
   Prefer `transform` to anything that reflows.
 
 ## 5. Things that look like design but are load-bearing
@@ -171,7 +171,7 @@ a row. In short:
 - Group headers are not sticky. The wash sits on the group container, not on
   each card, so `hover:` still composites over it.
 - The unchecked checkbox uses `border-muted-foreground`, not `border-input`,
-  because `--input` vanishes over a coloured wash. It is square.
+  because `--input` vanishes over a colored wash. It is square.
 - Pinned rails are flex siblings outside the scroll track, not `sticky`.
 - `pager-column` gets no `touch-action`. Ever.
 - e2e selectors are accessible names. "Backlog" and "Overflow" are names in
@@ -187,7 +187,7 @@ Reuse, do not invent:
   date. The site renders in the default pairing; do not add a third family.
 - Motion: the same three durations. Nothing autoplays except a spectrum shimmer
   under 260 ms on a hover.
-- Do not add a brand colour beyond the spectrum. Do not add a hero gradient
+- Do not add a brand color beyond the spectrum. Do not add a hero gradient
   that covers area. Do not add streak, count, or "N% of to-dos" claims;
   `docs/RESEARCH.md` §4 lists the banned ones.
 
@@ -196,10 +196,10 @@ Reuse, do not invent:
 | Date | Decision | Reason |
 |---|---|---|
 | 2026-09-03 | **A.** Priority rail goes achromatic: thickness and opacity only. | The old rail's red, orange, blue, and cyan were the same hues as the list presets and the urgency red. A Tomato "VIP" list next to a red "In Overflow" badge and a red P1 rail could not be told apart. Red now means urgency only. |
-| 2026-09-03 | **B.** Spectrum = peach → rose → lavender → sky, low chroma. `--spectrum-solid` = lavender. | A pop of colour in the Dia style that no list preset owns. Four fixed places, never a fill. |
+| 2026-09-03 | **B.** Spectrum = peach → rose → lavender → sky, low chroma. `--spectrum-solid` = lavender. | A pop of color in the Dia style that no list preset owns. Four fixed places, never a fill. |
 | 2026-09-03 | **C.** Two pairings: Editorial and Hyperlegible. Precision and Systematic removed. | Four pairings diluted the identity. One stylised, one clear. |
 | 2026-09-03 | **D.** Editorial is the default for new accounts. Existing rows keep their stored value. | The serif heading is the first impression that matches the brief. Existing users see no change. |
-| 2026-09-03 | Users keep full control of list colours, Tomato included. | A list colour is the user's, not the app's. The app keeps its own red out of the presets' way by owning only urgency. |
+| 2026-09-03 | Users keep full control of list colors, Tomato included. | A list color is the user's, not the app's. The app keeps its own red out of the presets' way by owning only urgency. |
 | 2026-09-03 | Backlog and Overflow keep their names. | Both are e2e names and both are understood. |
 | 2026-09-03 | Tab counts stay `lists/items/assigned`. | The third number exists because a tab can read `3/0/1` while its lists all look empty. A glyph on the third number says "above" without the tooltip. |
 | 2026-09-05 | `--spectrum-solid` darkened in light theme: `oklch(0.7 0.1 300)` → `oklch(0.55 0.13 300)`. | The focus ring is this token, and at 0.7 it measured 2.76:1 on white — under WCAG's 3:1 non-text floor. 0.55 measures 5.12:1, same hue. Dark theme already passed (8.29:1) and is unchanged. |

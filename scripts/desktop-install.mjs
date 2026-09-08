@@ -98,7 +98,7 @@ if (identity) {
 // a speed-up: the dmg step is the failure-prone one (it shells out to hdiutil
 // via bundle_dmg.sh, which fails on a stale mount and leaves a ~38MB
 // `rw.*.dmg` scratch file behind each time), and it produced an installer this
-// script then ignored in favour of the .app sitting next to it. A local
+// script then ignored in favor of the .app sitting next to it. A local
 // install has no use for a disk image.
 console.log("→ Building (static export + tauri release .app)…");
 run("npm", ["run", "desktop:build", "--", "--bundles", "app"], {

@@ -80,7 +80,7 @@ interface DaySheetProps {
   labels: LabelRecord[];
   /** Named reminder times (EI-106 P5) — see `TodoMetaBadges`. */
   reminderPresets?: ReminderPreset[];
-  /** Live AND archived lists, so a filed list still colours its cards. */
+  /** Live AND archived lists, so a filed list still colors its cards. */
   listsById: ReadonlyMap<string, List>;
   /** Live AND archived tabs — see `effectiveListColor`. */
   tabsById: ReadonlyMap<string, Pick<Tab, "color">>;

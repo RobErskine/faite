@@ -11,7 +11,7 @@
  * It is deliberately not a SQL parser. The only input it ever sees is
  * `BOOTSTRAP_STATEMENTS` and `USER_DB_MIGRATIONS` — statements we write
  * ourselves, in a house style, in this repo. It handles that dialect and
- * throws on anything it does not recognise as schema-affecting, which is the
+ * throws on anything it does not recognize as schema-affecting, which is the
  * right failure: a statement this cannot read is a statement the parity test
  * would otherwise silently ignore.
  */
@@ -102,9 +102,9 @@ export class DdlReplayError extends Error {
  * Replays `statements` in order and returns `table -> sorted column names`.
  *
  * `CREATE TABLE IF NOT EXISTS` on a table that already exists is a no-op,
- * matching SQLite — which is exactly the behaviour that makes migration 1
+ * matching SQLite — which is exactly the behavior that makes migration 1
  * safely re-runnable against an account that predates the ledger, and exactly
- * the behaviour that makes it unable to deliver a new *column*. Modelling it
+ * the behavior that makes it unable to deliver a new *column*. Modelling it
  * faithfully is the point: this replayer has to agree with the real thing
  * about the failure mode the whole ledger exists to prevent.
  */
@@ -158,7 +158,7 @@ export function replayDdl(statements: readonly string[]): Record<string, string[
       continue;
     }
 
-    // Not recognised. Throwing rather than skipping is deliberate: a silently
+    // Not recognized. Throwing rather than skipping is deliberate: a silently
     // ignored schema statement is a hole in the parity check, and a hole in
     // the parity check is how a missing migration reaches production.
     throw new DdlReplayError(

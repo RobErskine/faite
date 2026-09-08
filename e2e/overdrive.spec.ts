@@ -204,7 +204,7 @@ test("a card flicks away, and only once that finishes can the next one be acted 
     Stretch the exit animation so the mid-flick window is wide enough to
     look at. At its real ~320ms it is narrower than a single traced round
     trip on a loaded CI runner, so anything asserted inside it would be a
-    flaky test about correct behaviour, not a real failure.
+    flaky test about correct behavior, not a real failure.
 
     **900ms, and the ceiling is not negotiable.** `FLICK_FALLBACK_MS`
     (`overdrive-overlay.tsx`, 1000ms) ends the flick on its own if

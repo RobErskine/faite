@@ -2,7 +2,7 @@
 
 A consolidated record of how a to-do *item* works: what it stores, where it
 renders, what a drag writes, and which of those answers were decided rather
-than fallen into. Read it before changing any of that behaviour.
+than fallen into. Read it before changing any of that behavior.
 
 Named for the domain object, not the verb — this is **not** a task list. The
 running work log is `.ai/todo.md`.
@@ -326,7 +326,7 @@ changed, the bootstrap fingerprint should **not** move and no
 
 ## 10. Presentation
 
-The spec of record for colour, type, surfaces and motion is
+The spec of record for color, type, surfaces and motion is
 [`docs/DESIGN.md`](docs/DESIGN.md). The notes below are the card-specific
 decisions it builds on.
 
@@ -338,9 +338,9 @@ decisions it builds on.
 - `done` is struck through; `dropped` is dimmed only.
 - The unchecked checkbox uses `border-muted-foreground`, not `border-input`.
   `--input` is `oklch(0.922 0 0)` in the light theme — near-white, fine on a
-  plain surface and invisible over a coloured group wash. It is square
+  plain surface and invisible over a colored group wash. It is square
   (`rounded-none`): a 4px radius on a 16px box is mostly lost anyway.
-- The three colour alphas in `src/lib/colors.ts` are a **ladder**, and the gaps
+- The three color alphas in `src/lib/colors.ts` are a **ladder**, and the gaps
   are the point: rule 35% / header 12% / card field 5%. Wash and tint were once
   10% and 12%, which is inside the noise — the header and the run below it read
   as one flat panel rather than a label above a field.
@@ -414,7 +414,7 @@ never surfaced as a first-class board object.
 
 ### One level, enforced at the write site
 
-Rather than modelling depth, `createSubtask(parentId, title)`
+Rather than modeling depth, `createSubtask(parentId, title)`
 (`store/repositories.ts`) just refuses to set a `parentId` on a todo that
 already has one. `TodoSheet` mirrors that at the UI layer — the Sub-tasks
 section does not render at all when `todo.parentId` is already set — so the

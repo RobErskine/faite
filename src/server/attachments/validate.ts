@@ -77,7 +77,7 @@ function matches(bytes: Uint8Array, signature: { offset: number; bytes: number[]
  *
  * Every signature listed for a type must match, not just one of them —
  * `image/webp` needs both halves of its RIFF header. Alternate encodings of
- * the SAME format (GIF87a vs GIF89a) are therefore modelled as one entry
+ * the SAME format (GIF87a vs GIF89a) are therefore modeled as one entry
  * each and short-circuited below.
  */
 function contentMatchesType(bytes: Uint8Array, mimeType: AllowedMimeType): boolean {

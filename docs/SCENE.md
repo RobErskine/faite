@@ -8,7 +8,7 @@ point-in-time spike record with the original measurements is
 `.ai/ei-272-3d-spike-runbook.md`. This file is the standing procedure.
 
 **The one-line summary:** a Node script bakes 22 CC0/CC-BY models into one
-371 KB GLB of named nodes; a layout file places those nodes in metres; a
+371 KB GLB of named nodes; a layout file places those nodes in meters; a
 runtime pass re-tints them from CSS tokens; and the whole canvas is an
 enhancement loaded strictly after first paint, on top of a flat page that
 already tells the story.
@@ -20,10 +20,10 @@ already tells the story.
 | File | Role |
 |---|---|
 | `assets/scene/models/*.obj,.mtl,.glb` | Vendored sources. ~350 KB of plain text, no textures anywhere. |
-| `assets/scene/CREDITS.md` | Title / creator / licence / source per model. A missing licence is a blocker. |
+| `assets/scene/CREDITS.md` | Title / creator / license / source per model. A missing license is a blocker. |
 | `scripts/scene/build-room.mjs` | `npm run scene`. Reads the sources, writes one merged GLB. |
 | `public/scene/living-room.glb` | The committed build output. 371 KB, 23 nodes, 37 materials. |
-| `src/components/scene/room-layout.ts` | Where every prop sits, in metres. No geometry. |
+| `src/components/scene/room-layout.ts` | Where every prop sits, in meters. No geometry. |
 | `src/components/scene/room-materials.ts` | Material name → CSS custom property, and the re-tint pass. |
 | `src/components/scene/room-scene.tsx` | The R3F canvas: shell, lights, camera rig, placed props, the fish. |
 | `src/components/scene/room-stage.tsx` | The pinned stage, the lazy gate, the scroll listener, the flat fallback. |
@@ -121,7 +121,7 @@ it is excluded there.**
 
 ### The CC-BY chain must not break
 
-CC0 waives everything. **CC-BY grants the licence only if attribution is
+CC0 waives everything. **CC-BY grants the license only if attribution is
 given**, so a CC-BY model whose credit is not on a page a user can reach is a
 model this project is not licensed to ship. Three places, one change:
 
@@ -139,32 +139,32 @@ Jarlan Perez, sirkitree, Tiff Eidmann — all via Poly Pizza.
 ## 5. The asset pipeline (`npm run scene`)
 
 Pure Node, no Blender. That is deliberate: these models are 60–750 faces each
-with **no textures anywhere** — every material is a flat colour — so the
+with **no textures anywhere** — every material is a flat color — so the
 conversion is a few hundred lines of arithmetic, and keeping it
 dependency-free means the build works in CI and on any machine.
 
-### The normalisation contract
+### The normalization contract
 
-Every model is normalised so placement code can treat them all identically:
+Every model is normalized so placement code can treat them all identically:
 
 1. **Orientation** — rotated so its front faces **+Z**.
-2. **Scale** — scaled so the axis named by `fit` measures `size` **metres**.
-3. **Origin** — centred on X/Z, sitting on **Y = 0**.
+2. **Scale** — scaled so the axis named by `fit` measures `size` **meters**.
+3. **Origin** — centered on X/Z, sitting on **Y = 0**.
 
 So a position in `room-layout.ts` is a position in a real room. Sizes are
 real-world and belong in the build spec; **never scale at placement time**, or
-the scene stops being in metres and every later coordinate becomes a magic
+the scene stops being in meters and every later coordinate becomes a magic
 number.
 
 ### Spec options
 
 | Option | Effect |
 |---|---|
-| `fit` + `size` | The axis to measure and its target size in metres, applied **after** `rotateY`. |
+| `fit` + `size` | The axis to measure and its target size in meters, applied **after** `rotateY`. |
 | `rotateY` | Degrees, applied first, to bring the model's front round to +Z. |
 | `rename` | Namespaces this model's materials. |
-| `squash` | Scales Y/Z after normalising. Grounding and centring survive it. |
-| `split` | Lifts one material's geometry into its own sibling node, after normalisation. |
+| `squash` | Scales Y/Z after normalising. Grounding and centering survive it. |
+| `split` | Lifts one material's geometry into its own sibling node, after normalization. |
 
 **`rename` is not cosmetic.** The Quaternius kit gives the couch and the rug
 the same `DarkRed`, so without namespacing a blue couch forces a blue rug.
@@ -173,7 +173,7 @@ across models** — the two televisions already own a `mat*` range, so any new
 Poly Pizza asset must rename every material it brings.
 
 **`split` is what makes the fish swim.** The fish is its own material inside
-the bowl's GLB. Splitting after the shared normalisation means both nodes keep
+the bowl's GLB. Splitting after the shared normalization means both nodes keep
 the same origin, so placing them at one position nests the fish back inside
 the glass — and `room-scene.tsx` can then animate one without the other. The
 pair must be given the **same `position` and the same `rotationY`**, or the
@@ -183,12 +183,12 @@ fish swims through the wall of its bowl.
 
 `.obj` + `.mtl` goes through `parseObj`/`parseMtl`. `.glb` goes through
 `parseGlb`, which is deliberately minimal — it handles strided accessors but
-throws loudly on node transforms, and reads flat `baseColorFactor` colours
+throws loudly on node transforms, and reads flat `baseColorFactor` colors
 only. It carries the **alpha** through, which is what makes the fish bowl's
 glass glass: any material with alpha < 1 is emitted `BLEND` and
 `doubleSided`, or it renders as an opaque dome.
 
-Both paths converge on the same `{ groups, colours }` shape, so nothing
+Both paths converge on the same `{ groups, colors }` shape, so nothing
 downstream knows which format a model came from.
 
 ---
@@ -221,7 +221,7 @@ stays behind under nothing.
 
 The whole kit shares a semantic material palette (`Wood`, `White`,
 `Plant_Green`, …) and carries no textures, which is what lets the room read
-its colours from CSS custom properties at runtime rather than baking one look
+its colors from CSS custom properties at runtime rather than baking one look
 into the GLB. The scene follows light/dark, and the design system can move
 without a re-export.
 
@@ -233,11 +233,11 @@ Rules:
   and drop the orphaned tokens from both this file and `globals.css`.
 - **Tokens must be hex.** `Color.setStyle` accepts hex, `rgb()` and `hsl()`;
   give it `oklch()` or `light-dark()` and it throws, the catch keeps the baked
-  colour, and the whole token system silently does nothing while looking like
+  color, and the whole token system silently does nothing while looking like
   it works.
 - Light and dark are two blocks, not one `light-dark()` call. **The room does
   not invert at night, it dims** — same hues, lower lightness.
-- An unmapped material keeps the colour baked into the GLB, so the failure
+- An unmapped material keeps the color baked into the GLB, so the failure
   mode is a slightly-off prop, never an invisible one. The televisions' and
   the books' own liveries are unmapped **on purpose**: a CRT should look like
   a CRT in any theme.
@@ -303,7 +303,7 @@ something that looked wrong:
   rattles in. The room lost square footage (6×5 → 5.4×4.6 m) rather than
   inflating every prop past its real size.
 - **Matched pairs read as a hotel lobby.** Two identical lamps in opposite
-  corners, two clones of the same plant a metre apart — vary the silhouette.
+  corners, two clones of the same plant a meter apart — vary the silhouette.
 - **The camera gets a vote on scale.** The book stack is 0.48 m, larger than
   life, because the honest 0.35 m read as specks at diorama distance. This is
   the *only* sanctioned exception to §5's real-world-size rule, and it belongs
@@ -319,7 +319,7 @@ something that looked wrong:
 1. **`npm run build:static` prunes `.next/static/chunks`** even though it
    writes to `.next-static`. Measuring `.next` after `npm run verify` (which
    runs `build` *then* `build:static`) reports a lazily-imported library as
-   0 KB — a measurement artefact, not a win. **Run `npm run build` immediately
+   0 KB — a measurement artifact, not a win. **Run `npm run build` immediately
    before measuring.**
 
 2. **R3F v9 does not augment the global JSX namespace** — React 19 removed it.

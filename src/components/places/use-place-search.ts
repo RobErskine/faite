@@ -16,7 +16,7 @@ import { useDebouncedValue } from "@/lib/use-debounced-value";
  *
  * Shared by `AddressAutocomplete` (Settings → Places) and `LocationField` (the
  * to-do sheet), which need different *lists* but the identical network, token
- * and debounce behaviour. One implementation, because the interesting part
+ * and debounce behavior. One implementation, because the interesting part
  * here is not the UI: **every autocomplete request is billable**, and the
  * rules that keep them cheap are easy to get subtly, silently wrong — the
  * feature works perfectly either way, the bill is what differs.

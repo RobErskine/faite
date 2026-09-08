@@ -358,7 +358,7 @@ last-writer-wins §2.6 already commits to.
 History is in-memory only. A delete followed by a reload is permanent.
 
 Redo is not built. `⇧⌘Z` is deliberately left unbound rather than swallowed, so
-adding it is not a change in behaviour.
+adding it is not a change in behavior.
 
 ### 2.12 Auth lives in the Worker, not a Next route (P2)
 
@@ -626,12 +626,12 @@ and it's a pure consequence of the placement rule, not a decision (Q3). So it
 derives, merges into both timelines at render time, and needed zero schema
 changes — see [FAITE-LOOP.md](FAITE-LOOP.md).
 
-**Projects is retired in favour of labels**, decided 2026-08-06. The first
+**Projects is retired in favor of labels**, decided 2026-08-06. The first
 worked example above (tab-from-list) is what made this legible: once "which
 tab" is a derived selector rather than a stored field, a `project` entity
 whose only real job was cross-cutting grouping is redundant with a `label` —
 multi-assign, already synced, already has UI. EI-53 ("Projects +
-cross-cutting project views") is cancelled; EI-62 does the retirement.
+cross-cutting project views") is canceled; EI-62 does the retirement.
 Revivable later if the need reappears, but not before a real use case does.
 
 ### 2.15 Locked mode, retired from tinker mode (EI-203, the S milestone)
@@ -678,7 +678,7 @@ Two things that predate this and still hold, unchanged:
    every row's `version` is allocated below `sync_meta.next_version`, a cursor
    at or above it is provably only reachable after a wipe, so the server
    returns `reset: true` and the ordinary pull loop re-reads from 0. Kept as
-   defense in depth, not as a licence to keep resetting production accounts —
+   defense in depth, not as a license to keep resetting production accounts —
    it isn't one.
 
 `npm run schema:reset` itself stays in the repo — it is still correct and
@@ -817,7 +817,7 @@ in the planning half instead**, dimmed with a date chip. This follows from "a
 todo is hidden from planning only when it is actually visible in the calendar" —
 otherwise something scheduled three weeks out would appear in neither half.
 
-This override used to be normal, everyday behaviour: the window was always
+This override used to be normal, everyday behavior: the window was always
 exactly `settings.visibleDays` long, so scheduling something for next week
 routinely bounced it here, and changing the 1/3/5/7-day toggle visibly moved
 todos between halves. It is now a rare safety valve. `Board` opens on
@@ -942,7 +942,7 @@ no `/api/v1`, no generated OpenAPI document, no tokens. `docs/API.md` is a
 design brief, not a spec, and names the constraint to read first — a REST write
 is a *push*, not a database write.
 
-**Projects is retired in favour of labels** as the cross-cutting organizing
+**Projects is retired in favor of labels** as the cross-cutting organizing
 primitive (see §2.14, EI-62) — no longer part of P6 scope. Note that `project`
 is still in `SYNC_KINDS` as of this writing; EI-62's retirement half is open.
 

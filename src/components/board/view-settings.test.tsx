@@ -169,7 +169,7 @@ describe("ViewSettings — before Dexie resolves", () => {
   /**
    * `settings` is undefined for the first frames. Rendering the schema
    * defaults keeps the controls from flickering between two states, and
-   * matters more than it sounds: the trigger widths shift the centred cluster.
+   * matters more than it sounds: the trigger widths shift the centered cluster.
    */
   it("renders the schema defaults rather than blanks", () => {
     render(<ViewSettings settings={undefined} />);

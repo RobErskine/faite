@@ -56,7 +56,7 @@ export function ProseItem({ children }: { children: React.ReactNode }) {
   return <li className="pl-1">{children}</li>;
 }
 
-/** Lifts a defined term out of the muted body colour without bolding it into a shout. */
+/** Lifts a defined term out of the muted body color without bolding it into a shout. */
 export function ProseTerm({ children }: { children: React.ReactNode }) {
   return <strong className="font-medium text-foreground">{children}</strong>;
 }

@@ -41,7 +41,7 @@ export const ACCENT_COLORS: readonly AccentColor[] = [
  * assigns one — so inheritance is not an edge case, it is the common path. The
  * rule was inlined at five call sites before this existed, and `lib/board.ts`
  * was not one of them, which is exactly how a whole tab's worth of day-column
- * groups rendered grey while its pill and column headers rendered green.
+ * groups rendered gray while its pill and column headers rendered green.
  *
  * DERIVED, never stored. Recoloring a tab has to move every list still
  * inheriting from it, live — snapshotting the tab's color onto the record at
@@ -73,7 +73,7 @@ export function effectiveListColor(
  * The three are a LADDER, and the gaps between them are the point: a rule at
  * 35%, the header it underlines at 12%, and the field behind the cards at 5%.
  * Wash and tint were 10% and 12% at first, two points apart, which is inside
- * the noise — the header and the run below it read as one flat panel of colour
+ * the noise — the header and the run below it read as one flat panel of color
  * rather than as a label above a field, and a 1px checkbox border sitting on
  * the field had nothing to separate it from.
  */
@@ -109,7 +109,7 @@ export function edge(color: string | null | undefined): string | undefined {
  * Weaker than `tint()` because it covers area rather than a chip. At 12% behind
  * five card rows a step-9 hue reads as a colored panel competing with the
  * priority rail for attention; the job is to say "these belong together", and
- * membership needs far less colour than a label does.
+ * membership needs far less color than a label does.
  *
  * Two things constrain how faint it can go, and 5% clears both: it must sit
  * UNDER `hover:bg-accent/50` and still leave that hover perceptible, and it

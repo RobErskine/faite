@@ -196,7 +196,7 @@ if real metrics disagree.
    failed lookup still leaves usable text.
 3. Optionally name it → `createPlace(nickname, address, { googlePlaceId, lat,
    lng })`. Skippable: the address is already on the todo, which is why that
-   prompt is labelled *(optional)*.
+   prompt is labeled *(optional)*.
 4. The todo carries `placeId` + `location`, exactly as a hand-entered place does.
 
 ## 7. Testing

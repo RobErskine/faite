@@ -46,7 +46,7 @@ function DesktopHandoffForm() {
       return;
     }
 
-    let cancelled = false;
+    let canceled = false;
 
     void fetch("/api/desktop/handoff", {
       method: "POST",
@@ -56,16 +56,16 @@ function DesktopHandoffForm() {
     })
       .then((response) => (response.ok ? response.json() : Promise.reject(response.status)))
       .then((body: { code: string }) => {
-        if (cancelled) return;
+        if (canceled) return;
         setDeepLink(`faite://auth-callback?code=${encodeURIComponent(body.code)}`);
         setStatus("ready");
       })
       .catch(() => {
-        if (!cancelled) setStatus("error");
+        if (!canceled) setStatus("error");
       });
 
     return () => {
-      cancelled = true;
+      canceled = true;
     };
   }, [isPending, session, router, deviceName]);
 

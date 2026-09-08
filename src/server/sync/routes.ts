@@ -62,7 +62,7 @@ export async function handleSyncRequest(request: Request, env: CloudflareEnv): P
       // The 101 is returned VERBATIM, and is the one branch here that skips
       // `corsHeaders`: a Response carrying a `webSocket` cannot be rebuilt
       // (constructing a new Response drops the socket), and a handshake has
-      // no use for CORS headers anyway. Do not "normalise" this to match the
+      // no use for CORS headers anyway. Do not "normalize" this to match the
       // branches below.
       return await stub.fetch(new Request(request, { headers: doHeaders }));
     }

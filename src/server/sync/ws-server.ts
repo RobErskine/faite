@@ -67,7 +67,7 @@ export function isAllowedWsOrigin(origin: string | null, requestUrl: string): bo
   }
 }
 
-/** Case-insensitive, because the header value is not normalised the way names are. */
+/** Case-insensitive, because the header value is not normalized the way names are. */
 export function isWebSocketUpgrade(upgradeHeader: string | null): boolean {
   return upgradeHeader?.toLowerCase() === "websocket";
 }

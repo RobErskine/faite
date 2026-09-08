@@ -145,8 +145,8 @@ function todoAnnouncement(
   if (kind === "cancel") {
     const source = findTodoColumn(entities, activeId);
     return source
-      ? `${title}. Drag cancelled, still in ${source.label}.`
-      : `${title}. Drag cancelled.`;
+      ? `${title}. Drag canceled, still in ${source.label}.`
+      : `${title}. Drag canceled.`;
   }
 
   const overColumn = overId ? resolveOverColumn(overId, entities) : null;
@@ -176,7 +176,7 @@ function reorderAnnouncement(
     case "end":
       return `${label} ${noun} was dropped.`;
     case "cancel":
-      return `${label} ${noun} reorder cancelled.`;
+      return `${label} ${noun} reorder canceled.`;
   }
 }
 

@@ -75,7 +75,7 @@ export function RepeatSection({ recurrence }: RepeatSectionProps) {
   const [changeOpen, setChangeOpen] = useState(false);
   // Bumped on every "Change…" click so `RepeatDialog` gets a fresh `key` —
   // it seeds its draft state once per mount and does not track prop changes
-  // afterward, so without this a cancelled edit reopens showing the
+  // afterward, so without this a canceled edit reopens showing the
   // abandoned draft rather than the saved rule.
   const [changeGeneration, setChangeGeneration] = useState(0);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
