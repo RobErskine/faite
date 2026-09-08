@@ -137,3 +137,31 @@ test("an unknown route 404s with site chrome, not the bare Next error page", asy
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   await expect(page.getByRole("contentinfo")).toBeVisible();
 });
+
+/**
+ * The homepage hero is a picture of the board, and it has to arrive as HTML.
+ *
+ * `/` is the one page whose entire audience is a cold-cache first-time
+ * visitor — `redirectIfKnownDevice` in `app/page.tsx` sends everyone who has
+ * used the board before straight to `/board`, ahead of paint. So the hero is
+ * checked against the raw response body, not the hydrated DOM: `toContain`
+ * here is the assertion that `DemoBoard` is still a Server Component and still
+ * costs the page nothing to display. Rendering it on the client would keep
+ * every Playwright locator green and fail this line.
+ *
+ * "Plan living room move" is named specifically because it is the card the
+ * scroll story carries into the room (EI-278) — the one string on the board
+ * the rest of the page depends on.
+ */
+test("the homepage hero board is server-rendered HTML", async ({ page, request }) => {
+  const body = await (await request.get("/")).text();
+  expect(body).toContain("Plan living room move");
+  expect(body).toContain("Overflow");
+
+  await page.goto("/");
+  await expect(page.getByText("Plan living room move")).toBeVisible();
+  // The pitch still outranks the picture: the heading is the LCP candidate,
+  // and the board sits under it rather than in front of it.
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Open the board/ })).toBeVisible();
+});
