@@ -91,8 +91,25 @@ async function handleCreateTodo(
   userId: string,
   headers: HeadersInit,
 ): Promise<Response> {
-  const parsed = parseCreateTodoRequest(await request.json().catch(() => null));
+  const body = await request.json().catch(() => null);
+  const parsed = parseCreateTodoRequest(body);
   if (!parsed) return json({ error: "invalid-request" }, 400, headers);
+
+  // Key PRESENCE on the raw body, not a check on the parsed value (EI-308).
+  // `todoSchema.reminderTime` carries `.nullable().default(null)`, and
+  // `.partial()` does not stop `.default()` firing on an absent key — so
+  // `parsed.reminderTime` is ALWAYS `null` rather than `undefined` when the
+  // caller omitted it. The original `!== undefined` test was therefore always
+  // true, and `defaultReminderTimeForList` was never called: the exact parity
+  // gap A5/EI-230's comment below claims to have closed, live in production
+  // since it shipped. See `.ai/lessons.md`, "A Zod field with `.default()`
+  // fires on ANY absent key".
+  //
+  // An explicit `"reminderTime": null` still means "no reminder" and must not
+  // fall through to the list default — which is why this is key presence and
+  // not a null check.
+  const suppliedReminderTime =
+    typeof body === "object" && body !== null && "reminderTime" in body;
 
   // Resolved from the authoritative store, exactly like `email/ingest.ts`
   // already does for `position` — `buildCreateTodoEntry`'s own fallback is
@@ -101,10 +118,9 @@ async function handleCreateTodo(
   // before, so an API-created todo in a list with a default reminder
   // silently got none.
   const position = await stub.nextTodoPosition();
-  const reminderTime =
-    parsed.reminderTime !== undefined
-      ? parsed.reminderTime
-      : await stub.defaultReminderTimeForList(parsed.listId ?? null);
+  const reminderTime = suppliedReminderTime
+    ? parsed.reminderTime
+    : await stub.defaultReminderTimeForList(parsed.listId ?? null);
 
   // Two stamps requested: the todo entry and its "created" todoEvent always
   // both fire on a create (see `buildCreateTodoEntry`). Durable mode, not

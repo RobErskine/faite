@@ -32,7 +32,13 @@ export function handleOptions(request: Request): Response {
     status: 204,
     headers: {
       ...corsHeaders(request.headers.get("Origin")),
-      "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+      // PATCH has been served since A5 (`PATCH /api/v1/todos/{id}`) and DELETE
+      // since A13, but neither was ever advertised (EI-307) — so a
+      // cross-origin browser client, including Scalar's "try it" button on
+      // `/docs`, was blocked from every write method before the request was
+      // ever sent. Widening this grants no access: the allow-list is advisory
+      // to the browser, and `authorizeScope` is the actual gate.
+      "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
       // Authorization (D2a): the desktop shell's bearer token on
       // `/api/sync/push`/`/api/sync/pull`/etc. — genuinely cross-origin from
       // `tauri://localhost`, unlike the cookie-based browser case, so it

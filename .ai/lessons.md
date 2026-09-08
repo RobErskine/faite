@@ -1387,3 +1387,43 @@ measurement, a manual smoke test — needs a bare `npm run build` first. And
 when a whole file's worth of e2e tests fails at once after a change that could
 not have caused it, check *which build is being served* before reading a single
 trace.
+
+## A `.default()` field cannot tell you what the caller sent (EI-308)
+
+`POST /api/v1/todos` was supposed to fall back to a list's
+`defaultReminderPresetId` when the caller omitted `reminderTime`. A5 (EI-230)
+shipped that, commented it as the parity gap it was closing, and it **never
+ran once**:
+
+```ts
+const reminderTime =
+  parsed.reminderTime !== undefined                       // always true
+    ? parsed.reminderTime                                 // always null
+    : await stub.defaultReminderTimeForList(...);         // dead branch
+```
+
+`todoSchema.reminderTime` is `.nullable().default(null)`, so an omitted key
+parses to `null`, never `undefined`. Every todo created through the API in a
+list with a default reminder silently got none — the exact bug the ticket
+said it fixed.
+
+This is the **second** consequence of the `.default()` behaviour already
+recorded above ("A Zod field with `.default()` fires on ANY absent key"). The
+first was a parser expanding a sparse patch. This one is different in a way
+worth naming separately: the parser was **correct**, and
+`validate.test.ts:22` had been asserting `reminderTime: null` for a minimal
+create the whole time, correctly. The bug was at the **call site**, in code
+that tried to recover the caller's intent from a value that no longer carried
+it.
+
+Nothing caught it because every test stopped at the parser. There was no test
+that called `handleV1Request` at all — so "did the route actually ask the
+store for the default" was not a question anything could answer. A spy said 0
+calls the moment one existed.
+
+**Rule:** once a value has been through a schema with defaults, it can no
+longer answer "did the caller supply this?" — only the raw body can, via
+`"key" in body`. Reach for key presence whenever omitted and explicitly-null
+must mean different things. And a parser test is not a route test: if a route
+makes a decision, something has to call the route and assert the decision,
+not the parse that fed it.
