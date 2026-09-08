@@ -789,6 +789,157 @@
             }
           }
         }
+      },
+      "post": {
+        "tags": [
+          "v1"
+        ],
+        "summary": "Create a label.",
+        "description": "Requires the `write` scope. `position` is resolved by the server and is not accepted here. A write is a push — see docs/API.md.",
+        "operationId": "createV1Label",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "color": {
+                    "default": null,
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "emoji": {
+                    "default": null,
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "iconUrl": {
+                    "default": null,
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The created label.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Label"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request — missing name, or a field fails validation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"invalid-request\" }`."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session and no valid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"unauthenticated\" }`."
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A valid API key without the required scope (A2, EI-227). A cookie session or a full desktop-handoff key never sees this.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"insufficient-scope\" }`."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unhandled server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"internal-error\" }`."
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/tabs": {
@@ -809,6 +960,168 @@
                   "items": {
                     "$ref": "#/components/schemas/Tab"
                   }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session and no valid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"unauthenticated\" }`."
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A valid API key without the required scope (A2, EI-227). A cookie session or a full desktop-handoff key never sees this.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"insufficient-scope\" }`."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unhandled server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"internal-error\" }`."
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "v1"
+        ],
+        "summary": "Create a tab.",
+        "description": "Requires the `write` scope. `position` is resolved by the server and is not accepted here. A write is a push — see docs/API.md.",
+        "operationId": "createV1Tab",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "color": {
+                    "default": null,
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "emoji": {
+                    "default": null,
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "iconUrl": {
+                    "default": null,
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "description": {
+                    "default": null,
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "name"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The created tab.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Tab"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request — missing name, or a field fails validation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"invalid-request\" }`."
                 }
               }
             }
@@ -1889,6 +2202,780 @@
                   ],
                   "additionalProperties": false,
                   "description": "Error envelope. Example: `{ \"error\": \"backlog-not-deletable\" }`."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unhandled server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"internal-error\" }`."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/labels/{id}": {
+      "get": {
+        "tags": [
+          "v1"
+        ],
+        "summary": "Fetch one label.",
+        "description": "Requires the `read` scope. A soft-deleted label 404s.",
+        "operationId": "getV1Label",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The label.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Label"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session and no valid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"unauthenticated\" }`."
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A valid API key without the required scope (A2, EI-227). A cookie session or a full desktop-handoff key never sees this.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"insufficient-scope\" }`."
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such label, or it is deleted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"not-found\" }`."
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "v1"
+        ],
+        "summary": "Patch an existing label.",
+        "description": "Requires the `write` scope. Only the fields present in the body are touched.",
+        "operationId": "updateV1Label",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "color": {
+                    "default": null,
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "emoji": {
+                    "default": null,
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "iconUrl": {
+                    "default": null,
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "position": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated label.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Label"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Empty or malformed patch.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"invalid-request\" }`."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session and no valid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"unauthenticated\" }`."
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A valid API key without the required scope (A2, EI-227). A cookie session or a full desktop-handoff key never sees this.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"insufficient-scope\" }`."
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such label, or it is deleted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"not-found\" }`."
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "v1"
+        ],
+        "summary": "Delete a label.",
+        "description": "Requires the `write` scope. A soft delete: the label is tombstoned and STRIPPED from every to-do carrying it, in one atomic write.",
+        "operationId": "deleteV1Label",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted."
+          },
+          "401": {
+            "description": "No session and no valid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"unauthenticated\" }`."
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A valid API key without the required scope (A2, EI-227). A cookie session or a full desktop-handoff key never sees this.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"insufficient-scope\" }`."
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such label, or it was already deleted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"not-found\" }`."
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "More to-dos carry this label than one atomic write may update.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"too-many-dependents\" }`."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unhandled server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"internal-error\" }`."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tabs/{id}": {
+      "get": {
+        "tags": [
+          "v1"
+        ],
+        "summary": "Fetch one tab.",
+        "description": "Requires the `read` scope. A soft-deleted tab 404s.",
+        "operationId": "getV1Tab",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The tab.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Tab"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session and no valid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"unauthenticated\" }`."
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A valid API key without the required scope (A2, EI-227). A cookie session or a full desktop-handoff key never sees this.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"insufficient-scope\" }`."
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such tab, or it is deleted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"not-found\" }`."
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "v1"
+        ],
+        "summary": "Patch an existing tab.",
+        "description": "Requires the `write` scope. Only the fields present in the body are touched.",
+        "operationId": "updateV1Tab",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "color": {
+                    "default": null,
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "emoji": {
+                    "default": null,
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "iconUrl": {
+                    "default": null,
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "description": {
+                    "default": null,
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "archivedAt": {
+                    "default": null,
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "position": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The updated tab.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Tab"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Empty or malformed patch.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"invalid-request\" }`."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session and no valid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"unauthenticated\" }`."
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A valid API key without the required scope (A2, EI-227). A cookie session or a full desktop-handoff key never sees this.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"insufficient-scope\" }`."
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such tab, or it is deleted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"not-found\" }`."
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "v1"
+        ],
+        "summary": "Delete a tab.",
+        "description": "Requires the `write` scope. A soft delete: the tab is tombstoned and every list filed under it is REHOMED to the default tab, in one atomic write. The default tab itself cannot be deleted — it is the destination those lists move to.",
+        "operationId": "deleteV1Tab",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted."
+          },
+          "401": {
+            "description": "No session and no valid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"unauthenticated\" }`."
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A valid API key without the required scope (A2, EI-227). A cookie session or a full desktop-handoff key never sees this.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"insufficient-scope\" }`."
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such tab, or it was already deleted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"not-found\" }`."
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Either this is the default tab, which cannot be deleted, or it holds more lists than one atomic write may rehome.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"default-tab-not-deletable\" }`."
                 }
               }
             }

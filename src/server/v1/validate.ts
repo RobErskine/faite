@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { listSchema, todoSchema } from "@/lib/schema";
+import { labelSchema, listSchema, tabSchema, todoSchema } from "@/lib/schema";
 
 /**
  * Request validation for `/api/v1/todos` writes (A5, EI-230). Same
@@ -181,4 +181,78 @@ export type UpdateListRequest = z.infer<typeof updateListRequestSchema>;
 
 export function parseUpdateListRequest(body: unknown): UpdateListRequest | null {
   return parsePatchRequest(listSchema, UPDATABLE_LIST_FIELDS, body) as UpdateListRequest | null;
+}
+
+// ------------------------------------------------------- labels/tabs (A15)
+
+/** Labels are the simplest entity here: a name and decoration. `position` is
+ * server-resolved on create, patchable after, same rule as lists. */
+const LABEL_OPTIONAL_ON_CREATE = { color: true, emoji: true, iconUrl: true } as const;
+const LABEL_CREATE_FIELDS = { name: true, ...LABEL_OPTIONAL_ON_CREATE } as const;
+
+export const createLabelRequestSchema = labelSchema
+  .pick(LABEL_CREATE_FIELDS)
+  .partial(LABEL_OPTIONAL_ON_CREATE);
+
+export type CreateLabelRequest = z.infer<typeof createLabelRequestSchema>;
+
+export function parseCreateLabelRequest(body: unknown): CreateLabelRequest | null {
+  const parsed = createLabelRequestSchema.safeParse(body);
+  return parsed.success ? parsed.data : null;
+}
+
+const UPDATABLE_LABEL_FIELDS = new Set([...Object.keys(LABEL_CREATE_FIELDS), "position"]);
+
+/** Docs only — see `parsePatchRequest`. */
+export const updateLabelRequestSchema = labelSchema
+  .pick({ ...LABEL_CREATE_FIELDS, position: true })
+  .partial();
+
+export type UpdateLabelRequest = z.infer<typeof updateLabelRequestSchema>;
+
+export function parseUpdateLabelRequest(body: unknown): UpdateLabelRequest | null {
+  return parsePatchRequest(labelSchema, UPDATABLE_LABEL_FIELDS, body) as UpdateLabelRequest | null;
+}
+
+/**
+ * `isDefault` is excluded for the same reason `isBacklog` is on lists: the
+ * default tab is the guaranteed destination for lists rehomed by a tab
+ * delete, so an account must always have exactly one. Clearing it would
+ * strand the next tab delete.
+ */
+const TAB_OPTIONAL_ON_CREATE = {
+  color: true,
+  emoji: true,
+  iconUrl: true,
+  description: true,
+} as const;
+
+const TAB_CREATE_FIELDS = { name: true, ...TAB_OPTIONAL_ON_CREATE } as const;
+
+export const createTabRequestSchema = tabSchema
+  .pick(TAB_CREATE_FIELDS)
+  .partial(TAB_OPTIONAL_ON_CREATE);
+
+export type CreateTabRequest = z.infer<typeof createTabRequestSchema>;
+
+export function parseCreateTabRequest(body: unknown): CreateTabRequest | null {
+  const parsed = createTabRequestSchema.safeParse(body);
+  return parsed.success ? parsed.data : null;
+}
+
+const UPDATABLE_TAB_FIELDS = new Set([
+  ...Object.keys(TAB_CREATE_FIELDS),
+  "archivedAt",
+  "position",
+]);
+
+/** Docs only — see `parsePatchRequest`. */
+export const updateTabRequestSchema = tabSchema
+  .pick({ ...TAB_CREATE_FIELDS, archivedAt: true, position: true })
+  .partial();
+
+export type UpdateTabRequest = z.infer<typeof updateTabRequestSchema>;
+
+export function parseUpdateTabRequest(body: unknown): UpdateTabRequest | null {
+  return parsePatchRequest(tabSchema, UPDATABLE_TAB_FIELDS, body) as UpdateTabRequest | null;
 }

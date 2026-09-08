@@ -1,19 +1,28 @@
-import { listSchema, todoSchema, type Todo } from "@/lib/schema";
+import { labelSchema, listSchema, tabSchema, todoSchema, type Todo } from "@/lib/schema";
 import type { ServiceContext } from "@/lib/service/context";
 import { createAuth } from "../auth";
 import { authorizeScope } from "../auth-scopes";
 import { corsHeaders, handleOptions } from "../cors";
 import { durableHlcQueue } from "../service/hlc";
-import { buildDeleteEntry, buildUpdateListEntry } from "@/lib/service/entities";
-import { createList } from "../service/entities";
+import {
+  buildDeleteEntry,
+  buildUpdateLabelEntry,
+  buildUpdateListEntry,
+  buildUpdateTabEntry,
+} from "@/lib/service/entities";
+import { createLabel, createList, createTab } from "../service/entities";
 import { createTodo, deleteTodo, pushTransportFor, updateTodo } from "../service/todos";
 import type { UserDurableObject } from "../user-do";
 import { filterTodos, parseTodoQuery } from "./query";
 import { V1_RESOURCES, type V1Kind } from "./resources";
 import {
+  parseCreateLabelRequest,
   parseCreateListRequest,
+  parseCreateTabRequest,
   parseCreateTodoRequest,
+  parseUpdateLabelRequest,
   parseUpdateListRequest,
+  parseUpdateTabRequest,
   parseUpdateTodoRequest,
 } from "./validate";
 
@@ -111,6 +120,38 @@ function todoIdsInList(
   id: string,
 ): ReturnType<UserDurableObject["todoIdsInList"]> {
   return stub.todoIdsInList(id);
+}
+
+function nextLabelPosition(
+  stub: DurableObjectStub<UserDurableObject>,
+): ReturnType<UserDurableObject["nextPosition"]> {
+  return stub.nextPosition("label");
+}
+
+function nextTabPosition(
+  stub: DurableObjectStub<UserDurableObject>,
+): ReturnType<UserDurableObject["nextPosition"]> {
+  return stub.nextPosition("tab");
+}
+
+function listIdsInTab(
+  stub: DurableObjectStub<UserDurableObject>,
+  id: string,
+): ReturnType<UserDurableObject["listIdsInTab"]> {
+  return stub.listIdsInTab(id);
+}
+
+function defaultTabId(
+  stub: DurableObjectStub<UserDurableObject>,
+): ReturnType<UserDurableObject["defaultTabId"]> {
+  return stub.defaultTabId();
+}
+
+function todosWithLabel(
+  stub: DurableObjectStub<UserDurableObject>,
+  id: string,
+): ReturnType<UserDurableObject["todosWithLabel"]> {
+  return stub.todosWithLabel(id);
 }
 
 function backlogListId(
@@ -418,6 +459,159 @@ async function handleDeleteList(
   return new Response(null, { status: 204, headers });
 }
 
+/** `POST /api/v1/labels` (A15, EI-295). */
+async function handleCreateLabel(
+  request: Request,
+  stub: DurableObjectStub<UserDurableObject>,
+  userId: string,
+  headers: HeadersInit,
+): Promise<Response> {
+  const parsed = parseCreateLabelRequest(await request.json().catch(() => null));
+  if (!parsed) return json({ error: "invalid-request" }, 400, headers);
+
+  const position = await nextLabelPosition(stub);
+  const nextHlc = await durableHlcQueue(stub, 2);
+  const ctx: ServiceContext = { userId, nextHlc };
+
+  const { response, labelId } = await createLabel(
+    ctx,
+    { ...parsed, position },
+    pushTransportFor(stub, userId),
+  );
+  if (response.rejected.length > 0) {
+    console.error("v1 create-label push rejected", response.rejected);
+    return json({ error: "internal-error" }, 500, headers);
+  }
+
+  const row = await getEntityRow(stub, "label", labelId);
+  return json(row ? labelSchema.parse(row) : null, 201, headers);
+}
+
+/** `POST /api/v1/tabs` (A15, EI-295). Never `isDefault` — see the validator. */
+async function handleCreateTab(
+  request: Request,
+  stub: DurableObjectStub<UserDurableObject>,
+  userId: string,
+  headers: HeadersInit,
+): Promise<Response> {
+  const parsed = parseCreateTabRequest(await request.json().catch(() => null));
+  if (!parsed) return json({ error: "invalid-request" }, 400, headers);
+
+  const position = await nextTabPosition(stub);
+  const nextHlc = await durableHlcQueue(stub, 2);
+  const ctx: ServiceContext = { userId, nextHlc };
+
+  const { response, tabId } = await createTab(
+    ctx,
+    { ...parsed, position },
+    pushTransportFor(stub, userId),
+  );
+  if (response.rejected.length > 0) {
+    console.error("v1 create-tab push rejected", response.rejected);
+    return json({ error: "internal-error" }, 500, headers);
+  }
+
+  const row = await getEntityRow(stub, "tab", tabId);
+  return json(row ? tabSchema.parse(row) : null, 201, headers);
+}
+
+/**
+ * `DELETE /api/v1/labels/{id}` (A15, EI-295).
+ *
+ * A label is multi-assign, so it cannot be "rehomed" — it is STRIPPED from
+ * every todo carrying it, then tombstoned. One push, so no client can ever
+ * see a todo referencing a label that is already gone.
+ */
+async function handleDeleteLabel(
+  stub: DurableObjectStub<UserDurableObject>,
+  userId: string,
+  id: string,
+  headers: HeadersInit,
+): Promise<Response> {
+  const existing = await getEntityRow(stub, "label", id);
+  if (!existing) return json({ error: "not-found" }, 404, headers);
+
+  // Already carries `labelIds` with this label removed — see `todosWithLabel`
+  // for why that filtering happens in the DO in JS rather than in SQL.
+  const affected = await todosWithLabel(stub, id);
+  if (affected.length > MAX_DEPENDENTS) {
+    return json({ error: "too-many-dependents" }, 409, headers);
+  }
+
+  const nextHlc = await durableHlcQueue(stub, affected.length + 2);
+  const ctx: ServiceContext = { userId, nextHlc };
+  const timestamp = new Date().toISOString();
+
+  const entries = [
+    ...affected.map((todo) => ({
+      id: crypto.randomUUID(),
+      kind: "todo" as const,
+      entityId: todo.id,
+      patch: { labelIds: todo.labelIds, updatedAt: timestamp },
+      hlc: ctx.nextHlc(),
+    })),
+    ...buildDeleteEntry(ctx, "label", id),
+  ];
+
+  const { rejected } = await pushTransportFor(stub, userId)(entries);
+  if (rejected.length > 0) {
+    console.error("v1 delete-label push rejected", rejected);
+    return json({ error: "internal-error" }, 500, headers);
+  }
+
+  return new Response(null, { status: 204, headers });
+}
+
+/**
+ * `DELETE /api/v1/tabs/{id}` (A15, EI-295).
+ *
+ * Rehomes its lists to the default tab and tombstones the tab, in one push —
+ * the same shape as a list delete, with the default tab playing the role
+ * Backlog plays there. The default tab itself is undeletable for exactly
+ * that reason: it is where those lists go.
+ */
+async function handleDeleteTab(
+  stub: DurableObjectStub<UserDurableObject>,
+  userId: string,
+  id: string,
+  headers: HeadersInit,
+): Promise<Response> {
+  const existing = await getEntityRow(stub, "tab", id);
+  if (!existing) return json({ error: "not-found" }, 404, headers);
+  if (existing.isDefault) return json({ error: "default-tab-not-deletable" }, 409, headers);
+
+  const [listIds, fallbackTabId] = await Promise.all([
+    listIdsInTab(stub, id),
+    defaultTabId(stub),
+  ]);
+  if (listIds.length > MAX_DEPENDENTS) {
+    return json({ error: "too-many-dependents" }, 409, headers);
+  }
+
+  const nextHlc = await durableHlcQueue(stub, listIds.length + 2);
+  const ctx: ServiceContext = { userId, nextHlc };
+  const timestamp = new Date().toISOString();
+
+  const entries = [
+    ...listIds.map((listId) => ({
+      id: crypto.randomUUID(),
+      kind: "list" as const,
+      entityId: listId,
+      patch: { tabId: fallbackTabId, updatedAt: timestamp },
+      hlc: ctx.nextHlc(),
+    })),
+    ...buildDeleteEntry(ctx, "tab", id),
+  ];
+
+  const { rejected } = await pushTransportFor(stub, userId)(entries);
+  if (rejected.length > 0) {
+    console.error("v1 delete-tab push rejected", rejected);
+    return json({ error: "internal-error" }, 500, headers);
+  }
+
+  return new Response(null, { status: 204, headers });
+}
+
 export async function handleV1Request(request: Request, env: CloudflareEnv): Promise<Response> {
   if (request.method === "OPTIONS") return handleOptions(request);
 
@@ -479,6 +673,90 @@ export async function handleV1Request(request: Request, env: CloudflareEnv): Pro
         const row = await getEntityRow(stub, "list", listId);
         if (!row) return json({ error: "not-found" }, 404, headers);
         return json(listSchema.parse(row), 200, headers);
+      }
+    }
+
+    if (segment === "labels" && request.method === "POST") {
+      const auth = await authorizeScope(auth0, request, "write");
+      if (!auth.ok) return json({ error: auth.error }, auth.status, headers);
+
+      const stub = env.USER_DO.get(env.USER_DO.idFromName(auth.userId));
+      return await handleCreateLabel(request, stub, auth.userId, headers);
+    }
+
+    if (segment === "tabs" && request.method === "POST") {
+      const auth = await authorizeScope(auth0, request, "write");
+      if (!auth.ok) return json({ error: auth.error }, auth.status, headers);
+
+      const stub = env.USER_DO.get(env.USER_DO.idFromName(auth.userId));
+      return await handleCreateTab(request, stub, auth.userId, headers);
+    }
+
+    const labelIdMatch = /^labels\/([^/]+)$/.exec(segment as string);
+    if (labelIdMatch) {
+      const labelId = decodeURIComponent(labelIdMatch[1]);
+      const scope = request.method === "GET" ? "read" : "write";
+      if (["GET", "PATCH", "DELETE"].includes(request.method)) {
+        const auth = await authorizeScope(auth0, request, scope);
+        if (!auth.ok) return json({ error: auth.error }, auth.status, headers);
+        const stub = env.USER_DO.get(env.USER_DO.idFromName(auth.userId));
+
+        if (request.method === "DELETE") {
+          return await handleDeleteLabel(stub, auth.userId, labelId, headers);
+        }
+
+        const row = await getEntityRow(stub, "label", labelId);
+        if (!row) return json({ error: "not-found" }, 404, headers);
+        if (request.method === "GET") return json(labelSchema.parse(row), 200, headers);
+
+        const parsed = parseUpdateLabelRequest(await request.json().catch(() => null));
+        if (!parsed) return json({ error: "invalid-request" }, 400, headers);
+
+        const nextHlc = await durableHlcQueue(stub, 2);
+        const { rejected } = await pushTransportFor(stub, auth.userId)(
+          buildUpdateLabelEntry({ userId: auth.userId, nextHlc }, labelId, parsed),
+        );
+        if (rejected.length > 0) {
+          console.error("v1 update-label push rejected", rejected);
+          return json({ error: "internal-error" }, 500, headers);
+        }
+
+        const updated = await getEntityRow(stub, "label", labelId);
+        return json(updated ? labelSchema.parse(updated) : null, 200, headers);
+      }
+    }
+
+    const tabIdMatch = /^tabs\/([^/]+)$/.exec(segment as string);
+    if (tabIdMatch) {
+      const tabId = decodeURIComponent(tabIdMatch[1]);
+      const scope = request.method === "GET" ? "read" : "write";
+      if (["GET", "PATCH", "DELETE"].includes(request.method)) {
+        const auth = await authorizeScope(auth0, request, scope);
+        if (!auth.ok) return json({ error: auth.error }, auth.status, headers);
+        const stub = env.USER_DO.get(env.USER_DO.idFromName(auth.userId));
+
+        if (request.method === "DELETE") {
+          return await handleDeleteTab(stub, auth.userId, tabId, headers);
+        }
+
+        const row = await getEntityRow(stub, "tab", tabId);
+        if (!row) return json({ error: "not-found" }, 404, headers);
+        if (request.method === "GET") return json(tabSchema.parse(row), 200, headers);
+
+        const parsed = parseUpdateTabRequest(await request.json().catch(() => null));
+        if (!parsed) return json({ error: "invalid-request" }, 400, headers);
+
+        const nextHlc = await durableHlcQueue(stub, 2);
+        const { rejected } = await pushTransportFor(stub, auth.userId)(
+          buildUpdateTabEntry({ userId: auth.userId, nextHlc }, tabId, parsed),
+        );
+        if (rejected.length > 0) {
+          console.error("v1 update-tab push rejected", rejected);
+          return json({ error: "internal-error" }, 500, headers);
+        }
+
+        const updated = await getEntityRow(stub, "tab", tabId);
+        return json(updated ? tabSchema.parse(updated) : null, 200, headers);
       }
     }
 

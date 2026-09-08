@@ -695,6 +695,75 @@ export class UserDurableObject extends DurableObject {
   }
 
   /**
+   * Ids of the non-deleted lists filed under tab `id` (A15, EI-295).
+   *
+   * `DELETE /api/v1/tabs/{id}` rehomes these to the default tab rather than
+   * cascading — a tab is a grouping, and deleting a grouping has never
+   * deleted its members. Mirrors `repositories.ts`'s `deleteTab`.
+   */
+  async listIdsInTab(id: string): Promise<string[]> {
+    return this.ctx.storage.sql
+      .exec<{ id: string }>(
+        "SELECT id FROM lists WHERE tab_id = ? AND deleted_at IS NULL",
+        id,
+      )
+      .toArray()
+      .map((row) => row.id);
+  }
+
+  /**
+   * The default tab's id — the destination `deleteTab` rehomes to, exactly
+   * the role Backlog plays for todos.
+   *
+   * Queried by `is_default = 1` rather than compared against
+   * `DEFAULT_TAB_ID`: an account seeded by an older build may not match the
+   * constant, and rehoming to an id that does not exist would strand every
+   * list it touched.
+   */
+  async defaultTabId(): Promise<string | null> {
+    const [row] = this.ctx.storage.sql
+      .exec<{ id: string }>(
+        "SELECT id FROM tabs WHERE is_default = 1 AND deleted_at IS NULL LIMIT 1",
+      )
+      .toArray();
+    return row?.id ?? null;
+  }
+
+  /**
+   * Every non-deleted todo carrying label `id`, as `{ id, labelIds }` with
+   * the label already removed — so the caller can push the shortened array
+   * without re-deriving it (A15, EI-295).
+   *
+   * **Filtered in JS after `JSON.parse`, never with `LIKE '%"id"%'`.**
+   * `label_ids` is a JSON text column; a `LIKE` would match an id that is a
+   * SUBSTRING of another id, and is sensitive to whitespace in the encoding.
+   * The column is small and already read in full by `listEntities`, so
+   * scanning it here costs nothing new.
+   */
+  async todosWithLabel(id: string): Promise<{ id: string; labelIds: string[] }[]> {
+    const rows = this.ctx.storage.sql
+      .exec<{ id: string; label_ids: string | null }>(
+        "SELECT id, label_ids FROM todos WHERE deleted_at IS NULL",
+      )
+      .toArray();
+
+    const affected: { id: string; labelIds: string[] }[] = [];
+    for (const row of rows) {
+      let labelIds: unknown;
+      try {
+        labelIds = JSON.parse(row.label_ids ?? "[]");
+      } catch {
+        // A malformed cell is not this method's problem to fix, and throwing
+        // here would take down an unrelated delete.
+        continue;
+      }
+      if (!Array.isArray(labelIds) || !labelIds.includes(id)) continue;
+      affected.push({ id: row.id, labelIds: labelIds.filter((value) => value !== id) });
+    }
+    return affected;
+  }
+
+  /**
    * Total live attachment bytes for this account, for the per-user quota
    * (`MAX_TOTAL_ATTACHMENT_BYTES`).
    *

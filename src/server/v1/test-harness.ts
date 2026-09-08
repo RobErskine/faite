@@ -32,6 +32,9 @@ export interface FakeStub {
   childTodoIds: ReturnType<typeof vi.fn>;
   todoIdsInList: ReturnType<typeof vi.fn>;
   backlogListId: ReturnType<typeof vi.fn>;
+  listIdsInTab: ReturnType<typeof vi.fn>;
+  defaultTabId: ReturnType<typeof vi.fn>;
+  todosWithLabel: ReturnType<typeof vi.fn>;
   attachmentIdsForTodo: ReturnType<typeof vi.fn>;
   push: ReturnType<typeof vi.fn>;
 }
@@ -64,6 +67,9 @@ export function makeStub(overrides: Partial<FakeStub> = {}): FakeStub {
     childTodoIds: vi.fn().mockResolvedValue([]),
     todoIdsInList: vi.fn().mockResolvedValue([]),
     backlogListId: vi.fn().mockResolvedValue("backlog-1"),
+    listIdsInTab: vi.fn().mockResolvedValue([]),
+    defaultTabId: vi.fn().mockResolvedValue("tab-1"),
+    todosWithLabel: vi.fn().mockResolvedValue([]),
     attachmentIdsForTodo: vi.fn().mockResolvedValue([]),
     push: vi.fn().mockResolvedValue(okPushResponse()),
     ...overrides,
@@ -176,6 +182,24 @@ export function rawTabRow(overrides: Record<string, unknown> = {}): Record<strin
     description: null,
     isDefault: true,
     archivedAt: null,
+    position: "a0",
+    color: null,
+    emoji: null,
+    iconUrl: null,
+    ...overrides,
+  };
+}
+
+/** A raw `labels` row, `version` included. */
+export function rawLabelRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    version: 5,
+    id: "label-1",
+    ownerId: "user-1",
+    createdAt: "2026-09-01T00:00:00.000Z",
+    updatedAt: "2026-09-01T00:00:00.000Z",
+    deletedAt: null,
+    name: "Urgent",
     position: "a0",
     color: null,
     emoji: null,

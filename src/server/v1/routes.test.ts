@@ -14,6 +14,7 @@ import {
   makeEnv,
   makeStub,
   pushedEntries,
+  rawLabelRow,
   rawListRow,
   rawTabRow,
   rawTodoRow,
@@ -552,6 +553,142 @@ describe("list scope gating", () => {
   ])("%s %s demands %s", async (method, path, scope) => {
     stub.getEntity.mockResolvedValue(rawListRow());
     stub.listEntities.mockResolvedValue([rawTabRow()]);
+
+    await handleV1Request(
+      v1Request(method, path, method === "GET" || method === "DELETE" ? undefined : { name: "x" }),
+      env,
+    );
+
+    expect(authorize.mock.calls.map((c) => c[2])).toEqual([scope]);
+  });
+});
+
+describe("labels CRUD", () => {
+  it("POST 201s with a server-resolved position", async () => {
+    stub.nextPosition.mockResolvedValue("a4");
+    stub.getEntity.mockResolvedValue(rawLabelRow());
+
+    const res = await handleV1Request(v1Request("POST", "/api/v1/labels", { name: "Urgent" }), env);
+
+    expect(res.status).toBe(201);
+    expect(stub.nextPosition).toHaveBeenCalledWith("label");
+    expect(pushedEntries(stub)[0].patch).toMatchObject({ name: "Urgent", position: "a4" });
+  });
+
+  it("PATCH does not clear the decoration it did not mention", async () => {
+    stub.getEntity.mockResolvedValue(rawLabelRow({ emoji: "🔥" }));
+
+    await handleV1Request(v1Request("PATCH", "/api/v1/labels/label-1", { color: "blue" }), env);
+
+    expect(Object.keys(pushedEntries(stub)[0].patch).sort()).toEqual(["color", "updatedAt"]);
+  });
+
+  /**
+   * A label is multi-assign, so it cannot be rehomed the way a list's todos
+   * are — it is STRIPPED from every todo carrying it. One push, so no client
+   * ever sees a todo referencing a label that is already gone.
+   */
+  it("DELETE strips itself from every referencing todo, in ONE push", async () => {
+    stub.getEntity.mockResolvedValue(rawLabelRow());
+    stub.todosWithLabel.mockResolvedValue([
+      { id: "t1", labelIds: ["other"] },
+      { id: "t2", labelIds: [] },
+    ]);
+
+    const res = await handleV1Request(v1Request("DELETE", "/api/v1/labels/label-1"), env);
+
+    expect(res.status).toBe(204);
+    expect(stub.push).toHaveBeenCalledTimes(1);
+
+    const entries = pushedEntries(stub);
+    expect(entries).toHaveLength(3);
+    expect(entries[0].patch).toMatchObject({ labelIds: ["other"] });
+    expect(entries[1].patch).toMatchObject({ labelIds: [] });
+    expect(entries[2]).toMatchObject({ kind: "label", entityId: "label-1" });
+  });
+
+  it("DELETE 409s rather than splitting a batch too large to write atomically", async () => {
+    stub.getEntity.mockResolvedValue(rawLabelRow());
+    stub.todosWithLabel.mockResolvedValue(
+      Array.from({ length: 451 }, (_, i) => ({ id: `t${i}`, labelIds: [] })),
+    );
+
+    const res = await handleV1Request(v1Request("DELETE", "/api/v1/labels/label-1"), env);
+
+    expect(res.status).toBe(409);
+    expect(stub.push).not.toHaveBeenCalled();
+  });
+});
+
+describe("tabs CRUD", () => {
+  it("POST 201s and never accepts isDefault from the caller", async () => {
+    stub.getEntity.mockResolvedValue(rawTabRow({ isDefault: false }));
+
+    await handleV1Request(
+      v1Request("POST", "/api/v1/tabs", { name: "Work", isDefault: true }),
+      env,
+    );
+
+    expect(pushedEntries(stub)[0].patch).toMatchObject({ name: "Work", isDefault: false });
+  });
+
+  /** REGRESSION, the tab twin of the list `isBacklog` case. */
+  it("REGRESSION: a rename does not reset isDefault", async () => {
+    stub.getEntity.mockResolvedValue(rawTabRow());
+
+    await handleV1Request(v1Request("PATCH", "/api/v1/tabs/tab-1", { name: "Renamed" }), env);
+
+    const patch = pushedEntries(stub)[0].patch as Record<string, unknown>;
+    expect(Object.keys(patch).sort()).toEqual(["name", "updatedAt"]);
+    expect(patch).not.toHaveProperty("isDefault");
+  });
+
+  it("DELETE rehomes its lists to the default tab, in ONE push", async () => {
+    stub.getEntity.mockResolvedValue(rawTabRow({ id: "tab-9", isDefault: false }));
+    stub.listIdsInTab.mockResolvedValue(["l1", "l2"]);
+    stub.defaultTabId.mockResolvedValue("tab-1");
+
+    const res = await handleV1Request(v1Request("DELETE", "/api/v1/tabs/tab-9"), env);
+
+    expect(res.status).toBe(204);
+    expect(stub.push).toHaveBeenCalledTimes(1);
+
+    const entries = pushedEntries(stub);
+    expect(entries).toHaveLength(3);
+    expect(entries.slice(0, 2).map((e) => e.patch)).toEqual([
+      expect.objectContaining({ tabId: "tab-1" }),
+      expect.objectContaining({ tabId: "tab-1" }),
+    ]);
+    expect(entries[2].kind).toBe("tab");
+  });
+
+  /** The default tab is where a deleted tab's lists go — removing it would
+   * strand the next tab delete. */
+  it("DELETE 409s on the default tab, without pushing", async () => {
+    stub.getEntity.mockResolvedValue(rawTabRow({ isDefault: true }));
+
+    const res = await handleV1Request(v1Request("DELETE", "/api/v1/tabs/tab-1"), env);
+
+    expect(res.status).toBe(409);
+    await expect(res.json()).resolves.toEqual({ error: "default-tab-not-deletable" });
+    expect(stub.push).not.toHaveBeenCalled();
+  });
+});
+
+describe("label and tab scope gating", () => {
+  it.each([
+    ["GET", "/api/v1/labels/label-1", "read"],
+    ["POST", "/api/v1/labels", "write"],
+    ["PATCH", "/api/v1/labels/label-1", "write"],
+    ["DELETE", "/api/v1/labels/label-1", "write"],
+    ["GET", "/api/v1/tabs/tab-1", "read"],
+    ["POST", "/api/v1/tabs", "write"],
+    ["PATCH", "/api/v1/tabs/tab-1", "write"],
+    ["DELETE", "/api/v1/tabs/tab-9", "write"],
+  ])("%s %s demands %s", async (method, path, scope) => {
+    stub.getEntity.mockResolvedValue(
+      path.includes("label") ? rawLabelRow() : rawTabRow({ id: "tab-9", isDefault: false }),
+    );
 
     await handleV1Request(
       v1Request(method, path, method === "GET" || method === "DELETE" ? undefined : { name: "x" }),

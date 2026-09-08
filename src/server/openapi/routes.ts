@@ -7,7 +7,11 @@ import { contactRequestSchema } from "@/server/contact/validate";
 import { V1_RESOURCES } from "@/server/v1/resources";
 import { todoQuerySchema } from "@/server/v1/query";
 import {
+  createLabelRequestSchema,
   createListRequestSchema,
+  createTabRequestSchema,
+  updateLabelRequestSchema,
+  updateTabRequestSchema,
   createTodoRequestSchema,
   updateListRequestSchema,
   updateTodoRequestSchema,
@@ -617,6 +621,42 @@ export const v1Paths: ZodOpenApiPathsObject = Object.fromEntries(
             },
           }
         : {}),
+      ...(kind === "label" || kind === "tab"
+        ? {
+            post: {
+              tags: ["v1"],
+              summary: `Create a ${kind}.`,
+              description:
+                "Requires the `write` scope. `position` is resolved by the " +
+                "server and is not accepted here. A write is a push — see " +
+                "docs/API.md.",
+              operationId: `createV1${kind[0].toUpperCase()}${kind.slice(1)}`,
+              requestBody: {
+                content: {
+                  "application/json": {
+                    schema: kind === "label" ? createLabelRequestSchema : createTabRequestSchema,
+                  },
+                },
+              },
+              responses: {
+                "201": {
+                  description: `The created ${kind}.`,
+                  content: { "application/json": { schema } },
+                },
+                "400": {
+                  description: "Malformed request — missing name, or a field fails validation.",
+                  content: { "application/json": { schema: errorSchema("invalid-request") } },
+                },
+                "401": unauthenticated,
+                "403": insufficientScope,
+                "500": {
+                  description: "Unhandled server error.",
+                  content: { "application/json": { schema: errorSchema("internal-error") } },
+                },
+              },
+            },
+          }
+        : {}),
       ...(kind === "list"
         ? {
             post: {
@@ -837,3 +877,120 @@ export const internalOnlyPaths: ZodOpenApiPathsObject = {
   ...v1Paths,
   ...patchTodoPath,
 };
+
+/**
+ * `/api/v1/{labels,tabs}/{id}` — GET/PATCH/DELETE (A15, EI-295).
+ *
+ * Built from one shape because the two differ only in what a DELETE cascades
+ * to and which row is undeletable. Stating those differences per-entity keeps
+ * the 409 description honest rather than generic.
+ */
+const ITEM_ROUTE_NOTES = {
+  label: {
+    deleteDescription:
+      "Requires the `write` scope. A soft delete: the label is tombstoned " +
+      "and STRIPPED from every to-do carrying it, in one atomic write.",
+    conflict: "More to-dos carry this label than one atomic write may update.",
+    conflictError: "too-many-dependents",
+  },
+  tab: {
+    deleteDescription:
+      "Requires the `write` scope. A soft delete: the tab is tombstoned and " +
+      "every list filed under it is REHOMED to the default tab, in one " +
+      "atomic write. The default tab itself cannot be deleted — it is the " +
+      "destination those lists move to.",
+    conflict:
+      "Either this is the default tab, which cannot be deleted, or it holds " +
+      "more lists than one atomic write may rehome.",
+    conflictError: "default-tab-not-deletable",
+  },
+} as const;
+
+export const labelAndTabItemPaths: ZodOpenApiPathsObject = Object.fromEntries(
+  (["label", "tab"] as const).map((kind) => {
+    const plural = `${kind}s` as "labels" | "tabs";
+    const schema = V1_RESOURCES[plural].schema;
+    const notes = ITEM_ROUTE_NOTES[kind];
+
+    return [
+      `/api/v1/${plural}/{id}`,
+      {
+        get: {
+          tags: ["v1"],
+          summary: `Fetch one ${kind}.`,
+          description: `Requires the \`read\` scope. A soft-deleted ${kind} 404s.`,
+          operationId: `getV1${kind[0].toUpperCase()}${kind.slice(1)}`,
+          requestParams: { path: z.object({ id: z.string() }) },
+          responses: {
+            "200": {
+              description: `The ${kind}.`,
+              content: { "application/json": { schema } },
+            },
+            "401": unauthenticated,
+            "403": insufficientScope,
+            "404": {
+              description: `No such ${kind}, or it is deleted.`,
+              content: { "application/json": { schema: errorSchema("not-found") } },
+            },
+          },
+        },
+        patch: {
+          tags: ["v1"],
+          summary: `Patch an existing ${kind}.`,
+          description:
+            "Requires the `write` scope. Only the fields present in the body " +
+            "are touched.",
+          operationId: `updateV1${kind[0].toUpperCase()}${kind.slice(1)}`,
+          requestParams: { path: z.object({ id: z.string() }) },
+          requestBody: {
+            content: {
+              "application/json": {
+                schema: kind === "label" ? updateLabelRequestSchema : updateTabRequestSchema,
+              },
+            },
+          },
+          responses: {
+            "200": {
+              description: `The updated ${kind}.`,
+              content: { "application/json": { schema } },
+            },
+            "400": {
+              description: "Empty or malformed patch.",
+              content: { "application/json": { schema: errorSchema("invalid-request") } },
+            },
+            "401": unauthenticated,
+            "403": insufficientScope,
+            "404": {
+              description: `No such ${kind}, or it is deleted.`,
+              content: { "application/json": { schema: errorSchema("not-found") } },
+            },
+          },
+        },
+        delete: {
+          tags: ["v1"],
+          summary: `Delete a ${kind}.`,
+          description: notes.deleteDescription,
+          operationId: `deleteV1${kind[0].toUpperCase()}${kind.slice(1)}`,
+          requestParams: { path: z.object({ id: z.string() }) },
+          responses: {
+            "204": { description: "Deleted." },
+            "401": unauthenticated,
+            "403": insufficientScope,
+            "404": {
+              description: `No such ${kind}, or it was already deleted.`,
+              content: { "application/json": { schema: errorSchema("not-found") } },
+            },
+            "409": {
+              description: notes.conflict,
+              content: { "application/json": { schema: errorSchema(notes.conflictError) } },
+            },
+            "500": {
+              description: "Unhandled server error.",
+              content: { "application/json": { schema: errorSchema("internal-error") } },
+            },
+          },
+        },
+      },
+    ];
+  }),
+);
