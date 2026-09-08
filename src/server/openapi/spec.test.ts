@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Validator } from "@seriousme/openapi-schema-validator";
 import { auth } from "@/server/auth-cli";
+import { TRUSTED_ORIGINS } from "@/server/auth";
 import { buildInternalDocument, buildPublicDocument } from "./spec";
 
 // `Validator.validate` types its parameter as `Record<string, unknown>`;
@@ -123,5 +124,43 @@ describe("buildPublicDocument", () => {
     const result = await new Validator().validate(asSpecData(buildPublicDocument()));
     expect(result.errors).toBeUndefined();
     expect(result.valid).toBe(true);
+  });
+});
+
+/**
+ * REGRESSION (EI-307). The public document shipped with no `servers` block,
+ * which OpenAPI reads as a single server at `/` — resolved against whatever
+ * origin serves the document.
+ *
+ * That is fine on `https://myfaite.app/docs` and broken everywhere else the
+ * same page ships: `/docs` is part of the static export too, where the page
+ * is served from `capacitor://localhost` and a relative `/api/v1/todos`
+ * resolves against a host with no API on it. Scalar's "Test Request" panel
+ * reads this block, so an absent one makes the published docs untestable
+ * from anywhere but production.
+ */
+describe("the public document names an absolute server", () => {
+  it("points at the real API host, not an implied relative root", () => {
+    const doc = buildPublicDocument() as { servers?: { url: string }[] };
+
+    expect(doc.servers).toEqual([
+      { url: "https://myfaite.app", description: "Production" },
+    ]);
+  });
+
+  it("uses an absolute URL, so it resolves the same from any origin", () => {
+    const doc = buildPublicDocument() as { servers?: { url: string }[] };
+    const url = doc.servers?.[0].url ?? "";
+
+    expect(() => new URL(url)).not.toThrow();
+    expect(url.startsWith("/")).toBe(false);
+  });
+
+  it("is a TRUSTED_ORIGIN, so a cross-origin try-it request clears CORS", () => {
+    // The static export and a local `next dev` both call this host from a
+    // different origin. `corsHeaders` returns `{}` for anything off the
+    // allow-list, which would fail the preflight silently.
+    const doc = buildPublicDocument() as { servers?: { url: string }[] };
+    expect(TRUSTED_ORIGINS).toContain(doc.servers?.[0].url);
   });
 });

@@ -32,12 +32,20 @@ export function handleOptions(request: Request): Response {
     status: 204,
     headers: {
       ...corsHeaders(request.headers.get("Origin")),
-      // PATCH has been served since A5 (`PATCH /api/v1/todos/{id}`) and DELETE
-      // since A13, but neither was ever advertised (EI-307) — so a
-      // cross-origin browser client, including Scalar's "try it" button on
-      // `/docs`, was blocked from every write method before the request was
-      // ever sent. Widening this grants no access: the allow-list is advisory
-      // to the browser, and `authorizeScope` is the actual gate.
+      // PATCH has been served since A5 (`PATCH /api/v1/todos/{id}`) and
+      // DELETE since A13, but neither was ever advertised (EI-307) — so a
+      // cross-origin browser client was blocked from every write method
+      // before the request was ever sent. Widening this grants no access:
+      // the allow-list is advisory to the browser, and `authorizeScope` is
+      // the actual gate.
+      //
+      // Which browser clients are actually cross-origin here is worth being
+      // precise about, because an earlier version of this comment was not:
+      // `/docs` served from `https://myfaite.app` is SAME-origin with the
+      // API and never preflights at all. The cases this list governs are the
+      // static export (`capacitor://localhost`), the Tauri shell, a local
+      // `next dev` on :3000 calling the worker on :8787, and any third-party
+      // web app built on the public API.
       "Access-Control-Allow-Methods": "GET, POST, PATCH, DELETE, OPTIONS",
       // Authorization (D2a): the desktop shell's bearer token on
       // `/api/sync/push`/`/api/sync/pull`/etc. — genuinely cross-origin from
