@@ -30,6 +30,8 @@ export interface FakeStub {
   defaultReminderTimeForList: ReturnType<typeof vi.fn>;
   nextServerHlc: ReturnType<typeof vi.fn>;
   childTodoIds: ReturnType<typeof vi.fn>;
+  todoIdsInList: ReturnType<typeof vi.fn>;
+  backlogListId: ReturnType<typeof vi.fn>;
   attachmentIdsForTodo: ReturnType<typeof vi.fn>;
   push: ReturnType<typeof vi.fn>;
 }
@@ -60,6 +62,8 @@ export function makeStub(overrides: Partial<FakeStub> = {}): FakeStub {
       return `000000001388:${String(hlcCounter).padStart(4, "0")}:server`;
     }),
     childTodoIds: vi.fn().mockResolvedValue([]),
+    todoIdsInList: vi.fn().mockResolvedValue([]),
+    backlogListId: vi.fn().mockResolvedValue("backlog-1"),
     attachmentIdsForTodo: vi.fn().mockResolvedValue([]),
     push: vi.fn().mockResolvedValue(okPushResponse()),
     ...overrides,
@@ -132,4 +136,50 @@ export function rawTodoRow(overrides: Record<string, unknown> = {}): Record<stri
 /** The `PushEntry[]` handed to the single expected `push()` call. */
 export function pushedEntries(stub: FakeStub, call = 0): PushEntry[] {
   return stub.push.mock.calls[call][1].entries as PushEntry[];
+}
+
+/** A raw `lists` row, `version` included — same rationale as `rawTodoRow`. */
+export function rawListRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    version: 7,
+    id: "list-1",
+    ownerId: "user-1",
+    createdAt: "2026-09-01T00:00:00.000Z",
+    updatedAt: "2026-09-01T00:00:00.000Z",
+    deletedAt: null,
+    name: "Errands",
+    isBacklog: false,
+    archivedAt: null,
+    archivedWithTabId: null,
+    position: "a0",
+    tabId: "tab-1",
+    defaultReminderPresetId: null,
+    description: null,
+    color: null,
+    emoji: null,
+    iconUrl: null,
+    ...overrides,
+  };
+}
+
+/** A raw `tabs` row. `isDefault` matters — `defaultTabIdFor` finds the tab a
+ * new list lands in by scanning for it. */
+export function rawTabRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    version: 3,
+    id: "tab-1",
+    ownerId: "user-1",
+    createdAt: "2026-09-01T00:00:00.000Z",
+    updatedAt: "2026-09-01T00:00:00.000Z",
+    deletedAt: null,
+    name: "Personal",
+    description: null,
+    isDefault: true,
+    archivedAt: null,
+    position: "a0",
+    color: null,
+    emoji: null,
+    iconUrl: null,
+    ...overrides,
+  };
 }

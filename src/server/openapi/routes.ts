@@ -6,7 +6,12 @@ import { pushRequestSchema } from "@/server/sync/validate";
 import { contactRequestSchema } from "@/server/contact/validate";
 import { V1_RESOURCES } from "@/server/v1/resources";
 import { todoQuerySchema } from "@/server/v1/query";
-import { createTodoRequestSchema, updateTodoRequestSchema } from "@/server/v1/validate";
+import {
+  createListRequestSchema,
+  createTodoRequestSchema,
+  updateListRequestSchema,
+  updateTodoRequestSchema,
+} from "@/server/v1/validate";
 import { SYNC_KINDS } from "@/lib/sync/wire";
 
 /**
@@ -577,8 +582,8 @@ export const v1Paths: ZodOpenApiPathsObject = Object.fromEntries(
           },
         },
       },
-      // Only `todos` writes exist yet (A5, EI-230) — `lists`/`labels`/`tabs`
-      // stay read-only until a future ticket extends this the same way.
+      // Driven by the resource map's own `methods` (A11), so a resource that
+      // gains a write here cannot be left undocumented.
       ...(kind === "todo"
         ? {
             post: {
@@ -612,9 +617,125 @@ export const v1Paths: ZodOpenApiPathsObject = Object.fromEntries(
             },
           }
         : {}),
+      ...(kind === "list"
+        ? {
+            post: {
+              tags: ["v1"],
+              summary: "Create a list.",
+              description:
+                "Requires the `write` scope. `position` is resolved by the " +
+                "server and is not accepted here; `tabId` defaults to the " +
+                "default tab. A write is a push — see docs/API.md.",
+              operationId: "createV1List",
+              requestBody: {
+                content: { "application/json": { schema: createListRequestSchema } },
+              },
+              responses: {
+                "201": {
+                  description: "The created list.",
+                  content: { "application/json": { schema } },
+                },
+                "400": {
+                  description: "Malformed request — missing name, or a field fails validation.",
+                  content: { "application/json": { schema: errorSchema("invalid-request") } },
+                },
+                "401": unauthenticated,
+                "403": insufficientScope,
+                "500": {
+                  description: "Unhandled server error.",
+                  content: { "application/json": { schema: errorSchema("internal-error") } },
+                },
+              },
+            },
+          }
+        : {}),
     },
   ]),
 );
+
+/** `/api/v1/lists/{id}` — GET/PATCH/DELETE (A14, EI-294). */
+export const listItemPath: ZodOpenApiPathsObject = {
+  "/api/v1/lists/{id}": {
+    get: {
+      tags: ["v1"],
+      summary: "Fetch one list.",
+      description: "Requires the `read` scope. A soft-deleted list 404s.",
+      operationId: "getV1List",
+      requestParams: { path: z.object({ id: z.string() }) },
+      responses: {
+        "200": {
+          description: "The list.",
+          content: { "application/json": { schema: V1_RESOURCES.lists.schema } },
+        },
+        "401": unauthenticated,
+        "403": insufficientScope,
+        "404": {
+          description: "No such list, or it is deleted.",
+          content: { "application/json": { schema: errorSchema("not-found") } },
+        },
+      },
+    },
+    patch: {
+      tags: ["v1"],
+      summary: "Patch an existing list.",
+      description:
+        "Requires the `write` scope. Only the fields present in the body are " +
+        "touched. `isBacklog` is never settable — exactly one list per " +
+        "account is the Backlog, and it is fixed at seed time.",
+      operationId: "updateV1List",
+      requestParams: { path: z.object({ id: z.string() }) },
+      requestBody: {
+        content: { "application/json": { schema: updateListRequestSchema } },
+      },
+      responses: {
+        "200": {
+          description: "The updated list.",
+          content: { "application/json": { schema: V1_RESOURCES.lists.schema } },
+        },
+        "400": {
+          description: "Empty or malformed patch.",
+          content: { "application/json": { schema: errorSchema("invalid-request") } },
+        },
+        "401": unauthenticated,
+        "403": insufficientScope,
+        "404": {
+          description: "No such list, or it is deleted.",
+          content: { "application/json": { schema: errorSchema("not-found") } },
+        },
+      },
+    },
+    delete: {
+      tags: ["v1"],
+      summary: "Delete a list.",
+      description:
+        "Requires the `write` scope. A soft delete: the list is tombstoned " +
+        "and every to-do filed in it is REHOMED to Backlog, in one atomic " +
+        "write. The Backlog list itself cannot be deleted — it is the " +
+        "destination those to-dos move to.",
+      operationId: "deleteV1List",
+      requestParams: { path: z.object({ id: z.string() }) },
+      responses: {
+        "204": { description: "Deleted; its to-dos are now in Backlog." },
+        "401": unauthenticated,
+        "403": insufficientScope,
+        "404": {
+          description: "No such list, or it was already deleted.",
+          content: { "application/json": { schema: errorSchema("not-found") } },
+        },
+        "409": {
+          description:
+            "Either this is the Backlog list, which cannot be deleted, or it " +
+            "holds more to-dos than one atomic write may rehome.",
+          content: { "application/json": { schema: errorSchema("backlog-not-deletable") } },
+        },
+        "500": {
+          description: "Unhandled server error.",
+          content: { "application/json": { schema: errorSchema("internal-error") } },
+        },
+      },
+    },
+  },
+};
 
 export const patchTodoPath: ZodOpenApiPathsObject = {
   "/api/v1/todos/{id}": {

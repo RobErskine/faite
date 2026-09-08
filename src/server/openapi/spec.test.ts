@@ -96,12 +96,19 @@ describe("buildInternalDocument", () => {
 });
 
 describe("buildPublicDocument", () => {
-  it("documents A2 (EI-227) reads plus A5's (EI-230) two todo writes, nothing else", () => {
+  /**
+   * An exact list, not a subset check — the point is that a path cannot
+   * appear here without someone deciding it should be public. Grows one
+   * ticket at a time: A2 reads, A5's todo writes, A13's todo item route,
+   * A14's list CRUD.
+   */
+  it("documents exactly the public surface, and nothing else", () => {
     expect(Object.keys(buildPublicDocument().paths ?? {}).sort()).toEqual(
       [
         "/api/v1/attachments",
         "/api/v1/labels",
         "/api/v1/lists",
+        "/api/v1/lists/{id}",
         "/api/v1/tabs",
         "/api/v1/todos",
         "/api/v1/todos/{id}",
@@ -109,15 +116,23 @@ describe("buildPublicDocument", () => {
     );
   });
 
-  it("todos gained POST; every other resource stays GET-only", () => {
+  it("todos and lists are writable; labels and tabs are not yet", () => {
     const paths = buildPublicDocument().paths ?? {};
     expect(paths["/api/v1/todos"]).toHaveProperty("post");
-    expect(paths["/api/v1/lists"]).not.toHaveProperty("post");
+    expect(paths["/api/v1/lists"]).toHaveProperty("post");
+    // A15 (EI-295) adds these; until then the docs must not promise them.
     expect(paths["/api/v1/labels"]).not.toHaveProperty("post");
     expect(paths["/api/v1/tabs"]).not.toHaveProperty("post");
     // EI-242: a write here would have to carry file bytes, and this API is
     // JSON. Uploads go to POST /api/attachments, which is session-only.
     expect(paths["/api/v1/attachments"]).not.toHaveProperty("post");
+  });
+
+  it("both item routes carry the full GET/PATCH/DELETE trio", () => {
+    const paths = buildPublicDocument().paths ?? {};
+    for (const path of ["/api/v1/todos/{id}", "/api/v1/lists/{id}"]) {
+      expect(Object.keys(paths[path]).sort()).toEqual(["delete", "get", "patch"]);
+    }
   });
 
   it("validates as OpenAPI 3.1", async () => {

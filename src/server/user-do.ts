@@ -656,6 +656,45 @@ export class UserDurableObject extends DurableObject {
   }
 
   /**
+   * Ids of the non-deleted todos filed in list `id` (A14, EI-294).
+   *
+   * `DELETE /api/v1/lists/{id}` REHOMES these to Backlog rather than refusing
+   * or cascading — mirroring `repositories.ts`'s `deleteList`. A REST surface
+   * that refuses what the app itself does for the same user action would be a
+   * second answer to one question.
+   *
+   * Read before the delete builds anything, for the same reason
+   * `childTodoIds` is: the count fixes how many HLC stamps to pre-fetch.
+   */
+  async todoIdsInList(id: string): Promise<string[]> {
+    return this.ctx.storage.sql
+      .exec<{ id: string }>(
+        "SELECT id FROM todos WHERE list_id = ? AND deleted_at IS NULL",
+        id,
+      )
+      .toArray()
+      .map((row) => row.id);
+  }
+
+  /**
+   * The Backlog list's id, or `null` for an account that somehow has none.
+   *
+   * Queried by `is_backlog = 1` rather than by a well-known constant: Backlog
+   * is minted per account at seed time with a fresh UUID, so there is no
+   * constant to compare against. Exactly one row should match; `LIMIT 1`
+   * keeps a corrupted account from throwing here rather than at the seam that
+   * can actually report it.
+   */
+  async backlogListId(): Promise<string | null> {
+    const [row] = this.ctx.storage.sql
+      .exec<{ id: string }>(
+        "SELECT id FROM lists WHERE is_backlog = 1 AND deleted_at IS NULL LIMIT 1",
+      )
+      .toArray();
+    return row?.id ?? null;
+  }
+
+  /**
    * Total live attachment bytes for this account, for the per-user quota
    * (`MAX_TOTAL_ATTACHMENT_BYTES`).
    *

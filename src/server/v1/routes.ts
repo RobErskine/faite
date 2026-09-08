@@ -1,14 +1,21 @@
-import { todoSchema, type Todo } from "@/lib/schema";
+import { listSchema, todoSchema, type Todo } from "@/lib/schema";
 import type { ServiceContext } from "@/lib/service/context";
 import { createAuth } from "../auth";
 import { authorizeScope } from "../auth-scopes";
 import { corsHeaders, handleOptions } from "../cors";
 import { durableHlcQueue } from "../service/hlc";
+import { buildDeleteEntry, buildUpdateListEntry } from "@/lib/service/entities";
+import { createList } from "../service/entities";
 import { createTodo, deleteTodo, pushTransportFor, updateTodo } from "../service/todos";
 import type { UserDurableObject } from "../user-do";
 import { filterTodos, parseTodoQuery } from "./query";
 import { V1_RESOURCES, type V1Kind } from "./resources";
-import { parseCreateTodoRequest, parseUpdateTodoRequest } from "./validate";
+import {
+  parseCreateListRequest,
+  parseCreateTodoRequest,
+  parseUpdateListRequest,
+  parseUpdateTodoRequest,
+} from "./validate";
 
 /**
  * `/api/v1/*` — the public, versioned API. Same seam as
@@ -78,6 +85,55 @@ function listEntities(
  * not exist on type 'never'` was the only symptom, pointing at the property
  * rather than at the call.
  */
+function getEntityRow(
+  stub: DurableObjectStub<UserDurableObject>,
+  kind: "list" | "label" | "tab",
+  id: string,
+): ReturnType<UserDurableObject["getEntity"]> {
+  switch (kind) {
+    case "list":
+      return stub.getEntity("list", id);
+    case "label":
+      return stub.getEntity("label", id);
+    case "tab":
+      return stub.getEntity("tab", id);
+  }
+}
+
+function nextListPosition(
+  stub: DurableObjectStub<UserDurableObject>,
+): ReturnType<UserDurableObject["nextPosition"]> {
+  return stub.nextPosition("list");
+}
+
+function todoIdsInList(
+  stub: DurableObjectStub<UserDurableObject>,
+  id: string,
+): ReturnType<UserDurableObject["todoIdsInList"]> {
+  return stub.todoIdsInList(id);
+}
+
+function backlogListId(
+  stub: DurableObjectStub<UserDurableObject>,
+): ReturnType<UserDurableObject["backlogListId"]> {
+  return stub.backlogListId();
+}
+
+/** The default tab a new list lands in when the caller names none — mirrors
+ * `repositories.ts`'s `createList` defaulting to `DEFAULT_TAB_ID`. Resolved
+ * by query rather than trusting the constant, since an account seeded by an
+ * older build may not match it. */
+async function defaultTabIdFor(
+  stub: DurableObjectStub<UserDurableObject>,
+): Promise<string | null> {
+  // Via the existing per-literal wrapper — an inline `stub.listEntities("tab")`
+  // resolves to `never` through the RPC proxy, the same failure documented on
+  // `listEntities` itself.
+  const rows = await listEntities(stub, "tab");
+  const fallback = rows.find((row) => row.isDefault === true);
+  return (fallback?.id as string | undefined) ?? null;
+}
+
 function getTodoRow(
   stub: DurableObjectStub<UserDurableObject>,
   id: string,
@@ -224,6 +280,144 @@ async function handleDeleteTodo(
   return new Response(null, { status: 204, headers });
 }
 
+/**
+ * How many dependent rows a single DELETE may rehome before it refuses.
+ *
+ * A cascade has to land in ONE `push()` so the DO applies it in one
+ * `transactionSync`. Chunking into several pushes would silently give up
+ * that atomicity and could leave todos rehomed to Backlog with the list
+ * still standing — a state no client knows how to repair. So the ceiling is
+ * a loud 409 instead: recoverable, and it tells the caller what to do.
+ *
+ * Sits below `sync/validate.ts`'s `MAX_PUSH_ENTRIES` (500), which guards the
+ * HTTP `/api/sync/push` boundary only — `v1/routes.ts` calls `stub.push()`
+ * over RPC and bypasses it entirely, so this cap is ours to enforce.
+ */
+const MAX_DEPENDENTS = 450;
+
+/**
+ * `POST /api/v1/lists` (A14, EI-294).
+ *
+ * `position` is resolved from the store, never accepted from the caller —
+ * the same split `POST /todos` already makes. `tabId` falls back to the
+ * default tab, mirroring `repositories.ts`'s `createList`.
+ */
+async function handleCreateList(
+  request: Request,
+  stub: DurableObjectStub<UserDurableObject>,
+  userId: string,
+  headers: HeadersInit,
+): Promise<Response> {
+  const parsed = parseCreateListRequest(await request.json().catch(() => null));
+  if (!parsed) return json({ error: "invalid-request" }, 400, headers);
+
+  const [position, defaultTabId] = await Promise.all([
+    nextListPosition(stub),
+    defaultTabIdFor(stub),
+  ]);
+
+  const nextHlc = await durableHlcQueue(stub, 2);
+  const ctx: ServiceContext = { userId, nextHlc };
+
+  const { response, listId } = await createList(
+    ctx,
+    { ...parsed, position, tabId: parsed.tabId ?? defaultTabId },
+    pushTransportFor(stub, userId),
+  );
+  if (response.rejected.length > 0) {
+    console.error("v1 create-list push rejected", response.rejected);
+    return json({ error: "internal-error" }, 500, headers);
+  }
+
+  const row = await getEntityRow(stub, "list", listId);
+  return json(row ? listSchema.parse(row) : null, 201, headers);
+}
+
+/** `PATCH /api/v1/lists/{id}`. 404 before building, same rule as todos. */
+async function handleUpdateList(
+  request: Request,
+  stub: DurableObjectStub<UserDurableObject>,
+  userId: string,
+  id: string,
+  headers: HeadersInit,
+): Promise<Response> {
+  const existing = await getEntityRow(stub, "list", id);
+  if (!existing) return json({ error: "not-found" }, 404, headers);
+
+  const parsed = parseUpdateListRequest(await request.json().catch(() => null));
+  if (!parsed) return json({ error: "invalid-request" }, 400, headers);
+
+  const nextHlc = await durableHlcQueue(stub, 2);
+  const ctx: ServiceContext = { userId, nextHlc };
+
+  const { rejected } = await pushTransportFor(stub, userId)(
+    buildUpdateListEntry(ctx, id, parsed),
+  );
+  if (rejected.length > 0) {
+    console.error("v1 update-list push rejected", rejected);
+    return json({ error: "internal-error" }, 500, headers);
+  }
+
+  const row = await getEntityRow(stub, "list", id);
+  return json(row ? listSchema.parse(row) : null, 200, headers);
+}
+
+/**
+ * `DELETE /api/v1/lists/{id}`.
+ *
+ * Backlog is undeletable — it is the fallback column for homeless todos, so
+ * removing it would leave the next delete with nowhere to rehome to. 409
+ * rather than 403: the request is well-formed and authorized, it just
+ * conflicts with a structural invariant.
+ *
+ * Everything else REHOMES its todos to Backlog and tombstones the list, all
+ * in one push. `repositories.ts`'s `deleteList` does exactly this.
+ */
+async function handleDeleteList(
+  stub: DurableObjectStub<UserDurableObject>,
+  userId: string,
+  id: string,
+  headers: HeadersInit,
+): Promise<Response> {
+  const existing = await getEntityRow(stub, "list", id);
+  if (!existing) return json({ error: "not-found" }, 404, headers);
+  if (existing.isBacklog) return json({ error: "backlog-not-deletable" }, 409, headers);
+
+  const [todoIds, backlogId] = await Promise.all([
+    todoIdsInList(stub, id),
+    backlogListId(stub),
+  ]);
+  if (todoIds.length > MAX_DEPENDENTS) {
+    return json({ error: "too-many-dependents" }, 409, headers);
+  }
+
+  const nextHlc = await durableHlcQueue(stub, todoIds.length + 2);
+  const ctx: ServiceContext = { userId, nextHlc };
+  const timestamp = new Date().toISOString();
+
+  // Rehomed todos and the list's own tombstone in ONE batch — one
+  // `transactionSync`, so no client can ever observe todos pointing at a
+  // list that is already gone.
+  const entries = [
+    ...todoIds.map((todoId) => ({
+      id: crypto.randomUUID(),
+      kind: "todo" as const,
+      entityId: todoId,
+      patch: { listId: backlogId, updatedAt: timestamp },
+      hlc: ctx.nextHlc(),
+    })),
+    ...buildDeleteEntry(ctx, "list", id),
+  ];
+
+  const { rejected } = await pushTransportFor(stub, userId)(entries);
+  if (rejected.length > 0) {
+    console.error("v1 delete-list push rejected", rejected);
+    return json({ error: "internal-error" }, 500, headers);
+  }
+
+  return new Response(null, { status: 204, headers });
+}
+
 export async function handleV1Request(request: Request, env: CloudflareEnv): Promise<Response> {
   if (request.method === "OPTIONS") return handleOptions(request);
 
@@ -253,6 +447,39 @@ export async function handleV1Request(request: Request, env: CloudflareEnv): Pro
       }
 
       return json(parsed, 200, headers);
+    }
+
+    if (segment === "lists" && request.method === "POST") {
+      const auth = await authorizeScope(auth0, request, "write");
+      if (!auth.ok) return json({ error: auth.error }, auth.status, headers);
+
+      const stub = env.USER_DO.get(env.USER_DO.idFromName(auth.userId));
+      return await handleCreateList(request, stub, auth.userId, headers);
+    }
+
+    const listIdMatch = /^lists\/([^/]+)$/.exec(segment as string);
+    if (listIdMatch) {
+      const listId = decodeURIComponent(listIdMatch[1]);
+
+      if (request.method === "PATCH" || request.method === "DELETE") {
+        const auth = await authorizeScope(auth0, request, "write");
+        if (!auth.ok) return json({ error: auth.error }, auth.status, headers);
+
+        const stub = env.USER_DO.get(env.USER_DO.idFromName(auth.userId));
+        return request.method === "PATCH"
+          ? await handleUpdateList(request, stub, auth.userId, listId, headers)
+          : await handleDeleteList(stub, auth.userId, listId, headers);
+      }
+
+      if (request.method === "GET") {
+        const auth = await authorizeScope(auth0, request, "read");
+        if (!auth.ok) return json({ error: auth.error }, auth.status, headers);
+
+        const stub = env.USER_DO.get(env.USER_DO.idFromName(auth.userId));
+        const row = await getEntityRow(stub, "list", listId);
+        if (!row) return json({ error: "not-found" }, 404, headers);
+        return json(listSchema.parse(row), 200, headers);
+      }
     }
 
     if (segment === "todos" && request.method === "POST") {

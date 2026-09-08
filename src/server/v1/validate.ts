@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { todoSchema } from "@/lib/schema";
+import { listSchema, todoSchema } from "@/lib/schema";
 
 /**
  * Request validation for `/api/v1/todos` writes (A5, EI-230). Same
@@ -121,4 +121,64 @@ export function parsePatchRequest<S extends z.ZodObject<z.ZodRawShape>>(
  * dynamic — this is a three-line wrapper over it, not its own algorithm. */
 export function parseUpdateTodoRequest(body: unknown): UpdateTodoRequest | null {
   return parsePatchRequest(todoSchema, UPDATABLE_FIELDS, body) as UpdateTodoRequest | null;
+}
+
+// ---------------------------------------------------------------- lists (A14)
+
+/**
+ * Deliberately excludes four fields, each for its own reason:
+ *
+ * - **`isBacklog`** — exactly one per account, minted at seed time. A caller
+ *   setting it true would give the account two backlogs; setting it false on
+ *   the real one leaves it with none, `deleteList`'s guard permanently
+ *   disarmed, and homeless todos with nowhere to land.
+ * - **`archivedWithTabId`** — `archiveTab`'s own bookkeeping. A client
+ *   writing it corrupts `unarchiveTab`'s grouping (see `listSchema`).
+ * - **`position`** — server-resolved from `nextPosition("list")`, never
+ *   client-settable on create. `docs/API.md`: don't add a second answer.
+ * - **`deletedAt`** — DELETE owns it. Reaching it through a PATCH would make
+ *   a soft delete possible without the rehoming that has to accompany one.
+ */
+const LIST_OPTIONAL_ON_CREATE = {
+  color: true,
+  emoji: true,
+  iconUrl: true,
+  tabId: true,
+  description: true,
+  defaultReminderPresetId: true,
+} as const;
+
+const LIST_CREATE_FIELDS = { name: true, ...LIST_OPTIONAL_ON_CREATE } as const;
+
+export const createListRequestSchema = listSchema
+  .pick(LIST_CREATE_FIELDS)
+  .partial(LIST_OPTIONAL_ON_CREATE);
+
+export type CreateListRequest = z.infer<typeof createListRequestSchema>;
+
+export function parseCreateListRequest(body: unknown): CreateListRequest | null {
+  const parsed = createListRequestSchema.safeParse(body);
+  return parsed.success ? parsed.data : null;
+}
+
+/** `archivedAt` is patchable — putting a list away is a real user action,
+ * and unlike `deletedAt` it carries no rehoming. */
+const UPDATABLE_LIST_FIELDS = new Set([
+  ...Object.keys(LIST_CREATE_FIELDS),
+  "archivedAt",
+  // The client computes a valid fractional index; see `lib/ordering.ts`.
+  // Allowed on PATCH but not create, so reorder needs no second endpoint.
+  "position",
+]);
+
+/** For `openapi/routes.ts` — a STATIC, illustrative shape for docs only.
+ * NEVER used for real parsing: see `parsePatchRequest`. */
+export const updateListRequestSchema = listSchema
+  .pick({ ...LIST_CREATE_FIELDS, archivedAt: true, position: true })
+  .partial();
+
+export type UpdateListRequest = z.infer<typeof updateListRequestSchema>;
+
+export function parseUpdateListRequest(body: unknown): UpdateListRequest | null {
+  return parsePatchRequest(listSchema, UPDATABLE_LIST_FIELDS, body) as UpdateListRequest | null;
 }

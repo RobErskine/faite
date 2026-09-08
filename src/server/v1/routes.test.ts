@@ -14,6 +14,8 @@ import {
   makeEnv,
   makeStub,
   pushedEntries,
+  rawListRow,
+  rawTabRow,
   rawTodoRow,
   v1Request,
   type FakeStub,
@@ -369,5 +371,193 @@ describe("dispatch edges", () => {
 
     expect(res.status).toBe(500);
     await expect(res.json()).resolves.toEqual({ error: "internal-error" });
+  });
+});
+
+describe("POST /api/v1/lists", () => {
+  beforeEach(() => {
+    stub.listEntities.mockResolvedValue([rawTabRow()]);
+    stub.getEntity.mockResolvedValue(rawListRow());
+  });
+
+  it("201s, resolving position from the store and tabId from the default tab", async () => {
+    stub.nextPosition.mockResolvedValue("a9");
+
+    const res = await handleV1Request(v1Request("POST", "/api/v1/lists", { name: "Errands" }), env);
+
+    expect(res.status).toBe(201);
+    expect(stub.nextPosition).toHaveBeenCalledWith("list");
+    expect(pushedEntries(stub)[0].patch).toMatchObject({
+      name: "Errands",
+      position: "a9",
+      tabId: "tab-1",
+      isBacklog: false,
+    });
+  });
+
+  it("honours an explicit tabId over the default", async () => {
+    await handleV1Request(
+      v1Request("POST", "/api/v1/lists", { name: "Work", tabId: "tab-9" }),
+      env,
+    );
+    expect(pushedEntries(stub)[0].patch).toMatchObject({ tabId: "tab-9" });
+  });
+
+  /** `isBacklog` is not in the create mask — a caller naming it must not get
+   * a second backlog. */
+  it("ignores a client-supplied isBacklog", async () => {
+    await handleV1Request(
+      v1Request("POST", "/api/v1/lists", { name: "Fake", isBacklog: true }),
+      env,
+    );
+    expect(pushedEntries(stub)[0].patch).toMatchObject({ isBacklog: false });
+  });
+
+  it("400s without a name, and does not push", async () => {
+    const res = await handleV1Request(v1Request("POST", "/api/v1/lists", { color: "red" }), env);
+    expect(res.status).toBe(400);
+    expect(stub.push).not.toHaveBeenCalled();
+  });
+});
+
+describe("PATCH /api/v1/lists/{id}", () => {
+  /**
+   * REGRESSION. Every `listSchema` field carries a `.default()`, so a static
+   * `.partial()` mask would expand a rename into a patch that also clears
+   * color/tab/archive AND sets `isBacklog: false`. On the Backlog list that
+   * leaves the account with no backlog, `deleteList`'s guard permanently
+   * disarmed, and homeless todos with nowhere to land.
+   */
+  it("REGRESSION: a rename does not expand to isBacklog or any other default", async () => {
+    stub.getEntity.mockResolvedValue(rawListRow());
+
+    const res = await handleV1Request(
+      v1Request("PATCH", "/api/v1/lists/list-1", { name: "Renamed" }),
+      env,
+    );
+
+    expect(res.status).toBe(200);
+    const patch = pushedEntries(stub)[0].patch as Record<string, unknown>;
+    expect(Object.keys(patch).sort()).toEqual(["name", "updatedAt"]);
+    expect(patch).not.toHaveProperty("isBacklog");
+    expect(patch).not.toHaveProperty("tabId");
+  });
+
+  it("drops server-owned fields rather than honouring them", async () => {
+    stub.getEntity.mockResolvedValue(rawListRow());
+
+    await handleV1Request(
+      v1Request("PATCH", "/api/v1/lists/list-1", {
+        name: "Renamed",
+        isBacklog: true,
+        archivedWithTabId: "tab-9",
+        deletedAt: "2026-01-01T00:00:00.000Z",
+      }),
+      env,
+    );
+
+    expect(Object.keys(pushedEntries(stub)[0].patch).sort()).toEqual(["name", "updatedAt"]);
+  });
+
+  it("allows archivedAt, which is a real user action", async () => {
+    stub.getEntity.mockResolvedValue(rawListRow());
+
+    await handleV1Request(
+      v1Request("PATCH", "/api/v1/lists/list-1", { archivedAt: "2026-09-08T00:00:00.000Z" }),
+      env,
+    );
+
+    expect(pushedEntries(stub)[0].patch).toMatchObject({
+      archivedAt: "2026-09-08T00:00:00.000Z",
+    });
+  });
+
+  it("404s before pushing, and 400s an empty patch", async () => {
+    const missing = await handleV1Request(
+      v1Request("PATCH", "/api/v1/lists/nope", { name: "x" }),
+      env,
+    );
+    expect(missing.status).toBe(404);
+    expect(stub.push).not.toHaveBeenCalled();
+
+    stub.getEntity.mockResolvedValue(rawListRow());
+    const empty = await handleV1Request(v1Request("PATCH", "/api/v1/lists/list-1", {}), env);
+    expect(empty.status).toBe(400);
+    expect(stub.push).not.toHaveBeenCalled();
+  });
+});
+
+describe("DELETE /api/v1/lists/{id}", () => {
+  it("rehomes its todos to Backlog and tombstones the list in ONE push", async () => {
+    stub.getEntity.mockResolvedValue(rawListRow());
+    stub.todoIdsInList.mockResolvedValue(["t1", "t2"]);
+    stub.backlogListId.mockResolvedValue("backlog-1");
+
+    const res = await handleV1Request(v1Request("DELETE", "/api/v1/lists/list-1"), env);
+
+    expect(res.status).toBe(204);
+    expect(stub.push).toHaveBeenCalledTimes(1);
+
+    const entries = pushedEntries(stub);
+    expect(entries).toHaveLength(3);
+    expect(entries.slice(0, 2).map((e) => e.patch)).toEqual([
+      expect.objectContaining({ listId: "backlog-1" }),
+      expect.objectContaining({ listId: "backlog-1" }),
+    ]);
+    expect(entries[2]).toMatchObject({
+      kind: "list",
+      entityId: "list-1",
+      patch: expect.objectContaining({ deletedAt: expect.any(String) }),
+    });
+  });
+
+  /** Backlog is the destination those todos move to — deleting it would leave
+   * the next delete with nowhere to rehome. */
+  it("409s on the Backlog list, without pushing", async () => {
+    stub.getEntity.mockResolvedValue(rawListRow({ isBacklog: true }));
+
+    const res = await handleV1Request(v1Request("DELETE", "/api/v1/lists/list-1"), env);
+
+    expect(res.status).toBe(409);
+    await expect(res.json()).resolves.toEqual({ error: "backlog-not-deletable" });
+    expect(stub.push).not.toHaveBeenCalled();
+  });
+
+  /** Chunking would silently lose transactionSync atomicity, so refuse loudly
+   * instead of splitting the batch. */
+  it("409s rather than splitting a batch too large to write atomically", async () => {
+    stub.getEntity.mockResolvedValue(rawListRow());
+    stub.todoIdsInList.mockResolvedValue(Array.from({ length: 451 }, (_, i) => `t${i}`));
+
+    const res = await handleV1Request(v1Request("DELETE", "/api/v1/lists/list-1"), env);
+
+    expect(res.status).toBe(409);
+    await expect(res.json()).resolves.toEqual({ error: "too-many-dependents" });
+    expect(stub.push).not.toHaveBeenCalled();
+  });
+
+  it("404s an unknown list before pushing", async () => {
+    const res = await handleV1Request(v1Request("DELETE", "/api/v1/lists/nope"), env);
+    expect(res.status).toBe(404);
+    expect(stub.push).not.toHaveBeenCalled();
+  });
+});
+
+describe("list scope gating", () => {
+  it.each([
+    ["GET", "/api/v1/lists/list-1", "read"],
+    ["POST", "/api/v1/lists", "write"],
+    ["PATCH", "/api/v1/lists/list-1", "write"],
+    ["DELETE", "/api/v1/lists/list-1", "write"],
+  ])("%s %s demands %s", async (method, path, scope) => {
+    stub.getEntity.mockResolvedValue(rawListRow());
+    stub.listEntities.mockResolvedValue([rawTabRow()]);
+
+    await handleV1Request(
+      v1Request(method, path, method === "GET" || method === "DELETE" ? undefined : { name: "x" }),
+      env,
+    );
+
+    expect(authorize.mock.calls.map((c) => c[2])).toEqual([scope]);
   });
 });

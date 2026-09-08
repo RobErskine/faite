@@ -12,7 +12,7 @@ import {
   tabSchema,
   todoSchema,
 } from "@/lib/schema";
-import { internalOnlyPaths, patchTodoPath, v1Paths } from "./routes";
+import { internalOnlyPaths, listItemPath, patchTodoPath, v1Paths } from "./routes";
 
 /**
  * The two-document OpenAPI builder (A1, EI-226) — a pure module with no
@@ -228,6 +228,6 @@ export function buildPublicDocument() {
       },
       schemas: { ...entitySchemas },
     },
-    paths: { ...v1Paths, ...patchTodoPath },
+    paths: { ...v1Paths, ...patchTodoPath, ...listItemPath },
   });
 }
