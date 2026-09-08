@@ -6,6 +6,7 @@ import { pushRequestSchema } from "@/server/sync/validate";
 import { contactRequestSchema } from "@/server/contact/validate";
 import { V1_RESOURCES } from "@/server/v1/resources";
 import { todoQuerySchema } from "@/server/v1/query";
+import { profileSchema } from "@/server/v1/derived";
 import {
   createLabelRequestSchema,
   createListRequestSchema,
@@ -1082,6 +1083,73 @@ export const dayNotePaths: ZodOpenApiPathsObject = {
           description: "Unhandled server error.",
           content: { "application/json": { schema: errorSchema("internal-error") } },
         },
+      },
+    },
+  },
+};
+
+/**
+ * The three derived reads (A17, EI-297). Not entity collections — they are
+ * projections over rows the account already has, which is why they are hand
+ * written here rather than generated from `V1_RESOURCES`.
+ */
+export const derivedPaths: ZodOpenApiPathsObject = {
+  "/api/v1/overflow": {
+    get: {
+      tags: ["v1"],
+      summary: "To-dos that have slipped past their Faite Loop window.",
+      description:
+        "Requires the `read` scope. Overflow is DERIVED, never stored: this " +
+        "runs the same placement rule the board renders with, against this " +
+        "account's own settings. A client cannot compute it without them.\n\n" +
+        "Reports PLACEMENT, not visibility — a completed but overdue to-do " +
+        "is still in Overflow. Filter on `status` if you want only open work.",
+      operationId: "listV1Overflow",
+      responses: {
+        "200": {
+          description: "The overflowing to-dos, in board order.",
+          content: { "application/json": { schema: z.array(todoSchema) } },
+        },
+        "401": unauthenticated,
+        "403": insufficientScope,
+      },
+    },
+  },
+  "/api/v1/backlog": {
+    get: {
+      tags: ["v1"],
+      summary: "To-dos in the Backlog list.",
+      description:
+        "Requires the `read` scope. Backlog is the always-present list a " +
+        "to-do lands in when it is not filed anywhere else.",
+      operationId: "listV1Backlog",
+      responses: {
+        "200": {
+          description: "The backlog to-dos, in board order.",
+          content: { "application/json": { schema: z.array(todoSchema) } },
+        },
+        "401": unauthenticated,
+        "403": insufficientScope,
+      },
+    },
+  },
+  "/api/v1/profile": {
+    get: {
+      tags: ["v1"],
+      summary: "The caller's account-level settings.",
+      description:
+        "Requires the `read` scope. Identity plus the Faite Loop " +
+        "configuration a client needs to render the board the way the app " +
+        "does. Device-local layout preferences are deliberately not exposed " +
+        "— they describe one screen, not the account.",
+      operationId: "getV1Profile",
+      responses: {
+        "200": {
+          description: "The profile.",
+          content: { "application/json": { schema: profileSchema } },
+        },
+        "401": unauthenticated,
+        "403": insufficientScope,
       },
     },
   },

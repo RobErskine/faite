@@ -36,6 +36,7 @@ export interface FakeStub {
   defaultTabId: ReturnType<typeof vi.fn>;
   todosWithLabel: ReturnType<typeof vi.fn>;
   attachmentIdsForTodo: ReturnType<typeof vi.fn>;
+  getSettings: ReturnType<typeof vi.fn>;
   push: ReturnType<typeof vi.fn>;
 }
 
@@ -71,6 +72,7 @@ export function makeStub(overrides: Partial<FakeStub> = {}): FakeStub {
     defaultTabId: vi.fn().mockResolvedValue("tab-1"),
     todosWithLabel: vi.fn().mockResolvedValue([]),
     attachmentIdsForTodo: vi.fn().mockResolvedValue([]),
+    getSettings: vi.fn().mockResolvedValue(null),
     push: vi.fn().mockResolvedValue(okPushResponse()),
     ...overrides,
   };

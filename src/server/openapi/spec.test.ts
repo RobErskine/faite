@@ -106,6 +106,7 @@ describe("buildPublicDocument", () => {
     expect(Object.keys(buildPublicDocument().paths ?? {}).sort()).toEqual(
       [
         "/api/v1/attachments",
+        "/api/v1/backlog",
         "/api/v1/day-notes",
         "/api/v1/day-notes/{date}",
         "/api/v1/labels",
@@ -114,6 +115,8 @@ describe("buildPublicDocument", () => {
         "/api/v1/lists/{id}",
         "/api/v1/tabs",
         "/api/v1/tabs/{id}",
+        "/api/v1/overflow",
+        "/api/v1/profile",
         "/api/v1/todos",
         "/api/v1/todos/{id}",
       ].sort(),
@@ -136,6 +139,18 @@ describe("buildPublicDocument", () => {
     const paths = buildPublicDocument().paths ?? {};
     expect(Object.keys(paths["/api/v1/day-notes/{date}"]).sort()).toEqual(["get", "put"]);
     expect(Object.keys(paths["/api/v1/day-notes"])).toEqual(["get"]);
+  });
+
+  /**
+   * Overflow/backlog/profile are PROJECTIONS, not entity collections — they
+   * are read-only by construction, and a write method appearing here would
+   * mean someone put a derived path into `V1_RESOURCES`.
+   */
+  it("the derived reads are GET-only", () => {
+    const paths = buildPublicDocument().paths ?? {};
+    for (const path of ["/api/v1/overflow", "/api/v1/backlog", "/api/v1/profile"]) {
+      expect(Object.keys(paths[path])).toEqual(["get"]);
+    }
   });
 
   it("every item route carries the full GET/PATCH/DELETE trio", () => {

@@ -842,3 +842,82 @@ describe("day notes", () => {
     expect(authorize.mock.calls.map((c) => c[2])).toEqual([scope]);
   });
 });
+
+describe("derived reads", () => {
+  it("GET /profile returns identity plus Faite Loop config, never device prefs", async () => {
+    stub.getSettings.mockResolvedValue({
+      ownerId: "user-1",
+      updatedAt: "2026-09-08T00:00:00.000Z",
+      displayName: "Rob",
+      timezone: "America/New_York",
+      overflowAfterDays: 5,
+      backlogWidth: 320,
+    });
+
+    const res = await handleV1Request(v1Request("GET", "/api/v1/profile"), env);
+
+    expect(res.status).toBe(200);
+    const profile = (await res.json()) as Record<string, unknown>;
+    expect(profile).toMatchObject({
+      displayName: "Rob",
+      timezone: "America/New_York",
+      overflowAfterDays: 5,
+    });
+    expect(profile).not.toHaveProperty("backlogWidth");
+  });
+
+  /** An account created via handoff may never have run the client's
+   * first-boot seed, so this is a real case rather than a defensive one. */
+  it("GET /profile works for an account that never wrote a Settings row", async () => {
+    const res = await handleV1Request(v1Request("GET", "/api/v1/profile"), env);
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toMatchObject({ timezone: "UTC" });
+  });
+
+  it("GET /backlog returns only to-dos in the Backlog list", async () => {
+    stub.listEntities.mockImplementation(async (kind: string) =>
+      kind === "todo"
+        ? [rawTodoRow({ id: "a", listId: "backlog-1" }), rawTodoRow({ id: "b", listId: "other" })]
+        : [rawListRow({ id: "backlog-1", isBacklog: true })],
+    );
+
+    const res = await handleV1Request(v1Request("GET", "/api/v1/backlog"), env);
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toMatchObject([{ id: "a" }]);
+  });
+
+  it("GET /overflow returns the slipped to-dos", async () => {
+    stub.listEntities.mockResolvedValue([
+      rawTodoRow({ id: "old", scheduledDate: "2020-01-01" }),
+      rawTodoRow({ id: "unscheduled", scheduledDate: null }),
+    ]);
+
+    const res = await handleV1Request(v1Request("GET", "/api/v1/overflow"), env);
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toMatchObject([{ id: "old" }]);
+  });
+
+  it("never leaks the DO's version column through a derived read", async () => {
+    stub.listEntities.mockResolvedValue([rawTodoRow({ scheduledDate: "2020-01-01", version: 99 })]);
+
+    const res = await handleV1Request(v1Request("GET", "/api/v1/overflow"), env);
+    const [row] = (await res.json()) as Record<string, unknown>[];
+
+    expect(row).not.toHaveProperty("version");
+  });
+
+  it.each([
+    ["/api/v1/overflow"],
+    ["/api/v1/backlog"],
+    ["/api/v1/profile"],
+  ])("%s demands the read scope, and 404s a write method", async (path) => {
+    await handleV1Request(v1Request("GET", path), env);
+    expect(authorize.mock.calls.map((c) => c[2])).toEqual(["read"]);
+
+    const write = await handleV1Request(v1Request("POST", path, {}), env);
+    expect(write.status).toBe(404);
+  });
+});

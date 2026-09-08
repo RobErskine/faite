@@ -16,7 +16,15 @@ import {
 import { createLabel, createList, createTab } from "../service/entities";
 import { createTodo, deleteTodo, pushTransportFor, updateTodo } from "../service/todos";
 import type { UserDurableObject } from "../user-do";
+import {
+  backlogTodos,
+  overflowTodos,
+  parseLists,
+  parseTodos,
+  profileFromSettings,
+} from "./derived";
 import { filterTodos, parseTodoQuery } from "./query";
+import { settingsOrDefault } from "../mcp/settings-defaults";
 import { V1_RESOURCES, type V1Kind } from "./resources";
 import {
   parseCivilDate,
@@ -126,6 +134,24 @@ function todoIdsInList(
   id: string,
 ): ReturnType<UserDurableObject["todoIdsInList"]> {
   return stub.todoIdsInList(id);
+}
+
+function listTodos(
+  stub: DurableObjectStub<UserDurableObject>,
+): ReturnType<UserDurableObject["listEntities"]> {
+  return stub.listEntities("todo");
+}
+
+function listListRows(
+  stub: DurableObjectStub<UserDurableObject>,
+): ReturnType<UserDurableObject["listEntities"]> {
+  return stub.listEntities("list");
+}
+
+function getSettingsRow(
+  stub: DurableObjectStub<UserDurableObject>,
+): ReturnType<UserDurableObject["getSettings"]> {
+  return stub.getSettings();
 }
 
 function listDayNotes(
@@ -758,6 +784,33 @@ export async function handleV1Request(request: Request, env: CloudflareEnv): Pro
         if (!row) return json({ error: "not-found" }, 404, headers);
         return json(listSchema.parse(row), 200, headers);
       }
+    }
+
+    if (
+      (segment === "overflow" || segment === "backlog" || segment === "profile") &&
+      request.method === "GET"
+    ) {
+      const auth = await authorizeScope(auth0, request, "read");
+      if (!auth.ok) return json({ error: auth.error }, auth.status, headers);
+
+      const stub = env.USER_DO.get(env.USER_DO.idFromName(auth.userId));
+
+      if (segment === "profile") {
+        // `settingsOrDefault` covers an account that never wrote a Settings
+        // row — a real case, since an account created via handoff may never
+        // have run the client's first-boot seed.
+        const settings = settingsOrDefault(await getSettingsRow(stub), auth.userId);
+        return json(profileFromSettings(settings), 200, headers);
+      }
+
+      if (segment === "backlog") {
+        const [todoRows, listRows] = await Promise.all([listTodos(stub), listListRows(stub)]);
+        return json(backlogTodos(parseTodos(todoRows), parseLists(listRows)), 200, headers);
+      }
+
+      const [todoRows, settingsRow] = await Promise.all([listTodos(stub), getSettingsRow(stub)]);
+      const settings = settingsOrDefault(settingsRow, auth.userId);
+      return json(overflowTodos(parseTodos(todoRows), settings), 200, headers);
     }
 
     const dayNoteDateMatch = /^day-notes\/([^/]+)$/.exec(segment);

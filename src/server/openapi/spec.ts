@@ -14,6 +14,7 @@ import {
 } from "@/lib/schema";
 import {
   dayNotePaths,
+  derivedPaths,
   internalOnlyPaths,
   labelAndTabItemPaths,
   listItemPath,
@@ -241,6 +242,7 @@ export function buildPublicDocument() {
       ...listItemPath,
       ...labelAndTabItemPaths,
       ...dayNotePaths,
+      ...derivedPaths,
     },
   });
 }
