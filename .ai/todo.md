@@ -3073,3 +3073,81 @@ instead.
 The rule this produced is in `.ai/lessons.md`: retarget every child PR to
 `main` before merging its parent, and never `--delete-branch` out from under
 one.
+
+## EI-273 — writing down what the homepage now knows (2026-09-07)
+
+A documentation pass after the merge, prompted by the right question: if we
+want to edit this later, where are the pitfalls written?
+
+The audit found the source in good shape and the *docs* behind it. Every new
+module already had a thorough file header; what was missing was the layer
+above — where things live, how to make a change, and what will bite you.
+`beat-animations.ts` existed in `docs/SCENE.md` as a single table row.
+
+### `docs/HOMEPAGE.md` — new
+
+The page, as distinct from the room. Three movements; the `STORY_BEATS` table
+and its seven readers; the zero-client-JS invariant and the three tempting
+imports that would break it; the fidelity rules; the travel; the tick
+thresholds; the recipe for adding a beat; known limits; traps; and a table of
+what is tested.
+
+Split from `docs/SCENE.md` rather than appended to it, on the index's own
+convention — SCENE is the room, HOMEPAGE is the page, and neither repeats the
+other. SCENE's file map now points at it instead of listing
+`src/components/marketing/`.
+
+### Three things the docs asserted that were no longer true
+
+- **`SCENE.md` §2's fourth rule** — "every prop is present from the first
+  frame; furniture that pops in reads as a software demo" — was written for the
+  spike and **EI-280 deliberately broke it**. The loveseat pops in; the TV pops
+  out and back. Rewritten to say so, with the narrower rule that survived: a
+  prop may appear only as the payoff of a beat, never as decoration.
+- **`SCENE.md` §13** claimed `src/components/scene/` moved to
+  `src/components/scene/`, and pointed at "§4" for load invariants that are in
+  §2. Both fixed; the same §4/§2 slip was in three code comments.
+- **`beat-animations.ts` reasoned from to-do names that no longer exist.** The
+  TV beat justified its split across the tick with *"'Sell the old TV instead
+  of moving it' — SELLING is the to-do"*. The line has been "Upgrade TV" for
+  days. Two other section headers were stale the same way. This is the
+  "verified by render" lesson again: the rename moved the string and left the
+  argument behind.
+
+### One latent bug, removed rather than documented
+
+`VISIBLE_SWATCHES = 3` in `beat-animations.ts` and `slice(0, 3)` in
+`room-scene.tsx` were two copies of one number. Raising the constant alone
+would have had `paintStateAt` cycle a chip that was never rendered. The render
+now slices to the constant.
+
+Also renamed `TvState.sold` → `gone`, since nothing sells anything any more.
+
+### The trap that cost a run
+
+Seven homepage e2e tests failed after a pass that changed no routing code —
+headings "not found", the board's welcome dialog in the failure snapshot. The
+page under test had never rendered: **`npm run verify` ends with
+`build:static`**, which leaves `.next` holding the app-shell build, where `/`
+is nothing but `window.location.replace("/board")`. `next start` served that.
+
+`docs/WORKFLOW.md` §4 already prints `npm run build` as line one of the
+local-CI recipe; it was skipped precisely because `verify` had just built.
+Same root cause as `SCENE.md` trap #1 (`build:static` pruning
+`.next/static/chunks`), far more convincing symptom. Now in `.ai/lessons.md`,
+`WORKFLOW.md` §4, and `HOMEPAGE.md` §9.
+
+### Also
+
+`DESIGN.md` gained the homepage's carve-out from the motion policy — scroll-
+driven motion has no duration to cap, and `card-travel.tsx` reflows on purpose
+because `scale()` would blur every glyph — plus three decisions-log rows.
+`AGENTS.md` gained the one-table rule and the zero-client-JS rule.
+`SITE.md` and the root README point at the new doc. British spellings cleaned
+out of the scene and marketing comments (leaving the GLB's `Grey` material
+name and `story-beats.ts`'s note about a verbatim quote, both exempt per
+`CONTENT.md` §3).
+
+**Measured.** Verify green (157 files, 2432 tests). Gate green after a real
+`npm run build`: 113 passed, the only flake the known `touch-smoke` day-track
+swipe.

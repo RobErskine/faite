@@ -63,6 +63,27 @@ through a **ref**, never React state.
 `docs/SCENE.md` is the whole procedure — read it before touching
 `scripts/scene/`, `src/components/scene/`, or any `--room-*` token.
 
+# The homepage story is one table
+
+`STORY_BEATS` in `src/lib/story-beats.ts` is the single source of truth for the
+six beats on `/`. Seven things read it — the copy, the hero board's sub-tasks,
+the ticks, the camera framings, the room's animations, the e2e spec and the
+unit tests — and **none of them keeps its own copy**. A beat's headline, its
+citation, the object the camera frames, what the room does, and the line that
+gets checked off are one row because they have to agree: a to-do that ticks
+while the room visibly does not do it is a lie told in two places at once.
+
+Two more rules with real teeth. `/` is the one page whose entire audience is a
+cold-cache stranger, so **`demo-board.tsx` and `story-panel.tsx` must ship zero
+client JS** — no `"use client"` anywhere in their import graph, enforced by
+`src/components/marketing/demo-board.test.ts`. And **the demo board must not
+show a feature the product does not have**; colored labels were invented once
+and rendered convincingly, which only looks wrong after someone signs up.
+
+`docs/HOMEPAGE.md` is the page (the table, the components, the recipe for
+adding a beat, the known limits); `docs/SCENE.md` §11 is what the room does
+during one. Read both before changing a beat.
+
 # Faite is written in American English
 
 `color`, `organize`, `canceled`, `center`, `license`, `gray` — in visible copy,

@@ -42,7 +42,7 @@ import { useEffect, useRef, type ReactNode } from "react";
  *
  * # What it does not do
  *
- * Write React state. Same rule as the scene (`docs/SCENE.md` §4): scroll goes
+ * Write React state. Same rule as the scene (`docs/SCENE.md` §2): scroll goes
  * to a ref, the rAF loop writes styles imperatively, and this component renders
  * exactly once.
  *

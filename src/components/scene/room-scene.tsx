@@ -42,6 +42,7 @@ import {
 } from "./room-layout";
 import { framingAt } from "./room-camera";
 import {
+  VISIBLE_SWATCHES,
   beatLocalAt,
   couchStateAt,
   paintStateAt,
@@ -322,7 +323,15 @@ function Swatches({ progress }: { progress: Progress }) {
 
   return (
     <group>
-      {candidates.slice(0, 3).map((c, i) => (
+      {/*
+        `VISIBLE_SWATCHES`, not a literal 3. `paintStateAt` cycles
+        `activeSwatch` over exactly this many chips and its `chosen` index is
+        asserted to fall inside them — so a hard-coded count here is a second
+        copy of a number that has to agree with the first. It did not have to
+        agree by accident for long: raising the constant alone would have had
+        the wall highlight a chip that was never rendered.
+      */}
+      {candidates.slice(0, VISIBLE_SWATCHES).map((c, i) => (
         <mesh
           key={c}
           ref={(el) => {

@@ -1,7 +1,7 @@
 import { CalendarCheck, CornerDownRight, ListChecks, MapPin } from "lucide-react";
 import { badgeVariants } from "@/components/ui/badge";
 // `edge` only — the column accent is a real feature (lists and tabs both have
-// a ColorPicker). `tint` went with the fabricated label colours.
+// a ColorPicker). `tint` went with the fabricated label colors.
 import { edge } from "@/lib/colors";
 import { priorityRail } from "@/lib/priority";
 import { STORY_BEATS } from "@/lib/story-beats";
@@ -135,10 +135,10 @@ export const MOVE_SUBTASKS: {
   Labels are COLORLESS, because that is the only kind Faite makes.
 
   `createLabel` takes an optional decoration and every one of its five call
-  sites passes a name and nothing else — there is no colour picker for a label
+  sites passes a name and nothing else — there is no color picker for a label
   anywhere in the product, only for lists and tabs (`list-info-dialog.tsx`,
   `tab-info-dialog.tsx`). `todo-row-parts.tsx` will tint a label that has a
-  colour, so the earlier demo board painted three of them and invented a
+  color, so the earlier demo board painted three of them and invented a
   feature: the hero was advertising something a new user could never reproduce.
 
   A real label renders as a plain `secondary` pill, which is what these are.
@@ -220,12 +220,12 @@ export const DEMO_COLUMNS: DemoColumn[] = [
  * These are the lists a real first run actually creates — `SEED_LISTS` in
  * `lib/store/repositories.ts` seeds Backlog, Brain Dump, Grocery List, To Buy
  * and To Read. The earlier version invented "Home" and "Errands", which is a
- * smaller lie than the coloured labels but the same kind: a visitor who signs
- * up should recognise the board they were shown.
+ * smaller lie than the colored labels but the same kind: a visitor who signs
+ * up should recognize the board they were shown.
  *
- * The column colours ARE real — lists and tabs both have a `ColorPicker`
+ * The column colors ARE real — lists and tabs both have a `ColorPicker`
  * (`list-info-dialog.tsx`, `tab-info-dialog.tsx`), so a user can produce
- * exactly this. A brand-new board is uncoloured; this one is a board somebody
+ * exactly this. A brand-new board is uncolored; this one is a board somebody
  * has been using, which is the honest thing for a hero to show.
  */
 export const DEMO_LISTS: DemoColumn[] = [
@@ -445,10 +445,10 @@ function DemoCard({ todo }: { todo: DemoTodo }) {
             {todo.labels?.map((label) => (
               /*
                 No `tint`/`edge` style any more. `DemoLabel.color` is typed
-                `undefined` because Faite has no way to colour a label, so the
+                `undefined` because Faite has no way to color a label, so the
                 identity ladder that used to be applied here was resolving to
                 `undefined` on every render — dead code that still read, to
-                anyone skimming, as though coloured labels were a thing.
+                anyone skimming, as though colored labels were a thing.
               */
               <DemoTooltip key={label.name} label={`Label: ${label.name}`}>
                 <span

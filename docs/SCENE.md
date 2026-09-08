@@ -3,9 +3,12 @@
 The isometric living room on `/` — how it is built, why it is built that way,
 and what to do to it next.
 
-Rationale for the homepage story itself lives in `docs/RESEARCH.md`; the
-point-in-time spike record with the original measurements is
-`.ai/ei-272-3d-spike-runbook.md`. This file is the standing procedure.
+This file is the **room**. The page it sits on — the beat table, the hero
+board, the traveling card, the ticks — is [HOMEPAGE.md](HOMEPAGE.md), and
+neither repeats the other. The claims are governed by
+[RESEARCH.md](RESEARCH.md); the point-in-time spike record with the original
+measurements is `.ai/ei-272-3d-spike-runbook.md`. This file is the standing
+procedure.
 
 **The one-line summary:** a Node script bakes 22 CC0/CC-BY models into one
 371 KB GLB of named nodes; a layout file places those nodes in meters; a
@@ -30,12 +33,11 @@ already tells the story.
 | `src/components/scene/room-scene.tsx` | The R3F canvas: shell, lights, camera rig, placed props, the fish. |
 | `src/components/scene/room-stage.tsx` | The pinned stage, the lazy gate, the scroll listener, the flat fallback. |
 | `src/components/scene/webgl.ts` | Capability + reduced-motion probe. |
-| `src/app/page.tsx` | Server Component. The hero board, the beats, the closing CTA. No client JS of its own. |
-| `src/lib/story-beats.ts` | One row per beat: headline, body, citation, and the sub-task it ticks. |
-| `src/components/marketing/story-panel.tsx` | The card pinned beside the room. Server Component. |
-| `src/components/marketing/story-ticks.tsx` | Ticks each sub-task off as its beat is read. Renders nothing. |
-| `src/components/marketing/card-travel.tsx` | Flies a copy of that card from the hero board into the panel on scroll. Client, and the only thing it renders is position. |
+| `src/lib/story-beats.ts` | One row per beat: headline, body, citation, the sub-task it ticks, and the object it frames. The room reads `focus` and `TICK_AT` from here. |
 | `src/app/globals.css` | The `--room-*` token block, light and dark. |
+
+The page's own files — `app/page.tsx` and everything in
+`src/components/marketing/` — are [HOMEPAGE.md §2](HOMEPAGE.md).
 
 Generated output is **committed**, same convention as `assets/icons/`
 (`docs/APP-ICON.md`). Run `npm run scene` and commit the GLB in the same
@@ -63,10 +65,21 @@ budget. **React renders the scene exactly once.**
 both fall back to a static panel that says the same thing. The canvas is an
 enhancement on top of a page that already works, not the page itself.
 
-A fourth, softer rule: every prop is present from the first frame. The only
-thing scroll changes is *which television* stands on the console. Furniture
-that pops in reads as a software demo; a room that is simply there reads as a
-place someone lives.
+A fourth, softer rule, **and EI-280 deliberately broke it — read why before
+restoring it.** The spike's rule was: every prop is present from the first
+frame, because furniture that pops in reads as a software demo while a room
+that is simply there reads as a place someone lives. That was right for a room
+with no story attached to it.
+
+It stopped being right once each section became a *to-do*. The loveseat now
+pops in and the old television animates out before the new one pops in —
+because those are the payoffs of "Measure the room before ordering the couch"
+and "Upgrade TV", and a to-do that gets checked off while the room visibly does
+not do it is a lie told in two places at once (§11).
+
+The surviving rule is narrower and still binding: **a prop appears only as the
+payoff of a beat, never as decoration.** Anything not named by a
+`STORY_BEATS` row is present from the first frame.
 
 ---
 
@@ -318,7 +331,78 @@ something that looked wrong:
 
 ---
 
-## 11. Traps
+## 11. What the room does during a beat (`beat-animations.ts`)
+
+Each of the six beats is a to-do, and the room acts it out. The strategy is
+four rules, enforced in `beat-animations.ts` rather than remembered — the file
+header is the long version; this is what you need before editing it.
+
+**1. Beat-local time.** An animation is a pure function of `u`: 0 where its
+beat's band starts, 1 where it ends, clamped outside. Never of global progress.
+`beatLocalAt(t, focus)` derives the band from `STORY_BEATS`, so adding or
+reordering a beat moves its animation with it and nothing needs re-tuning.
+
+**2. Pure state, applied thinly.** Same split as `room-camera.ts`: these
+functions return *what the room should show* and import no three.js, so they
+are unit-tested without a canvas. `room-scene.tsx` lerps toward whatever they
+say and holds no logic of its own.
+
+**3. The act lands before the tick.** The decisive moment is `COMMIT_AT` (0.3),
+under `TICK_AT` (0.4, in `story-beats.ts`). The wall is painted, the old set is
+gone, *then* the card checks the line off — cause, then effect, readable at
+scrolling speed. `beat-animations.test.ts` fails if the order flips.
+
+`PAYOFF_AT` is the deliberate exception, and it equals `TICK_AT` rather than
+sitting under it: a pop that *is* the reward for checking a line should land
+with the check, not before it. It is a named constant precisely so the
+asymmetry is a decision on the record instead of a number someone typed.
+
+**4. Done stays done.** `u` clamps to 1 after the band, so a finished act holds
+for the rest of the story. The spike cycled wall colors and snapped back bare —
+"the indecision IS the animation" — which is the wrong story for a plan being
+finished.
+
+### The six acts
+
+| Beat | `focus` | What the room does |
+|---|---|---|
+| capture | `room` | nothing; the establishing shot |
+| scheduling | `swatches` | three chips cycle, one is chosen, **both walls** take it, the chips go |
+| recurring | `plant` | leaves brown and droop across three rollovers, then rehydrate green |
+| rollover | `couch` | the loveseat pops into the gap it was left out of |
+| ambivalence | `shelf` | the books hesitate, then leave for the donation center |
+| letting go | `tv` | the old set animates **out**, then the new one pops **in** |
+
+### The curves
+
+`popIn` and `popOut` are back-out curves — overshoot, then settle.
+
+Two things about them are worth knowing before you write a third:
+
+- **`popOut(p)` is exactly `popIn(1 - p)`.** Both expand to `1 - 3p³ + 2p²`.
+  The doc comment used to claim they differed; a test disagreed at p = 0.744
+  and the test was right. If you need a genuinely different exit, it has to be
+  a different polynomial, not a reversed argument.
+- **`smoothstep(p) + sin(smoothstep(p)·π)·0.12` cannot overshoot.** It looks
+  like an overshoot and is not: it rises monotonically to exactly 1 and its
+  derivative never reaches zero. That is why the pop is a back-out curve
+  instead. The test that caught it failed with "expected 1 to be greater
+  than 1".
+
+### Adding an act
+
+Add the state function here as a pure function of `u`; land the act by
+`COMMIT_AT`; apply it in `room-scene.tsx` with a lerp and nothing else; add
+the beat's row and framing per [HOMEPAGE.md §7](HOMEPAGE.md).
+
+Nothing forces you to write one. A beat with no act still gets a camera move
+and still ticks its line — the room just sits there while the card claims
+something happened. That is the exact failure the four rules exist to prevent,
+and it is the one case the type system cannot catch.
+
+---
+
+## 12. Traps
 
 1. **`npm run build:static` prunes `.next/static/chunks`** even though it
    writes to `.next-static`. Measuring `.next` after `npm run verify` (which
@@ -342,39 +426,57 @@ something that looked wrong:
 4. **three.js logs one `THREE.Clock` → `THREE.Timer` deprecation warning** from
    inside R3F. Not ours; it will clear on an R3F release.
 
+5. **Interpolate with `(1 - t) * a + t * b`, not `a + (b - a) * t`.** The second
+   form does not land exactly on `b` at `t = 1` in floating point — the camera
+   settled ~1e-16 short of its final framing and never quite arrived. The room
+   uses the first form everywhere. `card-travel.tsx` deliberately uses the
+   second, because it interpolates pixel positions that are fully faded out at
+   both ends; do not "unify" them.
+
+6. **A curve that looks like an overshoot may not be one.** See §11 — one
+   shipped that provably could not exceed 1, and the test caught it with
+   "expected 1 to be greater than 1". Plot a candidate, or assert its peak, in
+   preference to reading its shape off the algebra.
+
+7. **A renamed to-do orphans the comment that reasoned about it.** The TV
+   beat's split across the tick was justified in prose by the old wording
+   ("Sell the old TV instead of moving it" — *selling* is the act). The line
+   became "Upgrade TV" and the comment kept arguing from a name that no longer
+   existed. Same failure mode as the "verified by render" entry in
+   `.ai/lessons.md`: when a `STORY_BEATS` row changes, grep the scene for its
+   old wording.
+
 ---
 
-## 12. Status and what is next
+## 13. Status and what is next
 
-The scene is **on the homepage** (EI-275). `/spike-3d` is gone — the route,
-its `PRIVATE_ROUTES` entry, and the throwaway premise with them — and
-`src/components/scene/` moved to `src/components/scene/`, taking the eslint
+The scene is **on the homepage** and the story around it is finished (EI-273,
+merged to `main` 2026-09-07). `/spike-3d` is gone — the route, its
+`PRIVATE_ROUTES` entry, and the throwaway premise with them — and
+`src/components/spike/` became `src/components/scene/`, taking the eslint
 override's `files` glob along.
 
 `/` is the demanding home the spike was always measuring for: its entire
 audience is a cold-cache first-time visitor, because `redirectIfKnownDevice`
 sends everyone who has used the board before to `/board` ahead of paint. The
-load invariants in §4 are load-bearing now rather than exploratory.
+load invariants in **§2** are load-bearing now rather than exploratory.
 
-The story is three movements — the board (`demo-board.tsx`), the room, the
-board again — and the room is the middle one. `RoomStage` gained a `panel`
-slot for the card pinned beside it, and its stage is now sticky at every
-width rather than `md:` and up; everything else about the load path is
-unchanged from the spike.
+Everything the sub-issues asked for shipped: per-beat camera framing (EI-276,
+§11 and `room-camera.ts`), the live sub-task ticks (EI-278), and an act in the
+room for every beat (EI-280, §11). `RoomStage` gained a `panel` slot for the
+card pinned beside it and its stage is sticky at every width rather than `md:`
+and up; nothing else about the load path changed from the spike.
 
 Open work, in the order it should happen:
 
-1. **Re-measure on the live deploy** with the real GLB — §3's frame numbers
-   were taken against procedural boxes, on localhost.
-2. ~~Per-beat camera framing~~ **done** (EI-276). Each beat names an object in
-   `src/lib/story-beats.ts` (`focus`), `src/components/scene/room-camera.ts`
-   turns that name into a framing, and `Rig` damps toward it. The zoom band is
-   the constraint to respect if you add a beat: see that file's header, and its
-   test, which fails past 135.
-3. ~~The live sub-task ticks~~ **done** (EI-278). `story-ticks.tsx` toggles
-   `data-done` from the scroll loop, on both copies of the card, reading the
-   same box `RoomStage` measures — which is what keeps "the room frames the
-   plant" and "the watering line ticks" the same moment.
-4. Consider Draco/meshopt compression if the GLB grows much past 371 KB. It is
+1. **Re-measure on the live deploy** with the real GLB. §3's frame numbers were
+   taken against procedural boxes on localhost, and the room now animates five
+   props and a camera on every frame rather than cycling one wall color. This
+   is the one open item that could invalidate a number in this file.
+2. **The room has no act for the first beat.** `focus: "room"` is the
+   establishing shot, which is a deliberate choice and also the only beat where
+   the card ticks a line while nothing moves. Worth revisiting if the opening
+   ever reads as flat.
+3. Consider Draco/meshopt compression if the GLB grows much past 371 KB. It is
    currently uncompressed indexed geometry; the dedupe in `indexGeometry`
    already took it from 455 KB.

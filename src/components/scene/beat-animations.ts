@@ -60,10 +60,14 @@ export function beatLocalAt(t: number, focus: BeatFocus): number {
 }
 
 // ---------------------------------------------------------------------------
-// The paint beat — "Painter comes Saturday, 9:00am"
+// The paint beat — "Change paint color"
 // ---------------------------------------------------------------------------
 
-/** The chips actually on the wall (`Swatches` renders `slice(0, 3)`). */
+/**
+ * The chips actually on the wall. `Swatches` in `room-scene.tsx` slices
+ * `SWATCHES.candidates` to this, so the count is declared once — the cycle
+ * below and the geometry above cannot disagree about how many chips exist.
+ */
 export const VISIBLE_SWATCHES = 3;
 
 /** The cycle starts here, not at 0: the camera is still arriving at the wall
@@ -141,7 +145,7 @@ const SWATCHES_GONE_BY = 0.6;
 // ---------------------------------------------------------------------------
 
 export interface PlantState {
-  /** 0 = healthy green, 1 = fully parched brown. Drives colour AND droop. */
+  /** 0 = healthy green, 1 = fully parched brown. Drives color AND droop. */
   thirst: number;
   /** True from the watering onward. */
   watered: boolean;
@@ -318,11 +322,11 @@ export function popOut(p: number): number {
 }
 
 // ---------------------------------------------------------------------------
-// The ambivalence beat — "Decide which books are coming"
+// The ambivalence beat — "Drop books at the donation center"
 // ---------------------------------------------------------------------------
 
 export interface ShelfState {
-  /** How far the books are lifted off the shelf, in metres. */
+  /** How far the books are lifted off the shelf, in meters. */
   lift: number;
   /** Scale — 1 while they are still up there, 0 once the decision is made. */
   booksScale: number;
@@ -379,26 +383,26 @@ export function shelfStateAt(u: number): ShelfState {
 const DECIDE_FROM = 0.18;
 
 // ---------------------------------------------------------------------------
-// The letting-go beat — "Sell the old TV instead of moving it"
+// The letting-go beat — "Upgrade TV"
 // ---------------------------------------------------------------------------
 
 export interface TvState {
-  /** Scale for the retro set. 1 while it is still yours, 0 once it is sold. */
+  /** Scale for the retro set. 1 while it is still yours, 0 once it has gone. */
   oldScale: number;
   /** Scale for the flat screen. 0 until it arrives. */
   newScale: number;
   /** True once the old set has gone, whether or not the new one has landed. */
-  sold: boolean;
+  gone: boolean;
 }
 
 /**
  * The old set leaves, the console sits empty for a moment, the new one lands.
  *
  * The two halves sit on opposite sides of the tick, and the beat's own wording
- * is why: "Sell the old TV instead of moving it". SELLING is the to-do, so the
- * old set going is the ACT and belongs before the line ticks (rule 3). The new
- * television is not the task at all — it is what selling the old one paid for
- * — so it arrives on the payoff, like the couch.
+ * is why: "Upgrade TV". LETTING THE OLD SET GO is the work — the thing you put
+ * off, and the thing the beat's citation is about — so it belongs before the
+ * line ticks (rule 3). The new television is not the task, it is the reward for
+ * having done it, so it arrives on the payoff, like the couch.
  *
  * That leaves a deliberate gap between `COMMIT_AT` and `PAYOFF_AT` where the
  * console holds nothing. It is the most honest frame in the beat: the thing is
@@ -416,7 +420,7 @@ export function tvStateAt(u: number): TvState {
     : popOut((u - OLD_TV_LEAVES_FROM) / (COMMIT_AT - OLD_TV_LEAVES_FROM));
   const newScale = u < PAYOFF_AT ? 0 : popIn((u - PAYOFF_AT) / POP_OVER);
 
-  return { oldScale: Math.max(0, oldScale), newScale, sold: u >= COMMIT_AT };
+  return { oldScale: Math.max(0, oldScale), newScale, gone: u >= COMMIT_AT };
 }
 
 /**

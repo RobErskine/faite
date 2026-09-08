@@ -34,7 +34,7 @@ import { LOVESEAT, ROOM, SWATCHES, TV_SPOT, type Vec3 } from "./room-layout";
  */
 
 export interface Framing {
-  /** What the camera aims at, in metres. */
+  /** What the camera aims at, in meters. */
   target: Vec3;
   /** Orthographic zoom. See the band note above before widening this. */
   zoom: number;
@@ -50,7 +50,7 @@ export interface Framing {
   closeUp?: true;
   /** Radians around Y, off the room's default three-quarter view. */
   angle: number;
-  /** Camera height in metres. Lower reads as stepping toward the object. */
+  /** Camera height in meters. Lower reads as stepping toward the object. */
   height: number;
 }
 
@@ -83,14 +83,14 @@ export const FRAMINGS: Record<BeatFocus, Framing> = {
    * thing in this room that is never finished.
    *
    * Chosen over the three smaller plants for being legible at diorama scale:
-   * the ones on the console and the coffee table are a few centimetres across
+   * the ones on the console and the coffee table are a few centimeters across
    * and read as texture rather than as a plant you could have a to-do about.
    * Position from `PROPS` in `room-layout.ts`; aimed above its base so the
-   * leaves are centred rather than the pot.
+   * leaves are centered rather than the pot.
    */
   plant: {
     target: [2.05, 0.72, -1.55],
-    // ~2.1x the diorama wide shot. The beat is about the colour of leaves, and
+    // ~2.1x the diorama wide shot. The beat is about the color of leaves, and
     // at 122 the monstera was a legible plant but its foliage was still a
     // thumbnail — brown or green was a guess. This is the one framing that
     // trades the room away for its subject.
@@ -103,7 +103,7 @@ export const FRAMINGS: Record<BeatFocus, Framing> = {
    * The GAP where the loveseat will go — not the couch that is already there.
    *
    * This framing pointed at the blue couch, which was wrong once the beat had
-   * an act: the loveseat arrives at `LOVESEAT.position`, three metres away
+   * an act: the loveseat arrives at `LOVESEAT.position`, three meters away
    * against the back wall, so the pop was happening off screen. Aimed at the
    * empty spot instead, the beat reads as intended — you look at the space you
    * measured, and then the thing you measured for lands in it.
@@ -134,11 +134,11 @@ export const FRAMINGS: Record<BeatFocus, Framing> = {
 };
 
 /**
- * Each beat's framing is held at the CENTRE of its band, not at its edge.
+ * Each beat's framing is held at the CENTER of its band, not at its edge.
  *
- * A beat owns `1/n` of the scroll, and its copy is centred in that band — so
- * pinning the keyframe to the centre puts the camera on the object exactly when
- * the sentence about it is centred on screen, and spends the boundaries moving
+ * A beat owns `1/n` of the scroll, and its copy is centered in that band — so
+ * pinning the keyframe to the center puts the camera on the object exactly when
+ * the sentence about it is centered on screen, and spends the boundaries moving
  * between two. Keying on the edges instead would have the camera arrive at each
  * object just as its paragraph left.
  */
