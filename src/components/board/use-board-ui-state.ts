@@ -413,6 +413,12 @@ export function useBoardUiState() {
       if (e.metaKey || e.ctrlKey || e.shiftKey) return;
       const target = e.target as Element | null;
       if (target?.closest?.("[data-todo-row]")) return;
+      // A context menu popup is portaled to <body>, so a click on one of its
+      // items is not inside any row and would read as "clicked elsewhere" —
+      // clearing the very selection the item is about to act on, before it
+      // acts (EI-285). The menu is not "outside"; it belongs to the row that
+      // opened it.
+      if (target?.closest?.('[role="menu"]')) return;
       clearSelection();
     };
     const onKeyDown = (e: KeyboardEvent) => {

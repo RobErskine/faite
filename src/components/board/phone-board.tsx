@@ -216,6 +216,7 @@ export function PhoneBoard({
                   selectedIds={selectedIds}
                   movingIds={movingIds}
                   onSelect={actions.handleSelect}
+                  contextActions={actions.todoContextActions}
               rejectsDrop
               footer={
                 <OverdriveButton
@@ -309,6 +310,7 @@ export function PhoneBoard({
                   selectedIds={selectedIds}
                   movingIds={movingIds}
                   onSelect={actions.handleSelect}
+                  contextActions={actions.todoContextActions}
                 />
               );
             })}
@@ -386,6 +388,7 @@ export function PhoneBoard({
                   selectedIds={selectedIds}
                   movingIds={movingIds}
                   onSelect={actions.handleSelect}
+                  contextActions={actions.todoContextActions}
                   recurrenceSummaries={recurrenceSummaries}
                   subtaskCounts={subtaskCounts}
                   attachmentCounts={attachmentCounts}
@@ -427,6 +430,7 @@ export function PhoneBoard({
                   selectedIds={selectedIds}
                   movingIds={movingIds}
                   onSelect={actions.handleSelect}
+                  contextActions={actions.todoContextActions}
                   recurrenceSummaries={recurrenceSummaries}
                   subtaskCounts={subtaskCounts}
                   attachmentCounts={attachmentCounts}

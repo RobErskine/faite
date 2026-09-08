@@ -327,6 +327,7 @@ export function DesktopBoard({
                   selectedIds={selectedIds}
                   movingIds={movingIds}
                   onSelect={actions.handleSelect}
+                  contextActions={actions.todoContextActions}
             rejectsDrop
             pinned
             collapsed={overflowCollapsed}
@@ -489,6 +490,7 @@ export function DesktopBoard({
                   selectedIds={selectedIds}
                   movingIds={movingIds}
                   onSelect={actions.handleSelect}
+                  contextActions={actions.todoContextActions}
                 />
               );
             })}
@@ -601,6 +603,7 @@ export function DesktopBoard({
                   selectedIds={selectedIds}
                   movingIds={movingIds}
                   onSelect={actions.handleSelect}
+                  contextActions={actions.todoContextActions}
               recurrenceSummaries={recurrenceSummaries}
               subtaskCounts={subtaskCounts}
               attachmentCounts={attachmentCounts}
@@ -695,6 +698,7 @@ export function DesktopBoard({
                   selectedIds={selectedIds}
                   movingIds={movingIds}
                   onSelect={actions.handleSelect}
+                  contextActions={actions.todoContextActions}
                   recurrenceSummaries={recurrenceSummaries}
                   subtaskCounts={subtaskCounts}
                   attachmentCounts={attachmentCounts}

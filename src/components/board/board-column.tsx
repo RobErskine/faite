@@ -33,6 +33,7 @@ import {
 import { DragGrip } from "./drag-grip";
 import { QuickAddPreview, type QuickAddChip } from "./quick-add-preview";
 import { TodoCard } from "./todo-card";
+import type { TodoContextActions } from "./todo-card-menu";
 
 /**
  * A grouped column's order is COMPUTED, so nothing shifts to preview an insertion.
@@ -212,6 +213,8 @@ interface BoardColumnProps {
   /** Non-dragged members of a multi-selection currently in flight. */
   movingIds?: ReadonlySet<string>;
   onSelect?: (todoId: string, modifiers: { additive: boolean; range: boolean }) => void;
+  /** Right-click menu wiring for this column's cards (EI-285). Omit for none. */
+  contextActions?: TodoContextActions;
   /**
    * Dropping here will be refused (Overflow). Styled as a rejecting target so
    * the outcome is obvious before the pointer is released.
@@ -360,6 +363,7 @@ export function BoardColumn({
   selectedIds,
   movingIds,
   onSelect,
+  contextActions,
   rejectsDrop,
   reorderListId,
   reservesGripSlot,
@@ -610,6 +614,10 @@ export function BoardColumn({
         isSelected={selectedIds?.has(todo.id)}
         isGhosted={movingIds?.has(todo.id)}
         onSelect={onSelect}
+        contextActions={contextActions}
+        // The card reports its own selection size so its menu can say what it
+        // will act on; it never learns WHICH other cards those are.
+        selectionCount={selectedIds?.size}
         onToggle={onToggle}
         onOpen={onOpen}
         onNavigate={onNavigate}
