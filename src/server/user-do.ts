@@ -617,6 +617,45 @@ export class UserDurableObject extends DurableObject {
   }
 
   /**
+   * Ids of the non-deleted todos whose parent is `id` (A13, EI-293).
+   *
+   * `DELETE /api/v1/todos/{id}` ORPHANS these (`parentId: null`) rather than
+   * cascading the delete — mirroring `repositories.ts`'s `deleteTodo`, where
+   * deleting a parent has never deleted its sub-todos.
+   *
+   * Read-only, and read BEFORE the delete builds anything: the count fixes
+   * how many HLC stamps `durableHlcQueue` has to pre-fetch, and that queue
+   * throws if a builder overruns it.
+   */
+  async childTodoIds(id: string): Promise<string[]> {
+    return this.ctx.storage.sql
+      .exec<{ id: string }>(
+        "SELECT id FROM todos WHERE parent_id = ? AND deleted_at IS NULL",
+        id,
+      )
+      .toArray()
+      .map((row) => row.id);
+  }
+
+  /**
+   * Ids of the non-deleted attachments belonging to todo `id` (A13, EI-293).
+   *
+   * The delete route tombstones these ROWS and deliberately leaves their R2
+   * objects alone — see `buildDeleteTodoEntry` for why (undo, and EI-242's
+   * bytes-first ordering invariant). Tombstoning them is also what lets
+   * EI-245's sweep tell a dead attachment from a live one later.
+   */
+  async attachmentIdsForTodo(id: string): Promise<string[]> {
+    return this.ctx.storage.sql
+      .exec<{ id: string }>(
+        "SELECT id FROM attachments WHERE todo_id = ? AND deleted_at IS NULL",
+        id,
+      )
+      .toArray()
+      .map((row) => row.id);
+  }
+
+  /**
    * Total live attachment bytes for this account, for the per-user quota
    * (`MAX_TOTAL_ATTACHMENT_BYTES`).
    *

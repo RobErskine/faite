@@ -95,6 +95,21 @@ interface EditedPayload {
   to?: { priority?: Priority | null; deadline?: CivilDate | null };
 }
 
+/**
+ * Mirrors `todo-events.ts`'s `DeletedPayload`. The one event kind that
+ * carries a title — a global activity feed has to render a deleted todo's
+ * row without a live lookup, and there is no row left to look up. See that
+ * file for why this is exempt from `EditedPayload`'s no-title rule.
+ */
+interface DeletedPayload {
+  v: 1;
+  title: string;
+}
+
+/** Hand-mirrors `todo-events.ts`'s `DELETED_TITLE_MAX_LENGTH` — not imported,
+ * for the same reason nothing else in this file imports from `store/`. */
+export const DELETED_TITLE_MAX_LENGTH = 200;
+
 const JOURNALLED_FIELDS = new Set([
   "title",
   "description",
@@ -132,7 +147,7 @@ function buildTodoEventEntry(
   ctx: ServiceContext,
   todoId: string,
   kind: string,
-  payload: EditedPayload | null,
+  payload: EditedPayload | DeletedPayload | null,
   at: string,
 ): PushEntry {
   const timestamp = new Date().toISOString();
@@ -273,4 +288,79 @@ export function buildUpdateTodoEntry(
   if (!editedPayload) return [todoEntry];
 
   return [todoEntry, buildTodoEventEntry(ctx, id, "edited", editedPayload, timestamp)];
+}
+
+/** What `buildDeleteTodoEntry` needs the caller to have already read from the
+ * authoritative store. This module has no store — same split as
+ * `CreateTodoInput.position`. */
+export interface DeleteTodoInput {
+  /** Snapshotted BEFORE the tombstone, and truncated by the builder. */
+  title: string;
+  /** Non-deleted todos whose `parentId` is this todo. Orphaned, not deleted. */
+  childIds: string[];
+  /** Non-deleted attachments of this todo. Tombstoned, bytes untouched. */
+  attachmentIds: string[];
+}
+
+/**
+ * Builds the `PushEntry` batch for deleting a todo (A13, EI-293).
+ *
+ * A soft delete here is FOUR things, not one field — mirroring
+ * `repositories.ts`'s `deleteTodo`, which is the behavior a client already
+ * gets. A REST delete that only wrote `deletedAt` would ship three silent
+ * parity gaps.
+ *
+ * 1. **Children are orphaned**, not deleted — `{ parentId: null }` each.
+ *    Deleting a parent has never deleted its sub-todos.
+ * 2. **Attachments are tombstoned — rows only, never the R2 bytes.** That is
+ *    the whole design of the client's version and it carries over verbatim:
+ *    deleting a todo is undoable, so removing the bytes would let an undo
+ *    restore rows pointing at objects that no longer exist — precisely the
+ *    state EI-242's bytes-first ordering exists to make impossible. A
+ *    tombstone is reversible; an R2 DELETE is not. The sweep (EI-245)
+ *    collects the bytes later, and CANNOT do so until these rows are
+ *    tombstoned, because that is what distinguishes a dead attachment from a
+ *    live one.
+ * 3. **A `deleted` todoEvent** carrying the title snapshot.
+ * 4. The todo's own tombstone.
+ *
+ * Every entry must land in ONE `push()` call so the DO applies them in one
+ * `transactionSync` — same rule `buildCreateTodoEntry` states.
+ *
+ * The caller resolves `childIds`/`attachmentIds` from the store BEFORE
+ * building, which also fixes the entry count in advance: `durableHlcQueue`
+ * pre-fetches a fixed N and throws if a builder overruns it.
+ */
+export function buildDeleteTodoEntry(
+  ctx: ServiceContext,
+  id: string,
+  input: DeleteTodoInput,
+): PushEntry[] {
+  const timestamp = new Date().toISOString();
+
+  const tombstone = (kind: "todo" | "attachment", entityId: string): PushEntry => ({
+    id: newOutboxEntryId(),
+    kind,
+    entityId,
+    patch: { deletedAt: timestamp, updatedAt: timestamp },
+    hlc: ctx.nextHlc(),
+  });
+
+  const orphanChild = (childId: string): PushEntry => ({
+    id: newOutboxEntryId(),
+    kind: "todo",
+    entityId: childId,
+    patch: { parentId: null, updatedAt: timestamp },
+    hlc: ctx.nextHlc(),
+  });
+
+  return [
+    ...input.childIds.map(orphanChild),
+    ...input.attachmentIds.map((attachmentId) => tombstone("attachment", attachmentId)),
+    buildTodoEventEntry(ctx, id, "deleted", {
+      v: 1,
+      title: input.title.slice(0, DELETED_TITLE_MAX_LENGTH),
+    }, timestamp),
+    tombstone("todo", id),
+  ];
 }
