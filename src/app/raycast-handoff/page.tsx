@@ -1,71 +1,67 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { Button } from "@/components/ui/button";
 import { useSession } from "@/lib/auth-client";
+import { isAllowedRaycastRedirect } from "@/lib/raycast-redirect";
 
 type Status = "checking-session" | "ready" | "error";
 
 /**
- * The Raycast extension's one-click connect (A18, EI-298). Reached in the
- * SYSTEM BROWSER after `login`/`signup` redirect here via
- * `?callbackURL=/raycast-handoff`. Mints a one-time code
- * (`/api/raycast/handoff`, cookie-authenticated) and hands the user a button
- * back into Raycast.
+ * The Raycast extension's sign-in (A18/EI-298, reshaped by EI-310).
  *
- * A deliberate CLICK, not an automatic navigation: browsers can decline to
- * honor a custom-scheme redirect that did not originate from a user gesture.
- * Same reasoning as `desktop-handoff/page.tsx`.
+ * This is the AUTHORIZATION ENDPOINT of an OAuth-shaped flow. Raycast's
+ * `OAuth.PKCEClient` opens it in the system browser with `redirect_uri` and
+ * `state`; once the user is signed in, it mints a key, wraps it in a
+ * short-lived encrypted code, and redirects back with that code.
  *
- * `useSearchParams` would need a Suspense boundary under `output: export`;
- * this page reads no query params (see `RAYCAST_DEEP_LINK`), but the boundary
- * stays because `useSession` and the redirect below still benefit from it and
- * removing it is a trap for whoever adds the first param.
+ * It is shaped this way rather than as a `raycast://` deep link because
+ * Raycast renders its own "Logged into Faite / Logout" row in the extension's
+ * settings — but only for an extension that authenticates through a
+ * `PKCEClient`. Going through the real OAuth surface is what buys that,
+ * along with the sign-in overlay and token storage. An extension-owned
+ * "Connect Account" command, which is what this replaced, is not a shape any
+ * other Raycast extension uses.
+ *
+ * ## What this is NOT
+ *
+ * **A real authorization server.** `code_challenge` is accepted and ignored;
+ * nothing here verifies PKCE. Do not read this as OAuth and assume the
+ * guarantees that come with it.
+ *
+ * What actually protects the code: it is AES-GCM encrypted under a key
+ * derived from `BETTER_AUTH_SECRET`, TTL-bounded to 60 seconds, minted only
+ * for a live cookie session, domain-separated from the desktop flow's codes
+ * (`handoff-code.ts`), and — see below — only ever handed to a redirect URI
+ * on a fixed allow-list.
  */
-
-/**
- * **Hardcoded, and it must stay that way.**
- *
- * This URL carries a credential-bearing code. Accepting the target from a
- * query param would be an open redirect that hands that code to whatever
- * application has registered an arbitrary custom scheme — the classic
- * authorization-code interception, with the OS's URL dispatch as the
- * confused deputy.
- *
- * `Rob` is the Raycast account handle (raycast.com/Rob) and `faite` the
- * extension's `name` in its `package.json`. Both halves must match the
- * extension exactly or the deep link silently resolves to nothing — no
- * error, the OS just does not dispatch it. Change them together.
- */
-const RAYCAST_DEEP_LINK = "raycast://extensions/Rob/faite/connect-account";
-
-/**
- * Raycast deep links do NOT accept arbitrary query params. The documented set
- * is `launchType`, `arguments`, `context` and `fallbackText` — anything else
- * is dropped silently, so an obvious-looking `?code=…` would produce a link
- * that opens the command with no code and no error to explain why.
- *
- * `context` is the right channel: it arrives as `props.launchContext` in the
- * command, it is URL-encoded JSON, and unlike `arguments` it does not require
- * declaring a matching argument in the manifest.
- */
-function deepLinkFor(code: string): string {
-  const context = encodeURIComponent(JSON.stringify({ code }));
-  return `${RAYCAST_DEEP_LINK}?context=${context}`;
-}
 
 function RaycastHandoffForm() {
   const router = useRouter();
   const { data: session, isPending } = useSession();
+  const params = useSearchParams();
   const [status, setStatus] = useState<Status>("checking-session");
-  const [deepLink, setDeepLink] = useState<string | null>(null);
+  const [redirectTo, setRedirectTo] = useState<string | null>(null);
+
+  const redirectUri = params.get("redirect_uri");
+  // Echoed back untouched. `PKCEClient` generated it and verifies it on the
+  // way back, which is what makes the round trip tamper-evident — this page
+  // neither reads nor trusts it.
+  const state = params.get("state");
+
+  // Derived during render, not in an effect: it depends only on the URL, and
+  // routing it through state would both trip `set-state-in-effect` and let a
+  // frame render as though the request were legitimate.
+  const redirectAllowed = isAllowedRaycastRedirect(redirectUri);
 
   useEffect(() => {
-    if (isPending) return;
+    if (isPending || !redirectAllowed) return;
+
     if (!session) {
-      router.replace(`/login?callbackURL=${encodeURIComponent("/raycast-handoff")}`);
+      const callbackURL = `/raycast-handoff?${params.toString()}`;
+      router.replace(`/login?callbackURL=${encodeURIComponent(callbackURL)}`);
       return;
     }
 
@@ -80,7 +76,14 @@ function RaycastHandoffForm() {
       .then((response) => (response.ok ? response.json() : Promise.reject(response.status)))
       .then((body: { code: string }) => {
         if (canceled) return;
-        setDeepLink(deepLinkFor(body.code));
+
+        // `raycast.com/redirect` already carries `?packageName=…`, so build
+        // this with the URL API rather than string-concatenating a `?`.
+        const target = new URL(redirectUri as string);
+        target.searchParams.set("code", body.code);
+        if (state) target.searchParams.set("state", state);
+
+        setRedirectTo(target.toString());
         setStatus("ready");
       })
       .catch(() => {
@@ -90,7 +93,21 @@ function RaycastHandoffForm() {
     return () => {
       canceled = true;
     };
-  }, [isPending, session, router]);
+  }, [isPending, session, router, redirectUri, redirectAllowed, state, params]);
+
+  // Terminal, and checked before anything else. Falling back to a default
+  // target would mean a request carrying a hostile `redirect_uri` still mints
+  // a key — which is the entire thing this guards against.
+  if (!redirectAllowed) {
+    return (
+      <AuthShell
+        title="That sign-in link isn't valid"
+        description="Start the connection from Raycast rather than opening this page directly."
+      >
+        {null}
+      </AuthShell>
+    );
+  }
 
   if (status === "error") {
     return (
@@ -105,13 +122,13 @@ function RaycastHandoffForm() {
     );
   }
 
-  if (status === "ready" && deepLink) {
+  if (status === "ready" && redirectTo) {
     return (
-      <AuthShell
-        title="You're signed in"
-        description="Click below to finish connecting Raycast to Faite."
-      >
-        <Button className="w-full" nativeButton={false} render={<a href={deepLink} />}>
+      <AuthShell title="You're signed in" description="Click below to finish connecting Raycast.">
+        {/* A deliberate click, not an automatic navigation: browsers can
+            decline to honor a redirect that did not come from a user gesture,
+            and Raycast's own overlay expects the user to be driving. */}
+        <Button className="w-full" nativeButton={false} render={<a href={redirectTo} />}>
           Continue to Raycast
         </Button>
       </AuthShell>
