@@ -58,4 +58,75 @@ describe("settingsOrDefault", () => {
     expect(settings.displayName).toBe("Rob");
     expect(settings.overflowAfterDays).toBe(5);
   });
+
+  /**
+   * REGRESSION (EI-314). `splitRatio` had been stored as a FRACTION since the
+   * resize seam shipped — `clampSplit` returns `(topPx / totalPx) * 100` and
+   * never rounds — while the schema said `.int()`. Nothing validated it: the
+   * client writes to Dexie without this schema, `sanitizePatch` is a column
+   * whitelist, and SQLite's `integer` type is advisory.
+   *
+   * `/api/v1/profile` was the first code to actually parse a settings row,
+   * and it 500'd for every account that had ever dragged the divider — while
+   * not even exposing `splitRatio`, which is device-local.
+   */
+  it("accepts the fractional splitRatio the board actually writes", () => {
+    const settings = settingsOrDefault(
+      { ownerId: "u1", updatedAt: "2026-09-09T00:00:00.000Z", splitRatio: 52.734375, timezone: "America/New_York" },
+      "u1",
+    );
+
+    expect(settings.splitRatio).toBe(52.734375);
+    expect(settings.timezone).toBe("America/New_York");
+  });
+
+  /**
+   * The structural half of the same fix. A settings row is a wide bag of
+   * mostly-cosmetic preferences; a reader that wants `timezone` should not
+   * fail because a pane divider is out of spec.
+   */
+  it("drops a field that cannot parse and keeps everything that can", () => {
+    const settings = settingsOrDefault(
+      {
+        ownerId: "u1",
+        updatedAt: "2026-09-09T00:00:00.000Z",
+        timezone: "America/New_York",
+        overflowAfterDays: 5,
+        splitRatio: "not a number",
+      },
+      "u1",
+    );
+
+    // The good fields survive...
+    expect(settings.timezone).toBe("America/New_York");
+    expect(settings.overflowAfterDays).toBe(5);
+    // ...and the bad one falls back to its schema default rather than throwing.
+    expect(settings.splitRatio).toBeNull();
+  });
+
+  it("survives several bad fields at once", () => {
+    const settings = settingsOrDefault(
+      {
+        ownerId: "u1",
+        updatedAt: "2026-09-09T00:00:00.000Z",
+        timezone: "Europe/London",
+        splitRatio: "nope",
+        overflowAfterDays: "also nope",
+        visibleDays: {},
+      },
+      "u1",
+    );
+
+    expect(settings.timezone).toBe("Europe/London");
+    expect(settings.overflowAfterDays).toBe(3);
+    expect(settings.visibleDays).toBe(7);
+  });
+
+  it("falls back entirely for a row too corrupt to repair", () => {
+    const settings = settingsOrDefault({ timezone: 42, splitRatio: "x" } as Record<string, unknown>, "u1");
+
+    expect(settings.ownerId).toBe("u1");
+    expect(settings.timezone).toBe("UTC");
+  });
+
 });

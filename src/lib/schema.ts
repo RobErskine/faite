@@ -648,7 +648,23 @@ export const settingsSchema = z.object({
    * lib/sync/wire.ts): a percentage transfers between a laptop and a wide
    * monitor on the same account where a pixel width would not.
    */
-  splitRatio: z.number().int().min(SPLIT_MIN_PERCENT).max(SPLIT_MAX_PERCENT).nullable().default(null),
+  /**
+   * NOT `.int()`. `clampSplit` (`use-split-resize.ts`) returns
+   * `(topPx / totalPx) * 100` and never rounds, so the board has always
+   * written a fraction here — the integer constraint described data that has
+   * never existed.
+   *
+   * Nothing caught it because nothing validated: the client's `mutate()`
+   * writes to Dexie without running this schema, `sanitizePatch` is a column
+   * whitelist rather than a validator, and SQLite's `integer` column type is
+   * advisory — it stores a real quite happily. The first code to actually
+   * PARSE a settings row was `/api/v1/profile` (EI-297), which then 500'd for
+   * every account that had ever dragged the seam (EI-314).
+   *
+   * Rounding instead would be the wrong fix: at 1% granularity a drag on a
+   * 900px board would jump nine pixels at a time.
+   */
+  splitRatio: z.number().min(SPLIT_MIN_PERCENT).max(SPLIT_MAX_PERCENT).nullable().default(null),
   /**
    * Which half, if either, is collapsed. An enum rather than two booleans so
    * "both collapsed at once" is unrepresentable rather than merely avoided.
