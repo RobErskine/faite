@@ -27,12 +27,17 @@ const dir = new URL(".", import.meta.url);
 /**
  * The marketing components that must stay Server Components.
  *
+ * `raycast-callout.tsx` joins them: it is below the fold, but it is still on
+ * the one page whose audience is a cold-cache stranger, and the tempting
+ * import there is `next/image` — which is a client component and would put a
+ * hydration runtime on `/` to render two static screenshots.
+ *
  * `card-travel.tsx` is the one deliberate client component on the homepage
  * besides the scene, and it is not in this list: it renders nothing of its own
  * — the card it flies is passed in as `children` from `page.tsx` and stays
  * server HTML — so what it costs the page is a positioning loop, not the copy.
  */
-const SERVER_ONLY = ["demo-board.tsx", "story-panel.tsx"];
+const SERVER_ONLY = ["demo-board.tsx", "story-panel.tsx", "raycast-callout.tsx"];
 
 /**
  * Comments are stripped before anything is searched, because the file this

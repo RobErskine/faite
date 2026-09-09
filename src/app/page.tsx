@@ -4,6 +4,7 @@ import { DemoBoard } from "@/components/marketing/demo-board";
 import { MarketingFooter } from "@/components/marketing/marketing-footer";
 import { MarketingHeader } from "@/components/marketing/marketing-header";
 import { StoryPanel } from "@/components/marketing/story-panel";
+import { RaycastCallout } from "@/components/marketing/raycast-callout";
 import { StoryTicks } from "@/components/marketing/story-ticks";
 import { RoomStage } from "@/components/scene/room-stage";
 import { buttonVariants } from "@/components/ui/button";
@@ -227,6 +228,15 @@ export default function Home() {
               </Link>
             </div>
           </section>
+
+          {/*
+            A coda, not a fourth movement. The three movements above make one
+            argument; this answers the question a reader only has once they
+            have accepted it — "do I have to open the app every time?" It sits
+            after the call to action deliberately, so it cannot interrupt that
+            argument on the way to it.
+          */}
+          <RaycastCallout />
           {/*
             The copy that flies from the board into the story (EI-278).
             Rendered here as server HTML and handed to a client component that

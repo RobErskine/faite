@@ -17,7 +17,7 @@ Shipped as EI-273 and its sub-issues (EI-274 – EI-280).
 
 ## 1. Three movements
 
-`src/app/page.tsx` is a Server Component with exactly three sections:
+`src/app/page.tsx` is a Server Component with three sections, plus a coda:
 
 1. **The board.** A full viewport, cropped by the fold rather than shrunk to
    fit it. The `<h1>` is the LCP element and it is plain server HTML. One card
@@ -28,6 +28,12 @@ Shipped as EI-273 and its sub-issues (EI-274 – EI-280).
    beat's to-do, and the card ticks the line off.
 3. **The board again.** The plan is finished, so the page ends where it began,
    on the product, with the two ways in.
+
+Then **the Raycast coda** (`raycast-callout.tsx`), after the call to action and
+deliberately outside the three movements. Those movements make one argument;
+an integration is not part of it. The coda answers the question a reader only
+has once they have accepted that argument — "do I have to open the app every
+time?" — which is why it must not interrupt it on the way there.
 
 The argument only works because movements one and three are the *same board*
 and the card in movement two is the *same card*. That is the entire reason for
@@ -47,6 +53,7 @@ of one to-do.
 | `src/components/marketing/story-ticks.tsx` | Ticks each sub-task off on scroll. Renders `null`. See §6. |
 | `src/components/marketing/card-travel.tsx` | Flies a third copy of the card from the board into the panel. The one client component here. See §5. |
 | `src/components/marketing/demo-tooltip.tsx` | CSS-only tooltip, so the two Server Components stay Server Components. |
+| `src/components/marketing/raycast-callout.tsx` | The Raycast coda. Server Component; two screenshots and a link. |
 | `src/components/marketing/demo-board.test.ts` | The guard for §4. Scans source, not a bundle. |
 | `e2e/marketing-pages.spec.ts` | Every homepage e2e test, including the no-JavaScript pass. |
 
@@ -102,8 +109,9 @@ is what a test can hold.
 before straight to `/board`, ahead of paint. So the hero is a hand-written echo
 of the board rather than the board itself.
 
-**`demo-board.tsx` and `story-panel.tsx` must have no `"use client"` anywhere
-in their import graph.** They run at build time and ship as HTML.
+**`demo-board.tsx`, `story-panel.tsx` and `raycast-callout.tsx` must have no
+`"use client"` anywhere in their import graph.** They run at build time and
+ship as HTML.
 
 Three specific imports would break it, all of them tempting:
 
@@ -115,6 +123,12 @@ Three specific imports would break it, all of them tempting:
   runtime to explain four icons that never move.** `demo-tooltip.tsx` exists
   for exactly this; it trades away collision detection, which costs nothing
   because every one of these sits mid-page in a fixed-width card.
+- `next/image` in the coda → **`image-component.js` opens with `"use client"`**
+  → a hydration runtime to render two static screenshots. It would also
+  optimize nothing, since the static export sets
+  `images: { unoptimized: true }`. Pre-sized WebP with explicit `width`/
+  `height` is better on both counts, and the `no-img-element` lint rule is
+  disabled at that one line with the reason written next to it.
 
 `demo-board.test.ts` enforces it by reading source and following aliased
 imports one level down. It is a unit test rather than a build test on purpose —
@@ -132,6 +146,13 @@ A hero that shows a feature a new user cannot reproduce is the worst kind of
 marketing bug — it only looks wrong *after* someone signs up. Two rules, both
 tested:
 
+- **Screenshots are captures, not mockups.** The coda's two images are the
+  shipped Raycast extension, counts and all. A hand-drawn "screenshot" of an
+  interface nobody built breaks this rule in the way that is hardest to
+  notice. The coda also links to `/docs` rather than to the extension: it is
+  private to one organization today, so a store link would send most readers
+  somewhere they cannot install from — which is the same failure wearing a
+  different hat.
 - **No colored labels.** All five `createLabel` call sites pass a name and
   nothing else; there is no label color picker in Faite. `todo-row-parts.tsx`
   *will* tint a label that has one, so a hex on a demo label renders

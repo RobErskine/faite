@@ -279,6 +279,57 @@ test("each beat ticks its own sub-task off the card", async ({ page }) => {
  * enforced that the URL itself stops resolving, and a route left behind by a
  * half-done deletion would 200 with an unindexed copy of the story on it.
  */
+/**
+ * The Raycast coda (EI-316) — the section after the closing call to action.
+ *
+ * Asserted against the raw response body as well as the page, for the same
+ * reason as the hero and the story above: it is server-rendered HTML, and
+ * reaching for `next/image` would quietly make it depend on a hydration
+ * runtime while still passing a `toBeVisible()` check.
+ */
+test("the Raycast coda is server-rendered, and sits after the call to action", async ({
+  page,
+  request,
+}) => {
+  const body = decode(await (await request.get("/")).text());
+  expect(body).toContain("Capture it without opening anything.");
+  expect(body).toContain("/raycast/my-lists.webp");
+
+  await page.goto("/");
+  const coda = page.getByRole("region", { name: /Capture it without opening/ });
+  await expect(coda.getByRole("heading", { level: 2 })).toBeVisible();
+
+  // Both captures carry real alternative text — they are the only images on
+  // the page, and a screenshot with an empty `alt` tells a screen reader
+  // nothing about the one feature this section exists to show.
+  const shots = coda.getByRole("img");
+  await expect(shots).toHaveCount(2);
+  for (const shot of await shots.all()) {
+    expect((await shot.getAttribute("alt"))?.length ?? 0).toBeGreaterThan(20);
+  }
+
+  /*
+    Order matters and is the whole design of this section: the three movements
+    make one argument, and the coda answers a question a reader only has after
+    accepting it. If it drifted above the CTA it would interrupt the argument
+    on the way to it.
+  */
+  const ctaY = (await page.getByRole("link", { name: /Create an account to sync/ }).boundingBox())?.y ?? 0;
+  const codaY = (await coda.boundingBox())?.y ?? 0;
+  expect(codaY).toBeGreaterThan(ctaY);
+
+  /*
+    The store button is deliberately NOT a link: the extension is private to
+    one organization, so the page it would point at is one most readers cannot
+    see. Advertising something the reader cannot have is the same fidelity
+    failure as showing a feature the product lacks (HOMEPAGE.md §4), just
+    pointed outward. This fails the day someone makes it a link before the
+    listing is public.
+  */
+  await expect(coda.getByText(/Coming to the Raycast Store/)).toBeVisible();
+  await expect(coda.getByRole("link", { name: /Raycast Store/ })).toHaveCount(0);
+});
+
 test("the retired spike route is gone", async ({ request }) => {
   expect((await request.get("/spike-3d")).status()).toBe(404);
 });
@@ -340,6 +391,15 @@ test.describe("without JavaScript", () => {
     // flourish rather than the only way the page makes sense.
     await expect(page.locator("[data-travel-origin]")).toBeVisible();
     await expect(page.locator("[data-travel-target]")).toBeVisible();
+
+    /*
+      The coda is two screenshots and a link — there is nothing for JavaScript
+      to do, and `next/image` is the one import that would silently change
+      that. See `docs/HOMEPAGE.md` §4.
+    */
+    const coda = page.getByRole("region", { name: /Capture it without opening/ });
+    await expect(coda.getByRole("heading", { name: /Capture it without opening/ })).toBeVisible();
+    await expect(coda.getByRole("img")).toHaveCount(2);
 
     // And the hero and the closing CTA, which never depended on JS either.
     // `[data-travel-origin]` rather than a text match: the flying copy (EI-278)
