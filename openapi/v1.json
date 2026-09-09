@@ -4782,7 +4782,7 @@
             "default": null,
             "anyOf": [
               {
-                "type": "integer",
+                "type": "number",
                 "minimum": 10,
                 "maximum": 90
               },
