@@ -219,7 +219,14 @@ export function TabStrip({
             aria-hidden
             data-tab-hover-highlight
             className={cn(
-              "pointer-events-none absolute left-0 top-0 rounded-lg bg-surface-2/60",
+              // `bg-foreground/5`, the same wash the rows and group headers
+              // use — not `bg-surface-2`, which the pill's *active* state uses.
+              // In light theme `--surface-2` and `--background` are both pure
+              // white: the active pill reads as raised because of its
+              // `shadow-card`, not its fill, so a `bg-surface-2/60` hover was
+              // white on white and showed nothing at all. Measured, not
+              // guessed. One tint for "the pointer is here" across the board.
+              "pointer-events-none absolute left-0 top-0 rounded-lg bg-foreground/5",
               "tab-travel motion-reduce:transition-none",
             )}
             style={{
