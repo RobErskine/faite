@@ -145,6 +145,52 @@
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 
   /*
+    The travel spring: for something that moves between two places, so it
+    arrives with a little mass behind it. `transform` only — see
+    docs/DESIGN.md §4. Pair it with a 350ms duration; the curve is sampled
+    over exactly that and settles inside it.
+
+    Sampled from a unit-step damped harmonic oscillator, m=1 k=500 c=31
+    (zeta 0.693, omega 22.36 rad/s) — 4.9% overshoot, back within 0.1% by
+    350ms. To regenerate with different constants:
+
+      x(t) = 1 - e^(-zeta*w*t) * (cos(wd*t) + (zeta/sqrt(1-zeta^2))*sin(wd*t))
+      wd   = w * sqrt(1 - zeta^2)
+
+    Sample it at 24 even steps across the duration. Keep the tail under ~0.1%
+    at the last step: `linear()` forces the final stop to 1, so a curve still
+    1% high at the end snaps that last 1% in a single frame, which is visible
+    as a tick at the end of the travel.
+  */
+  --ease-spring-travel: linear(
+    0,
+    0.0456 4.17%,
+    0.1555 8.33%,
+    0.2971 12.5%,
+    0.4468 16.67%,
+    0.5889 20.83%,
+    0.7142 25%,
+    0.8182 29.17%,
+    0.8998 33.33%,
+    0.9602 37.5%,
+    1.002 41.67%,
+    1.0284 45.83%,
+    1.0428 50%,
+    1.0484 54.17%,
+    1.0478 58.33%,
+    1.0434 62.5%,
+    1.0369 66.67%,
+    1.0296 70.83%,
+    1.0225 75%,
+    1.0161 79.17%,
+    1.0106 83.33%,
+    1.0062 87.5%,
+    1.0029 91.67%,
+    1.0006 95.83%,
+    1
+  );
+
+  /*
     Motion. Literal durations here rather than `var(--dur-*)`: an animation
     shorthand with a var() inside is resolved at use time and is one more
     thing to get wrong; the three durations are also declared as plain vars
@@ -298,6 +344,14 @@
   --dur-fast: 100ms;
   --dur-base: 180ms;
   --dur-slow: 260ms;
+  /*
+    The one duration past the budget, and only for `--ease-spring-travel`:
+    the curve is sampled across exactly this span, so the two change together
+    or the spring's tail gets cut off mid-overshoot. It buys no extra time to
+    arrive — the travel is visually done inside --dur-slow — it is the
+    overshoot dying out. docs/DESIGN.md §4.
+  */
+  --dur-travel: 350ms;
 
   /*
     THE COLUMN TRACK.
@@ -615,6 +669,57 @@
     outline: 2px solid var(--ring);
     outline-offset: -2px;
   }
+}
+
+/*
+  A control that is invisible until you sweep its row: the resting half of the
+  pattern, in one place. The revealing half stays at the call site, because it
+  cannot live here — the four sites sit under three different group scopes
+  (`group/column`, `group/tab`, and a bare `group`), and a utility cannot
+  parameterize which one it answers to. So each site still spells out its own
+  `group-hover/<scope>:opacity-100`.
+
+  What this does own is the part that was forgotten four times before the
+  guard existed (docs/MOBILE.md §3): `group-hover` is gated behind
+  `(hover: hover)` in Tailwind v4, so on a device that can never hover the
+  control is not degraded, it is *gone*. The `(hover: none)` fallback below is
+  the whole reason this utility exists, and it is why
+  `src/components/touch-affordance.test.ts` asserts on this block.
+
+  No `transition-property` here on purpose: `rail-collapse-button.tsx` already
+  carries `transition-colors`, and a transition declared in both places would
+  be resolved by emit order rather than by intent. Sites keep their own.
+*/
+@utility hover-reveal {
+  opacity: 0;
+  &:focus-visible {
+    opacity: 1;
+  }
+  @media (hover: none) {
+    opacity: 1;
+  }
+}
+
+/*
+  The traveling tab highlight's transition. Four properties, and deliberately
+  not one shorthand: only `translate` gets the spring.
+
+  Width and height are the box resizing to the next pill, which is a layout
+  change — a spring there would overshoot the box past the pill it is meant
+  to be tracing, and the overshoot would be plainly wrong rather than lively.
+  Opacity is a fade and clips outside 0..1. Both take a fixed duration and a
+  landing ease. docs/DESIGN.md §4 is the rule; this is the one place the split
+  is spelled out.
+
+  Consumers add `motion-reduce:transition-none` — the highlight must still be
+  in the right place with the travel removed, which it is: the position is a
+  style, not an animation.
+*/
+@utility tab-travel {
+  transition-property: translate, width, height, opacity;
+  transition-duration: var(--dur-travel), var(--dur-base), var(--dur-base), var(--dur-fast);
+  transition-timing-function: var(--ease-spring-travel), var(--ease-out-soft),
+    var(--ease-out-soft), linear;
 }
 
 /*
