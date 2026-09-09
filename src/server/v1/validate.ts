@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { todoSchema } from "@/lib/schema";
+import { civilDateSchema, dayNoteSchema, labelSchema, listSchema, tabSchema, todoSchema } from "@/lib/schema";
 
 /**
  * Request validation for `/api/v1/todos` writes (A5, EI-230). Same
@@ -121,4 +121,182 @@ export function parsePatchRequest<S extends z.ZodObject<z.ZodRawShape>>(
  * dynamic — this is a three-line wrapper over it, not its own algorithm. */
 export function parseUpdateTodoRequest(body: unknown): UpdateTodoRequest | null {
   return parsePatchRequest(todoSchema, UPDATABLE_FIELDS, body) as UpdateTodoRequest | null;
+}
+
+// ---------------------------------------------------------------- lists (A14)
+
+/**
+ * Deliberately excludes four fields, each for its own reason:
+ *
+ * - **`isBacklog`** — exactly one per account, minted at seed time. A caller
+ *   setting it true would give the account two backlogs; setting it false on
+ *   the real one leaves it with none, `deleteList`'s guard permanently
+ *   disarmed, and homeless todos with nowhere to land.
+ * - **`archivedWithTabId`** — `archiveTab`'s own bookkeeping. A client
+ *   writing it corrupts `unarchiveTab`'s grouping (see `listSchema`).
+ * - **`position`** — server-resolved from `nextPosition("list")`, never
+ *   client-settable on create. `docs/API.md`: don't add a second answer.
+ * - **`deletedAt`** — DELETE owns it. Reaching it through a PATCH would make
+ *   a soft delete possible without the rehoming that has to accompany one.
+ */
+const LIST_OPTIONAL_ON_CREATE = {
+  color: true,
+  emoji: true,
+  iconUrl: true,
+  tabId: true,
+  description: true,
+  defaultReminderPresetId: true,
+} as const;
+
+const LIST_CREATE_FIELDS = { name: true, ...LIST_OPTIONAL_ON_CREATE } as const;
+
+export const createListRequestSchema = listSchema
+  .pick(LIST_CREATE_FIELDS)
+  .partial(LIST_OPTIONAL_ON_CREATE);
+
+export type CreateListRequest = z.infer<typeof createListRequestSchema>;
+
+export function parseCreateListRequest(body: unknown): CreateListRequest | null {
+  const parsed = createListRequestSchema.safeParse(body);
+  return parsed.success ? parsed.data : null;
+}
+
+/** `archivedAt` is patchable — putting a list away is a real user action,
+ * and unlike `deletedAt` it carries no rehoming. */
+const UPDATABLE_LIST_FIELDS = new Set([
+  ...Object.keys(LIST_CREATE_FIELDS),
+  "archivedAt",
+  // The client computes a valid fractional index; see `lib/ordering.ts`.
+  // Allowed on PATCH but not create, so reorder needs no second endpoint.
+  "position",
+]);
+
+/** For `openapi/routes.ts` — a STATIC, illustrative shape for docs only.
+ * NEVER used for real parsing: see `parsePatchRequest`. */
+export const updateListRequestSchema = listSchema
+  .pick({ ...LIST_CREATE_FIELDS, archivedAt: true, position: true })
+  .partial();
+
+export type UpdateListRequest = z.infer<typeof updateListRequestSchema>;
+
+export function parseUpdateListRequest(body: unknown): UpdateListRequest | null {
+  return parsePatchRequest(listSchema, UPDATABLE_LIST_FIELDS, body) as UpdateListRequest | null;
+}
+
+// ------------------------------------------------------- labels/tabs (A15)
+
+/** Labels are the simplest entity here: a name and decoration. `position` is
+ * server-resolved on create, patchable after, same rule as lists. */
+const LABEL_OPTIONAL_ON_CREATE = { color: true, emoji: true, iconUrl: true } as const;
+const LABEL_CREATE_FIELDS = { name: true, ...LABEL_OPTIONAL_ON_CREATE } as const;
+
+export const createLabelRequestSchema = labelSchema
+  .pick(LABEL_CREATE_FIELDS)
+  .partial(LABEL_OPTIONAL_ON_CREATE);
+
+export type CreateLabelRequest = z.infer<typeof createLabelRequestSchema>;
+
+export function parseCreateLabelRequest(body: unknown): CreateLabelRequest | null {
+  const parsed = createLabelRequestSchema.safeParse(body);
+  return parsed.success ? parsed.data : null;
+}
+
+const UPDATABLE_LABEL_FIELDS = new Set([...Object.keys(LABEL_CREATE_FIELDS), "position"]);
+
+/** Docs only — see `parsePatchRequest`. */
+export const updateLabelRequestSchema = labelSchema
+  .pick({ ...LABEL_CREATE_FIELDS, position: true })
+  .partial();
+
+export type UpdateLabelRequest = z.infer<typeof updateLabelRequestSchema>;
+
+export function parseUpdateLabelRequest(body: unknown): UpdateLabelRequest | null {
+  return parsePatchRequest(labelSchema, UPDATABLE_LABEL_FIELDS, body) as UpdateLabelRequest | null;
+}
+
+/**
+ * `isDefault` is excluded for the same reason `isBacklog` is on lists: the
+ * default tab is the guaranteed destination for lists rehomed by a tab
+ * delete, so an account must always have exactly one. Clearing it would
+ * strand the next tab delete.
+ */
+const TAB_OPTIONAL_ON_CREATE = {
+  color: true,
+  emoji: true,
+  iconUrl: true,
+  description: true,
+} as const;
+
+const TAB_CREATE_FIELDS = { name: true, ...TAB_OPTIONAL_ON_CREATE } as const;
+
+export const createTabRequestSchema = tabSchema
+  .pick(TAB_CREATE_FIELDS)
+  .partial(TAB_OPTIONAL_ON_CREATE);
+
+export type CreateTabRequest = z.infer<typeof createTabRequestSchema>;
+
+export function parseCreateTabRequest(body: unknown): CreateTabRequest | null {
+  const parsed = createTabRequestSchema.safeParse(body);
+  return parsed.success ? parsed.data : null;
+}
+
+const UPDATABLE_TAB_FIELDS = new Set([
+  ...Object.keys(TAB_CREATE_FIELDS),
+  "archivedAt",
+  "position",
+]);
+
+/** Docs only — see `parsePatchRequest`. */
+export const updateTabRequestSchema = tabSchema
+  .pick({ ...TAB_CREATE_FIELDS, archivedAt: true, position: true })
+  .partial();
+
+export type UpdateTabRequest = z.infer<typeof updateTabRequestSchema>;
+
+export function parseUpdateTabRequest(body: unknown): UpdateTabRequest | null {
+  return parsePatchRequest(tabSchema, UPDATABLE_TAB_FIELDS, body) as UpdateTabRequest | null;
+}
+
+// ------------------------------------------------------------ day notes (A16)
+
+/**
+ * `PUT /api/v1/day-notes/{date}` carries exactly one field. There is no
+ * create/update split at the URL because a day note's id is DERIVED from its
+ * date (`daynote:YYYY-MM-DD`), so the caller always knows the address and the
+ * server decides whether a row exists yet.
+ */
+export const upsertDayNoteRequestSchema = dayNoteSchema.pick({ body: true });
+
+export type UpsertDayNoteRequest = z.infer<typeof upsertDayNoteRequestSchema>;
+
+export function parseUpsertDayNoteRequest(body: unknown): UpsertDayNoteRequest | null {
+  const parsed = upsertDayNoteRequestSchema.safeParse(body);
+  return parsed.success ? parsed.data : null;
+}
+
+/** The `{date}` path segment. Returns `null` for anything that is not a civil
+ * date, so a malformed URL is a 400 rather than a lookup for an id that can
+ * never exist. */
+export function parseCivilDate(value: string): string | null {
+  const parsed = civilDateSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
+/** `?from=&to=` on the range read. Both optional, both inclusive; an absent
+ * bound means unbounded on that side. */
+export const dayNoteRangeSchema = z.object({
+  from: civilDateSchema.optional(),
+  to: civilDateSchema.optional(),
+});
+
+export type DayNoteRange = z.infer<typeof dayNoteRangeSchema>;
+
+export function parseDayNoteRange(params: URLSearchParams): DayNoteRange | null {
+  const raw: Record<string, string> = {};
+  for (const key of ["from", "to"]) {
+    const value = params.get(key);
+    if (value !== null) raw[key] = value;
+  }
+  const parsed = dayNoteRangeSchema.safeParse(raw);
+  return parsed.success ? parsed.data : null;
 }

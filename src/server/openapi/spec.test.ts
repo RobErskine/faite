@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Validator } from "@seriousme/openapi-schema-validator";
 import { auth } from "@/server/auth-cli";
+import { TRUSTED_ORIGINS } from "@/server/auth";
 import { buildInternalDocument, buildPublicDocument } from "./spec";
 
 // `Validator.validate` types its parameter as `Record<string, unknown>`;
@@ -95,33 +96,115 @@ describe("buildInternalDocument", () => {
 });
 
 describe("buildPublicDocument", () => {
-  it("documents A2 (EI-227) reads plus A5's (EI-230) two todo writes, nothing else", () => {
+  /**
+   * An exact list, not a subset check — the point is that a path cannot
+   * appear here without someone deciding it should be public. Grows one
+   * ticket at a time: A2 reads, A5's todo writes, A13's todo item route,
+   * A14's list CRUD.
+   */
+  it("documents exactly the public surface, and nothing else", () => {
     expect(Object.keys(buildPublicDocument().paths ?? {}).sort()).toEqual(
       [
         "/api/v1/attachments",
+        "/api/v1/backlog",
+        "/api/v1/day-notes",
+        "/api/v1/day-notes/{date}",
         "/api/v1/labels",
+        "/api/v1/labels/{id}",
         "/api/v1/lists",
+        "/api/v1/lists/{id}",
         "/api/v1/tabs",
+        "/api/v1/tabs/{id}",
+        "/api/v1/overflow",
+        "/api/v1/profile",
         "/api/v1/todos",
         "/api/v1/todos/{id}",
       ].sort(),
     );
   });
 
-  it("todos gained POST; every other resource stays GET-only", () => {
+  it("every entity collection is writable; attachments deliberately are not", () => {
     const paths = buildPublicDocument().paths ?? {};
-    expect(paths["/api/v1/todos"]).toHaveProperty("post");
-    expect(paths["/api/v1/lists"]).not.toHaveProperty("post");
-    expect(paths["/api/v1/labels"]).not.toHaveProperty("post");
-    expect(paths["/api/v1/tabs"]).not.toHaveProperty("post");
+    for (const path of ["/api/v1/todos", "/api/v1/lists", "/api/v1/labels", "/api/v1/tabs"]) {
+      expect(paths[path]).toHaveProperty("post");
+    }
     // EI-242: a write here would have to carry file bytes, and this API is
     // JSON. Uploads go to POST /api/attachments, which is session-only.
     expect(paths["/api/v1/attachments"]).not.toHaveProperty("post");
+  });
+
+  /** Day notes are addressed by DATE, not an opaque id, so they get an upsert
+   * PUT and deliberately no POST or DELETE — see `dayNotePaths`. */
+  it("day notes are an upsert by date, with no POST and no DELETE", () => {
+    const paths = buildPublicDocument().paths ?? {};
+    expect(Object.keys(paths["/api/v1/day-notes/{date}"]).sort()).toEqual(["get", "put"]);
+    expect(Object.keys(paths["/api/v1/day-notes"])).toEqual(["get"]);
+  });
+
+  /**
+   * Overflow/backlog/profile are PROJECTIONS, not entity collections — they
+   * are read-only by construction, and a write method appearing here would
+   * mean someone put a derived path into `V1_RESOURCES`.
+   */
+  it("the derived reads are GET-only", () => {
+    const paths = buildPublicDocument().paths ?? {};
+    for (const path of ["/api/v1/overflow", "/api/v1/backlog", "/api/v1/profile"]) {
+      expect(Object.keys(paths[path])).toEqual(["get"]);
+    }
+  });
+
+  it("every item route carries the full GET/PATCH/DELETE trio", () => {
+    const paths = buildPublicDocument().paths ?? {};
+    for (const kind of ["todos", "lists", "labels", "tabs"]) {
+      expect(Object.keys(paths[`/api/v1/${kind}/{id}`]).sort()).toEqual([
+        "delete",
+        "get",
+        "patch",
+      ]);
+    }
   });
 
   it("validates as OpenAPI 3.1", async () => {
     const result = await new Validator().validate(asSpecData(buildPublicDocument()));
     expect(result.errors).toBeUndefined();
     expect(result.valid).toBe(true);
+  });
+});
+
+/**
+ * REGRESSION (EI-307). The public document shipped with no `servers` block,
+ * which OpenAPI reads as a single server at `/` — resolved against whatever
+ * origin serves the document.
+ *
+ * That is fine on `https://myfaite.app/docs` and broken everywhere else the
+ * same page ships: `/docs` is part of the static export too, where the page
+ * is served from `capacitor://localhost` and a relative `/api/v1/todos`
+ * resolves against a host with no API on it. Scalar's "Test Request" panel
+ * reads this block, so an absent one makes the published docs untestable
+ * from anywhere but production.
+ */
+describe("the public document names an absolute server", () => {
+  it("points at the real API host, not an implied relative root", () => {
+    const doc = buildPublicDocument() as { servers?: { url: string }[] };
+
+    expect(doc.servers).toEqual([
+      { url: "https://myfaite.app", description: "Production" },
+    ]);
+  });
+
+  it("uses an absolute URL, so it resolves the same from any origin", () => {
+    const doc = buildPublicDocument() as { servers?: { url: string }[] };
+    const url = doc.servers?.[0].url ?? "";
+
+    expect(() => new URL(url)).not.toThrow();
+    expect(url.startsWith("/")).toBe(false);
+  });
+
+  it("is a TRUSTED_ORIGIN, so a cross-origin try-it request clears CORS", () => {
+    // The static export and a local `next dev` both call this host from a
+    // different origin. `corsHeaders` returns `{}` for anything off the
+    // allow-list, which would fail the preflight silently.
+    const doc = buildPublicDocument() as { servers?: { url: string }[] };
+    expect(TRUSTED_ORIGINS).toContain(doc.servers?.[0].url);
   });
 });

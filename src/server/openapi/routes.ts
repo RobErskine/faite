@@ -1,12 +1,24 @@
 import { z } from "zod";
 import type { ZodOpenApiPathsObject } from "zod-openapi";
-import { attachmentSchema, todoSchema } from "@/lib/schema";
+import { attachmentSchema, civilDateSchema, dayNoteSchema, todoSchema } from "@/lib/schema";
 import { autocompleteRequestSchema, detailsRequestSchema } from "@/server/places/validate";
 import { pushRequestSchema } from "@/server/sync/validate";
 import { contactRequestSchema } from "@/server/contact/validate";
 import { V1_RESOURCES } from "@/server/v1/resources";
 import { todoQuerySchema } from "@/server/v1/query";
-import { createTodoRequestSchema, updateTodoRequestSchema } from "@/server/v1/validate";
+import { profileSchema } from "@/server/v1/derived";
+import {
+  createLabelRequestSchema,
+  createListRequestSchema,
+  createTabRequestSchema,
+  updateLabelRequestSchema,
+  updateTabRequestSchema,
+  upsertDayNoteRequestSchema,
+  dayNoteRangeSchema,
+  createTodoRequestSchema,
+  updateListRequestSchema,
+  updateTodoRequestSchema,
+} from "@/server/v1/validate";
 import { SYNC_KINDS } from "@/lib/sync/wire";
 
 /**
@@ -284,6 +296,70 @@ const placesPaths: ZodOpenApiPathsObject = {
 };
 
 // ---- /api/desktop/* -------------------------------------------------------
+
+/**
+ * `/api/raycast/*` (A18, EI-298) — the extension's one-click connect.
+ *
+ * INTERNAL ONLY, like `desktopPaths`. These are not a public contract: the
+ * code format, the TTL and the deep-link target are all free to change with
+ * the extension that consumes them, and documenting them publicly would
+ * invite a third party to build against a handshake meant for one client.
+ */
+const raycastPaths: ZodOpenApiPathsObject = {
+  "/api/raycast/handoff": {
+    post: {
+      tags: ["raycast"],
+      summary: "Mint a one-time code for the Raycast extension.",
+      description:
+        "Cookie session only — called from the system browser right after " +
+        "sign-in. Mints a `read`+`write` API key (never `sync` or `places`, " +
+        "unlike the desktop handoff) and returns an encrypted, short-lived " +
+        "code. The key itself never appears in the response, so it never " +
+        "reaches a URL or browser history.",
+      operationId: "raycastHandoff",
+      responses: {
+        "200": {
+          description: "A one-time code to put in the raycast:// deep link.",
+          content: { "application/json": { schema: z.object({ code: z.string() }) } },
+        },
+        "401": {
+          description: "No session.",
+          content: { "application/json": { schema: errorSchema("unauthenticated") } },
+        },
+      },
+    },
+  },
+  "/api/raycast/exchange": {
+    post: {
+      tags: ["raycast"],
+      summary: "Trade a one-time code for the real API key.",
+      description:
+        "Called by the extension from Node — no cookie, no Origin. The code " +
+        "is TTL-bounded (60s) rather than single-use. A code minted by the " +
+        "DESKTOP handoff is rejected here: the two flows use different HKDF " +
+        "domain separators precisely so a narrower grant cannot be redeemed " +
+        "for a wider one.",
+      operationId: "raycastExchange",
+      requestBody: {
+        content: { "application/json": { schema: z.object({ code: z.string() }) } },
+      },
+      responses: {
+        "200": {
+          description: "The API key.",
+          content: { "application/json": { schema: z.object({ token: z.string() }) } },
+        },
+        "400": {
+          description: "No code in the body.",
+          content: { "application/json": { schema: errorSchema("invalid-request") } },
+        },
+        "401": {
+          description: "Unknown, tampered, expired, or minted for a different flow.",
+          content: { "application/json": { schema: errorSchema("invalid-or-expired-code") } },
+        },
+      },
+    },
+  },
+};
 
 const desktopPaths: ZodOpenApiPathsObject = {
   "/api/desktop/handoff": {
@@ -577,8 +653,8 @@ export const v1Paths: ZodOpenApiPathsObject = Object.fromEntries(
           },
         },
       },
-      // Only `todos` writes exist yet (A5, EI-230) — `lists`/`labels`/`tabs`
-      // stay read-only until a future ticket extends this the same way.
+      // Driven by the resource map's own `methods` (A11), so a resource that
+      // gains a write here cannot be left undocumented.
       ...(kind === "todo"
         ? {
             post: {
@@ -612,9 +688,161 @@ export const v1Paths: ZodOpenApiPathsObject = Object.fromEntries(
             },
           }
         : {}),
+      ...(kind === "label" || kind === "tab"
+        ? {
+            post: {
+              tags: ["v1"],
+              summary: `Create a ${kind}.`,
+              description:
+                "Requires the `write` scope. `position` is resolved by the " +
+                "server and is not accepted here. A write is a push — see " +
+                "docs/API.md.",
+              operationId: `createV1${kind[0].toUpperCase()}${kind.slice(1)}`,
+              requestBody: {
+                content: {
+                  "application/json": {
+                    schema: kind === "label" ? createLabelRequestSchema : createTabRequestSchema,
+                  },
+                },
+              },
+              responses: {
+                "201": {
+                  description: `The created ${kind}.`,
+                  content: { "application/json": { schema } },
+                },
+                "400": {
+                  description: "Malformed request — missing name, or a field fails validation.",
+                  content: { "application/json": { schema: errorSchema("invalid-request") } },
+                },
+                "401": unauthenticated,
+                "403": insufficientScope,
+                "500": {
+                  description: "Unhandled server error.",
+                  content: { "application/json": { schema: errorSchema("internal-error") } },
+                },
+              },
+            },
+          }
+        : {}),
+      ...(kind === "list"
+        ? {
+            post: {
+              tags: ["v1"],
+              summary: "Create a list.",
+              description:
+                "Requires the `write` scope. `position` is resolved by the " +
+                "server and is not accepted here; `tabId` defaults to the " +
+                "default tab. A write is a push — see docs/API.md.",
+              operationId: "createV1List",
+              requestBody: {
+                content: { "application/json": { schema: createListRequestSchema } },
+              },
+              responses: {
+                "201": {
+                  description: "The created list.",
+                  content: { "application/json": { schema } },
+                },
+                "400": {
+                  description: "Malformed request — missing name, or a field fails validation.",
+                  content: { "application/json": { schema: errorSchema("invalid-request") } },
+                },
+                "401": unauthenticated,
+                "403": insufficientScope,
+                "500": {
+                  description: "Unhandled server error.",
+                  content: { "application/json": { schema: errorSchema("internal-error") } },
+                },
+              },
+            },
+          }
+        : {}),
     },
   ]),
 );
+
+/** `/api/v1/lists/{id}` — GET/PATCH/DELETE (A14, EI-294). */
+export const listItemPath: ZodOpenApiPathsObject = {
+  "/api/v1/lists/{id}": {
+    get: {
+      tags: ["v1"],
+      summary: "Fetch one list.",
+      description: "Requires the `read` scope. A soft-deleted list 404s.",
+      operationId: "getV1List",
+      requestParams: { path: z.object({ id: z.string() }) },
+      responses: {
+        "200": {
+          description: "The list.",
+          content: { "application/json": { schema: V1_RESOURCES.lists.schema } },
+        },
+        "401": unauthenticated,
+        "403": insufficientScope,
+        "404": {
+          description: "No such list, or it is deleted.",
+          content: { "application/json": { schema: errorSchema("not-found") } },
+        },
+      },
+    },
+    patch: {
+      tags: ["v1"],
+      summary: "Patch an existing list.",
+      description:
+        "Requires the `write` scope. Only the fields present in the body are " +
+        "touched. `isBacklog` is never settable — exactly one list per " +
+        "account is the Backlog, and it is fixed at seed time.",
+      operationId: "updateV1List",
+      requestParams: { path: z.object({ id: z.string() }) },
+      requestBody: {
+        content: { "application/json": { schema: updateListRequestSchema } },
+      },
+      responses: {
+        "200": {
+          description: "The updated list.",
+          content: { "application/json": { schema: V1_RESOURCES.lists.schema } },
+        },
+        "400": {
+          description: "Empty or malformed patch.",
+          content: { "application/json": { schema: errorSchema("invalid-request") } },
+        },
+        "401": unauthenticated,
+        "403": insufficientScope,
+        "404": {
+          description: "No such list, or it is deleted.",
+          content: { "application/json": { schema: errorSchema("not-found") } },
+        },
+      },
+    },
+    delete: {
+      tags: ["v1"],
+      summary: "Delete a list.",
+      description:
+        "Requires the `write` scope. A soft delete: the list is tombstoned " +
+        "and every to-do filed in it is REHOMED to Backlog, in one atomic " +
+        "write. The Backlog list itself cannot be deleted — it is the " +
+        "destination those to-dos move to.",
+      operationId: "deleteV1List",
+      requestParams: { path: z.object({ id: z.string() }) },
+      responses: {
+        "204": { description: "Deleted; its to-dos are now in Backlog." },
+        "401": unauthenticated,
+        "403": insufficientScope,
+        "404": {
+          description: "No such list, or it was already deleted.",
+          content: { "application/json": { schema: errorSchema("not-found") } },
+        },
+        "409": {
+          description:
+            "Either this is the Backlog list, which cannot be deleted, or it " +
+            "holds more to-dos than one atomic write may rehome.",
+          content: { "application/json": { schema: errorSchema("backlog-not-deletable") } },
+        },
+        "500": {
+          description: "Unhandled server error.",
+          content: { "application/json": { schema: errorSchema("internal-error") } },
+        },
+      },
+    },
+  },
+};
 
 export const patchTodoPath: ZodOpenApiPathsObject = {
   "/api/v1/todos/{id}": {
@@ -710,9 +938,284 @@ export const internalOnlyPaths: ZodOpenApiPathsObject = {
   ...syncPaths,
   ...placesPaths,
   ...desktopPaths,
+  ...raycastPaths,
   ...emailPaths,
   ...contactPaths,
   ...attachmentPaths,
   ...v1Paths,
   ...patchTodoPath,
+};
+
+/**
+ * `/api/v1/{labels,tabs}/{id}` — GET/PATCH/DELETE (A15, EI-295).
+ *
+ * Built from one shape because the two differ only in what a DELETE cascades
+ * to and which row is undeletable. Stating those differences per-entity keeps
+ * the 409 description honest rather than generic.
+ */
+const ITEM_ROUTE_NOTES = {
+  label: {
+    deleteDescription:
+      "Requires the `write` scope. A soft delete: the label is tombstoned " +
+      "and STRIPPED from every to-do carrying it, in one atomic write.",
+    conflict: "More to-dos carry this label than one atomic write may update.",
+    conflictError: "too-many-dependents",
+  },
+  tab: {
+    deleteDescription:
+      "Requires the `write` scope. A soft delete: the tab is tombstoned and " +
+      "every list filed under it is REHOMED to the default tab, in one " +
+      "atomic write. The default tab itself cannot be deleted — it is the " +
+      "destination those lists move to.",
+    conflict:
+      "Either this is the default tab, which cannot be deleted, or it holds " +
+      "more lists than one atomic write may rehome.",
+    conflictError: "default-tab-not-deletable",
+  },
+} as const;
+
+export const labelAndTabItemPaths: ZodOpenApiPathsObject = Object.fromEntries(
+  (["label", "tab"] as const).map((kind) => {
+    const plural = `${kind}s` as "labels" | "tabs";
+    const schema = V1_RESOURCES[plural].schema;
+    const notes = ITEM_ROUTE_NOTES[kind];
+
+    return [
+      `/api/v1/${plural}/{id}`,
+      {
+        get: {
+          tags: ["v1"],
+          summary: `Fetch one ${kind}.`,
+          description: `Requires the \`read\` scope. A soft-deleted ${kind} 404s.`,
+          operationId: `getV1${kind[0].toUpperCase()}${kind.slice(1)}`,
+          requestParams: { path: z.object({ id: z.string() }) },
+          responses: {
+            "200": {
+              description: `The ${kind}.`,
+              content: { "application/json": { schema } },
+            },
+            "401": unauthenticated,
+            "403": insufficientScope,
+            "404": {
+              description: `No such ${kind}, or it is deleted.`,
+              content: { "application/json": { schema: errorSchema("not-found") } },
+            },
+          },
+        },
+        patch: {
+          tags: ["v1"],
+          summary: `Patch an existing ${kind}.`,
+          description:
+            "Requires the `write` scope. Only the fields present in the body " +
+            "are touched.",
+          operationId: `updateV1${kind[0].toUpperCase()}${kind.slice(1)}`,
+          requestParams: { path: z.object({ id: z.string() }) },
+          requestBody: {
+            content: {
+              "application/json": {
+                schema: kind === "label" ? updateLabelRequestSchema : updateTabRequestSchema,
+              },
+            },
+          },
+          responses: {
+            "200": {
+              description: `The updated ${kind}.`,
+              content: { "application/json": { schema } },
+            },
+            "400": {
+              description: "Empty or malformed patch.",
+              content: { "application/json": { schema: errorSchema("invalid-request") } },
+            },
+            "401": unauthenticated,
+            "403": insufficientScope,
+            "404": {
+              description: `No such ${kind}, or it is deleted.`,
+              content: { "application/json": { schema: errorSchema("not-found") } },
+            },
+          },
+        },
+        delete: {
+          tags: ["v1"],
+          summary: `Delete a ${kind}.`,
+          description: notes.deleteDescription,
+          operationId: `deleteV1${kind[0].toUpperCase()}${kind.slice(1)}`,
+          requestParams: { path: z.object({ id: z.string() }) },
+          responses: {
+            "204": { description: "Deleted." },
+            "401": unauthenticated,
+            "403": insufficientScope,
+            "404": {
+              description: `No such ${kind}, or it was already deleted.`,
+              content: { "application/json": { schema: errorSchema("not-found") } },
+            },
+            "409": {
+              description: notes.conflict,
+              content: { "application/json": { schema: errorSchema(notes.conflictError) } },
+            },
+            "500": {
+              description: "Unhandled server error.",
+              content: { "application/json": { schema: errorSchema("internal-error") } },
+            },
+          },
+        },
+      },
+    ];
+  }),
+);
+
+/**
+ * `/api/v1/day-notes` (A16, EI-296) — one Markdown note per calendar day.
+ *
+ * Addressed by DATE, not by an opaque id, because a day note's id is derived
+ * from its date (`daynote:YYYY-MM-DD`). That is what makes `PUT` an upsert
+ * with no create/update split, and why there is no `POST`.
+ *
+ * There is deliberately **no DELETE**: clearing a note is `PUT { body: "" }`.
+ * The id is guaranteed to be recreated the next time that day is opened, so a
+ * tombstone would only buy a resurrect-vs-tombstone race.
+ */
+export const dayNotePaths: ZodOpenApiPathsObject = {
+  "/api/v1/day-notes": {
+    get: {
+      tags: ["v1"],
+      summary: "List day notes in a date range.",
+      description:
+        "Requires the `read` scope. Days with an empty note are omitted — an " +
+        "empty body is how a cleared note is stored, so it is not a note. " +
+        "Both bounds are inclusive and optional.",
+      operationId: "listV1DayNotes",
+      requestParams: { query: dayNoteRangeSchema },
+      responses: {
+        "200": {
+          description: "Day notes with content, oldest first.",
+          content: { "application/json": { schema: z.array(dayNoteSchema) } },
+        },
+        "400": {
+          description: "A bound is not a YYYY-MM-DD date.",
+          content: { "application/json": { schema: errorSchema("invalid-request") } },
+        },
+        "401": unauthenticated,
+        "403": insufficientScope,
+      },
+    },
+  },
+  "/api/v1/day-notes/{date}": {
+    get: {
+      tags: ["v1"],
+      summary: "Fetch one day's note.",
+      description:
+        "Requires the `read` scope. Every valid date is addressable: a day " +
+        "with no note answers 200 with an empty body rather than 404.",
+      operationId: "getV1DayNote",
+      requestParams: { path: z.object({ date: civilDateSchema }) },
+      responses: {
+        "200": {
+          description: "The day's note, possibly empty.",
+          content: { "application/json": { schema: dayNoteSchema } },
+        },
+        "400": {
+          description: "The path segment is not a YYYY-MM-DD date.",
+          content: { "application/json": { schema: errorSchema("invalid-request") } },
+        },
+        "401": unauthenticated,
+        "403": insufficientScope,
+      },
+    },
+    put: {
+      tags: ["v1"],
+      summary: "Write one day's note.",
+      description:
+        "Requires the `write` scope. An upsert: the note is created if that " +
+        "day has none. The body is Markdown. Writing an empty body clears " +
+        "the note — and on a day that never had one, does nothing at all.",
+      operationId: "upsertV1DayNote",
+      requestParams: { path: z.object({ date: civilDateSchema }) },
+      requestBody: {
+        content: { "application/json": { schema: upsertDayNoteRequestSchema } },
+      },
+      responses: {
+        "200": {
+          description: "The stored note.",
+          content: { "application/json": { schema: dayNoteSchema } },
+        },
+        "400": {
+          description: "Malformed date or body.",
+          content: { "application/json": { schema: errorSchema("invalid-request") } },
+        },
+        "401": unauthenticated,
+        "403": insufficientScope,
+        "500": {
+          description: "Unhandled server error.",
+          content: { "application/json": { schema: errorSchema("internal-error") } },
+        },
+      },
+    },
+  },
+};
+
+/**
+ * The three derived reads (A17, EI-297). Not entity collections — they are
+ * projections over rows the account already has, which is why they are hand
+ * written here rather than generated from `V1_RESOURCES`.
+ */
+export const derivedPaths: ZodOpenApiPathsObject = {
+  "/api/v1/overflow": {
+    get: {
+      tags: ["v1"],
+      summary: "To-dos that have slipped past their Faite Loop window.",
+      description:
+        "Requires the `read` scope. Overflow is DERIVED, never stored: this " +
+        "runs the same placement rule the board renders with, against this " +
+        "account's own settings. A client cannot compute it without them.\n\n" +
+        "Reports PLACEMENT, not visibility — a completed but overdue to-do " +
+        "is still in Overflow. Filter on `status` if you want only open work.",
+      operationId: "listV1Overflow",
+      responses: {
+        "200": {
+          description: "The overflowing to-dos, in board order.",
+          content: { "application/json": { schema: z.array(todoSchema) } },
+        },
+        "401": unauthenticated,
+        "403": insufficientScope,
+      },
+    },
+  },
+  "/api/v1/backlog": {
+    get: {
+      tags: ["v1"],
+      summary: "To-dos in the Backlog list.",
+      description:
+        "Requires the `read` scope. Backlog is the always-present list a " +
+        "to-do lands in when it is not filed anywhere else.",
+      operationId: "listV1Backlog",
+      responses: {
+        "200": {
+          description: "The backlog to-dos, in board order.",
+          content: { "application/json": { schema: z.array(todoSchema) } },
+        },
+        "401": unauthenticated,
+        "403": insufficientScope,
+      },
+    },
+  },
+  "/api/v1/profile": {
+    get: {
+      tags: ["v1"],
+      summary: "The caller's account-level settings.",
+      description:
+        "Requires the `read` scope. Identity plus the Faite Loop " +
+        "configuration a client needs to render the board the way the app " +
+        "does. Device-local layout preferences are deliberately not exposed " +
+        "— they describe one screen, not the account.",
+      operationId: "getV1Profile",
+      responses: {
+        "200": {
+          description: "The profile.",
+          content: { "application/json": { schema: profileSchema } },
+        },
+        "401": unauthenticated,
+        "403": insufficientScope,
+      },
+    },
+  },
 };

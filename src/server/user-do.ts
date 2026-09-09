@@ -64,9 +64,14 @@ export interface SchemaInfo {
  *
  * This map is the gate the old inline comment on `listEntities` asked for.
  * A kind belongs here only once someone has checked it has BOTH a
- * `deleted_at` column and the sort column named — `settings` (a singleton
- * with neither) and `dayNote` still do not qualify, and adding a kind here
- * without checking reintroduces exactly the footgun this replaced.
+ * `deleted_at` column and the sort column named — `settings`, a singleton
+ * with neither, still does not qualify. Adding a kind here without checking
+ * reintroduces exactly the footgun this replaced.
+ *
+ * `dayNote` was listed as not qualifying until A16 (EI-296). That was simply
+ * wrong: `day_notes` has `...syncableColumns` (so `deleted_at`) and a
+ * `notNull` `date`, which is both halves of the gate. Nothing about the table
+ * changed — only the check that had never been done.
  *
  * Values are interpolated into SQL, so they must stay literal SQL fragments
  * written in this file and never derive from anything a request supplies.
@@ -80,6 +85,9 @@ const ORDER_BY_KIND = {
   // reorder UI. `id` breaks ties because UUIDv7 is time-ordered, so two rows
   // written in the same millisecond still come back deterministically.
   attachment: "created_at, id",
+  // Chronological, which is the only order a day note has. No `position`
+  // column and no reorder UI — the date IS the sort key.
+  dayNote: "date",
 } as const;
 
 export type ListableKind = keyof typeof ORDER_BY_KIND;
@@ -653,6 +661,114 @@ export class UserDurableObject extends DurableObject {
       )
       .toArray()
       .map((row) => row.id);
+  }
+
+  /**
+   * Ids of the non-deleted todos filed in list `id` (A14, EI-294).
+   *
+   * `DELETE /api/v1/lists/{id}` REHOMES these to Backlog rather than refusing
+   * or cascading — mirroring `repositories.ts`'s `deleteList`. A REST surface
+   * that refuses what the app itself does for the same user action would be a
+   * second answer to one question.
+   *
+   * Read before the delete builds anything, for the same reason
+   * `childTodoIds` is: the count fixes how many HLC stamps to pre-fetch.
+   */
+  async todoIdsInList(id: string): Promise<string[]> {
+    return this.ctx.storage.sql
+      .exec<{ id: string }>(
+        "SELECT id FROM todos WHERE list_id = ? AND deleted_at IS NULL",
+        id,
+      )
+      .toArray()
+      .map((row) => row.id);
+  }
+
+  /**
+   * The Backlog list's id, or `null` for an account that somehow has none.
+   *
+   * Queried by `is_backlog = 1` rather than by a well-known constant: Backlog
+   * is minted per account at seed time with a fresh UUID, so there is no
+   * constant to compare against. Exactly one row should match; `LIMIT 1`
+   * keeps a corrupted account from throwing here rather than at the seam that
+   * can actually report it.
+   */
+  async backlogListId(): Promise<string | null> {
+    const [row] = this.ctx.storage.sql
+      .exec<{ id: string }>(
+        "SELECT id FROM lists WHERE is_backlog = 1 AND deleted_at IS NULL LIMIT 1",
+      )
+      .toArray();
+    return row?.id ?? null;
+  }
+
+  /**
+   * Ids of the non-deleted lists filed under tab `id` (A15, EI-295).
+   *
+   * `DELETE /api/v1/tabs/{id}` rehomes these to the default tab rather than
+   * cascading — a tab is a grouping, and deleting a grouping has never
+   * deleted its members. Mirrors `repositories.ts`'s `deleteTab`.
+   */
+  async listIdsInTab(id: string): Promise<string[]> {
+    return this.ctx.storage.sql
+      .exec<{ id: string }>(
+        "SELECT id FROM lists WHERE tab_id = ? AND deleted_at IS NULL",
+        id,
+      )
+      .toArray()
+      .map((row) => row.id);
+  }
+
+  /**
+   * The default tab's id — the destination `deleteTab` rehomes to, exactly
+   * the role Backlog plays for todos.
+   *
+   * Queried by `is_default = 1` rather than compared against
+   * `DEFAULT_TAB_ID`: an account seeded by an older build may not match the
+   * constant, and rehoming to an id that does not exist would strand every
+   * list it touched.
+   */
+  async defaultTabId(): Promise<string | null> {
+    const [row] = this.ctx.storage.sql
+      .exec<{ id: string }>(
+        "SELECT id FROM tabs WHERE is_default = 1 AND deleted_at IS NULL LIMIT 1",
+      )
+      .toArray();
+    return row?.id ?? null;
+  }
+
+  /**
+   * Every non-deleted todo carrying label `id`, as `{ id, labelIds }` with
+   * the label already removed — so the caller can push the shortened array
+   * without re-deriving it (A15, EI-295).
+   *
+   * **Filtered in JS after `JSON.parse`, never with `LIKE '%"id"%'`.**
+   * `label_ids` is a JSON text column; a `LIKE` would match an id that is a
+   * SUBSTRING of another id, and is sensitive to whitespace in the encoding.
+   * The column is small and already read in full by `listEntities`, so
+   * scanning it here costs nothing new.
+   */
+  async todosWithLabel(id: string): Promise<{ id: string; labelIds: string[] }[]> {
+    const rows = this.ctx.storage.sql
+      .exec<{ id: string; label_ids: string | null }>(
+        "SELECT id, label_ids FROM todos WHERE deleted_at IS NULL",
+      )
+      .toArray();
+
+    const affected: { id: string; labelIds: string[] }[] = [];
+    for (const row of rows) {
+      let labelIds: unknown;
+      try {
+        labelIds = JSON.parse(row.label_ids ?? "[]");
+      } catch {
+        // A malformed cell is not this method's problem to fix, and throwing
+        // here would take down an unrelated delete.
+        continue;
+      }
+      if (!Array.isArray(labelIds) || !labelIds.includes(id)) continue;
+      affected.push({ id: row.id, labelIds: labelIds.filter((value) => value !== id) });
+    }
+    return affected;
   }
 
   /**

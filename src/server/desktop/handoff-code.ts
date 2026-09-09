@@ -1,5 +1,7 @@
 /**
- * D2a: the one-time code that rides the `faite://auth-callback` deep link.
+ * The one-time code that rides an app's auth deep link — `faite://auth-callback`
+ * for the desktop shell (D2a), `raycast://extensions/Rob/faite/...` for the
+ * Raycast extension (A18, EI-298).
  *
  * The system-browser login flow mints a real, long-lived API key
  * (`auth-tokens.ts`'s `apiTokenPlugin`) once the user signs in — but the
@@ -22,9 +24,33 @@
  * minute of a login they just performed), not a general-purpose OAuth
  * authorization-code implementation. Revisit if this pattern is ever reused
  * for something with a larger attack surface.
+ *
+ * **Still lives under `desktop/` although Raycast uses it too.** Moving it to
+ * a neutral home would churn every existing import and test for no behavior
+ * change; the desktop flow is simply where it was born. If a third consumer
+ * appears, move it then.
+ *
+ * ## Domain separation (A18, EI-298)
+ *
+ * The HKDF `info` string is a DOMAIN SEPARATOR, and each flow gets its own.
+ * Sharing one would derive the same AES key for both, which means a code
+ * minted by `/api/desktop/handoff` would decrypt at `/api/raycast/exchange`
+ * and vice versa — the two envelopes become interchangeable, and a grant
+ * intended for one client is redeemable by the other. The flows hand out
+ * different scopes (desktop gets `sync`/`places`; Raycast deliberately does
+ * not), so that interchange would be a privilege escalation, not a cosmetic
+ * mix-up.
+ *
+ * Free to prevent now; awkward once codes are in the wild.
  */
 
-const HKDF_INFO = new TextEncoder().encode("faite-desktop-handoff-v1");
+/** The desktop flow's separator. Unchanged, so every code already in flight
+ * keeps decoding. */
+export const DESKTOP_HANDOFF_INFO = "faite-desktop-handoff-v1";
+
+/** The Raycast flow's separator (A18, EI-298). Must never equal the above. */
+export const RAYCAST_HANDOFF_INFO = "faite-raycast-handoff-v1";
+
 const CODE_TTL_MS = 60_000;
 
 interface HandoffPayload {
@@ -32,7 +58,7 @@ interface HandoffPayload {
   exp: number;
 }
 
-async function deriveKey(secret: string): Promise<CryptoKey> {
+async function deriveKey(secret: string, info: string): Promise<CryptoKey> {
   const material = await crypto.subtle.importKey(
     "raw",
     new TextEncoder().encode(secret),
@@ -41,7 +67,12 @@ async function deriveKey(secret: string): Promise<CryptoKey> {
     ["deriveKey"],
   );
   return crypto.subtle.deriveKey(
-    { name: "HKDF", hash: "SHA-256", salt: new Uint8Array(0), info: HKDF_INFO },
+    {
+      name: "HKDF",
+      hash: "SHA-256",
+      salt: new Uint8Array(0),
+      info: new TextEncoder().encode(info),
+    },
     material,
     { name: "AES-GCM", length: 256 },
     false,
@@ -64,9 +95,18 @@ function base64UrlDecode(value: string): Uint8Array {
   return bytes;
 }
 
-/** `apiKey` is the plaintext API key returned once by `createApiKey`. */
-export async function encodeHandoffCode(apiKey: string, secret: string): Promise<string> {
-  const key = await deriveKey(secret);
+/**
+ * `apiKey` is the plaintext API key returned once by `createApiKey`.
+ *
+ * `info` defaults to the desktop separator so every existing call site is
+ * unchanged; a new flow MUST pass its own (see the file header).
+ */
+export async function encodeHandoffCode(
+  apiKey: string,
+  secret: string,
+  info: string = DESKTOP_HANDOFF_INFO,
+): Promise<string> {
+  const key = await deriveKey(secret, info);
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const payload: HandoffPayload = { key: apiKey, exp: Date.now() + CODE_TTL_MS };
   const ciphertext = await crypto.subtle.encrypt(
@@ -84,10 +124,18 @@ export async function encodeHandoffCode(apiKey: string, secret: string): Promise
  * Returns the plaintext API key, or `null` for anything that isn't a valid,
  * unexpired code — malformed base64, a truncated buffer, a failed GCM auth
  * tag (tampered or encrypted under a different secret), or an expired
- * `exp`. Deliberately one failure shape for all of these: the caller (the
- * `/api/desktop/exchange` route) only ever needs to know "usable or not".
+ * `exp`. Deliberately one failure shape for all of these: the caller (an
+ * `/exchange` route) only ever needs to know "usable or not".
+ *
+ * **A code minted under a different `info` fails here**, and it fails as an
+ * ordinary GCM auth-tag rejection rather than a distinguishable error — which
+ * is exactly the behavior domain separation is for.
  */
-export async function decodeHandoffCode(code: string, secret: string): Promise<string | null> {
+export async function decodeHandoffCode(
+  code: string,
+  secret: string,
+  info: string = DESKTOP_HANDOFF_INFO,
+): Promise<string | null> {
   let combined: Uint8Array;
   try {
     combined = base64UrlDecode(code);
@@ -102,7 +150,7 @@ export async function decodeHandoffCode(code: string, secret: string): Promise<s
 
   let plaintext: ArrayBuffer;
   try {
-    const key = await deriveKey(secret);
+    const key = await deriveKey(secret, info);
     plaintext = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ciphertext);
   } catch {
     return null;

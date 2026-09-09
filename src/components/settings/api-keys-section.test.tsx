@@ -3,12 +3,14 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiKeysSection } from "./api-keys-section";
 
-const { list, create, del, toastSuccess, toastError, session } = vi.hoisted(() => ({
+const { list, create, del, update, toastSuccess, toastError, toastWarning, session } = vi.hoisted(() => ({
   list: vi.fn(),
   create: vi.fn(),
   del: vi.fn(),
+  update: vi.fn(),
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
+  toastWarning: vi.fn(),
   session: {
     data: null as { user: { id: string } } | null,
     isPending: false,
@@ -16,7 +18,9 @@ const { list, create, del, toastSuccess, toastError, session } = vi.hoisted(() =
   },
 }));
 
-vi.mock("sonner", () => ({ toast: { success: toastSuccess, error: toastError } }));
+vi.mock("sonner", () => ({
+  toast: { success: toastSuccess, error: toastError, warning: toastWarning },
+}));
 
 vi.mock("@/lib/auth-client", () => ({
   useSession: () => session,
@@ -25,6 +29,7 @@ vi.mock("@/lib/auth-client", () => ({
       list: (...args: unknown[]) => list(...args),
       create: (...args: unknown[]) => create(...args),
       delete: (...args: unknown[]) => del(...args),
+      update: (...args: unknown[]) => update(...args),
     },
   },
 }));
@@ -144,7 +149,13 @@ describe("ApiKeysSection", () => {
       fireEvent.click(screen.getByRole("button", { name: "Create" }));
     });
 
-    expect(create).toHaveBeenCalledWith({ name: "my new key", configId: "default" });
+    // Now carries an explicit `expiresIn` (A19, EI-299) — the dropdown
+    // defaults to 90 days, which is what the plugin would have applied anyway.
+    expect(create).toHaveBeenCalledWith({
+      name: "my new key",
+      configId: "default",
+      expiresIn: 90 * 24 * 60 * 60,
+    });
   });
 
   it("creates a read-write key when Write is ticked, sending configId: 'read-write'", async () => {
@@ -159,7 +170,11 @@ describe("ApiKeysSection", () => {
       fireEvent.click(screen.getByRole("button", { name: "Create" }));
     });
 
-    expect(create).toHaveBeenCalledWith({ name: "my new key", configId: "read-write" });
+    expect(create).toHaveBeenCalledWith({
+      name: "my new key",
+      configId: "read-write",
+      expiresIn: 90 * 24 * 60 * 60,
+    });
   });
 
   it("creates a key and reveals the raw secret exactly once, disabling Done until copied", async () => {
@@ -173,7 +188,11 @@ describe("ApiKeysSection", () => {
       fireEvent.click(screen.getByRole("button", { name: "Create" }));
     });
 
-    expect(create).toHaveBeenCalledWith({ name: "my new key", configId: "default" });
+    expect(create).toHaveBeenCalledWith({
+      name: "my new key",
+      configId: "default",
+      expiresIn: 90 * 24 * 60 * 60,
+    });
     expect(screen.getByDisplayValue("faite_the-raw-secret-value")).toBeTruthy();
 
     const doneButton = screen.getByRole("button", { name: "Copy it first" }) as HTMLButtonElement;
@@ -206,4 +225,12 @@ describe("ApiKeysSection", () => {
     });
     expect(del).toHaveBeenCalledWith({ keyId: "key-1" });
   });
+
+  it("renders a null expiresAt as 'never expires' rather than saying nothing", async () => {
+    list.mockResolvedValue({ data: { apiKeys: [{ ...KEY_ROW, expiresAt: null }] }, error: null });
+    render(<ApiKeysSection />);
+
+    await waitFor(() => expect(screen.getByText(/never expires/)).toBeTruthy());
+  });
+
 });

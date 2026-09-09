@@ -30,7 +30,13 @@ export interface FakeStub {
   defaultReminderTimeForList: ReturnType<typeof vi.fn>;
   nextServerHlc: ReturnType<typeof vi.fn>;
   childTodoIds: ReturnType<typeof vi.fn>;
+  todoIdsInList: ReturnType<typeof vi.fn>;
+  backlogListId: ReturnType<typeof vi.fn>;
+  listIdsInTab: ReturnType<typeof vi.fn>;
+  defaultTabId: ReturnType<typeof vi.fn>;
+  todosWithLabel: ReturnType<typeof vi.fn>;
   attachmentIdsForTodo: ReturnType<typeof vi.fn>;
+  getSettings: ReturnType<typeof vi.fn>;
   push: ReturnType<typeof vi.fn>;
 }
 
@@ -60,7 +66,13 @@ export function makeStub(overrides: Partial<FakeStub> = {}): FakeStub {
       return `000000001388:${String(hlcCounter).padStart(4, "0")}:server`;
     }),
     childTodoIds: vi.fn().mockResolvedValue([]),
+    todoIdsInList: vi.fn().mockResolvedValue([]),
+    backlogListId: vi.fn().mockResolvedValue("backlog-1"),
+    listIdsInTab: vi.fn().mockResolvedValue([]),
+    defaultTabId: vi.fn().mockResolvedValue("tab-1"),
+    todosWithLabel: vi.fn().mockResolvedValue([]),
     attachmentIdsForTodo: vi.fn().mockResolvedValue([]),
+    getSettings: vi.fn().mockResolvedValue(null),
     push: vi.fn().mockResolvedValue(okPushResponse()),
     ...overrides,
   };
@@ -132,4 +144,83 @@ export function rawTodoRow(overrides: Record<string, unknown> = {}): Record<stri
 /** The `PushEntry[]` handed to the single expected `push()` call. */
 export function pushedEntries(stub: FakeStub, call = 0): PushEntry[] {
   return stub.push.mock.calls[call][1].entries as PushEntry[];
+}
+
+/** A raw `lists` row, `version` included — same rationale as `rawTodoRow`. */
+export function rawListRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    version: 7,
+    id: "list-1",
+    ownerId: "user-1",
+    createdAt: "2026-09-01T00:00:00.000Z",
+    updatedAt: "2026-09-01T00:00:00.000Z",
+    deletedAt: null,
+    name: "Errands",
+    isBacklog: false,
+    archivedAt: null,
+    archivedWithTabId: null,
+    position: "a0",
+    tabId: "tab-1",
+    defaultReminderPresetId: null,
+    description: null,
+    color: null,
+    emoji: null,
+    iconUrl: null,
+    ...overrides,
+  };
+}
+
+/** A raw `tabs` row. `isDefault` matters — `defaultTabIdFor` finds the tab a
+ * new list lands in by scanning for it. */
+export function rawTabRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    version: 3,
+    id: "tab-1",
+    ownerId: "user-1",
+    createdAt: "2026-09-01T00:00:00.000Z",
+    updatedAt: "2026-09-01T00:00:00.000Z",
+    deletedAt: null,
+    name: "Personal",
+    description: null,
+    isDefault: true,
+    archivedAt: null,
+    position: "a0",
+    color: null,
+    emoji: null,
+    iconUrl: null,
+    ...overrides,
+  };
+}
+
+/** A raw `labels` row, `version` included. */
+export function rawLabelRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    version: 5,
+    id: "label-1",
+    ownerId: "user-1",
+    createdAt: "2026-09-01T00:00:00.000Z",
+    updatedAt: "2026-09-01T00:00:00.000Z",
+    deletedAt: null,
+    name: "Urgent",
+    position: "a0",
+    color: null,
+    emoji: null,
+    iconUrl: null,
+    ...overrides,
+  };
+}
+
+/** A raw `day_notes` row, `version` included. */
+export function rawDayNoteRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    version: 2,
+    id: "daynote:2026-09-08",
+    ownerId: "user-1",
+    createdAt: "2026-09-08T00:00:00.000Z",
+    updatedAt: "2026-09-08T00:00:00.000Z",
+    deletedAt: null,
+    date: "2026-09-08",
+    body: "# Today",
+    ...overrides,
+  };
 }

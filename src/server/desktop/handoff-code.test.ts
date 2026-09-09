@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { decodeHandoffCode, encodeHandoffCode } from "./handoff-code";
+import {
+  decodeHandoffCode,
+  DESKTOP_HANDOFF_INFO,
+  encodeHandoffCode,
+  RAYCAST_HANDOFF_INFO,
+} from "./handoff-code";
 
 const SECRET = "test-secret-do-not-use-in-prod";
 const OTHER_SECRET = "a-different-secret";
@@ -59,5 +64,51 @@ describe("handoff code round trip", () => {
     } finally {
       Date.now = realNow;
     }
+  });
+});
+
+/**
+ * A18 (EI-298). The HKDF `info` string is a DOMAIN SEPARATOR, and these are
+ * the tests that make it one.
+ *
+ * The flows hand out DIFFERENT scopes — desktop gets `sync` and `places`,
+ * Raycast deliberately gets neither — so if one flow's code decoded at the
+ * other's `/exchange`, a narrower grant would be redeemable for a wider one.
+ * That is a privilege escalation, not a cosmetic mix-up.
+ */
+describe("domain separation between handoff flows", () => {
+  it("a desktop code does NOT decode with the Raycast separator", async () => {
+    const code = await encodeHandoffCode("faite_desktop_key", SECRET, DESKTOP_HANDOFF_INFO);
+
+    expect(await decodeHandoffCode(code, SECRET, RAYCAST_HANDOFF_INFO)).toBeNull();
+  });
+
+  it("a Raycast code does NOT decode with the desktop separator", async () => {
+    const code = await encodeHandoffCode("faite_raycast_key", SECRET, RAYCAST_HANDOFF_INFO);
+
+    expect(await decodeHandoffCode(code, SECRET, DESKTOP_HANDOFF_INFO)).toBeNull();
+  });
+
+  it("each still round-trips under its own separator", async () => {
+    const desktop = await encodeHandoffCode("faite_d", SECRET, DESKTOP_HANDOFF_INFO);
+    const raycast = await encodeHandoffCode("faite_r", SECRET, RAYCAST_HANDOFF_INFO);
+
+    expect(await decodeHandoffCode(desktop, SECRET, DESKTOP_HANDOFF_INFO)).toBe("faite_d");
+    expect(await decodeHandoffCode(raycast, SECRET, RAYCAST_HANDOFF_INFO)).toBe("faite_r");
+  });
+
+  /** The default keeps every pre-A18 call site working unchanged — a code in
+   * flight when this shipped must still decode. */
+  it("defaults to the desktop separator on both sides", async () => {
+    const code = await encodeHandoffCode("faite_legacy", SECRET);
+
+    expect(await decodeHandoffCode(code, SECRET)).toBe("faite_legacy");
+    expect(await decodeHandoffCode(code, SECRET, DESKTOP_HANDOFF_INFO)).toBe("faite_legacy");
+  });
+
+  it("the two separators are actually different strings", async () => {
+    // A rename that accidentally collapsed them would make every test above
+    // pass while silently removing the separation.
+    expect(DESKTOP_HANDOFF_INFO).not.toBe(RAYCAST_HANDOFF_INFO);
   });
 });

@@ -22,6 +22,7 @@ import { durableHlcQueue } from "../service/hlc";
 import { createTodo, pushTransportFor, updateTodo } from "../service/todos";
 import type { UserDurableObject } from "../user-do";
 import { withEventStreamAccept } from "./accept";
+import { profileFromSettings } from "../v1/derived";
 import { settingsOrDefault } from "./settings-defaults";
 
 export { withEventStreamAccept } from "./accept";
@@ -443,20 +444,19 @@ function buildServer(
   server.registerTool(
     "get_profile",
     {
-      description: "The caller's display name, avatar, and timezone.",
+      description:
+        "The caller's display name, avatar, timezone, and Faite Loop settings " +
+        "(overflowAfterDays, visibleDays, workdays).",
       inputSchema: {},
     },
     async () => {
       requireScope(identity, "read");
       const settings = await loadSettings(identity, stub);
-      return textResult({
-        displayName: settings.displayName,
-        avatarKind: settings.avatarKind,
-        avatarInitials: settings.avatarInitials,
-        avatarEmoji: settings.avatarEmoji,
-        avatarImage: settings.avatarImage,
-        timezone: settings.timezone,
-      });
+      // The SAME projection `GET /api/v1/profile` returns (A17, EI-297).
+      // This used to hand-pick its fields inline, which meant the "never
+      // expose device-local board prefs" rule lived in two places — exactly
+      // the second copy that drifts. `profileSchema` is now the only one.
+      return textResult(profileFromSettings(settings));
     },
   );
 
