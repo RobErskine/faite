@@ -317,6 +317,17 @@ test("the Raycast coda is server-rendered, and sits after the call to action", a
   const ctaY = (await page.getByRole("link", { name: /Create an account to sync/ }).boundingBox())?.y ?? 0;
   const codaY = (await coda.boundingBox())?.y ?? 0;
   expect(codaY).toBeGreaterThan(ctaY);
+
+  /*
+    The store button is deliberately NOT a link: the extension is private to
+    one organization, so the page it would point at is one most readers cannot
+    see. Advertising something the reader cannot have is the same fidelity
+    failure as showing a feature the product lacks (HOMEPAGE.md §4), just
+    pointed outward. This fails the day someone makes it a link before the
+    listing is public.
+  */
+  await expect(coda.getByText(/Coming to the Raycast Store/)).toBeVisible();
+  await expect(coda.getByRole("link", { name: /Raycast Store/ })).toHaveCount(0);
 });
 
 test("the retired spike route is gone", async ({ request }) => {

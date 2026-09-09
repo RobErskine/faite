@@ -32,6 +32,33 @@ import { cn } from "@/lib/utils";
  * cheapest way to break it is a hand-drawn "screenshot" of an interface nobody
  * built. These are captures of the actual commands, counts and all.
  */
+/**
+ * Raycast's own mark, inline rather than an asset.
+ *
+ * Taken from the logo Raycast ships in its own developer docs, with the
+ * baked-in background rect dropped so the glyph can take `currentColor`. That
+ * is what lets it read correctly in both themes from one copy, and it adds no
+ * new brand color — `docs/DESIGN.md` §6. Inline also keeps it a single
+ * request: the whole mark is smaller than the headers it would take to fetch.
+ *
+ * `aria-hidden` because the words "Also in Raycast" sit directly beside it. A
+ * screen reader announcing the logo too would simply say it twice.
+ */
+function RaycastMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" fill="currentColor" aria-hidden className={className}>
+      <path fillRule="evenodd" clipRule="evenodd" d="m15 8-.73.73-2.77-2.77V4.5zM8 1l-.73.73 2.77 2.769h1.46zM6.433 2.57l-.73.73 1.201 1.203h1.46zM11.5 7.636v1.461l1.202 1.202.73-.73zm-.418 2.716.418-.418H6.068V4.5l-.418.418-.784-.784-.733.732.784.784-.418.418v.84L3.297 5.706l-.73.73L4.498 8.37v1.667L1.731 7.27 1 8l7 7 .73-.73-2.768-2.77h1.673l1.933 1.933.73-.73-1.2-1.203h.84l.418-.418.784.784.73-.73z" />
+    </svg>
+  );
+}
+
+/**
+ * Where the extension will live once it is public (EI-314). Publishing under
+ * the organization keeps this slug, so the URL is already correct — it is the
+ * visibility that is not.
+ */
+export const RAYCAST_STORE_URL = "https://www.raycast.com/erskine-interactive/faite";
+
 const SHOTS = [
   {
     src: "/raycast/my-lists.webp",
@@ -53,14 +80,24 @@ export function RaycastCallout() {
     >
       <div className="mx-auto flex max-w-5xl flex-col gap-12">
         <div className="mx-auto max-w-2xl space-y-3 text-center">
-          <p className="text-sm font-medium text-muted-foreground">Also in Raycast</p>
+          <p className="flex items-center justify-center gap-1.5 text-sm font-medium text-muted-foreground">
+            <RaycastMark className="size-4" />
+            Also in Raycast
+          </p>
           <h2
             id="raycast-callout-heading"
             className="font-heading text-3xl font-semibold tracking-tight sm:text-4xl"
           >
             Capture it without opening anything.
           </h2>
-          <p className="text-lg text-muted-foreground">
+          {/*
+            `text-pretty` rather than `text-balance`: this is a three-line
+            paragraph, and what was wrong with it was a one-word last line.
+            `pretty` exists for exactly that — it prevents orphans without
+            evening out the line lengths above, which is what `balance` does
+            and which reads oddly on body copy.
+          */}
+          <p className="text-pretty text-lg text-muted-foreground">
             Faite has a Raycast extension. Type a to-do and it lands on the
             board, dated and filed — and if you were reading something, the
             to-do remembers the page so you can pick it back up.
@@ -105,19 +142,34 @@ export function RaycastCallout() {
             into to-dos and file them where they belong, in one sentence.
           </p>
           {/*
-            Links out to the API docs rather than to the extension. The
-            extension is private to one organization today, so a store link
-            would send most readers to a page they cannot install from —
-            exactly the "advertises what you cannot have" failure §4 warns
-            about. The public API is the part anyone can use right now, and it
-            is what the extension is built on.
+            "Coming soon", and not a link, because the store page does not
+            exist yet — the extension is published privately to one
+            organization. Linking to `raycast.com/erskine-interactive/faite`
+            today sends everyone who is not a member to a page they cannot
+            see, which is `docs/HOMEPAGE.md` §4's fidelity rule broken in the
+            other direction: advertising something the reader cannot have.
+
+            When EI-314 publishes it publicly the slug does not change, so
+            flipping this is deleting the span and restoring a link to
+            RAYCAST_STORE_URL. Kept as a constant so that is one edit.
           */}
-          <Link
-            href="/docs"
-            className={cn(buttonVariants({ variant: "outline", size: "lg" }))}
-          >
-            See the API it is built on
-          </Link>
+          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-3">
+            <span
+              className={cn(
+                buttonVariants({ variant: "outline", size: "lg" }),
+                "pointer-events-none opacity-70",
+              )}
+              aria-disabled
+            >
+              Coming to the Raycast Store
+            </span>
+            <Link
+              href="/docs"
+              className="text-sm text-muted-foreground underline-offset-4 hover:underline"
+            >
+              Or build on the API it uses
+            </Link>
+          </div>
         </div>
       </div>
     </section>
