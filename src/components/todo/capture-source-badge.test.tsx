@@ -76,4 +76,73 @@ describe("CaptureSourceBadge", () => {
     );
     expect(screen.getByText("From app · Figma")).toBeTruthy();
   });
+
+  /**
+   * EI-312. The Raycast extension's Quick Add is the first writer of a
+   * browser capture, and the URL is the whole point — a to-do that says
+   * "From browser · Amazon" without a way back to the page is decorative.
+   */
+  describe("browser captures link back", () => {
+    const browserSource = (url: string, pageTitle?: string) =>
+      serializeSource({ v: 1, kind: "browser", at: AT, url, pageTitle });
+
+    it("renders the page title as a link to the page", () => {
+      render(<CaptureSourceBadge source={browserSource("https://example.test/thing", "A Thing")} />);
+
+      const link = screen.getByRole("link");
+      expect(link.getAttribute("href")).toBe("https://example.test/thing");
+      expect(link.textContent).toContain("A Thing");
+    });
+
+    it("falls back to the URL as the label when there is no page title", () => {
+      render(<CaptureSourceBadge source={browserSource("https://example.test/thing")} />);
+
+      expect(screen.getByRole("link").textContent).toContain("https://example.test/thing");
+    });
+
+    it("opens in a new tab without leaking the referrer", () => {
+      render(<CaptureSourceBadge source={browserSource("https://example.test/")} />);
+
+      const link = screen.getByRole("link");
+      expect(link.getAttribute("target")).toBe("_blank");
+      expect(link.getAttribute("rel")).toContain("noreferrer");
+      expect(link.getAttribute("rel")).toContain("noopener");
+    });
+
+    /**
+     * SECURITY. `url` is an open `z.string()` on a blob this build did not
+     * write — it arrives over sync from the Raycast extension today and from
+     * who-knows-what later. Rendering it into an `href` unchecked would make
+     * `javascript:` a live XSS vector through a synced field.
+     */
+    it("REFUSES to link a non-http scheme, but still shows the text", () => {
+      for (const url of ["javascript:alert(1)", "data:text/html,<script>", "file:///etc/passwd"]) {
+        cleanup();
+        render(<CaptureSourceBadge source={browserSource(url, "Looks innocent")} />);
+
+        expect(screen.queryByRole("link"), url).toBeNull();
+        expect(screen.getByText(/Looks innocent/)).toBeTruthy();
+      }
+    });
+
+    it("does not link an unparseable URL, and does not throw", () => {
+      render(<CaptureSourceBadge source={browserSource("not a url", "Whatever")} />);
+
+      expect(screen.queryByRole("link")).toBeNull();
+      expect(screen.getByText(/Whatever/)).toBeTruthy();
+    });
+
+    /** Only browser captures have somewhere to point. */
+    it("leaves the other kinds as plain text", () => {
+      render(
+        <CaptureSourceBadge
+          source={serializeSource({ v: 1, kind: "app", at: AT, app: { name: "Slack" } })}
+        />,
+      );
+
+      expect(screen.queryByRole("link")).toBeNull();
+      expect(screen.getByText(/Slack/)).toBeTruthy();
+    });
+  });
+
 });
