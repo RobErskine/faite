@@ -20,7 +20,7 @@ import { DEFAULT_AVATAR_KIND } from "@/lib/profile";
 import {
   firstOccurrenceAfter,
   occurrencesBetween,
-  parseOccurrenceId,
+  occurrenceAnchor,
   parseRule,
   serializeRule,
   type RecurrenceRule,
@@ -579,10 +579,14 @@ export async function retargetSeries(
   const children = await getDb().todos.where("recurrenceParentId").equals(templateId).toArray();
   for (const child of children) {
     if (child.status !== "open" || child.deletedAt) continue;
-    const occurrence = parseOccurrenceId(child.id);
-    if (!occurrence || occurrence.date < newStart) continue;
-    const stillOnRule =
-      occurrencesBetween(rule, newStart, occurrence.date, occurrence.date).length > 0;
+    // The EFFECTIVE date, not the id's: a child dragged off its birth slot
+    // lives where `scheduledDate` says, and measuring it by its frozen id
+    // would tombstone a card the new rule does produce, or spare one it does
+    // not. `null` excludes the ORIGIN todo, which is linked to the template
+    // for display and was never a slot. (EI-318)
+    const childDate = occurrenceAnchor(child);
+    if (!childDate || childDate < newStart) continue;
+    const stillOnRule = occurrencesBetween(rule, newStart, childDate, childDate).length > 0;
     if (!stillOnRule) await remove("todo", child.id);
   }
 }

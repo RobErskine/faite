@@ -6,6 +6,7 @@ import {
   firstOccurrenceAfter,
   nextAfterCompletion,
   nextOccurrenceAfter,
+  occurrenceAnchor,
   occurrenceId,
   occurrencesBetween,
   parseOccurrenceId,
@@ -255,5 +256,38 @@ describe("nextOccurrenceAfter", () => {
     const r = rule({ count: 1 });
     expect(() => nextOccurrenceAfter(r, "2026-08-07", "2026-08-07")).not.toThrow();
     expect(() => firstOccurrenceAfter(r, "2026-08-07")).toThrow();
+  });
+});
+
+describe("occurrenceAnchor (EI-318)", () => {
+  const TEMPLATE = "0198c0de-0000-7000-8000-000000000001";
+
+  it("is the id's date while the occurrence has not moved", () => {
+    expect(
+      occurrenceAnchor({ id: occurrenceId(TEMPLATE, "2026-08-14"), scheduledDate: "2026-08-14" }),
+    ).toBe("2026-08-14");
+  });
+
+  it("follows scheduledDate once the occurrence has been moved", () => {
+    // The id still says Aug 14 — it always will. The card is on Aug 21.
+    expect(
+      occurrenceAnchor({ id: occurrenceId(TEMPLATE, "2026-08-14"), scheduledDate: "2026-08-21" }),
+    ).toBe("2026-08-21");
+  });
+
+  it("falls back to the id's date when the row carries no date at all", () => {
+    expect(
+      occurrenceAnchor({ id: occurrenceId(TEMPLATE, "2026-08-14"), scheduledDate: null }),
+    ).toBe("2026-08-14");
+  });
+
+  it("is null for the origin todo — a plain id is not an occurrence", () => {
+    // `createSeriesFromTodo` sets `recurrenceParentId` on the source todo for
+    // display, but never renames it into `${templateId}@${date}` form.
+    expect(occurrenceAnchor({ id: TEMPLATE, scheduledDate: "2026-08-07" })).toBeNull();
+  });
+
+  it("is null for an id whose suffix is not a civil date", () => {
+    expect(occurrenceAnchor({ id: `${TEMPLATE}@later`, scheduledDate: "2026-08-07" })).toBeNull();
   });
 });

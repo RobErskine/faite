@@ -120,6 +120,28 @@ export function expandRecurrences(
       if (date && (!settledThrough || date > settledThrough)) settledThrough = date;
     }
 
+    // Where each LIVE occurrence actually sits, keyed by the day it is on.
+    //
+    // An occurrence's id records the slot it was born in and never changes
+    // (`occurrenceId`), so dragging one to another day leaves its id pointing
+    // at a date the card is no longer on. Keyed by id alone, the loops below
+    // then clone a second card onto the day the moved one already holds —
+    // two identical to-dos on one day, from one drag (EI-318).
+    //
+    // Settled children are deliberately absent. Settlement is history and
+    // belongs to the ORIGINAL slot, which is why `settledThrough` above reads
+    // the id first: completing the Aug 14 occurrence means the series moved
+    // past Aug 14 no matter where that completed card now sits.
+    //
+    // The origin todo (`createSeriesFromTodo`) is excluded by the id-shape
+    // test, matching the rest of this module: it is linked to the template
+    // for display only and was never a slot to begin with.
+    const liveByDate = new Map<CivilDate, Todo>();
+    for (const kid of kids) {
+      if (isSettled(kid) || !parseOccurrenceId(kid.id)) continue;
+      if (kid.scheduledDate) liveByDate.set(kid.scheduledDate, kid);
+    }
+
     let liveDate: CivilDate | null;
     if (rule.anchor === "completed") {
       // `ctx.today` is always `<= windowEnd` (it's the window's first day), so
@@ -135,7 +157,7 @@ export function expandRecurrences(
     if (liveDate) {
       const liveId = occurrenceId(template.id, liveDate);
       const isOverdue = liveDate < ctx.today;
-      const existing = todosById.get(liveId);
+      const existing = todosById.get(liveId) ?? liveByDate.get(liveDate);
       const liveTodo = existing ?? cloneOccurrence(template, liveDate);
 
       if (isOverdue) {
@@ -156,7 +178,7 @@ export function expandRecurrences(
         for (const date of future) {
           if (date <= ctx.today) continue;
           const id = occurrenceId(template.id, date);
-          if (todosById.has(id)) continue;
+          if (todosById.has(id) || liveByDate.has(date)) continue;
           additional.push(cloneOccurrence(template, date));
         }
       }

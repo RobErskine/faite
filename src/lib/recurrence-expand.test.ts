@@ -216,3 +216,98 @@ describe("isRecurrenceTemplate / isRecurrenceOccurrence", () => {
     expect(isRecurrenceOccurrence(plain)).toBe(false);
   });
 });
+
+/**
+ * EI-318 §0 — a materialized occurrence's id records the slot it was BORN in
+ * and never changes; `scheduledDate` is where the user has since moved it.
+ * Slot occupancy has to follow the card, or the expansion clones a fresh
+ * virtual occurrence onto a day the moved one is already sitting on.
+ */
+describe("expandRecurrences — a moved occurrence keeps its slot", () => {
+  // Weekly on Fridays from Aug 7. Aug 7 / 14 / 21 / 28 are all Fridays.
+  const RULE = (start: string) => ({ ...defaultRule(start), byDay: [5] });
+
+  it("does not clone a duplicate onto a day a moved occurrence already occupies", () => {
+    const t = template("2026-08-07", RULE("2026-08-07"));
+    // The Aug 14 occurrence, materialized and then dragged forward to Aug 21 —
+    // the day the NEXT occurrence is due. Its id still says Aug 14.
+    const moved = todo({
+      id: occurrenceId(t.id, "2026-08-14"),
+      title: "Timesheets",
+      scheduledDate: "2026-08-21",
+      recurrenceParentId: t.id,
+    });
+    const ctx = ctxFor("2026-08-07", 28);
+
+    const result = expandRecurrences([t], [moved], ctx);
+    const onAug21 = result.todos.filter(
+      (x) => x.recurrenceParentId === t.id && x.scheduledDate === "2026-08-21",
+    );
+
+    expect(onAug21).toHaveLength(1);
+    expect(onAug21[0]?.id).toBe(moved.id);
+  });
+
+  it("still clones the days a moved occurrence vacated and the ones beyond it", () => {
+    const t = template("2026-08-07", RULE("2026-08-07"));
+    const moved = todo({
+      id: occurrenceId(t.id, "2026-08-14"),
+      scheduledDate: "2026-08-21",
+      recurrenceParentId: t.id,
+    });
+    const ctx = ctxFor("2026-08-07", 28);
+
+    const result = expandRecurrences([t], [moved], ctx);
+    const dates = result.todos
+      .filter((x) => x.recurrenceParentId === t.id)
+      .map((x) => x.scheduledDate)
+      .sort();
+
+    // Aug 7 is still generated (nothing settled), Aug 21 is the moved card,
+    // Aug 28 is cloned as normal. Aug 14 is gone because the card that held
+    // that slot moved off it.
+    expect(dates).toEqual(["2026-08-07", "2026-08-21", "2026-08-28"]);
+  });
+
+  it("a settled occurrence still consumes its ORIGINAL slot, not its moved date", () => {
+    // Settlement is history: completing the Aug 14 occurrence means the
+    // series has moved past Aug 14, wherever the completed card now sits.
+    const t = template("2026-08-07", RULE("2026-08-07"));
+    const done = todo({
+      id: occurrenceId(t.id, "2026-08-14"),
+      scheduledDate: "2026-08-21",
+      status: "done",
+      completedAt: "2026-08-14T10:00:00.000Z",
+      recurrenceParentId: t.id,
+    });
+    const ctx = ctxFor("2026-08-07", 28);
+
+    const result = expandRecurrences([t], [done], ctx);
+    const cloned = result.todos
+      .filter((x) => x.recurrenceParentId === t.id && x.id !== done.id)
+      .map((x) => x.scheduledDate)
+      .sort();
+
+    expect(cloned).toEqual(["2026-08-21", "2026-08-28"]);
+  });
+
+  it("the ORIGIN todo never occupies a slot, however it is scheduled", () => {
+    // `createSeriesFromTodo` links the source todo to the template via
+    // `recurrenceParentId` for display only. Its id is a plain UUID, so it is
+    // not an occurrence and must not suppress one.
+    const t = template("2026-08-14", RULE("2026-08-14"));
+    const origin = todo({
+      title: "Timesheets",
+      scheduledDate: "2026-08-14",
+      recurrenceParentId: t.id,
+    });
+    const ctx = ctxFor("2026-08-14", 14);
+
+    const result = expandRecurrences([t], [origin], ctx);
+    const clonedOnAug14 = result.todos.filter(
+      (x) => x.recurrenceParentId === t.id && x.id !== origin.id && x.scheduledDate === "2026-08-14",
+    );
+
+    expect(clonedOnAug14).toHaveLength(1);
+  });
+});

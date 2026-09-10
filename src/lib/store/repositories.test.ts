@@ -853,6 +853,48 @@ describe("retargetSeries", () => {
     expect((await getDb().todos.get(childId))?.deletedAt).toBeNull();
   });
 
+  // EI-318 — a child's id is frozen at the slot it was born in; the date it
+  // is judged on has to be where the card actually sits.
+  it("spares a MOVED child whose new date the new rule does produce", async () => {
+    const templateId = await createTodo({ title: "Timesheets", scheduledDate: "2026-08-07" });
+    // Born on Aug 28 (off the new every-other-week rule), dragged back to
+    // Aug 21 (on it). Judged by its id it would be tombstoned; judged by
+    // where it is, it survives.
+    const childId = occurrenceId(templateId, "2026-08-28");
+    await materializeOccurrence({
+      ...(await getDb().todos.get(templateId))!,
+      id: childId,
+      scheduledDate: "2026-08-21",
+      recurrenceRule: null,
+      recurrenceParentId: templateId,
+    });
+
+    const newRule = { ...defaultRule("2026-08-21"), interval: 2, byDay: [5] };
+    await retargetSeries(templateId, newRule, "2026-08-21");
+
+    expect((await getDb().todos.get(childId))?.deletedAt).toBeNull();
+  });
+
+  it("tombstones a MOVED child whose new date the new rule does not produce", async () => {
+    const templateId = await createTodo({ title: "Timesheets", scheduledDate: "2026-08-07" });
+    // Born on Aug 21 (on the new rule), dragged to Aug 25 (a Tuesday, off
+    // it). Judged by its id it would survive as an orphan on a day nothing
+    // will ever regenerate.
+    const childId = occurrenceId(templateId, "2026-08-21");
+    await materializeOccurrence({
+      ...(await getDb().todos.get(templateId))!,
+      id: childId,
+      scheduledDate: "2026-08-25",
+      recurrenceRule: null,
+      recurrenceParentId: templateId,
+    });
+
+    const newRule = { ...defaultRule("2026-08-21"), interval: 2, byDay: [5] };
+    await retargetSeries(templateId, newRule, "2026-08-21");
+
+    expect((await getDb().todos.get(childId))?.deletedAt).toBeTruthy();
+  });
+
   it("never touches the origin todo — its id was never in occurrence form", async () => {
     const sourceId = await createTodo({ title: "Timesheets", scheduledDate: "2026-08-07" });
     const source = (await getDb().todos.get(sourceId))!;
