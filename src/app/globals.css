@@ -191,6 +191,50 @@
   );
 
   /*
+    The overlay spring: a sheet or dialog arriving. Same method as
+    `--ease-spring-travel`, deliberately gentler — m=1 k=600 c=39 (zeta 0.796),
+    **1.6% overshoot** against the travel spring's 4.9%.
+
+    The difference is the size of the thing moving. 4.9% on the 145px tab
+    highlight is 7px of settle and reads as life; the same 4.9% on a 75ch
+    detail panel is ~30px, and a surface that large visibly bouncing reads as
+    unsteady rather than lively. Overshoot has to be read as a fraction of what
+    it is moving.
+
+    Sampled across `--dur-overlay` (340ms), but the panel is 95% arrived at
+    137ms and 99% at 158ms — comfortably inside §4's 260ms arrival budget. The
+    rest is the 1.6% dying out. That gap is exactly the arrival-versus-tail
+    distinction the policy is written around.
+  */
+  --ease-spring-overlay: linear(
+    0,
+    0.05 4.17%,
+    0.1658 8.33%,
+    0.3089 12.5%,
+    0.4545 16.67%,
+    0.5883 20.83%,
+    0.703 25%,
+    0.7962 29.17%,
+    0.8685 33.33%,
+    0.9222 37.5%,
+    0.9602 41.67%,
+    0.9857 45.83%,
+    1.0017 50%,
+    1.0108 54.17%,
+    1.015 58.33%,
+    1.016 62.5%,
+    1.0152 66.67%,
+    1.0133 70.83%,
+    1.011 75%,
+    1.0087 79.17%,
+    1.0065 83.33%,
+    1.0047 87.5%,
+    1.0032 91.67%,
+    1.0021 95.83%,
+    1
+  );
+
+  /*
     Motion. Literal durations here rather than `var(--dur-*)`: an animation
     shorthand with a var() inside is resolved at use time and is one more
     thing to get wrong; the three durations are also declared as plain vars
@@ -352,6 +396,18 @@
     overshoot dying out. docs/DESIGN.md §4.
   */
   --dur-travel: 350ms;
+  /*
+    Same bargain for `--ease-spring-overlay`: the curve is sampled across
+    exactly this, so the two move together. Arrival is at ~140ms; the rest is
+    the overshoot settling.
+  */
+  --dur-overlay: 340ms;
+  /*
+    An overlay leaves faster than it arrives, and without a spring. Coming in,
+    the overshoot is the thing announcing itself; going out, nobody is waiting
+    to admire it — they want the screen back. Exit runs on --ease-out-soft.
+  */
+  --dur-overlay-exit: 200ms;
 
   /*
     THE COLUMN TRACK.

@@ -161,6 +161,32 @@ Rules:
 - Reduced motion drops the **overshoot**, not just the animation: swap the
   spring for `--ease-out-soft`, or `transition-none`. A spring is the one case
   where removing the animation and removing the motion are different edits.
+
+### How an overlay arrives
+
+A sheet slides in from its own `data-side`, travelling **its own size** —
+`slide-in-from-right-full`, not a fixed nudge. A dialog depends on how much of
+the screen it is taking: under `sm` it rises from the bottom like a sheet;
+above `sm` it scales in place from 0.95, because travelling up from the bottom
+edge of a wide display is a long journey to a place it does not belong. Every
+backdrop fades on `--dur-base`, never a spring.
+
+Entrances ride `--ease-spring-overlay` over `--dur-overlay`. Exits are shorter
+(`--dur-overlay-exit`) and unsprung.
+
+Two rules with teeth:
+
+- **The vocabulary is `data-open` / `data-closed`.** `@base-ui/react/dialog`
+  emits those. It does **not** emit `data-starting-style` /
+  `data-ending-style` — `@base-ui/react/drawer` does, which is exactly how
+  `ui/sheet.tsx` ended up with a full set of transition rules that never ran
+  and a sheet that appeared instead of sliding. If an overlay is not moving,
+  check which attribute it is keyed on before changing any value.
+- **Never move a primitive's positioning into a breakpoint.** `command.tsx`
+  and `overdrive-overlay.tsx` override `DialogContent`'s centering
+  *unprefixed*; a base that states it at `sm:` cannot be beaten by them. Add
+  motion with a keyframe animation, which composes its own transform, rather
+  than by re-anchoring layout.
 - Every animation carries `motion-reduce:animate-none`. The state it announces
   must be correct with the animation removed.
 - An animation keys on a **transition**, never on a state. A row that mounts

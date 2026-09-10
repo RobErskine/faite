@@ -31,7 +31,13 @@ function DialogOverlay({
     <DialogPrimitive.Backdrop
       data-slot="dialog-overlay"
       className={cn(
-        "fixed inset-0 isolate z-50 bg-black/10 dark:bg-black/50 duration-100 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0 motion-reduce:animate-none",
+        "fixed inset-0 isolate z-50 bg-black/10 dark:bg-black/50 supports-backdrop-filter:backdrop-blur-xs",
+        // The same backdrop treatment as `SheetOverlay` — one fade for every
+        // overlay in the app. A plain duration, never a spring: opacity clips
+        // outside 0..1 (docs/DESIGN.md §4).
+        "duration-(--dur-base) ease-out-soft motion-reduce:animate-none",
+        "data-open:animate-in data-open:fade-in-0",
+        "data-closed:animate-out data-closed:fade-out-0",
         className
       )}
       {...props}
@@ -62,7 +68,41 @@ function DialogContent({
           // `--radius-md` (buttons, inputs) — outer radius = inner radius +
           // padding is what makes nested corners look drawn by the same hand
           // instead of picked from a component library's default scale.
-          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-3xl bg-popover p-5 text-sm text-popover-foreground shadow-(--shadow-overlay) ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 motion-reduce:animate-none",
+          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-3xl bg-popover p-5 text-sm text-popover-foreground shadow-(--shadow-overlay) ring-1 ring-foreground/10 outline-none sm:max-w-sm",
+          /*
+            A dialog arrives differently depending on how much of the screen it
+            is taking. Under 640px (`resolveLayout()`'s phone cut) it is most of
+            the window, so it rises from below like a sheet. Above that it is a
+            small card in a large window, and travelling up from the bottom
+            edge of a 1440px display would be a long journey to a place it does
+            not belong — so it scales and fades where it lands.
+
+            THE POSITIONING ABOVE IS DELIBERATELY UNTOUCHED. Consumers override
+            that centering UNPREFIXED — `command.tsx` has `top-20
+            translate-y-0`, `overdrive-overlay.tsx` has `translate-x-0
+            translate-y-0` plus its own `tall:` centering. Moving the base
+            centering into `sm:` would put it behind a media query those
+            unprefixed overrides can no longer beat, and the palette would
+            silently mis-place itself above 640px. Same trap as
+            `.ai/lessons.md` on shorthand versus per-axis forms: a caller
+            cannot narrow what the base states at a different granularity.
+
+            So the motion is a keyframe animation, which composes its own
+            transform rather than replacing the layout's.
+          */
+          "duration-(--dur-overlay) ease-spring-overlay",
+          "data-open:animate-in data-closed:animate-out",
+          "data-closed:duration-(--dur-overlay-exit) data-closed:ease-out-soft",
+          "motion-reduce:animate-none",
+          // Phone: rises by its own height. `slide-*` composes into the
+          // keyframe's own translate, so it stacks on the centering above
+          // rather than fighting it.
+          "max-sm:data-open:slide-in-from-bottom-full max-sm:data-closed:slide-out-to-bottom-full",
+          // Desktop: scales in place. The same 0.95 as before, but on the
+          // spring over --dur-overlay instead of flat over 100ms — which is
+          // the whole difference between landing and appearing.
+          "sm:data-open:zoom-in-95 sm:data-open:fade-in-0",
+          "sm:data-closed:zoom-out-95 sm:data-closed:fade-out-0",
           className
         )}
         {...props}
