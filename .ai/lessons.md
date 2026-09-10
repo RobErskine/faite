@@ -1582,3 +1582,59 @@ viewport edge — takes a landing ease (`--ease-out-soft`); only centred things
 may spring. And when reusing a spring on something much larger or smaller than
 it was tuned for, re-derive the overshoot in pixels before assuming the
 percentage still reads the same.
+
+## A test that opens a Base UI combobox with a click passes on nothing (EI-318)
+
+Rewriting `list-field.test.tsx` for a `Combobox`, every test that typed first
+passed and every test that wanted the RESTING list failed with "Unable to find
+role=option". The component was fine. `fireEvent.click` on the input never
+opens a Base UI combobox under happy-dom — `openOnInputClick` wants a pointer
+sequence the event helpers do not reproduce — so the popup silently stays
+closed and the assertion fails against working code.
+
+`fireEvent.keyDown(input, { key: "ArrowDown" })` after focusing is the
+combobox's own open key and works.
+
+**Rule:** this is the same shape of false negative as the `fireEvent.change`
+gotcha already in `docs/PICKERS.md` §4, and it is now §4's fourth bullet. When
+a Base UI popup test fails with "cannot find the option", suspect the OPEN
+step before the component.
+
+## Do not claim idempotence you have not checked (EI-318)
+
+Adding a history event to `deleteAttachment`, I wrote a comment saying
+"tombstone anyway, since `remove` is idempotent" and a test asserting a
+missing row resolves. `mutate` throws `no local attachment row for id …` and
+always has. The comment was invented, and the test I wrote around it was
+asserting my invention rather than the code.
+
+**Rule:** a comment describing a DEPENDENCY's behavior is a claim about code
+you did not write. Check it — the test that fails is the cheap version of
+finding out.
+
+## Prove a flaky failure against a clean tree before owning it (EI-318)
+
+`touch-smoke.spec.ts`'s swipe failed once in the full e2e run on a feature
+branch that had touched the to-do sheet, the settings schema, and a
+migration. Stashing the branch and running it on clean `main` gave
+flaky / pass / fail across three runs — pre-existing, masked most of the time
+by its own `toPass` retry.
+
+**Rule:** before debugging a red e2e leg on a feature branch, run that ONE
+spec on a stashed-clean tree several times. `git stash push -u -m "<tag>"`,
+capture the SHA from `git stash list --format='%H %gs'`, `git stash apply
+<sha>`, then drop by tag — never bare `stash`/`pop`, the stack is shared with
+every other worktree.
+
+## A collapsing popover moves its own popups out from under the pointer (EI-318)
+
+The date popover's Time control originally swapped the popover body for a
+short reminder panel: ~420px to ~120px. floating-ui repositioned the whole
+popover to suit, which moved the combobox anchored inside it, and clicks
+landed on nothing. Playwright reported "element is not stable / element was
+detached from the DOM"; a person would report the menu jumping away. Unit
+tests could not see it — happy-dom has no layout.
+
+**Rule:** inside a positioned popup, reveal in place rather than swapping for
+content of a very different height. And read "element is not stable" as a
+layout bug in the app, not as a test that needs a longer timeout.
