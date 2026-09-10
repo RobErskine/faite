@@ -144,12 +144,23 @@ utility (`ui/button.tsx`), not shadcn's `border-ring ring-3 ring-ring/50`.
 | `--dur-slow` | 260 ms | a drop settling |
 | `--ease-out-soft` | `cubic-bezier(.22, 1, .36, 1)` | anything that lands |
 | `--ease-spring` | `cubic-bezier(.34, 1.56, .64, 1)` | the check flash only |
+| `--ease-spring-travel` | `linear(…)`, 350 ms | something that **travels** between two places |
 | `animate-check` / `animate-strike` / `animate-settle` | `--animate-*` in `@theme` | see `globals.css` |
 
 Rules:
 
-- Nothing runs longer than 260 ms except confetti, which is opt-in
-  (GOOD JOB mode, `src/lib/celebrate.ts`).
+- **Arrival** is under 260 ms (`--dur-slow`). A spring's **settle tail** may run
+  to ~400 ms, and only on `transform` — the thing is where it belongs within
+  the budget, and what follows is the overshoot dying out. Confetti is still
+  the one exception to the budget itself, and still opt-in (GOOD JOB mode,
+  `src/lib/celebrate.ts`).
+- A spring goes on `transform`. Never on `background-color`: a color cannot
+  overshoot, so the spring buys nothing and the tail only makes it mushy. Never
+  overshoot `opacity` either — past 0 and 1 it clips, which reads as a flicker.
+  Anything that tints, fades, or reflows takes a fixed duration.
+- Reduced motion drops the **overshoot**, not just the animation: swap the
+  spring for `--ease-out-soft`, or `transition-none`. A spring is the one case
+  where removing the animation and removing the motion are different edits.
 - Every animation carries `motion-reduce:animate-none`. The state it announces
   must be correct with the animation removed.
 - An animation keys on a **transition**, never on a state. A row that mounts

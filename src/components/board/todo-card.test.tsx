@@ -173,7 +173,10 @@ describe("the grip", () => {
   it("is out of the flow and hidden until reached for", () => {
     render(<Harness />);
     expect(grip().className).toContain("absolute");
-    expect(grip().className).toContain("opacity-0");
+    // `hover-reveal` (globals.css) is the resting `opacity: 0`, plus the touch
+    // and focus-visible routes back to visible. touch-affordance.test.ts is
+    // what holds the utility to that; this only asserts the grip opts in.
+    expect(grip().className).toContain("hover-reveal");
     expect(grip().className).toContain("group-hover:opacity-100");
   });
 

@@ -1464,3 +1464,58 @@ you can reach, run it once for real before believing the suite — and when it
 turns out the fake was more permissive than the original, tighten the fake's
 TYPE rather than just fixing the call, so the next caller cannot repeat it.
 `scripts/v1-smoke/` exists for exactly this class of gap.
+
+---
+
+## A refactor can disarm a guard by making it match nothing (EI-316)
+
+`touch-affordance.test.ts` failed any class literal containing `opacity-0` AND
+`group-hover` without a `touch:` sibling. Collapsing four copies of that
+pattern into a `hover-reveal` utility moved `opacity-0` out of the call sites —
+so the matcher found zero literals, and the test went green by having nothing
+left to say. Nothing failed. Nothing warned. The four bugs it was written for
+could all have come back.
+
+The tell: a guard whose predicate names the *implementation* dies with the
+implementation. The rewrite anchors on the part that cannot move — the reveal
+itself, which has to name its group scope (`group/column`, `group/tab`, and a
+bare `group` are three different scopes, and a Tailwind `@utility` cannot
+parameterize which one it answers to) — and adds a second test asserting the
+utility actually defines its `(hover: none)` fallback. Without that second
+half, the first only proves a class name is spelled somewhere.
+
+**Rule:** when a refactor moves the thing a guard greps for, the guard is
+part of the refactor. Re-point it at whatever is now invariant, and **prove
+it still fails** by breaking each half on purpose before committing — a guard
+you did not watch go red is a guard you are assuming. Two assertions, two
+deliberate breakages, both in the same commit as the move.
+
+**Corollary, same test:** its literal-scanner matched backticks anywhere,
+including inside comments, so writing `` `group-hover:opacity-100` `` in a
+prose comment made the file fail its own guard. Scanning source for class
+strings means consuming comments and strings in ONE alternation and keeping
+only the strings; otherwise prose about the rule trips the rule.
+
+---
+
+## A semantic token can be invisible against the surface it lands on (EI-316)
+
+The traveling tab highlight used `bg-surface-2/60`, inherited from the
+`hover:bg-surface-2/60` it replaced. It rendered nothing. In light theme
+`--surface-2` and `--background` are **both** `lab(100% 0 0)` — pure white on
+pure white. The active tab pill reads as raised because of its `shadow-card`,
+not its fill, so the token was doing a job that a *shadow* was actually doing,
+and the name `surface-2` ("raised") gave no hint of that.
+
+It survived a green unit suite, a green 132-test e2e gate, and code that was
+provably correct: the element existed, was positioned to the right pixel, and
+had the right computed background. Every assertion about it passed. It just
+could not be seen.
+
+**Rule:** a color token is a claim about contrast against a *specific*
+backdrop, and reusing one in a new context re-opens that claim. Read both
+computed values in the browser — `getComputedStyle` on the element and on what
+is behind it — in both themes, before believing a fill is visible. Copying a
+token from a neighbouring state copies its assumptions too, and `docs/DESIGN.md`
+§3's own note that "the shadow carries the edge" is the warning that was
+already written down.

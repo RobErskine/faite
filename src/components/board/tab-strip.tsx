@@ -11,7 +11,17 @@ import { edge, tint } from "@/lib/colors";
 import type { Tab } from "@/lib/schema";
 import { cn } from "@/lib/utils";
 import { prefersReducedMotion } from "@/lib/reduced-motion";
+import { useViewport } from "@/lib/use-viewport";
 import { DragGrip } from "./drag-grip";
+
+/** Where the traveling hover highlight sits, in the strip's own scrolled
+ *  coordinate space (see the note where it is rendered). */
+interface PillRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 
 interface TabStripProps {
   tabs: Tab[];
@@ -86,6 +96,44 @@ export function TabStrip({
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
 
+  /*
+    The traveling hover highlight. `rect` is kept after the pointer leaves so
+    the highlight fades out where it stands instead of sliding back to the
+    strip's origin; `lit` is what actually shows it.
+
+    Only meaningful where a pointer can hover. On a touch device `pointerover`
+    still fires on tap, which would light a pill and leave it lit, so the
+    capability gates the handlers rather than just the styling.
+  */
+  const { hover: canHover } = useViewport();
+  const [rect, setRect] = useState<PillRect | null>(null);
+  const [lit, setLit] = useState(false);
+  // A card or list being dragged onto the strip puts drop indicators on the
+  // pills. A hover highlight on top of that is noise about a different thing.
+  const dragActive = isCardDragActive || isListDragActive;
+
+  const trackPointer = useCallback(
+    (target: EventTarget | null) => {
+      if (!canHover || dragActive) return;
+      const pill =
+        target instanceof Element ? target.closest<HTMLElement>("[data-tab-pill]") : null;
+      if (!pill) {
+        setLit(false);
+        return;
+      }
+      /*
+        `offsetLeft`/`offsetTop` are measured against the offset parent, which
+        is the scroll container itself (it is `relative`). That is the same
+        space the highlight is positioned in, so the pair stay in agreement
+        while the strip is scrolled horizontally — no scroll listener, and no
+        stale rect. Reading `getBoundingClientRect` here would need one.
+      */
+      setRect({ x: pill.offsetLeft, y: pill.offsetTop, w: pill.offsetWidth, h: pill.offsetHeight });
+      setLit(true);
+    },
+    [canHover, dragActive],
+  );
+
   const updateFades = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -142,7 +190,9 @@ export function TabStrip({
       <div
         ref={scrollRef}
         onScroll={updateFades}
-        className="column-track flex min-w-0 flex-1 items-center gap-1"
+        onPointerOver={(e) => trackPointer(e.target)}
+        onPointerLeave={() => setLit(false)}
+        className="column-track relative flex min-w-0 flex-1 items-center gap-1"
         // `column-track` (globals.css) deliberately leaves `overflow-y`
         // computed to `auto` — right for a genuinely tall list column, wrong
         // here: a single-row strip only ever needs the horizontal scrollbar,
@@ -153,6 +203,41 @@ export function TabStrip({
         // off with an inline style so it wins regardless of class order.
         style={{ maskImage: trackMask, WebkitMaskImage: trackMask, overflowY: "hidden" }}
       >
+        {/*
+          One highlight for the whole strip, rendered before the pills so the
+          pills paint over it — both are positioned, so DOM order decides.
+          Under the active pill it is simply not visible: that pill has an
+          opaque background, which is the right answer for "the tab you are
+          on" anyway.
+
+          It is not a hover *state* — it is one box that moves to wherever the
+          pointer is. That is what a per-pill `hover:bg-*` cannot do, and why
+          the pill no longer carries one.
+        */}
+        {rect && (
+          <div
+            aria-hidden
+            data-tab-hover-highlight
+            className={cn(
+              // `bg-foreground/5`, the same wash the rows and group headers
+              // use — not `bg-surface-2`, which the pill's *active* state uses.
+              // In light theme `--surface-2` and `--background` are both pure
+              // white: the active pill reads as raised because of its
+              // `shadow-card`, not its fill, so a `bg-surface-2/60` hover was
+              // white on white and showed nothing at all. Measured, not
+              // guessed. One tint for "the pointer is here" across the board.
+              "pointer-events-none absolute left-0 top-0 rounded-lg bg-foreground/5",
+              "tab-travel motion-reduce:transition-none",
+            )}
+            style={{
+              translate: `${rect.x}px ${rect.y}px`,
+              width: rect.w,
+              height: rect.h,
+              opacity: lit ? 1 : 0,
+            }}
+          />
+        )}
+
         {tabs.map((tab) => (
           <TabPill
             key={tab.id}
@@ -320,7 +405,8 @@ function TabPill({
       data-tab-pill={tab.id}
       className={cn(
         "group/tab relative flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-1.5",
-        "transition-colors",
+        // Fast in, slower out — see the note on the row wash in todo-card.tsx.
+        "transition-colors duration-(--dur-base) hover:duration-(--dur-fast)",
         // `items-center` centers the (small) grip/label/info row within the
         // taller box on a coarse pointer, rather than stretching them —
         // invisible padding around a small tap target, the same trick native
@@ -328,7 +414,11 @@ function TabPill({
         "pointer-coarse:min-h-11",
         // The raised tier (docs/DESIGN.md §3): a pill that sits above the
         // strip, with the shadow that says so in both themes.
-        isActive ? "bg-surface-2 shadow-card" : "hover:bg-surface-2/60",
+        //
+        // No `hover:bg-*` on an inactive pill: the strip's one traveling
+        // highlight is the hover affordance now, and a per-pill wash on top
+        // of it would double the tint on whichever pill the pointer is over.
+        isActive && "bg-surface-2 shadow-card",
         // Roving-tabindex state, not a real `:focus-visible` — `ring-ring`
         // keeps it the same hue as every other focus cue on the board.
         isFocusCandidate && "ring-2 ring-ring ring-offset-1 ring-offset-muted",
@@ -394,13 +484,15 @@ function TabPill({
         className={cn(
           // Same bargain as ColumnInfoButton: quiet until hovered or focused,
           // and pinned open while its dialog is, so the control you just
-          // clicked does not vanish under the thing it opened. `touch:`
-          // because `group-hover` is gated to `(hover: hover)` (Tailwind
-          // v4) — a device that can never hover would otherwise never see
-          // this control exists.
+          // clicked does not vanish under the thing it opened.
+          //
+          // The two states are branches rather than an override because
+          // tailwind-merge cannot see that `hover-reveal` and `opacity-100`
+          // both set opacity — it would keep both and let emit order decide
+          // (.ai/lessons.md, tailwind-merge and per-axis forms). Mutually
+          // exclusive, there is nothing to resolve.
           "size-4 text-muted-foreground/50 transition-opacity",
-          "opacity-0 group-hover/tab:opacity-100 touch:opacity-100 focus-visible:opacity-100",
-          isInfoOpen && "opacity-100",
+          isInfoOpen ? "opacity-100" : "hover-reveal group-hover/tab:opacity-100",
         )}
       >
         <Info aria-hidden />
@@ -471,8 +563,11 @@ function TabGrip({ tab }: { tab: Tab }) {
       ref={setNodeRef}
       aria-label={`Drag to reorder the ${tab.name} tab`}
       className={cn(
-        "opacity-0 group-hover/tab:opacity-100 touch:opacity-100 focus-visible:opacity-100",
-        isDragging && "opacity-40",
+        // Branches, not an override: see the note on the info button above.
+        // It also settles a conflict that was there before — the grip is
+        // hovered while it is being dragged, so `group-hover:opacity-100` beat
+        // the `opacity-40` that is supposed to dim the source of the drag.
+        isDragging ? "opacity-40" : "hover-reveal group-hover/tab:opacity-100",
       )}
       {...attributes}
       {...listeners}

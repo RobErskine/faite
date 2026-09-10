@@ -426,7 +426,14 @@ export function TodoCard({
         // a landing completes rather than popping. Hover only changes the
         // background, so naming both properties loses nothing over
         // `transition-colors`.
-        "transition-[background-color,opacity] duration-100",
+        //
+        // The wash arrives on `--dur-fast` and leaves on `--dur-base`. The
+        // asymmetry is the point: sweeping a pointer down a column fades every
+        // row it crosses both in and out, and at one speed that reads as a
+        // strobe. Leaving slower turns the rows behind the cursor into a wake
+        // instead. Both ends stay inside the budget (docs/DESIGN.md §4).
+        "transition-[background-color,opacity] duration-(--dur-base)",
+        "hover:duration-(--dur-fast)",
         "hover:bg-foreground/5 focus-within:bg-foreground/5",
         // The dragged row stays in place as a faint ghost so the list does not
         // visibly collapse out from under the cursor.
@@ -516,14 +523,17 @@ export function TodoCard({
           "absolute left-0 top-3",
           // Full strength rather than DragGrip's resting /30: at rest it is not
           // visible at all, so there is nothing left for a faint state to do.
-          "text-muted-foreground opacity-0 transition-opacity",
-          // `group-focus-within` also fires for the row itself, so arrowing onto
-          // a card reveals the grip — which is how a keyboard user learns the
-          // row can be lifted at all. `touch:` because `group-hover` is gated
-          // to `(hover: hover)` (Tailwind v4) — a device that can never hover
-          // would otherwise never see this control exists at all.
-          "group-hover:opacity-100 group-focus-within:opacity-100 touch:opacity-100",
-          "focus-visible:opacity-100",
+          "text-muted-foreground transition-opacity",
+          // `hover-reveal` (globals.css) carries the resting opacity plus the
+          // touch and focus-visible fallbacks; the row's group is unnamed —
+          // the third scope in play — which is why the reveal itself stays
+          // here. `group-focus-within` also fires for the row itself, so
+          // arrowing onto a card reveals the grip, which is how a keyboard
+          // user learns the row can be lifted at all.
+          //
+          // Kept in one string literal: touch-affordance.test.ts reads
+          // literals, not the assembled class list.
+          "hover-reveal group-hover:opacity-100 group-focus-within:opacity-100",
           "before:-inset-y-1.5 before:inset-x-0",
         )}
         aria-label={`Drag to reschedule or reorder ${todo.title}`}

@@ -33,10 +33,10 @@ export function RailCollapseButton({ label, onCollapse }: RailCollapseButtonProp
       className={cn(
         "absolute inset-y-0 right-0 z-10 flex w-6 items-center justify-center rounded-tr-md",
         "text-muted-foreground/50 transition-colors",
-        // `touch:` because `group-hover` is gated to `(hover: hover)`
-        // (Tailwind v4) — a device that can never hover would otherwise
-        // never see this control exists at all.
-        "opacity-0 group-hover/column:opacity-100 touch:opacity-100 focus-visible:opacity-100",
+        // `hover-reveal` (globals.css) is the resting state plus the touch and
+        // focus-visible fallbacks; the reveal itself names this component's
+        // group scope, which the utility cannot.
+        "hover-reveal group-hover/column:opacity-100",
         "hover:bg-muted hover:text-foreground",
         "focus-ring",
       )}

@@ -1101,7 +1101,7 @@ export function BoardColumn({
                     "pointer-events-none absolute left-2 size-3 text-muted-foreground/40",
                     quickAddPlaceholderVisible
                       ? "opacity-100"
-                      : "opacity-0 group-hover/column:opacity-100 group-focus-within:opacity-100 touch:opacity-100",
+                      : "hover-reveal group-hover/column:opacity-100 group-focus-within:opacity-100",
                   )}
                   aria-hidden
                 />
@@ -1324,7 +1324,9 @@ function TodoGroupSection({
         className={cn(
           "flex w-full items-center gap-1 border-b px-3 py-1 text-left",
           "type-eyebrow",
-          "cursor-pointer transition-colors hover:bg-foreground/5",
+          // Fast in, slower out — see the note on the row wash in todo-card.tsx.
+          "cursor-pointer transition-colors duration-(--dur-base) hover:duration-(--dur-fast)",
+          "hover:bg-foreground/5",
           "focus-ring",
           // An uncolored list keeps the ordinary rule rather than gaining a gray
           // one — the same rule the column header's tab accent follows.
