@@ -57,7 +57,7 @@ Tests proven to fail against the old behavior before being made green:
 `recurrence.test.ts` (5 new, `occurrenceAnchor`).
 
 
-### Follow-up needed (Linear MCP was down — NOT filed)
+### Follow-up — FILED as EI-319
 
 **`e2e/touch-smoke.spec.ts` "a horizontal swipe scrolls the day track" is
 flaky on `phone-iphone`, and it is NOT from EI-318.** Reproduced on a clean
@@ -68,4 +68,6 @@ Likely the synthetic `swipe()` helper racing the pager's scroll-snap under
 worker contention. Whoever picks it up: run it against a clean tree first,
 several times, before assuming a feature branch caused it.
 
-File this as its own ticket. It cost ~15 minutes of bisecting here.
+https://linear.app/rob-erskine/issue/EI-319 — carries the repro command, the
+three-run evidence, and the two fixes not to reach for (raising the `toPass`
+timeout, or gating the spec with a runtime skip).
