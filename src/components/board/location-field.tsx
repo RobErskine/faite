@@ -200,8 +200,8 @@ export function LocationField({ todo, places, onSave }: LocationFieldProps) {
   };
 
   return (
+    // No `<Label>` of its own — see `LabelPicker`'s note. The sheet owns it.
     <div className="space-y-1.5">
-      <Label htmlFor="todo-location-input">Location</Label>
       {attachedPlace && (
         <Badge variant="outline" className="w-fit gap-1 text-2xs font-normal">
           <MapPin className="size-2.5" aria-hidden />

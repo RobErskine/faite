@@ -1685,3 +1685,17 @@ closes the window too, but only the fill mode survives one of them drifting.
 `page.evaluate` with a `requestAnimationFrame` loop sampling
 `getComputedStyle` gives a timeline that says exactly what happened — worth
 doing before and after, since "looks fixed" at 60fps is not evidence.
+
+## tailwind-merge keys on the VARIANT, so a bare utility loses to a prefixed one (EI-318)
+
+Twice on one branch. `backdrop-blur-none` did nothing against
+`supports-backdrop-filter:backdrop-blur-xs`. `text-lg` on the sheet's title
+did nothing against `Textarea`'s base `md:text-sm` — the class was present in
+the DOM and the computed font-size was still 14px at every width the sheet is
+actually read at. Both fail SILENTLY: the class is there, it just never wins.
+
+**Rule:** before overriding a base class from a consumer, read the base for a
+variant prefix (`md:`, `dark:`, `supports-*:`, `data-*:`) and match it. Then
+assert the RESOLVED value, not the class list — `getComputedStyle` in a
+browser, or at minimum the merged `className` in a render test. A test that
+only checks the class you passed will pass while the pixel is wrong.

@@ -718,6 +718,28 @@ describe("arrow verbs (EI-318)", () => {
   });
 });
 
+describe("the header's title and priority (EI-318)", () => {
+  it("sizes the title so it survives Textarea's own responsive class", () => {
+    // `Textarea`'s base ends in `md:text-sm`. tailwind-merge treats the
+    // variant as part of the key, so a bare `text-lg` loses at every width
+    // this sheet is read at — measured 14px on a 1280px viewport with the
+    // class present and doing nothing. Same shape as the backdrop-blur
+    // override below.
+    render(<Harness />);
+    const cls = screen.getByLabelText("Title").className;
+    expect(cls).toContain("md:text-lg");
+  });
+
+  it("gives the title and the priority select the same line box", () => {
+    // `leading-8` on the title, `h-8` on the select: equal boxes are what
+    // make `items-start` read as vertical centering on the first line,
+    // without pinning the select to the middle of a three-line title.
+    render(<Harness />);
+    expect(screen.getByLabelText("Title").className).toContain("leading-8");
+    expect(document.getElementById("todo-priority")!.className).toContain("h-8");
+  });
+});
+
 describe("the backdrop (EI-318)", () => {
   const overlay = () => document.querySelector('[data-slot="sheet-overlay"]')!;
 

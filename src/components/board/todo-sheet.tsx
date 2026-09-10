@@ -134,6 +134,46 @@ function priorityTint(priority: Priority | null): string {
   }[priority];
 }
 
+/**
+ * One metadata row: label on the leading edge, control beside it.
+ *
+ * Stacked label-over-control cost 162px for List, Labels and Location
+ * together, measured; as rows they cost 106px, and the sheet's scroll body is
+ * ~820px. That is the smaller half of the reason. The larger one is that a
+ * column of labels reads as a properties table — a thing you scan — where
+ * three stacked forms read as three equally important questions, which is the
+ * hierarchy problem this whole redesign is about.
+ *
+ * `items-start`, not centered: Labels grows chips onto a second line and
+ * Location can open a nickname step under itself. The label stays on the
+ * first line where the control's own first line is. `pt-2.5` is what optically
+ * centers a 14px label against a 36px control rather than hanging it at the
+ * top.
+ *
+ * Date and Deadline are deliberately NOT rows — they are a two-up grid whose
+ * labels sit above, because two controls side by side have no room for a
+ * label column each.
+ */
+function SheetRow({
+  label,
+  htmlFor,
+  children,
+}: {
+  label: string;
+  /** Omitted for a control with no single focusable input to point at. */
+  htmlFor?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="grid grid-cols-[5rem_1fr] items-start gap-3">
+      <Label htmlFor={htmlFor} className="pt-2.5 text-muted-foreground">
+        {label}
+      </Label>
+      <div className="min-w-0">{children}</div>
+    </div>
+  );
+}
+
 /** `RepeatDialog.onSave` is required, and the branch that would pass nothing
  * is already unreachable — `canRepeat` demands `onStartSeries` when there is
  * no series yet. This satisfies the type without widening the prop. */
@@ -635,7 +675,10 @@ function TodoSheetContent({
                 id="todo-priority"
                 aria-label="Priority"
                 className={cn(
-                  "h-7 w-[4.25rem] shrink-0 px-2 text-xs",
+                  // `h-8` is the title's line box exactly (see below), which is
+                  // what makes `items-start` read as vertical centering on the
+                  // first line without pinning it to the middle of a tall one.
+                  "h-8 w-[4.25rem] shrink-0 px-2 text-xs",
                   priorityTint(todo.priority),
                 )}
               >
@@ -704,10 +747,21 @@ function TodoSheetContent({
                 }
               }}
               rows={1}
-              style={{ maxHeight: `calc(${TITLE_LINES} * 1.5rem)` }}
+              style={{ maxHeight: `calc(${TITLE_LINES} * 2rem)` }}
               aria-label="Title"
               className={cn(
-                "min-h-0 resize-none border-0 px-0 py-0 text-base font-medium leading-6",
+                // `md:text-lg` as well as `text-lg`, and that is not
+                // belt-and-braces: `Textarea`'s base ends in `md:text-sm`, and
+                // tailwind-merge treats the variant as part of the key — so a
+                // bare `text-lg` loses at every width this sheet is actually
+                // read at. Measured 14px on a 1280px viewport before the
+                // `md:` was added, with the class present and doing nothing.
+                //
+                // `leading-8` (2rem) is not decoration either: it makes the
+                // title's line box exactly the priority select's `h-8`, so the
+                // two sit on one baseline under `items-start`. Size and
+                // leading have to move together or they drift apart again.
+                "min-h-0 resize-none border-0 px-0 py-0 text-lg font-medium leading-8 md:text-lg",
                 "shadow-none focus-visible:border-0 focus-visible:ring-0",
               )}
             />
@@ -779,14 +833,19 @@ function TodoSheetContent({
           */}
           {recurrence && <RepeatSection recurrence={recurrence} />}
 
-          <div className="space-y-1.5">
-            <Label htmlFor="todo-list">List</Label>
-            <ListField todo={todo} lists={lists} tabs={tabs} onSave={onSave} />
+          <div className="space-y-2">
+            <SheetRow label="List" htmlFor="todo-list">
+              <ListField todo={todo} lists={lists} tabs={tabs} onSave={onSave} />
+            </SheetRow>
+
+            <SheetRow label="Labels" htmlFor="todo-label-input">
+              <LabelPicker todo={todo} labels={labels} onToggleLabel={onToggleLabel} />
+            </SheetRow>
+
+            <SheetRow label="Location" htmlFor="todo-location-input">
+              <LocationField todo={todo} places={places} onSave={onSave} />
+            </SheetRow>
           </div>
-
-          <LabelPicker todo={todo} labels={labels} onToggleLabel={onToggleLabel} />
-
-          <LocationField todo={todo} places={places} onSave={onSave} />
 
           {/*
             One level of nesting only (EI-55): a todo that is itself a
@@ -868,6 +927,12 @@ function TodoSheetContent({
           `<kbd>`, so the accessible name stays "Mark done" rather than
           "Mark done ⌘↵"; the tooltip still carries the chord for anyone who
           cannot see it.
+
+          `size="lg"` rather than `sm`: these are the sheet's only committing
+          actions and were 28px tall in 12px type, smaller than every field
+          above them. 36px in 14px is the same height as the Date and Deadline
+          controls, so the footer reads as the bottom of the same form rather
+          than a row of secondary links.
         */}
         <SheetFooter className="grid grid-cols-10 gap-2 border-t">
           <Tooltip>
@@ -876,7 +941,7 @@ function TodoSheetContent({
                 <Button
                   ref={markDoneRef}
                   variant={todo.status === "done" ? "outline" : "success"}
-                  size="sm"
+                  size="lg"
                   onClick={markDone}
                   className="col-span-5"
                 />
@@ -886,7 +951,7 @@ function TodoSheetContent({
               <kbd
                 aria-hidden
                 data-slot="kbd"
-                className="ml-1 hidden font-mono text-2xs opacity-60 sm:inline"
+                className="ml-1 hidden font-mono text-xs opacity-60 sm:inline"
               >
                 {formatCombo("mod+enter", platform)}
               </kbd>
@@ -904,13 +969,13 @@ function TodoSheetContent({
           */}
           <Tooltip>
             <TooltipTrigger
-              render={<Button variant="outline" size="sm" onClick={wontDo} className="col-span-3" />}
+              render={<Button variant="outline" size="lg" onClick={wontDo} className="col-span-3" />}
             >
               Won&apos;t do
               <kbd
                 aria-hidden
                 data-slot="kbd"
-                className="ml-1 hidden font-mono text-2xs opacity-60 sm:inline"
+                className="ml-1 hidden font-mono text-xs opacity-60 sm:inline"
               >
                 {formatCombo("mod+backspace", platform)}
               </kbd>
@@ -927,7 +992,7 @@ function TodoSheetContent({
               render={
                 <Button
                   variant="ghost"
-                  size="sm"
+                  size="lg"
                   aria-label="Delete"
                   className="col-span-2 text-destructive hover:text-destructive"
                   onClick={remove}
