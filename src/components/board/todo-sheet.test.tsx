@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { TodoSheet, type RecurrenceInfo } from "./todo-sheet";
 import { defaultRule } from "@/lib/recurrence";
+import { PRIORITY_RAILS } from "@/lib/priority";
 import type { Label as LabelRecord, List, Todo, TodoEvent } from "@/lib/schema";
 import type { PlacementContext } from "@/lib/scheduling";
 
@@ -648,11 +649,26 @@ describe("priority in the header (EI-318)", () => {
     expect(priority.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("reads P1..P4, and an em dash for none", () => {
+  it("names the level rather than numbering it", () => {
+    // "P2" is the stored value and the quick-add token, not a name anybody
+    // uses out loud. The trigger says the word and draws the rail.
     const { rerender } = render(<Harness todo={{ ...TODO, priority: null }} />);
-    expect(document.getElementById("todo-priority")!.textContent).toContain("—");
+    expect(document.getElementById("todo-priority")!.textContent).toContain("None");
     rerender(<Harness todo={{ ...TODO, priority: 2 }} />);
-    expect(document.getElementById("todo-priority")!.textContent).toContain("P2");
+    expect(document.getElementById("todo-priority")!.textContent).toContain("High");
+    expect(document.getElementById("todo-priority")!.textContent).not.toContain("P2");
+  });
+
+  it("draws the same rail the card wears, from the same table", () => {
+    // One vocabulary for reading the sheet and scanning the column — the
+    // glyph is `PriorityRail` with a positioning override, not a copy.
+    render(<Harness todo={{ ...TODO, priority: 1 }} />);
+    const glyph = document
+      .getElementById("todo-priority")!
+      .querySelector("[data-priority-rail]") as HTMLElement;
+    expect(glyph).toBeTruthy();
+    expect(glyph.getAttribute("data-priority-rail")).toBe("1");
+    expect(glyph.style.width).toBe(`${PRIORITY_RAILS[1].width}px`);
   });
 
   it("tints achromatically — never a hue (docs/DESIGN.md §7 decision A)", () => {

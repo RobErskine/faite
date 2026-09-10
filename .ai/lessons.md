@@ -1699,3 +1699,19 @@ variant prefix (`md:`, `dark:`, `supports-*:`, `data-*:`) and match it. Then
 assert the RESOLVED value, not the class list — `getComputedStyle` in a
 browser, or at minimum the merged `className` in a render test. A test that
 only checks the class you passed will pass while the pixel is wrong.
+
+## A comment can describe a layout that a later change quietly removed (EI-318)
+
+`PriorityRail` was `inset-y-0` with a comment saying it "stops the rail 1px
+short of `border-b`, so a run of same-priority cards reads as ticks rather
+than fusing into one stripe". The Air pass removed the row's `border-b` months
+later. Nothing failed, nothing was flagged, and every run of cards on the
+board fused into one tapering stripe — four different priorities reading as
+one strange line. Measured: each rail's bottom was EXACTLY the next one's top
+(669.3 → 669.3), and `border-bottom-width` came back `0px`.
+
+**Rule:** a comment that explains a gap by naming another element's property
+is a dependency the type system cannot see. When removing a border, a padding
+or a margin, grep for its name in comments, not just in code. And prefer
+spacing that owns itself — the fix was to put the inset on the rail rather
+than borrow it from a neighbour.

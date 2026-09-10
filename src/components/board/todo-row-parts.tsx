@@ -64,7 +64,37 @@ export function PriorityRail({
             }
           : { backgroundColor: "var(--foreground)" }),
       }}
-      className={cn("pointer-events-none absolute inset-y-0 left-0", className)}
+      /*
+        `inset-y-1`, not `inset-y-0`. The rail used to run the full row height
+        and borrow its gap from the row's `border-b` — a 1px divider that the
+        Air pass removed (docs/DESIGN.md, 2026-09-05) without anything here
+        noticing. Rows sit flush now, so consecutive rails abutted exactly:
+        measured 669.3 → 669.3, 704.5 → 704.5, four separate levels fusing
+        into one tapering stripe down the column.
+
+        The 4px is deliberate rather than restoring the old 1px. A 1px gap was
+        legible when a divider line sat in it; with nothing there it reads as
+        continuous. This makes the tick its own mark, which is what the level
+        is supposed to be.
+      */
+      className={cn("pointer-events-none absolute inset-y-1 left-0", className)}
+    />
+  );
+}
+
+/**
+ * The same rail, drawn inline instead of pinned to a card's edge — for a menu
+ * row or a select trigger, where it has to sit in text flow beside a word.
+ *
+ * Deliberately `PriorityRail` with a positioning override rather than a second
+ * component: width, opacity and P4's dotted gradient all come from
+ * `PRIORITY_RAILS`, and a copy would drift the first time one of them changed.
+ */
+export function PriorityGlyph({ priority }: { priority: Todo["priority"] }) {
+  return (
+    <PriorityRail
+      priority={priority}
+      className="relative inset-y-auto left-auto h-3.5 shrink-0"
     />
   );
 }

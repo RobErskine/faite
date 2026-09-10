@@ -69,6 +69,8 @@ import { TimelineList, TimelineRow } from "@/components/board/timeline";
 import { cn } from "@/lib/utils";
 import { useExitRetained } from "@/lib/use-exit-retained";
 import { edge, effectiveListColor } from "@/lib/colors";
+import { PRIORITY_RAILS } from "@/lib/priority";
+import { PriorityGlyph } from "@/components/board/todo-row-parts";
 import { TITLE_LINES } from "@/lib/title";
 import { formatEventTime } from "@/lib/event-time";
 import { formatShortDate, type PlacementContext } from "@/lib/scheduling";
@@ -166,7 +168,12 @@ function SheetRow({
 }) {
   return (
     <div className="grid grid-cols-[5rem_1fr] items-start gap-3">
-      <Label htmlFor={htmlFor} className="pt-2.5 text-muted-foreground">
+      {/* No color of its own. Every label in this sheet is one thing —
+          `Label`'s own `text-sm font-medium` in the foreground — whether it
+          sits above its control (Date, Deadline, Notes) or beside it. A muted
+          row label made the same word look like two different kinds of word
+          depending on which layout it landed in. */}
+      <Label htmlFor={htmlFor} className="pt-2.5">
         {label}
       </Label>
       <div className="min-w-0">{children}</div>
@@ -678,7 +685,7 @@ function TodoSheetContent({
                   // `h-8` is the title's line box exactly (see below), which is
                   // what makes `items-start` read as vertical centering on the
                   // first line without pinning it to the middle of a tall one.
-                  "h-8 w-[4.25rem] shrink-0 px-2 text-xs",
+                  "h-8 w-[6.5rem] shrink-0 px-2 text-xs",
                   priorityTint(todo.priority),
                 )}
               >
@@ -687,15 +694,46 @@ function TodoSheetContent({
                     resolve a label — see ListField's comment for the fuller
                     explanation. An em dash for "none": there is no room for
                     the word, and the menu below says it in full. */}
+                {/*
+                  The rail itself, plus the word — not "P2" (EI-318).
+
+                  The number is the stored value and the quick-add token; it
+                  is not a name anybody uses out loud, and a trigger reading
+                  "P2" asks the reader to hold a mapping the product never
+                  taught them. The rail is the mapping: it is the same mark,
+                  from the same `PRIORITY_RAILS`, that this to-do already
+                  wears on the board. Reading the sheet and scanning the
+                  column now use one vocabulary.
+                */}
                 <SelectValue>
-                  {(value: string) => (value === NONE ? "—" : `P${value}`)}
+                  {(value: string) =>
+                    value === NONE ? (
+                      <span className="text-muted-foreground">None</span>
+                    ) : (
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <PriorityGlyph priority={Number(value) as Priority} />
+                        <span className="truncate">
+                          {PRIORITY_RAILS[Number(value) as Priority].word}
+                        </span>
+                      </span>
+                    )
+                  }
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={NONE}>None</SelectItem>
-                {[1, 2, 3, 4].map((p) => (
-                  <SelectItem key={p} className="num" value={String(p)}>
-                    P{p}
+                <SelectItem value={NONE}>
+                  <span className="text-muted-foreground">None</span>
+                </SelectItem>
+                {([1, 2, 3, 4] as const).map((p) => (
+                  <SelectItem key={p} value={String(p)}>
+                    <PriorityGlyph priority={p} />
+                    {PRIORITY_RAILS[p].word}
+                    {/* The token quick-add and ⌘K parse, kept visible so
+                        typing `p2` stays discoverable now that nothing else
+                        says the number. */}
+                    <span className="num ml-auto pl-3 text-xs text-muted-foreground">
+                      P{p}
+                    </span>
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -1358,7 +1396,10 @@ function HistorySection({
           type="button"
           onClick={() => setOpen((v) => !v)}
           aria-expanded={open}
-          className="type-eyebrow flex items-center gap-1 hover:text-foreground"
+          // `Label`'s type, not `type-eyebrow`: this is the heading for the
+          // section under it, exactly like "Notes" and "Attachments", and it
+          // was the only one shouting in uppercase 10px.
+          className="flex items-center gap-1 text-sm leading-none font-medium"
         >
           <ChevronDown
             aria-hidden
