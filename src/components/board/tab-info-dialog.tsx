@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import type { Tab } from "@/lib/schema";
+import { useExitRetained } from "@/lib/use-exit-retained";
 
 export type TabPatch = Partial<Pick<Tab, "name" | "description" | "color">>;
 
@@ -38,19 +39,23 @@ interface TabInfoDialogProps {
  * blast radius than archiving one list, so the description says so plainly
  * rather than relying on the toast to explain after the fact.
  */
-export function TabInfoDialog({ tab, ...rest }: TabInfoDialogProps) {
+export function TabInfoDialog({ tab: tabProp, ...rest }: TabInfoDialogProps) {
+  // Held through the close so the overlay can animate out — see
+  // src/lib/use-exit-retained.ts.
+  const { value: tab, open: sheetOpen } = useExitRetained(tabProp);
   if (!tab) return null;
   // Keyed remount re-seeds the drafts per tab, same reason ListInfoDialog does.
-  return <TabInfoDialogContent key={tab.id} tab={tab} {...rest} />;
+  return <TabInfoDialogContent sheetOpen={sheetOpen} key={tab.id} tab={tab} {...rest} />;
 }
 
 function TabInfoDialogContent({
+  sheetOpen,
   tab,
   onClose,
   onSave,
   onArchive,
   onDelete,
-}: TabInfoDialogProps & { tab: Tab }) {
+}: TabInfoDialogProps & { tab: Tab; sheetOpen: boolean }) {
   const [name, setName] = useState(tab.name);
   const [description, setDescription] = useState(tab.description ?? "");
   const [color, setColor] = useState<string | null>(tab.color);
@@ -72,7 +77,7 @@ function TabInfoDialogContent({
   };
 
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
+    <Dialog open={sheetOpen} onOpenChange={(next) => !next && onClose()}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Tab settings</DialogTitle>

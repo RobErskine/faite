@@ -403,6 +403,12 @@
   */
   --dur-overlay: 340ms;
   /*
+    A sheet takes longer than a dialog because it travels further: a 680px
+    panel crossing its own width is a real journey, where a dialog scales 5%
+    in place. One duration for both made the sheet feel flung.
+  */
+  --dur-sheet: 490ms;
+  /*
     An overlay leaves faster than it arrives, and without a spring. Coming in,
     the overshoot is the thing announcing itself; going out, nobody is waiting
     to admire it — they want the screen back. Exit runs on --ease-out-soft.

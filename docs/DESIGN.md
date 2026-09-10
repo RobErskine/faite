@@ -182,6 +182,20 @@ Two rules with teeth:
   `ui/sheet.tsx` ended up with a full set of transition rules that never ran
   and a sheet that appeared instead of sliding. If an overlay is not moving,
   check which attribute it is keyed on before changing any value.
+- **An overlay can only animate out if it is still mounted while it closes.**
+  `<Sheet open>` with a hardcoded `open`, under a parent that stops rendering
+  it, has no closing state to animate — the subtree leaves the tree in the
+  same commit and the panel does not slide, it ceases to exist. Pass a real
+  boolean and hold the outgoing content with `useExitRetained`
+  (`src/lib/use-exit-retained.ts`). Entry working is not evidence that exit
+  works; they fail independently.
+- **An edge-anchored surface never overshoots.** A spring's eased progress
+  passes 1, so a panel anchored to the right edge travels past its resting
+  place and visibly parts from that edge for a few frames. Sheets take
+  `--ease-out-soft`; only centred things (a dialog scaling in place) may
+  spring. Overshoot is also read as a fraction of what moves: 4.9% is life on
+  a 145px pill and wobble on a 680px panel, which is why
+  `--ease-spring-overlay` is gentler than `--ease-spring-travel`.
 - **Never move a primitive's positioning into a breakpoint.** `command.tsx`
   and `overdrive-overlay.tsx` override `DialogContent`'s centering
   *unprefixed*; a base that states it at `sm:` cannot be beaten by them. Add
