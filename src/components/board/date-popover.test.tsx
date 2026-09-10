@@ -202,20 +202,25 @@ describe("DatePopover — Time and Repeat", () => {
     expect(screen.getByRole("button", { name: /Repeat/ })).toHaveProperty("disabled", true);
   });
 
-  it("swaps to the reminder panel rather than opening a nested popup", () => {
+  it("reveals the reminder IN PLACE, keeping the calendar on screen", () => {
+    // Not a panel swap. Swapping collapsed the popover from ~420px to ~120px
+    // and floating-ui then repositioned it under the pointer mid-click.
     setup({ todo: todo({ scheduledDate: "2026-09-14" }) });
     openPopover();
     fireEvent.click(screen.getByRole("button", { name: /Time/ }));
     expect(document.getElementById("todo-reminder-input")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Back to date" })).toBeTruthy();
+    expect(screen.getByLabelText("Type a date")).toBeTruthy();
+    expect(screen.getByRole("group", { name: "Quick dates" })).toBeTruthy();
   });
 
-  it("goes back to the date panel", () => {
+  it("toggles the reminder back off", () => {
     setup({ todo: todo({ scheduledDate: "2026-09-14" }) });
     openPopover();
-    fireEvent.click(screen.getByRole("button", { name: /Time/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Back to date" }));
-    expect(screen.getByLabelText("Type a date")).toBeTruthy();
+    const time = screen.getByRole("button", { name: /Time/ });
+    fireEvent.click(time);
+    expect(time.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.click(time);
+    expect(document.getElementById("todo-reminder-input")).toBeNull();
   });
 
   it("asks the sheet to open the repeat dialog rather than nesting one", () => {

@@ -104,8 +104,12 @@ test("a todo's History section logs `created`, then `done` (EI-94)", async ({ pa
   // frozen clock (`FROZEN_TIME`, support/fixtures.ts), or this todo would
   // render as pre-history and the count below would include a marker row
   // it isn't expecting.
+  // Two list items for ONE event: the day header is an `<li>` too, since
+  // EI-318 grouped History by day the way the global feed already was.
   const historyList = sheet.getByRole("list", { name: /^History for/ });
-  await expect(historyList.getByRole("listitem")).toHaveCount(1);
+  await expect(historyList.getByRole("listitem")).toHaveCount(2);
+  await expect(historyList.getByText("Today")).toBeVisible();
+  await expect(historyList.getByText("Created")).toBeVisible();
 
   // Marking done closes the sheet AND the default `visibleStatuses` filter
   // (`["open"]`, schema.ts) drops the card off the board — reopen through
@@ -121,7 +125,11 @@ test("a todo's History section logs `created`, then `done` (EI-94)", async ({ pa
   // Reopening the sheet remounts HistorySection, which is open by default —
   // no click needed here either.
   await expect(sheet).toBeVisible();
-  await expect(sheet.getByRole("list", { name: /^History for/ }).getByRole("listitem")).toHaveCount(2);
+  // Three now: the same day header, plus `created` and `done`. Newest first,
+  // so "Completed" is the row directly under the header.
+  const reopened = sheet.getByRole("list", { name: /^History for/ });
+  await expect(reopened.getByRole("listitem")).toHaveCount(3);
+  await expect(reopened.getByText("Completed")).toBeVisible();
 });
 
 test("mod+k opens the palette from the keyboard", async ({ page }) => {

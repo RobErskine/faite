@@ -68,6 +68,23 @@ test("with no files there is nothing to preview", async ({ page }) => {
   await expect(page.locator('[data-slot="dialog-content"]')).toHaveCount(0);
 });
 
+test("History can name an attachment event, though only a Worker can make one", async ({
+  page,
+}) => {
+  // Creating a real attachment needs the Worker (see the header), so the
+  // end-to-end assertion "attach a file, see a History row" is not reachable
+  // from this suite — `src/lib/store/attachments.test.ts` owns that, and it
+  // asserts the row, its payload, the outbox entry, and the cascade writing
+  // none. What IS reachable here is that the filter the History section
+  // gained in EI-318 offers the two new kinds, which is what would silently
+  // hide them if the settings field ever drifted from the label map.
+  const sheet = await openSheetFor(page, "File the tax return");
+
+  await sheet.getByRole("button", { name: "Which history to show" }).click();
+  await expect(page.getByRole("menuitemcheckbox", { name: "Attached" })).toBeVisible();
+  await expect(page.getByRole("menuitemcheckbox", { name: "Removed file" })).toBeVisible();
+});
+
 test("a todo with no files shows no attachment count anywhere", async ({ page }) => {
   const title = "Water the plants";
   const sheet = await openSheetFor(page, title);

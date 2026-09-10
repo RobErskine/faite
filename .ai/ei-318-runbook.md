@@ -17,7 +17,7 @@ the execution order and the running state.
 - [x] 6. Footer weights + arrow verbs + shortcuts.ts + docs/KEYBOARD.md
 - [x] 7. List combobox
 - [x] 8. Attachment events + timeline alignment + docs
-- [ ] 9. typecheck -> test -> typecheck -> prod-build e2e -> full matrix -> PR
+- [x] 9. typecheck -> test -> typecheck -> prod-build e2e -> full matrix -> PR
 
 ## Decisions (from the planning conversation)
 
@@ -56,3 +56,16 @@ Tests proven to fail against the old behavior before being made green:
 `recurrence-expand.test.ts` (4 new), `repositories.test.ts` (2 new),
 `recurrence.test.ts` (5 new, `occurrenceAnchor`).
 
+
+### Follow-up needed (Linear MCP was down — NOT filed)
+
+**`e2e/touch-smoke.spec.ts` "a horizontal swipe scrolls the day track" is
+flaky on `phone-iphone`, and it is NOT from EI-318.** Reproduced on a clean
+`main` tree: 3 consecutive runs gave flaky / pass / fail. The `toPass`
+retry masks it most of the time, so it surfaces as an occasional red CI leg.
+
+Likely the synthetic `swipe()` helper racing the pager's scroll-snap under
+worker contention. Whoever picks it up: run it against a clean tree first,
+several times, before assuming a feature branch caused it.
+
+File this as its own ticket. It cost ~15 minutes of bisecting here.
