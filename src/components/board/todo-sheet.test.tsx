@@ -736,6 +736,17 @@ describe("the backdrop (EI-318)", () => {
     expect(overlay().className).toContain("backdrop-blur-none");
   });
 
+  it("holds the exit's last frame, so the dim cannot flash back on close", () => {
+    // Measured before this existed: opacity ran to 0.00005 at 188ms, snapped
+    // back to 1 at 206ms, unmounted at 223ms — two frames of full dim after
+    // the sheet had gone. `tw-animate-css` defaults `animation-fill-mode` to
+    // `none`, and Base UI waits for the panel (the longer animation) before
+    // unmounting. Asserted here on the RESOLVED class, where tailwind-merge
+    // has run; `ui/overlay-exit.test.ts` covers the other two primitives.
+    render(<Harness />);
+    expect(overlay().className).toContain("data-closed:fill-mode-forwards");
+  });
+
   it("keeps the dim — the sheet is still modal", () => {
     // Visible, not usable. Base UI keeps the focus trap and `openTodoExists`
     // still feeds `computeModalOpen`; the scrim is what says so.

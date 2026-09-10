@@ -1660,3 +1660,28 @@ sibling's assumptions about the value's shape. Before reusing one in single
 mode, grep the primitive for `.length` / `Array.isArray` on the value. And
 test the keyboard path, not just the pointer one — Backspace, Enter and Escape
 each reach code a click never does.
+
+## An exit animation with no fill mode flashes back before it unmounts (EI-318)
+
+The to-do sheet's backdrop dimmed away and then flashed fully opaque right at
+the end of the close. Measured it frame by frame in a real browser rather than
+guessing: opacity ran down to 0.00005 at 188ms, snapped back to **1** at
+206ms, and unmounted at 223ms — two frames of full dim after the sheet had
+visibly gone.
+
+`tw-animate-css` builds `animate-out` with
+`var(--tw-animation-fill-mode, none)`, and its `exit` keyframe declares only a
+`to` frame. So the moment the animation ends, the element reverts to its base
+computed style. Base UI unmounts on the LONGEST animation in the popup, and
+the backdrop (180ms) is shorter than the panel (200ms), so there is always a
+window. Every overlay in the app had it — sheet, dialog and alert-dialog.
+
+**Rule:** any `data-closed:animate-out` needs `data-closed:fill-mode-forwards`
+beside it, or it reverts before the node is gone. Matching the two durations
+closes the window too, but only the fill mode survives one of them drifting.
+`src/components/ui/overlay-exit.test.ts` is the backstop.
+
+**And:** a one-or-two-frame visual bug is measurable, not a matter of taste.
+`page.evaluate` with a `requestAnimationFrame` loop sampling
+`getComputedStyle` gives a timeline that says exactly what happened — worth
+doing before and after, since "looks fixed" at 60fps is not evidence.
