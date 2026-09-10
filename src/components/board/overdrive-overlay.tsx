@@ -18,6 +18,7 @@ import type { Label as LabelRecord, List, ReminderPreset, Todo } from "@/lib/sch
 import { OVERFLOW, toCivilDate, type PlacementContext } from "@/lib/scheduling";
 import { isTextEntry, undoById } from "@/lib/undo";
 import { originOf, type ConfettiOrigin } from "@/lib/celebrate";
+import { useExitRetained } from "@/lib/use-exit-retained";
 import {
   applyDecision,
   createSession,
@@ -190,13 +191,19 @@ export interface OverdriveOverlayProps {
  * behind it can retarget `source` while it's open — but one attribute is
  * cheaper than the bug class.
  */
-export function OverdriveOverlay({ source, ...rest }: OverdriveOverlayProps) {
+export function OverdriveOverlay({ source: sourceProp, ...rest }: OverdriveOverlayProps) {
+  // Held through the close so the overlay can animate out — see
+  // src/lib/use-exit-retained.ts.
+  const { value: source, open: sheetOpen } = useExitRetained(sourceProp);
   if (!source) return null;
-  return <OverdriveOverlayContent key={source} source={source} {...rest} />;
+  return (
+    <OverdriveOverlayContent key={source} source={source} sheetOpen={sheetOpen} {...rest} />
+  );
 }
 
 function OverdriveOverlayContent({
   source,
+  sheetOpen,
   todos,
   todosById,
   listsById,
@@ -207,7 +214,7 @@ function OverdriveOverlayContent({
   onClose,
   onVerdict,
   autoConfirmMs = 0,
-}: Omit<OverdriveOverlayProps, "source"> & { source: OverdriveSource }) {
+}: Omit<OverdriveOverlayProps, "source"> & { source: OverdriveSource; sheetOpen: boolean }) {
   // Lazy initializer runs exactly once, at mount — this IS the "frozen at
   // open" snapshot (decision #7). `todosById` below stays live so the CURRENT
   // todo's own fields (title edits, label changes) are always what renders.
@@ -558,7 +565,7 @@ function OverdriveOverlayContent({
 
   return (
     <Dialog
-      open
+      open={sheetOpen}
       onOpenChange={(nextOpen, eventDetails) => {
         if (nextOpen) return;
         // Escape follows the same rule as every other key here — clear a

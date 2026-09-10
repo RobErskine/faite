@@ -161,6 +161,46 @@ Rules:
 - Reduced motion drops the **overshoot**, not just the animation: swap the
   spring for `--ease-out-soft`, or `transition-none`. A spring is the one case
   where removing the animation and removing the motion are different edits.
+
+### How an overlay arrives
+
+A sheet slides in from its own `data-side`, travelling **its own size** —
+`slide-in-from-right-full`, not a fixed nudge. A dialog depends on how much of
+the screen it is taking: under `sm` it rises from the bottom like a sheet;
+above `sm` it scales in place from 0.95, because travelling up from the bottom
+edge of a wide display is a long journey to a place it does not belong. Every
+backdrop fades on `--dur-base`, never a spring.
+
+Entrances ride `--ease-spring-overlay` over `--dur-overlay`. Exits are shorter
+(`--dur-overlay-exit`) and unsprung.
+
+Two rules with teeth:
+
+- **The vocabulary is `data-open` / `data-closed`.** `@base-ui/react/dialog`
+  emits those. It does **not** emit `data-starting-style` /
+  `data-ending-style` — `@base-ui/react/drawer` does, which is exactly how
+  `ui/sheet.tsx` ended up with a full set of transition rules that never ran
+  and a sheet that appeared instead of sliding. If an overlay is not moving,
+  check which attribute it is keyed on before changing any value.
+- **An overlay can only animate out if it is still mounted while it closes.**
+  `<Sheet open>` with a hardcoded `open`, under a parent that stops rendering
+  it, has no closing state to animate — the subtree leaves the tree in the
+  same commit and the panel does not slide, it ceases to exist. Pass a real
+  boolean and hold the outgoing content with `useExitRetained`
+  (`src/lib/use-exit-retained.ts`). Entry working is not evidence that exit
+  works; they fail independently.
+- **An edge-anchored surface never overshoots.** A spring's eased progress
+  passes 1, so a panel anchored to the right edge travels past its resting
+  place and visibly parts from that edge for a few frames. Sheets take
+  `--ease-out-soft`; only centred things (a dialog scaling in place) may
+  spring. Overshoot is also read as a fraction of what moves: 4.9% is life on
+  a 145px pill and wobble on a 680px panel, which is why
+  `--ease-spring-overlay` is gentler than `--ease-spring-travel`.
+- **Never move a primitive's positioning into a breakpoint.** `command.tsx`
+  and `overdrive-overlay.tsx` override `DialogContent`'s centering
+  *unprefixed*; a base that states it at `sm:` cannot be beaten by them. Add
+  motion with a keyframe animation, which composes its own transform, rather
+  than by re-anchoring layout.
 - Every animation carries `motion-reduce:animate-none`. The state it announces
   must be correct with the animation removed.
 - An animation keys on a **transition**, never on a state. A row that mounts
@@ -246,3 +286,8 @@ streak, score, or percentage anywhere in it.
 | 2026-09-07 | **The homepage hero is the board itself** — a hand-written Server Component echo (`demo-board.tsx`), cropped by the fold rather than scaled down. | A screenshot goes stale and a video cannot be flown across the page on scroll. Rendering the board as HTML costs `/` zero client JS *and* lets one card physically travel into the story. A desktop board shrunk to fit is a picture of something broken, not a smaller picture of the truth. |
 | 2026-09-07 | **The demo board may not show a feature the product does not have.** Colored labels removed; column accents kept. | There is no label color picker in Faite, but `todo-row-parts.tsx` will happily tint a label that carries a hex — so the fabricated ones rendered convincingly. That only looks wrong *after* someone signs up. Lists and tabs both mount a real `ColorPicker`, so a column accent is honest. Enforced by `demo-board.test.ts`. |
 | 2026-09-07 | **Scroll-driven motion on `/` is exempt from the 260 ms ceiling**, and `card-travel.tsx` may reflow one subtree per frame. | Neither is an animation that plays at you: the reader sets the pace and can stop or reverse it. `scale()` would have been cheaper and wrong — it blurs every glyph while zooming a 14px title to 35px, when what the card does is widen and unfold. §6 has the full carve-out. |
+| 2026-09-09 | **The motion ceiling is restated against *arrival*, not total elapsed time**: arrival stays under `--dur-slow` (260 ms), and a spring's settle tail may run to ~400 ms on `transform` only. | A spring has no fixed duration, so the old flat 260 ms forbade one outright. Splitting the two lets a thing be where it belongs on time and let its overshoot die out afterwards — the overlay spring is 95% arrived at 137 ms and still settling at 340 ms. Colour, opacity and anything that reflows keep fixed durations. |
+| 2026-09-09 | **Springs are CSS, not a dependency.** `--ease-spring-travel` / `--ease-spring-overlay` are `linear()` curves sampled from a damped harmonic oscillator, constants in the `globals.css` comment. | The prompt was [Fluid Hover](https://www.fluidfunctionalism.com/docs/fluid-hover), which is good code and wanted `framer-motion` — the board's first animation dependency, for a hover wash. `linear()` has been Baseline since Dec 2023 and gives real spring physics with zero runtime. It also could not have gone on to-do columns anyway: it measures with `offsetTop` while dnd-kit moves rows with transforms, and its gap-click would route an empty-space click onto a to-do's completion checkbox. |
+| 2026-09-09 | **The hover wash is asymmetric**: in on `--dur-fast`, out on `--dur-base`. | Sweeping a pointer down a column fades every row it crosses both in and out, and at one speed that reads as a strobe. Leaving slower turns the rows behind the cursor into a wake. It is also the first thing to actually use `--dur-fast`, which had been defined and documented as "hover, fill, color" and referenced by nothing. |
+| 2026-09-10 | **An edge-anchored surface never overshoots.** Sheets take `--ease-out-soft`; only centred things (a dialog scaling in place) may spring. | A spring's eased progress passes 1, so a right-anchored panel travels past its resting place and visibly parts from the edge it is attached to. 4.9% is 7 px on a 145 px tab pill and 33 px of daylight on a 680 px sheet — overshoot has to be read as a fraction of what is moving, which is also why `--ease-spring-overlay` is gentler than `--ease-spring-travel`. |
+| 2026-09-10 | **An overlay is mounted for the whole of its close.** `useExitRetained` holds the outgoing value; `<Sheet open>` with a hardcoded `open` is a bug. | Five overlays returned `null` the moment their prop cleared, so closing was not a state they passed through — the subtree left the React tree in the same commit and Base UI never marked the popup `data-closed`. They did not animate away; they stopped existing. Entry working is not evidence that exit works. |

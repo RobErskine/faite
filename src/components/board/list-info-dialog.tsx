@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type { List, ReminderPreset, Tab } from "@/lib/schema";
+import { useExitRetained } from "@/lib/use-exit-retained";
 
 export type ListPatch = Partial<
   Pick<List, "name" | "description" | "color" | "defaultReminderPresetId">
@@ -55,14 +56,18 @@ interface ListInfoDialogProps {
  * carrying Undo, which is a better answer than a confirmation step: it costs
  * nothing on the way in and still recovers a mistake on the way out.
  */
-export function ListInfoDialog({ list, ...rest }: ListInfoDialogProps) {
+export function ListInfoDialog({ list: listProp, ...rest }: ListInfoDialogProps) {
+  // Held through the close so the overlay can animate out — see
+  // src/lib/use-exit-retained.ts.
+  const { value: list, open: sheetOpen } = useExitRetained(listProp);
   if (!list) return null;
   // Keyed remount re-seeds the draft name per list, the same reason TodoSheet
   // does it — syncing it in an effect would cascade renders.
-  return <ListInfoDialogContent key={list.id} list={list} {...rest} />;
+  return <ListInfoDialogContent sheetOpen={sheetOpen} key={list.id} list={list} {...rest} />;
 }
 
 function ListInfoDialogContent({
+  sheetOpen,
   list,
   tabsById,
   reminderPresets,
@@ -70,7 +75,7 @@ function ListInfoDialogContent({
   onSave,
   onArchive,
   onDelete,
-}: ListInfoDialogProps & { list: List }) {
+}: ListInfoDialogProps & { list: List; sheetOpen: boolean }) {
   const [name, setName] = useState(list.name);
   const [description, setDescription] = useState(list.description ?? "");
   const [color, setColor] = useState<string | null>(list.color);
@@ -102,7 +107,7 @@ function ListInfoDialogContent({
   };
 
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
+    <Dialog open={sheetOpen} onOpenChange={(next) => !next && onClose()}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>List settings</DialogTitle>

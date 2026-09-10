@@ -42,6 +42,7 @@ import type {
   Todo,
 } from "@/lib/schema";
 import { cn } from "@/lib/utils";
+import { useExitRetained } from "@/lib/use-exit-retained";
 import { HiddenByFilterNotice, TimelineList, TimelineRow } from "./timeline";
 import { TodoCard } from "./todo-card";
 
@@ -128,15 +129,19 @@ const KIND_FILTER_OPTIONS: ReadonlyArray<{ value: DayEventKind; label: string }>
 
 const ALL_EVENT_KINDS: DayEventKind[] = KIND_FILTER_OPTIONS.map((o) => o.value);
 
-export function DaySheet({ day, ...rest }: DaySheetProps) {
+export function DaySheet({ day: dayProp, ...rest }: DaySheetProps) {
+  // Held through the close so the overlay can animate out — see
+  // src/lib/use-exit-retained.ts.
+  const { value: day, open: sheetOpen } = useExitRetained(dayProp);
   if (!day) return null;
   // Keyed remount re-seeds the note draft for each day. `MarkdownField` reads
   // its value once at mount by design (see markdown-editor.tsx), so without the
   // key, opening a second day would show the first day's notes.
-  return <DaySheetContent key={day} day={day} {...rest} />;
+  return <DaySheetContent sheetOpen={sheetOpen} key={day} day={day} {...rest} />;
 }
 
 function DaySheetContent({
+  sheetOpen,
   day,
   settings,
   note,
@@ -153,7 +158,7 @@ function DaySheetContent({
   onSaveNote,
   onToggleTodo,
   onOpenTodo,
-}: DaySheetProps & { day: CivilDate }) {
+}: DaySheetProps & { day: CivilDate; sheetOpen: boolean }) {
   const { weekday, label } = formatDay(day);
   const events = useMemo(
     () => buildDayTimeline(todos, day, timezone, ctx),
@@ -199,7 +204,7 @@ function DaySheetContent({
     void mutateSettings(LOCAL_OWNER_ID, { visibleEventKinds: ALL_EVENT_KINDS });
 
   return (
-    <Sheet open onOpenChange={(open) => !open && onClose()}>
+    <Sheet open={sheetOpen} onOpenChange={(next) => !next && onClose()}>
       {/*
         `data-[side=right]:` on the width utilities, not plain `sm:` ones: the
         base `SheetContent` already sets `data-[side=right]:w-3/4` and

@@ -54,6 +54,7 @@ import { MentionMenu, useMention, type MentionSource } from "@/components/mentio
 import type { MentionListOption, MentionPick } from "@/components/board/board-column";
 import { TimelineList, TimelineRow } from "@/components/board/timeline";
 import { cn } from "@/lib/utils";
+import { useExitRetained } from "@/lib/use-exit-retained";
 import { edge, effectiveListColor } from "@/lib/colors";
 import { tabForTodo } from "@/lib/board";
 import { TITLE_LINES } from "@/lib/title";
@@ -197,15 +198,19 @@ interface TodoSheetProps {
  * Fields write on blur/change rather than behind a Save button — writes are
  * local and instant, so there is nothing to batch and no request to await.
  */
-export function TodoSheet({ todo, ...rest }: TodoSheetProps) {
+export function TodoSheet({ todo: openTodo, ...rest }: TodoSheetProps) {
+  // Held through the close so the panel has something to render while it
+  // slides out — see src/lib/use-exit-retained.ts.
+  const { value: todo, open } = useExitRetained(openTodo);
   if (!todo) return null;
   // Keyed remount re-seeds the draft fields for each todo. Syncing them in an
   // effect instead would cascade renders (and React 19 lints against it).
-  return <TodoSheetContent key={todo.id} todo={todo} {...rest} />;
+  return <TodoSheetContent key={todo.id} todo={todo} open={open} {...rest} />;
 }
 
 function TodoSheetContent({
   todo,
+  open,
   today,
   lists,
   todos = [],
@@ -228,7 +233,7 @@ function TodoSheetContent({
   onBackToDay,
   recurrence,
   onStartSeries,
-}: TodoSheetProps & { todo: Todo }) {
+}: TodoSheetProps & { todo: Todo; open: boolean }) {
   const [title, setTitle] = useState(todo.title);
   const [repeatDialogOpen, setRepeatDialogOpen] = useState(false);
   const platform = usePlatform();
@@ -458,7 +463,7 @@ function TodoSheetContent({
   };
 
   return (
-    <Sheet open onOpenChange={(open) => !open && onClose()}>
+    <Sheet open={open} onOpenChange={(next) => !next && onClose()}>
       {/*
         `data-[side=right]:` on the width utilities, not plain `sm:` ones: the
         base `SheetContent` already sets `data-[side=right]:w-3/4` and

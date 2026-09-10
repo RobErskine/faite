@@ -30,7 +30,12 @@ function AlertDialogOverlay({
     <AlertDialogPrimitive.Backdrop
       data-slot="alert-dialog-overlay"
       className={cn(
-        "fixed inset-0 isolate z-50 bg-black/10 dark:bg-black/50 duration-100 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0 motion-reduce:animate-none",
+        "fixed inset-0 isolate z-50 bg-black/10 dark:bg-black/50 supports-backdrop-filter:backdrop-blur-xs",
+        // The one backdrop fade, shared with sheet and dialog. Never a spring —
+        // opacity clips outside 0..1 (docs/DESIGN.md §4).
+        "duration-(--dur-base) ease-out-soft motion-reduce:animate-none",
+        "data-open:animate-in data-open:fade-in-0",
+        "data-closed:animate-out data-closed:fade-out-0",
         className
       )}
       {...props}
@@ -53,7 +58,17 @@ function AlertDialogContent({
         data-size={size}
         className={cn(
           // Matches DialogContent's concentric radius/padding step.
-          "group/alert-dialog-content fixed top-1/2 left-1/2 z-50 grid w-full -translate-x-1/2 -translate-y-1/2 gap-4 rounded-3xl bg-popover p-5 text-popover-foreground shadow-(--shadow-overlay) ring-1 ring-foreground/10 duration-100 outline-none data-[size=default]:max-w-xs data-[size=sm]:max-w-xs data-[size=default]:sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 motion-reduce:animate-none",
+          "group/alert-dialog-content fixed top-1/2 left-1/2 z-50 grid w-full -translate-x-1/2 -translate-y-1/2 gap-4 rounded-3xl bg-popover p-5 text-popover-foreground shadow-(--shadow-overlay) ring-1 ring-foreground/10 outline-none data-[size=default]:max-w-xs data-[size=sm]:max-w-xs data-[size=default]:sm:max-w-sm",
+          // Same entrance as DialogContent, and for the same reasons — the long
+          // note there explains why the motion is a keyframe animation and why
+          // the centering above is left alone.
+          "duration-(--dur-overlay) ease-spring-overlay",
+          "data-open:animate-in data-closed:animate-out",
+          "data-closed:duration-(--dur-overlay-exit) data-closed:ease-out-soft",
+          "motion-reduce:animate-none",
+          "max-sm:data-open:slide-in-from-bottom-full max-sm:data-closed:slide-out-to-bottom-full",
+          "sm:data-open:zoom-in-95 sm:data-open:fade-in-0",
+          "sm:data-closed:zoom-out-95 sm:data-closed:fade-out-0",
           className
         )}
         {...props}
