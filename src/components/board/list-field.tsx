@@ -4,8 +4,6 @@ import { useMemo, useState } from "react";
 import { X } from "lucide-react";
 import {
   Combobox,
-  ComboboxChip,
-  ComboboxChips,
   ComboboxEmpty,
   ComboboxInput,
   ComboboxItem,
@@ -80,6 +78,15 @@ function listLabel(list: List, tabsById: ReadonlyMap<string, Tab>): string {
  * a greyed-out "My Lists > To Read" looks like an empty field rather than a
  * filled one. A chip with an X says both things at once.
  *
+ * The chip is hand-rolled rather than Base UI's `Combobox.Chips`/`Chip`.
+ * Those assume the combobox's value is an ARRAY — `ComboboxInput`'s chip
+ * navigation reads `selectedValue.length` unguarded — and this field is
+ * single-mode with `value={null}`, because the to-do is the truth. Inside
+ * their context, one Backspace on a filled field threw
+ * "Cannot read properties of null (reading 'length')" and took the board
+ * down with it. Backspace on an empty query is handled below instead, which
+ * is the behavior those chips would have given anyway.
+ *
  * Clearing writes `listId: null`, which files the to-do under **Backlog** —
  * `groupTodosByList` (lib/board.ts) has always resolved "no list, or a
  * pointer at a deleted one" that way rather than letting a card vanish. That
@@ -133,6 +140,8 @@ export function ListField({ todo, lists, tabs, onSave }: ListFieldProps) {
     );
   }, [entries, query]);
 
+  const clear = () => onSave(todo.id, { listId: null });
+
   const current = todo.listId ? listsById.get(todo.listId) : undefined;
   // A dangling id — its list was archived — still has to read as SOMETHING.
   const chipLabel = todo.listId
@@ -162,28 +171,37 @@ export function ListField({ todo, lists, tabs, onSave }: ListFieldProps) {
       // remaining match means.
       autoHighlight
     >
-      <ComboboxChips className="min-h-9 px-2">
+      {/* `ComboboxChips`' own classes, on a plain div — see the note above on
+          why Base UI's chip parts cannot back a single-mode field. */}
+      <div className="flex min-h-9 w-full flex-wrap items-center gap-1 rounded-lg border border-input bg-transparent px-2 py-1 transition-colors has-[input:focus-visible]:border-ring has-[input:focus-visible]:ring-3 has-[input:focus-visible]:ring-ring/50 dark:bg-input/30">
         {chipLabel && (
-          <ComboboxChip className="border-border bg-muted">
+          <span className="flex items-center gap-1 rounded-full border border-border bg-muted px-1.5 py-0.5 text-xs font-medium leading-none">
             {chipLabel}
             <button
               type="button"
-              // Not `ComboboxChipRemove`, which removes from the value ARRAY
-              // this single-mode field deliberately does not keep — the todo
-              // is the truth. Same glyph and hit area.
               aria-label={`Remove from ${chipLabel}`}
-              onClick={() => onSave(todo.id, { listId: null })}
+              onClick={clear}
               className="rounded-full p-0.5 outline-none hover:bg-foreground/10 focus-visible:ring-2 focus-visible:ring-ring"
             >
               <X className="size-2.5" aria-hidden />
             </button>
-          </ComboboxChip>
+          </span>
         )}
         <ComboboxInput
           id="todo-list"
           placeholder={chipLabel ? "Move to…" : "Search lists…"}
+          onKeyDown={(e) => {
+            // Backspace on an empty query clears the list, the way it removes
+            // the last chip in a multi-select. Guarded on the query being
+            // empty so it never eats a character mid-search.
+            if (e.key === "Backspace" && query === "" && todo.listId !== null) {
+              e.preventDefault();
+              clear();
+            }
+          }}
+          className="h-6 min-w-16 flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground md:text-sm"
         />
-      </ComboboxChips>
+      </div>
       <ComboboxPortal>
         <ComboboxPositioner>
           <ComboboxPopup>

@@ -178,6 +178,29 @@ describe("ListField — clearing", () => {
     expect(onSave).toHaveBeenCalledWith("t1", { listId: null });
   });
 
+  it("clears on Backspace when the query is empty", () => {
+    // REGRESSION: this threw "Cannot read properties of null (reading
+    // 'length')" and took the whole board down. Base UI's chip parts read
+    // `selectedValue.length` unguarded, and this field is single-mode with
+    // `value={null}` — so the chip is hand-rolled and Backspace handled here.
+    const { onSave } = setup({ todo: todo({ listId: PROJECT_1.id }) });
+    expect(() => fireEvent.keyDown(input(), { key: "Backspace" })).not.toThrow();
+    expect(onSave).toHaveBeenCalledWith("t1", { listId: null });
+  });
+
+  it("does NOT clear on Backspace mid-search — that would eat a character", () => {
+    const { onSave } = setup({ todo: todo({ listId: PROJECT_1.id }) });
+    type(input(), "proj");
+    fireEvent.keyDown(input(), { key: "Backspace" });
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("does nothing on Backspace when no list is set", () => {
+    const { onSave } = setup();
+    expect(() => fireEvent.keyDown(input(), { key: "Backspace" })).not.toThrow();
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
   it("clears a DANGLING listId too — the one state with no other way out", () => {
     const { onSave } = setup({ todo: todo({ listId: "list-archived" }) });
     fireEvent.click(chip()!);

@@ -1638,3 +1638,25 @@ tests could not see it — happy-dom has no layout.
 **Rule:** inside a positioned popup, reveal in place rather than swapping for
 content of a very different height. And read "element is not stable" as a
 layout bug in the app, not as a test that needs a longer timeout.
+
+## Base UI's chip parts assume the value is an ARRAY (EI-318)
+
+Giving the single-select List field a removable chip, I reached for
+`Combobox.Chips` / `Combobox.Chip` — the parts `LabelPicker` uses. One
+Backspace on a filled field threw `Cannot read properties of null (reading
+'length')` and took the whole board down.
+
+`ComboboxInput`'s chip-navigation path reads `selectedValue.length` unguarded
+(`combobox/input/ComboboxInput.js:164`). One branch further down DOES guard
+with `Array.isArray`, which is the tell that the unguarded one is a bug rather
+than a contract. This field is single-mode with `value={null}`, because the
+to-do is the source of truth — exactly the shape those parts do not expect.
+
+Unit tests did not catch it because none of them pressed Backspace: the chip
+was tested through its X button, which is the mouse path.
+
+**Rule:** a component part borrowed from a MULTI-select sibling carries that
+sibling's assumptions about the value's shape. Before reusing one in single
+mode, grep the primitive for `.length` / `Array.isArray` on the value. And
+test the keyboard path, not just the pointer one — Backspace, Enter and Escape
+each reach code a click never does.
