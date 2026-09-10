@@ -1519,3 +1519,66 @@ is behind it — in both themes, before believing a fill is visible. Copying a
 token from a neighbouring state copies its assumptions too, and `docs/DESIGN.md`
 §3's own note that "the shadow carries the edge" is the warning that was
 already written down.
+
+---
+
+## An overlay that is unmounted on close cannot animate out (EI-317)
+
+Sheets slid in and then vanished. Three rounds of investigation blamed the
+library: Base UI unmounts the popup ~30ms after close, before the browser
+starts the exit animation; `<Portal keepMounted>` keeps the node but marks it
+`hidden`, and preflight's `[hidden] { display: none !important }` means the
+animation is assigned and never painted; `actionsRef.unmount()` does not defer
+anything. All three measurements were correct and the conclusion drawn from
+them — "this primitive cannot do exit animations" — was wrong, and got written
+into a code comment, a commit message and a PR.
+
+The cause was in our own code, one level up:
+
+```tsx
+if (!todo) return null;
+return <Sheet open>…</Sheet>     // `open` hardcoded true
+```
+
+Closing is not a state that passes through this. The parent stops passing a
+`todo`, the component returns `null`, and the whole subtree leaves the React
+tree in the same commit. Base UI never gets to mark the popup `data-closed`.
+The overlay does not animate away; it stops existing.
+
+What settled it was testing a *second* overlay. The activity sheet passes a
+real boolean and had been sliding out correctly the entire time. Five of them
+were written the hardcoded way — `todo-sheet`, `day-sheet`, `tab-info-dialog`,
+`list-info-dialog`, `overdrive-overlay` — and I had only ever opened the first.
+
+**Rule:** when a behaviour is missing across a shared primitive, test **two
+consumers before blaming the primitive**. One consumer cannot distinguish "the
+library cannot do this" from "this caller is holding it wrong," and the second
+one costs a minute. The fix here is `useExitRetained`
+(`src/lib/use-exit-retained.ts`): hold the outgoing value, report `open`
+separately, and let the primitive unmount itself when the animation ends.
+
+**Corollary:** entry working is not evidence that exit works. They fail
+independently and for different reasons, so verify them separately.
+
+---
+
+## Overshoot has to be read as a fraction of what is moving (EI-317)
+
+`--ease-spring-travel` was reused for the sheet entrance because a slide is a
+transform and that is what the token is for. The result was a panel that
+visibly parted from the right edge of the screen for a few frames before
+settling back against it.
+
+The arithmetic is the whole story. `slide-in-from-right-full` runs `translateX`
+from `100%` to `0`, and a spring's eased progress passes 1 on its way to
+settling — so `translateX` goes *past* 0 into negative, which is leftward, off
+the `right-0` anchor. 4.9% of a 145px tab pill is 7px and reads as life; 4.9%
+of a 680px panel is 33px of daylight between the sheet and the edge it is
+supposed to be attached to.
+
+**Rule:** a spring may overshoot only where there is somewhere to overshoot
+*to*. An edge-anchored surface — a sheet, a docked rail, anything pinned to a
+viewport edge — takes a landing ease (`--ease-out-soft`); only centred things
+may spring. And when reusing a spring on something much larger or smaller than
+it was tuned for, re-derive the overshoot in pixels before assuming the
+percentage still reads the same.
