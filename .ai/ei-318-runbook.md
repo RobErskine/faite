@@ -9,7 +9,7 @@ the execution order and the running state.
 ## Order
 
 - [x] 0. Recurrence anchor bug + regression tests (`use-board-actions.ts`)
-- [ ] 1. `parseDatePhrase` (quick-add) + `today`/`thisWeekend` preset kinds
+- [x] 1. `parseDatePhrase` (quick-add) + `today`/`thisWeekend` preset kinds
 - [ ] 2. `DatePickerField` (ui) — Deadline + repeat-dialog "Ends on"
 - [ ] 3. `DatePopover` (board) — typeahead, presets, calendar, Time, Repeat
 - [ ] 4. Sheet header — priority beside title, monochrome ramp

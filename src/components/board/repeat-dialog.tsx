@@ -9,6 +9,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import {
+  DatePickerField,
+  civilDateToLocalDate,
+} from "@/components/ui/date-picker-field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -199,13 +203,17 @@ export function RepeatDialog({
               </label>
             </RadioGroup>
             {ends === "onDate" && (
-              <Input
-                type="date"
-                value={until}
-                min={seriesStart}
-                onChange={(e) => e.target.value && setUntil(e.target.value)}
-                className="mt-1"
+              // `disabled` rather than `min`: the same bound, but expressed
+              // to the calendar that now draws this field instead of to the
+              // OS control that used to (EI-318). Clearing is off — "on date"
+              // with no date is the "never" radio above, not an empty field.
+              <DatePickerField
+                value={until || null}
+                onChange={(next) => next && setUntil(next)}
+                disabled={{ before: civilDateToLocalDate(seriesStart) }}
+                clearable={false}
                 aria-label="Ends on date"
+                className="mt-1"
               />
             )}
           </div>

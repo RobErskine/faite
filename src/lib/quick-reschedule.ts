@@ -85,12 +85,12 @@ const QUICK_RESCHEDULE_LABELS: readonly {
  * shows fewer because it also has to fit a month grid and two footer buttons
  * inside one phone viewport, where a menu has the whole screen to grow into.
  */
-export const DATE_POPOVER_KINDS: readonly QuickRescheduleKind[] = [
+export const DATE_POPOVER_KINDS = [
   "today",
   "tomorrow",
   "thisWeekend",
   "nextWeek",
-];
+] as const satisfies readonly QuickRescheduleKind[];
 
 /**
  * The next `weekday` STRICTLY AFTER `from` — Monday asked from a Monday is
