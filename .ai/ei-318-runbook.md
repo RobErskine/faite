@@ -10,11 +10,11 @@ the execution order and the running state.
 
 - [x] 0. Recurrence anchor bug + regression tests (`use-board-actions.ts`)
 - [x] 1. `parseDatePhrase` (quick-add) + `today`/`thisWeekend` preset kinds
-- [ ] 2. `DatePickerField` (ui) — Deadline + repeat-dialog "Ends on"
-- [ ] 3. `DatePopover` (board) — typeahead, presets, calendar, Time, Repeat
-- [ ] 4. Sheet header — priority beside title, monochrome ramp
-- [ ] 5. Field order — Tab field deleted, repeat summary line
-- [ ] 6. Footer weights + arrow verbs + shortcuts.ts + docs/KEYBOARD.md
+- [x] 2. `DatePickerField` (ui) — Deadline + repeat-dialog "Ends on"
+- [x] 3. `DatePopover` (board) — typeahead, presets, calendar, Time, Repeat
+- [x] 4. Sheet header — priority beside title, monochrome ramp
+- [x] 5. Field order — Tab field deleted, repeat summary line
+- [x] 6. Footer weights + arrow verbs + shortcuts.ts + docs/KEYBOARD.md
 - [ ] 7. List combobox
 - [ ] 8. Attachment events + timeline alignment + docs
 - [ ] 9. typecheck -> test -> typecheck -> prod-build e2e -> full matrix -> PR

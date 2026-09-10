@@ -167,6 +167,23 @@ export const LOCAL_SHORTCUTS: ShortcutEntry[] = [
   },
 
   // --- To-do sheet ------------------------------------------------------
+  // The two arrow verbs are the SAME keys and the same meanings Overdrive
+  // binds (EI-318) — one set of muscle memory for triage, not two. Down and
+  // right stay unbound here on purpose; see `handleSheetKeyDown`.
+  {
+    id: "sheet-arrow-done",
+    combo: "arrowup",
+    label: "Mark done — when focus is not in a text field",
+    scope: "To-do sheet",
+    source: "todo-sheet.tsx — handleSheetKeyDown",
+  },
+  {
+    id: "sheet-arrow-wont-do",
+    combo: "arrowleft",
+    label: "Mark won't-do — when focus is not in a text field",
+    scope: "To-do sheet",
+    source: "todo-sheet.tsx — handleSheetKeyDown",
+  },
   {
     id: "sheet-mark-done",
     combo: "mod+enter",

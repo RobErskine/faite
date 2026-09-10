@@ -65,7 +65,6 @@ interface HarnessProps {
   events?: TodoEvent[];
   ctx?: PlacementContext;
   listsById?: ReadonlyMap<string, List>;
-  tabsById?: ReadonlyMap<string, Tab>;
 }
 
 function Harness({
@@ -83,7 +82,6 @@ function Harness({
   events,
   ctx,
   listsById,
-  tabsById,
 }: HarnessProps) {
   return (
     <TodoSheet
@@ -97,7 +95,6 @@ function Harness({
       events={events}
       ctx={ctx}
       listsById={listsById}
-      tabsById={tabsById}
       onClose={vi.fn()}
       onSave={onSave}
       onSetStatus={onSetStatus}
@@ -143,7 +140,10 @@ describe("repeat section (a materialized occurrence)", () => {
       />,
     );
     expect(screen.getByText("Every week on Fri")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Change…" })).toBeTruthy();
+    // No "Change…" here any more — editing the rule is the Repeat entry
+    // inside the date control, so there is one way in (EI-318). What stays
+    // is the two verbs that are not schedule edits.
+    expect(screen.queryByRole("button", { name: "Change…" })).toBeNull();
     expect(screen.getByRole("button", { name: "More repeat actions" })).toBeTruthy();
   });
 });
@@ -636,85 +636,84 @@ describe("History — the Faite Loop (EI-96)", () => {
   });
 });
 
-/**
- * EI-62: the Project picker is retired. The sheet now shows a read-only Tab
- * field, derived `listId → list.tabId → tab` (see `tabForTodo`, lib/board.ts)
- * rather than a stored, independently-editable field.
- */
-describe("derived Tab field (EI-62)", () => {
-  const PERSONAL_TAB: Tab = {
-    id: "tab-personal",
-    ownerId: "local-user",
-    createdAt: "",
-    updatedAt: "",
-    deletedAt: null,
-    name: "Personal",
-    description: null,
-    isDefault: false,
-    archivedAt: null,
-    position: "a0",
-    color: null,
-    emoji: null,
-    iconUrl: null,
-  };
 
-  const TO_READ_LIST: List = {
-    id: "list-to-read",
-    ownerId: "local-user",
-    createdAt: "",
-    updatedAt: "",
-    deletedAt: null,
-    name: "To Read",
-    isBacklog: false,
-    archivedAt: null,
-    archivedWithTabId: null,
-    position: "a0",
-    tabId: PERSONAL_TAB.id,
-    defaultReminderPresetId: null,
-    description: null,
-    color: null,
-    emoji: null,
-    iconUrl: null,
-  };
-
-  const BACKLOG_LIST: List = {
-    ...TO_READ_LIST,
-    id: "list-backlog",
-    name: "Backlog",
-    isBacklog: true,
-    tabId: null,
-  };
-
-  it("has no Project field", () => {
+describe("priority in the header (EI-318)", () => {
+  it("sits before the title in the DOM, which is the tab order", () => {
+    // Shift+Tab from the title lands on priority and Tab lands on Date —
+    // both fall out of source order, so this asserts the order rather than
+    // simulating a browser's focus walk, which happy-dom does not implement.
     render(<Harness />);
-    expect(screen.queryByText("Project")).toBeNull();
+    const priority = document.getElementById("todo-priority")!;
+    const title = screen.getByLabelText("Title");
+    expect(priority.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("shows the tab its list belongs to", () => {
-    render(
-      <Harness
-        todo={{ ...TODO, listId: TO_READ_LIST.id }}
-        listsById={new Map([[TO_READ_LIST.id, TO_READ_LIST]])}
-        tabsById={new Map([[PERSONAL_TAB.id, PERSONAL_TAB]])}
-      />,
-    );
-    expect(screen.getByText("Tab")).toBeTruthy();
-    expect(screen.getByText("Personal")).toBeTruthy();
+  it("reads P1..P4, and an em dash for none", () => {
+    const { rerender } = render(<Harness todo={{ ...TODO, priority: null }} />);
+    expect(document.getElementById("todo-priority")!.textContent).toContain("—");
+    rerender(<Harness todo={{ ...TODO, priority: 2 }} />);
+    expect(document.getElementById("todo-priority")!.textContent).toContain("P2");
   });
 
-  it("is blank for a Backlog todo — list.tabId === null means pinned into every tab", () => {
-    render(
-      <Harness
-        todo={{ ...TODO, listId: BACKLOG_LIST.id }}
-        listsById={new Map([[BACKLOG_LIST.id, BACKLOG_LIST]])}
-        tabsById={new Map([[PERSONAL_TAB.id, PERSONAL_TAB]])}
-      />,
-    );
-    expect(screen.queryByText("Personal")).toBeNull();
+  it("tints achromatically — never a hue (docs/DESIGN.md §7 decision A)", () => {
+    // Hue on this board means "belongs to this list" and "needs a verdict",
+    // and nothing else. A priority that reintroduced red would be
+    // indistinguishable from the urgency red two rows away.
+    for (const priority of [1, 2, 3, 4] as const) {
+      cleanup();
+      render(<Harness todo={{ ...TODO, priority }} />);
+      const cls = document.getElementById("todo-priority")!.className;
+      expect(cls).toContain("bg-foreground/");
+    }
   });
 
-  it("is blank for an unfiled todo (listId === null)", () => {
-    render(<Harness todo={{ ...TODO, listId: null }} />);
-    expect(screen.queryByText("Personal")).toBeNull();
+  it("has no tint at all when unprioritized", () => {
+    render(<Harness todo={{ ...TODO, priority: null }} />);
+    expect(document.getElementById("todo-priority")!.className).not.toContain("bg-foreground/");
+  });
+});
+
+describe("arrow verbs (EI-318)", () => {
+  it("up marks the to-do done", () => {
+    const onSetStatus = vi.fn();
+    render(<Harness onSetStatus={onSetStatus} />);
+    fireEvent.keyDown(sheetContent(), { key: "ArrowUp" });
+    expect(onSetStatus).toHaveBeenCalledWith("t1", "done", null);
+  });
+
+  it("left marks it dropped — the same two keys Overdrive uses", () => {
+    const onSetStatus = vi.fn();
+    render(<Harness onSetStatus={onSetStatus} />);
+    fireEvent.keyDown(sheetContent(), { key: "ArrowLeft" });
+    expect(onSetStatus).toHaveBeenCalledWith("t1", "dropped");
+  });
+
+  it("does NOTHING while the caret is in a text field — there it moves the caret", () => {
+    // The guard, not the keypress (docs/KEYBOARD.md §9). This is the whole
+    // reason the sheet does not autofocus the title on open.
+    const onSetStatus = vi.fn();
+    render(<Harness onSetStatus={onSetStatus} />);
+    fireEvent.keyDown(screen.getByLabelText("Title"), { key: "ArrowUp" });
+    fireEvent.keyDown(screen.getByLabelText("Title"), { key: "ArrowLeft" });
+    expect(onSetStatus).not.toHaveBeenCalled();
+  });
+
+  it("ignores a modified arrow — those belong to the OS and the browser", () => {
+    const onSetStatus = vi.fn();
+    render(<Harness onSetStatus={onSetStatus} />);
+    for (const mod of ["metaKey", "ctrlKey", "altKey", "shiftKey"]) {
+      fireEvent.keyDown(sheetContent(), { key: "ArrowUp", [mod]: true });
+    }
+    expect(onSetStatus).not.toHaveBeenCalled();
+  });
+
+  it("leaves down and right alone", () => {
+    // Overdrive's meanings for them need its verdict state machine; giving
+    // them different ones here would break the shared muscle memory.
+    const onSetStatus = vi.fn();
+    render(<Harness onSetStatus={onSetStatus} />);
+    fireEvent.keyDown(sheetContent(), { key: "ArrowDown" });
+    fireEvent.keyDown(sheetContent(), { key: "ArrowRight" });
+    expect(onSetStatus).not.toHaveBeenCalled();
   });
 });
