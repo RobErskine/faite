@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  DATE_POPOVER_KINDS,
   firstOfNextMonth,
   nextWeekdayAfter,
   quickRescheduleDate,
@@ -12,18 +13,22 @@ const MONDAY = "2026-08-03";
 const CIVIL_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 const ALL_KINDS: QuickRescheduleKind[] = [
+  "today",
   "tomorrow",
   "in2days",
   "in3days",
+  "thisWeekend",
   "nextWeek",
   "nextMonth",
 ];
 
 describe("quickRescheduleDate", () => {
   it("resolves every kind from a Monday", () => {
+    expect(quickRescheduleDate("today", MONDAY)).toBe(MONDAY);
     expect(quickRescheduleDate("tomorrow", MONDAY)).toBe("2026-08-04");
     expect(quickRescheduleDate("in2days", MONDAY)).toBe("2026-08-05");
     expect(quickRescheduleDate("in3days", MONDAY)).toBe("2026-08-06");
+    expect(quickRescheduleDate("thisWeekend", MONDAY)).toBe("2026-08-08");
     // Not today, even though today IS a Monday — see `nextWeekdayAfter`.
     expect(quickRescheduleDate("nextWeek", MONDAY)).toBe("2026-08-10");
     expect(quickRescheduleDate("nextMonth", MONDAY)).toBe("2026-09-01");
@@ -99,9 +104,11 @@ describe("quickRescheduleOptions", () => {
 
   it("labels each row as prose, with the date carried separately", () => {
     expect(quickRescheduleOptions(MONDAY)).toEqual([
+      { kind: "today", label: "Today", date: "2026-08-03" },
       { kind: "tomorrow", label: "Tomorrow", date: "2026-08-04" },
       { kind: "in2days", label: "In 2 days", date: "2026-08-05" },
       { kind: "in3days", label: "In 3 days", date: "2026-08-06" },
+      { kind: "thisWeekend", label: "This weekend", date: "2026-08-08" },
       { kind: "nextWeek", label: "Next week", date: "2026-08-10" },
       { kind: "nextMonth", label: "Next month", date: "2026-09-01" },
     ]);
@@ -122,5 +129,41 @@ describe("quickRescheduleOptions", () => {
     expect(quickRescheduleOptions("2026-08-03")).not.toEqual(
       quickRescheduleOptions("2026-08-04"),
     );
+  });
+});
+
+describe("thisWeekend (EI-318)", () => {
+  // 2026-08-03 is a Monday, so the week runs Mon 3 … Sun 9.
+  it("is the coming Saturday from any weekday", () => {
+    expect(quickRescheduleDate("thisWeekend", "2026-08-03")).toBe("2026-08-08"); // Mon
+    expect(quickRescheduleDate("thisWeekend", "2026-08-06")).toBe("2026-08-08"); // Thu
+    expect(quickRescheduleDate("thisWeekend", "2026-08-07")).toBe("2026-08-08"); // Fri
+  });
+
+  it("is TODAY on a Saturday — inclusive, unlike Next week", () => {
+    expect(quickRescheduleDate("thisWeekend", "2026-08-08")).toBe("2026-08-08");
+    expect(quickRescheduleDate("nextWeek", "2026-08-10")).toBe("2026-08-17");
+  });
+
+  it("is TODAY on a Sunday — the back half of the weekend it is in", () => {
+    // Not the Saturday six days away, which is the NEXT weekend.
+    expect(quickRescheduleDate("thisWeekend", "2026-08-09")).toBe("2026-08-09");
+  });
+
+  it("crosses a month and a year boundary", () => {
+    expect(quickRescheduleDate("thisWeekend", "2026-08-31")).toBe("2026-09-05"); // Mon
+    expect(quickRescheduleDate("thisWeekend", "2026-12-31")).toBe("2027-01-02"); // Thu
+  });
+});
+
+describe("DATE_POPOVER_KINDS (EI-318)", () => {
+  it("is a subset of the one vocabulary, never a second list", () => {
+    for (const kind of DATE_POPOVER_KINDS) {
+      expect(ALL_KINDS).toContain(kind);
+    }
+  });
+
+  it("matches the four rows the popover is designed around", () => {
+    expect(DATE_POPOVER_KINDS).toEqual(["today", "tomorrow", "thisWeekend", "nextWeek"]);
   });
 });
