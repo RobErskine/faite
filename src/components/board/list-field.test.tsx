@@ -128,32 +128,35 @@ function setup(props: Partial<Parameters<typeof ListField>[0]> = {}) {
  * derived Tab field was deleted (EI-318) precisely because this says which
  * tab a to-do is in. If it stops doing that, nothing else does.
  */
+const chip = () => screen.queryByRole("button", { name: /^Remove from / });
+
 describe("ListField — what it says at rest", () => {
   it("shows '{tabName} > {listName}' for a list that belongs to a tab", () => {
     setup({ todo: todo({ listId: BRAIN_DUMP.id }) });
-    expect(input().placeholder).toBe("My Lists > Brain Dump");
+    expect(chip()?.getAttribute("aria-label")).toBe("Remove from My Lists > Brain Dump");
   });
 
   it("names the tab for every tab, not just the default one", () => {
     setup({ todo: todo({ listId: PROJECT_1.id }) });
-    expect(input().placeholder).toBe("Work > Project 1");
+    expect(chip()?.getAttribute("aria-label")).toBe("Remove from Work > Project 1");
   });
 
   it("shows Backlog unprefixed — it is pinned into every tab, owned by none", () => {
     setup({ todo: todo({ listId: BACKLOG.id }) });
-    expect(input().placeholder).toBe("Backlog");
+    expect(chip()?.getAttribute("aria-label")).toBe("Remove from Backlog");
   });
 
-  it("shows 'None' for an unfiled to-do", () => {
+  it("shows no chip at all for an unfiled to-do", () => {
     setup();
-    expect(input().placeholder).toBe("None");
+    expect(chip()).toBeNull();
+    expect(input().placeholder).toBe("Search lists…");
   });
 
   it("shows 'Archived list' for a dangling listId, never a blank field", () => {
     // Archiving a list leaves every to-do's `listId` pointing at it while
     // `lists` here excludes archived rows, so the id resolves to nothing.
     setup({ todo: todo({ listId: "list-archived" }) });
-    expect(input().placeholder).toBe("Archived list");
+    expect(chip()?.getAttribute("aria-label")).toBe("Remove from Archived list");
   });
 
   it("includes the emoji when the list has one", () => {
@@ -162,16 +165,31 @@ describe("ListField — what it says at rest", () => {
       todo: todo({ listId: groceries.id }),
       lists: [BACKLOG, groceries],
     });
-    expect(input().placeholder).toBe("My Lists > 🥕 Groceries");
+    expect(chip()?.getAttribute("aria-label")).toBe("Remove from My Lists > 🥕 Groceries");
+  });
+});
+
+describe("ListField — clearing", () => {
+  it("removes the to-do from its list, which files it under Backlog", () => {
+    // `listId: null` is not "nowhere": `groupTodosByList` (lib/board.ts) has
+    // always resolved a missing list to Backlog rather than dropping the card.
+    const { onSave } = setup({ todo: todo({ listId: PROJECT_1.id }) });
+    fireEvent.click(chip()!);
+    expect(onSave).toHaveBeenCalledWith("t1", { listId: null });
+  });
+
+  it("clears a DANGLING listId too — the one state with no other way out", () => {
+    const { onSave } = setup({ todo: todo({ listId: "list-archived" }) });
+    fireEvent.click(chip()!);
+    expect(onSave).toHaveBeenCalledWith("t1", { listId: null });
   });
 });
 
 describe("ListField — searching", () => {
-  it("offers every list plus None when the field is resting", async () => {
+  it("offers every list when the field is resting", async () => {
     setup();
     open();
-    expect(await screen.findByRole("option", { name: "None" })).toBeTruthy();
-    expect(screen.getByRole("option", { name: /Backlog/ })).toBeTruthy();
+    expect(await screen.findByRole("option", { name: /Backlog/ })).toBeTruthy();
     expect(screen.getByRole("option", { name: /Brain Dump/ })).toBeTruthy();
     expect(screen.getByRole("option", { name: /Project 1/ })).toBeTruthy();
   });
@@ -201,13 +219,26 @@ describe("ListField — searching", () => {
     expect(await screen.findByRole("option", { name: /Project 1/ })).toBeTruthy();
   });
 
-  it("drops None while searching — unfiling is not a search result", async () => {
-    setup();
+  it("commits the single remaining match on Enter", async () => {
+    // Narrowing to one list and pressing Enter used to CLEAR the query: the
+    // combobox had nothing highlighted, so there was nothing to commit.
+    // `autoHighlight` is what makes one match mean one obvious answer.
+    const { onSave } = setup();
     open();
-    type(input(), "n");
-    // "n" matches "Brain Dump", and must NOT also offer to unfile the to-do.
-    expect(await screen.findByRole("option", { name: /Brain Dump/ })).toBeTruthy();
-    expect(screen.queryByRole("option", { name: "None" })).toBeNull();
+    type(input(), "project");
+    await screen.findByRole("option", { name: /Project 1/ });
+    fireEvent.keyDown(input(), { key: "Enter" });
+    expect(onSave).toHaveBeenCalledWith("t1", { listId: PROJECT_1.id });
+  });
+
+  it("commits the FIRST match on Enter when several remain", async () => {
+    const { onSave } = setup();
+    open();
+    // Backlog sorts first, ahead of every tabbed list.
+    type(input(), "a");
+    await screen.findByRole("option", { name: /Backlog/ });
+    fireEvent.keyDown(input(), { key: "Enter" });
+    expect(onSave).toHaveBeenCalledWith("t1", { listId: BACKLOG.id });
   });
 
   it("says so when nothing matches, rather than closing the popup", async () => {
@@ -227,13 +258,6 @@ describe("ListField — writing", () => {
     type(input(), "project");
     pick(await screen.findByRole("option", { name: /Project 1/ }));
     expect(onSave).toHaveBeenCalledWith("t1", { listId: PROJECT_1.id });
-  });
-
-  it("unfiles the to-do when None is picked", async () => {
-    const { onSave } = setup({ todo: todo({ listId: PROJECT_1.id }) });
-    open();
-    pick(await screen.findByRole("option", { name: "None" }));
-    expect(onSave).toHaveBeenCalledWith("t1", { listId: null });
   });
 
   it("clears the query after a pick, so the placeholder shows again", async () => {

@@ -1,8 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { X } from "lucide-react";
 import {
   Combobox,
+  ComboboxChip,
+  ComboboxChips,
   ComboboxEmpty,
   ComboboxInput,
   ComboboxItem,
@@ -13,11 +16,6 @@ import {
 } from "@/components/ui/combobox";
 import type { List, Tab, Todo } from "@/lib/schema";
 
-/** The "put this nowhere" row. An object rather than a string sentinel, so it
- * shares `Entry`'s shape and needs no separate branch in `onValueChange`. */
-const NONE_ENTRY = { kind: "none" as const };
-type NoneEntry = typeof NONE_ENTRY;
-
 interface ListEntry {
   kind: "list";
   list: List;
@@ -26,9 +24,7 @@ interface ListEntry {
   tabName: string | null;
 }
 
-type Entry = NoneEntry | ListEntry;
-
-const isNone = (entry: Entry): entry is NoneEntry => entry.kind === "none";
+type Entry = ListEntry;
 
 interface ListFieldProps {
   todo: Todo;
@@ -72,7 +68,23 @@ function listLabel(list: List, tabsById: ReadonlyMap<string, Tab>): string {
  *    to nothing, and must read "Archived list" rather than blank.
  * 3. **Backlog pinned first, unprefixed**, matching how it is pinned leftmost
  *    on the board.
- * 4. **A "None" row**, to unfile.
+ * 4. **A way to unfile.** Was a "None" row; it is the chip's own X now — see
+ *    below.
+ *
+ * ## The selection is a chip, not the placeholder
+ *
+ * It read as placeholder text at first, which is how the reminder and label
+ * pickers show their current state — and it was wrong here for a reason
+ * neither of those has: placeholder text is not a control. There was no way
+ * to take a to-do OUT of a list at all, short of picking a different one, and
+ * a greyed-out "My Lists > To Read" looks like an empty field rather than a
+ * filled one. A chip with an X says both things at once.
+ *
+ * Clearing writes `listId: null`, which files the to-do under **Backlog** —
+ * `groupTodosByList` (lib/board.ts) has always resolved "no list, or a
+ * pointer at a deleted one" that way rather than letting a card vanish. That
+ * is what "remove it from this list" means here, and why there is no separate
+ * "move to Backlog" row.
  *
  * ## Why the tab is on every row instead of a group header
  *
@@ -113,24 +125,21 @@ export function ListField({ todo, lists, tabs, onSave }: ListFieldProps) {
 
   const items = useMemo<Entry[]>(() => {
     const q = query.trim().toLowerCase();
-    if (q === "") return [NONE_ENTRY, ...entries];
-    const matched = entries.filter(
+    if (q === "") return entries;
+    return entries.filter(
       (entry) =>
         entry.list.name.toLowerCase().includes(q) ||
         (entry.tabName?.toLowerCase().includes(q) ?? false),
     );
-    // "None" is an action, not a list, so it only shows when the field is
-    // resting — a search for "gro" offering to unfile the to-do would be a
-    // destructive row nobody was looking for.
-    return matched;
   }, [entries, query]);
 
   const current = todo.listId ? listsById.get(todo.listId) : undefined;
-  const restingLabel = todo.listId
+  // A dangling id — its list was archived — still has to read as SOMETHING.
+  const chipLabel = todo.listId
     ? current
       ? listLabel(current, tabsById)
       : "Archived list"
-    : "None";
+    : null;
 
   return (
     <Combobox
@@ -138,22 +147,43 @@ export function ListField({ todo, lists, tabs, onSave }: ListFieldProps) {
       value={null}
       onValueChange={(entry: Entry | null) => {
         if (!entry) return;
-        onSave(todo.id, { listId: isNone(entry) ? null : entry.list.id });
+        onSave(todo.id, { listId: entry.list.id });
         setQuery("");
       }}
       inputValue={query}
       onInputValueChange={setQuery}
-      itemToStringLabel={(entry: Entry) =>
-        isNone(entry) ? "None" : listLabel(entry.list, tabsById)
-      }
+      itemToStringLabel={(entry: Entry) => listLabel(entry.list, tabsById)}
       filter={null}
       openOnInputClick
+      // Highlights the first row as soon as there is one, so Enter commits it.
+      // Without this, typing a query that leaves exactly one list and pressing
+      // Enter cleared the field instead of picking it — the combobox had
+      // nothing highlighted to commit, which is the opposite of what one
+      // remaining match means.
+      autoHighlight
     >
-      <ComboboxInput
-        id="todo-list"
-        placeholder={restingLabel}
-        className="h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
-      />
+      <ComboboxChips className="min-h-9 px-2">
+        {chipLabel && (
+          <ComboboxChip className="border-border bg-muted">
+            {chipLabel}
+            <button
+              type="button"
+              // Not `ComboboxChipRemove`, which removes from the value ARRAY
+              // this single-mode field deliberately does not keep — the todo
+              // is the truth. Same glyph and hit area.
+              aria-label={`Remove from ${chipLabel}`}
+              onClick={() => onSave(todo.id, { listId: null })}
+              className="rounded-full p-0.5 outline-none hover:bg-foreground/10 focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <X className="size-2.5" aria-hidden />
+            </button>
+          </ComboboxChip>
+        )}
+        <ComboboxInput
+          id="todo-list"
+          placeholder={chipLabel ? "Move to…" : "Search lists…"}
+        />
+      </ComboboxChips>
       <ComboboxPortal>
         <ComboboxPositioner>
           <ComboboxPopup>
@@ -162,23 +192,17 @@ export function ListField({ todo, lists, tabs, onSave }: ListFieldProps) {
                 whole sheet instead of just the popup. */}
             <ComboboxEmpty>No lists match.</ComboboxEmpty>
             <ComboboxList>
-              {(entry: Entry) =>
-                isNone(entry) ? (
-                  <ComboboxItem key="none" value={entry} className="text-muted-foreground">
-                    None
-                  </ComboboxItem>
-                ) : (
-                  <ComboboxItem key={entry.list.id} value={entry}>
-                    {entry.list.emoji ? `${entry.list.emoji} ` : ""}
-                    {entry.list.name}
-                    {entry.tabName && (
-                      <span className="ml-auto pl-3 text-xs text-muted-foreground">
-                        {entry.tabName}
-                      </span>
-                    )}
-                  </ComboboxItem>
-                )
-              }
+              {(entry: Entry) => (
+                <ComboboxItem key={entry.list.id} value={entry}>
+                  {entry.list.emoji ? `${entry.list.emoji} ` : ""}
+                  {entry.list.name}
+                  {entry.tabName && (
+                    <span className="ml-auto pl-3 text-xs text-muted-foreground">
+                      {entry.tabName}
+                    </span>
+                  )}
+                </ComboboxItem>
+              )}
             </ComboboxList>
           </ComboboxPopup>
         </ComboboxPositioner>
