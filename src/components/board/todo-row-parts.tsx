@@ -14,7 +14,7 @@ import { Badge, badgeVariants } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { edge, tint } from "@/lib/colors";
-import { priorityRail } from "@/lib/priority";
+import { priorityRail, railBackgroundImage } from "@/lib/priority";
 import type { CivilDate, Label as LabelRecord, ReminderPreset, Todo } from "@/lib/schema";
 import { formatDeadlineDue, formatShortDate, isDeadlineMissed } from "@/lib/scheduling";
 import { reminderLabelFor } from "@/lib/reminder-presets";
@@ -50,18 +50,17 @@ export function PriorityRail({
       /*
         Achromatic (docs/DESIGN.md §7, decision A): the rail is `--foreground`
         at the level's opacity, so it inverts with the theme and never collides
-        with a list's hue or the urgency red. P4 is dotted — a 1px repeating
-        gradient rather than a border, because the rail is a span, not a
-        border (see TodoCard for why).
+        with a list's hue or the urgency red. Every level below P1 is broken to
+        its own rhythm — solid, long dash, short dash, sparse dots — so a level
+        can be read without a neighbour to compare it against. Drawn as a
+        repeating gradient rather than a border, because the rail is a span,
+        not a border (see TodoCard for why).
       */
       style={{
         width: rail.width,
         opacity: rail.opacity,
-        ...(rail.dotted
-          ? {
-              backgroundImage:
-                "repeating-linear-gradient(to bottom, var(--foreground) 0 2px, transparent 2px 5px)",
-            }
+        ...(railBackgroundImage(rail)
+          ? { backgroundImage: railBackgroundImage(rail)! }
           : { backgroundColor: "var(--foreground)" }),
       }}
       /*
@@ -87,7 +86,7 @@ export function PriorityRail({
  * row or a select trigger, where it has to sit in text flow beside a word.
  *
  * Deliberately `PriorityRail` with a positioning override rather than a second
- * component: width, opacity and P4's dotted gradient all come from
+ * component: width, opacity and each level's rhythm all come from
  * `PRIORITY_RAILS`, and a copy would drift the first time one of them changed.
  */
 export function PriorityGlyph({ priority }: { priority: Todo["priority"] }) {

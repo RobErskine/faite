@@ -70,7 +70,7 @@ import { cn } from "@/lib/utils";
 import { useExitRetained } from "@/lib/use-exit-retained";
 import { edge, effectiveListColor } from "@/lib/colors";
 import { PriorityGlyph, PriorityRail } from "@/components/board/todo-row-parts";
-import { priorityRail } from "@/lib/priority";
+import { priorityRail, railBorderStyle } from "@/lib/priority";
 import { TITLE_LINES } from "@/lib/title";
 import { formatEventTime } from "@/lib/event-time";
 import { formatShortDate, type PlacementContext } from "@/lib/scheduling";
@@ -116,8 +116,8 @@ const EMPTY_LISTS_BY_ID: ReadonlyMap<string, List> = new Map();
  * `PriorityRail` draws with a width, an opacity on the span, and a repeating
  * gradient for P4's dots. A border cannot take an opacity without fading the
  * text inside it too, so the level's opacity is folded into the color with
- * `color-mix`, and P4's dots become `border-style: dotted`. Same reading, the
- * only two forms CSS offers for the same mark.
+ * `color-mix`, and the rhythm becomes the nearest `border-style` — see
+ * `railBorderStyle` for why that is an approximation and why it still reads.
  *
  * Every value falls back to the ordinary field border, which is what an
  * unprioritized to-do gets — and what every to-do gets below `lg`, where the
@@ -130,7 +130,7 @@ function priorityEdge(priority: Priority | null): React.CSSProperties {
     "--priority-edge-color": rail
       ? `color-mix(in oklch, var(--foreground) ${rail.opacity * 100}%, transparent)`
       : "var(--input)",
-    "--priority-edge-style": rail?.dotted ? "dotted" : "solid",
+    "--priority-edge-style": rail ? railBorderStyle(rail) : "solid",
   } as React.CSSProperties;
 }
 

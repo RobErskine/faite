@@ -8,7 +8,7 @@ import { useViewport } from "@/lib/use-viewport";
 import { OVERFLOW } from "@/lib/scheduling";
 import { LIFTED } from "@/lib/drop-animation";
 import { tint } from "@/lib/colors";
-import { priorityRail } from "@/lib/priority";
+import { priorityRail, railBorderStyle } from "@/lib/priority";
 import { FONT_STORAGE_KEY, normalizeFontPairing } from "@/lib/fonts";
 import {
   DARK_CLASS,
@@ -413,11 +413,11 @@ export function Board() {
               // than an absolutely positioned span: a standalone rounded box has
               // no column edge to keep true and no layout to shift, so a border
               // is simply the right form here. Both surfaces read their width,
-              // opacity and line style from PRIORITY_RAILS, so they cannot
+              // opacity and rhythm from PRIORITY_RAILS, so they cannot
               // drift in value. Opacity rides the color via color-mix here
               // because the chip's own opacity is the lift animation's.
               borderLeftWidth: activeRail?.width,
-              borderLeftStyle: activeRail?.dotted ? "dotted" : undefined,
+              borderLeftStyle: activeRail ? railBorderStyle(activeRail) : undefined,
               borderLeftColor: activeRail
                 ? `color-mix(in oklch, var(--foreground) ${Math.round(activeRail.opacity * 100)}%, transparent)`
                 : undefined,
