@@ -649,14 +649,14 @@ describe("priority in the header (EI-318)", () => {
     expect(priority.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("names the level rather than numbering it", () => {
-    // "P2" is the stored value and the quick-add token, not a name anybody
-    // uses out loud. The trigger says the word and draws the rail.
+  it("reads P1..P4, and None when unset", () => {
+    // The rail carries the level; `P2` is the label beside it because that is
+    // the token quick-add and ⌘K parse. An adjective spent width saying what
+    // the rail had already said.
     const { rerender } = render(<Harness todo={{ ...TODO, priority: null }} />);
     expect(document.getElementById("todo-priority")!.textContent).toContain("None");
     rerender(<Harness todo={{ ...TODO, priority: 2 }} />);
-    expect(document.getElementById("todo-priority")!.textContent).toContain("High");
-    expect(document.getElementById("todo-priority")!.textContent).not.toContain("P2");
+    expect(document.getElementById("todo-priority")!.textContent).toContain("P2");
   });
 
   it("draws the same rail the card wears, from the same table", () => {

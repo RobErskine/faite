@@ -37,24 +37,13 @@ export interface PriorityRail {
   dotted: boolean;
   /** What a screen reader hears in place of the old `P1` chip. */
   label: string;
-  /**
-   * What the level is CALLED, for anywhere the rail alone is not enough — a
-   * menu row, a select trigger. A different register from `label` on purpose:
-   * that one is a full spoken phrase, this one is a word in a 4rem control.
-   *
-   * Not "P1". The number is the STORED value and the quick-add token, not a
-   * name anybody uses out loud — "is this a high one?" is the question people
-   * actually ask. The menu still shows `P1`–`P4` beside each word, because
-   * typing `p2` into quick-add has to stay discoverable.
-   */
-  word: string;
 }
 
 export const PRIORITY_RAILS: Record<Priority, PriorityRail> = {
-  1: { width: 3, opacity: 1, dotted: false, label: "Priority 1, highest", word: "Highest" },
-  2: { width: 2, opacity: 0.7, dotted: false, label: "Priority 2", word: "High" },
-  3: { width: 1, opacity: 0.5, dotted: false, label: "Priority 3", word: "Medium" },
-  4: { width: 1, opacity: 0.5, dotted: true, label: "Priority 4, lowest", word: "Low" },
+  1: { width: 3, opacity: 1, dotted: false, label: "Priority 1, highest" },
+  2: { width: 2, opacity: 0.7, dotted: false, label: "Priority 2" },
+  3: { width: 1, opacity: 0.5, dotted: false, label: "Priority 3" },
+  4: { width: 1, opacity: 0.5, dotted: true, label: "Priority 4, lowest" },
 };
 
 /** `undefined` for an unprioritised to-do, so callers can render nothing. */
