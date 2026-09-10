@@ -697,9 +697,10 @@ describe("priority in the header (EI-318)", () => {
     render(<Harness todo={{ ...TODO, priority: 2 }} />);
     const tab = document.getElementById("todo-priority")!.parentElement!;
     expect(tab.className).toContain("lg:absolute");
-    // Its own width minus a pixel, so it laps over the sheet's `border-l`
-    // rather than leaving a hairline crack between two white surfaces.
-    expect(tab.className).toContain("lg:left-[calc(-6rem+1px)]");
+    // Its own width minus THREE pixels — the widest a rail ever gets. The tab
+    // must cover the rail behind it completely at every level, or a sliver
+    // pokes out past its right edge and the wrap breaks.
+    expect(tab.className).toContain("lg:left-[calc(-6rem+3px)]");
   });
 
   it("gives the tab no shadow, which is what made it look detached", () => {
@@ -712,6 +713,43 @@ describe("priority in the header (EI-318)", () => {
     expect(tab.className).toContain("lg:bg-popover");
     expect(tab.className).toContain("lg:border-r-0");
     expect(tab.className).toContain("lg:rounded-r-none");
+  });
+
+  it("outlines the tab in the rail's own treatment, so the edge wraps it", () => {
+    // The sheet's edge comes down, goes behind the tab, and is picked up by
+    // the tab's border in the same width, color and dottedness — one line
+    // that wraps, rather than a box parked on a line.
+    render(<Harness todo={{ ...TODO, priority: 1 }} />);
+    const tab = document.getElementById("todo-priority")!.parentElement!;
+    expect(tab.style.getPropertyValue("--priority-edge-width")).toBe(
+      `${PRIORITY_RAILS[1].width}px`,
+    );
+    expect(tab.style.getPropertyValue("--priority-edge-style")).toBe("solid");
+    expect(tab.style.getPropertyValue("--priority-edge-color")).toContain("--foreground");
+  });
+
+  it("dots the tab's outline for P4, matching the rail's dots", () => {
+    render(<Harness todo={{ ...TODO, priority: 4 }} />);
+    const tab = document.getElementById("todo-priority")!.parentElement!;
+    expect(tab.style.getPropertyValue("--priority-edge-style")).toBe("dotted");
+  });
+
+  it("falls back to the ordinary field border when unprioritized", () => {
+    // Which is also what every to-do gets below `lg`, where the variables are
+    // set and nothing reads them.
+    render(<Harness todo={{ ...TODO, priority: null }} />);
+    const tab = document.getElementById("todo-priority")!.parentElement!;
+    expect(tab.style.getPropertyValue("--priority-edge-width")).toBe("1px");
+    expect(tab.style.getPropertyValue("--priority-edge-color")).toBe("var(--input)");
+  });
+
+  it("lets the tab paint OVER the sheet's rail, never under it", () => {
+    // The rail carries no `z-index` on purpose: the tab is later in the DOM,
+    // so it wins, and the edge disappears behind it instead of drawing a line
+    // across it.
+    render(<Harness todo={{ ...TODO, priority: 1 }} />);
+    const edge = sheetContent().querySelector(":scope > [data-priority-rail]") as HTMLElement;
+    expect(edge.className).not.toContain("z-10");
   });
 
   it("labels the tab, and hides that label when there is no tab", () => {

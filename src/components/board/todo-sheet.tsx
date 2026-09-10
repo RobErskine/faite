@@ -70,6 +70,7 @@ import { cn } from "@/lib/utils";
 import { useExitRetained } from "@/lib/use-exit-retained";
 import { edge, effectiveListColor } from "@/lib/colors";
 import { PriorityGlyph, PriorityRail } from "@/components/board/todo-row-parts";
+import { priorityRail } from "@/lib/priority";
 import { TITLE_LINES } from "@/lib/title";
 import { formatEventTime } from "@/lib/event-time";
 import { formatShortDate, type PlacementContext } from "@/lib/scheduling";
@@ -108,6 +109,30 @@ const NONE = "__none__";
 /** Stable empty default for `listsById` — a fresh `new Map()` per render
  * would defeat memoization downstream for no reason. */
 const EMPTY_LISTS_BY_ID: ReadonlyMap<string, List> = new Map();
+
+/**
+ * The tab's outline, expressed as the rail it continues.
+ *
+ * `PriorityRail` draws with a width, an opacity on the span, and a repeating
+ * gradient for P4's dots. A border cannot take an opacity without fading the
+ * text inside it too, so the level's opacity is folded into the color with
+ * `color-mix`, and P4's dots become `border-style: dotted`. Same reading, the
+ * only two forms CSS offers for the same mark.
+ *
+ * Every value falls back to the ordinary field border, which is what an
+ * unprioritized to-do gets — and what every to-do gets below `lg`, where the
+ * variables are set but nothing reads them.
+ */
+function priorityEdge(priority: Priority | null): React.CSSProperties {
+  const rail = priorityRail(priority);
+  return {
+    "--priority-edge-width": rail ? `${rail.width}px` : "1px",
+    "--priority-edge-color": rail
+      ? `color-mix(in oklch, var(--foreground) ${rail.opacity * 100}%, transparent)`
+      : "var(--input)",
+    "--priority-edge-style": rail?.dotted ? "dotted" : "solid",
+  } as React.CSSProperties;
+}
 
 /**
  * One metadata row: label on the leading edge, control beside it.
@@ -612,8 +637,14 @@ function TodoSheetContent({
           `inset-y-0`, unlike the card's `inset-y-1`: there is no next sheet
           below this one to fuse with, and the gap the card needs to read as a
           tick would just look like an unfinished edge here.
+
+          No `z-index`, deliberately. The priority tab is later in the DOM, so
+          it paints over this — which is what lets the edge run down, disappear
+          behind the tab, and be picked up by the tab's own outline in the same
+          treatment. One line that wraps, rather than a line with a box parked
+          on it.
         */}
-        <PriorityRail priority={todo.priority} className="inset-y-0 z-10" />
+        <PriorityRail priority={todo.priority} className="inset-y-0" />
 
         <SheetHeader className={backToDay ? "gap-1.5 pr-10" : undefined}>
           <SheetTitle className="sr-only">Edit to-do</SheetTitle>
@@ -679,9 +710,22 @@ function TodoSheetContent({
                 - `bg-popover` — the sheet's own background, not the board's.
                 - No right border, and no right radius, so nothing draws a
                   line down the join.
-                - `left` is its own width MINUS a pixel, so it laps over the
-                  sheet's `border-l` rather than sitting against it. A hairline
-                  gap between two white surfaces reads as a crack.
+                - `left` is its own width minus THREE pixels — the widest a
+                  rail ever gets (P1). The tab has to cover the rail behind it
+                  completely, at every level, or a sliver of it pokes out past
+                  the tab's right edge and the wrap breaks.
+                - Its remaining three borders are the RAIL's own treatment,
+                  not `border-input`: same width, same `--foreground` at the
+                  same opacity, dotted for P4. So the sheet's edge comes down,
+                  wraps around the tab, and carries on — one continuous line
+                  rather than a box stuck to a line.
+
+                Those three come through CSS variables rather than an inline
+                `border` shorthand, because they must only apply from `lg` up,
+                where the tab exists at all — and an inline style cannot be
+                gated on a media query. Below `lg` the variables are set and
+                simply unread. Each falls back to the ordinary field border,
+                which is what an unprioritized to-do gets at every width.
 
                 Absolute against `SheetContent`: that is `fixed`, so it is the
                 containing block, and `SheetHeader` sets no `position` of its
@@ -693,10 +737,17 @@ function TodoSheetContent({
                 `w-full` below `sm`.
               */}
               <div
+                style={priorityEdge(todo.priority)}
                 className={cn(
                   "shrink-0",
-                  "lg:absolute lg:top-4 lg:left-[calc(-6rem+1px)] lg:w-24",
-                  "lg:space-y-1 lg:rounded-l-xl lg:rounded-r-none lg:border lg:border-r-0",
+                  "lg:absolute lg:top-4 lg:left-[calc(-6rem+3px)] lg:w-24",
+                  "lg:space-y-1 lg:rounded-l-xl lg:rounded-r-none",
+                  "lg:border-t-[length:var(--priority-edge-width)]",
+                  "lg:border-b-[length:var(--priority-edge-width)]",
+                  "lg:border-l-[length:var(--priority-edge-width)]",
+                  "lg:border-r-0",
+                  "lg:[border-color:var(--priority-edge-color)]",
+                  "lg:[border-style:var(--priority-edge-style)]",
                   "lg:bg-popover lg:py-2 lg:pr-2 lg:pl-3",
                 )}
               >
