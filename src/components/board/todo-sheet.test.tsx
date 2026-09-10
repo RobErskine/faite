@@ -671,22 +671,35 @@ describe("priority in the header (EI-318)", () => {
     expect(glyph.style.width).toBe(`${PRIORITY_RAILS[1].width}px`);
   });
 
-  it("tints achromatically — never a hue (docs/DESIGN.md §7 decision A)", () => {
-    // Hue on this board means "belongs to this list" and "needs a verdict",
-    // and nothing else. A priority that reintroduced red would be
-    // indistinguishable from the urgency red two rows away.
-    for (const priority of [1, 2, 3, 4] as const) {
-      cleanup();
-      render(<Harness todo={{ ...TODO, priority }} />);
-      const cls = document.getElementById("todo-priority")!.className;
-      expect(cls).toContain("bg-foreground/");
-    }
+  it("puts the level on the SHEET's leading edge, as the card's own rail", () => {
+    // One mark, one table. The sheet reads as that card opened rather than as
+    // a different surface that happens to be about it — which is also why the
+    // select no longer carries a tint of its own: saying it twice in two
+    // different ways is not consistency.
+    render(<Harness todo={{ ...TODO, priority: 1 }} />);
+    const edge = sheetContent().querySelector(":scope > [data-priority-rail]") as HTMLElement;
+    expect(edge).toBeTruthy();
+    expect(edge.getAttribute("data-priority-rail")).toBe("1");
+    expect(edge.style.width).toBe(`${PRIORITY_RAILS[1].width}px`);
+    // Full height here, unlike the card's inset tick: there is no next sheet
+    // below this one to fuse with.
+    expect(edge.className).toContain("inset-y-0");
   });
 
-  it("has no tint at all when unprioritized", () => {
+  it("wears nothing on that edge when the to-do is unprioritized", () => {
     render(<Harness todo={{ ...TODO, priority: null }} />);
-    expect(document.getElementById("todo-priority")!.className).not.toContain("bg-foreground/");
+    expect(sheetContent().querySelector(":scope > [data-priority-rail]")).toBeNull();
   });
+
+  it("hangs the control off that edge once there is board to hang it over", () => {
+    // Gated on `lg`, not on the desktop shell: what matters is whether the
+    // sheet leaves room beside it, and it is `w-full` below `sm`.
+    render(<Harness todo={{ ...TODO, priority: 2 }} />);
+    const cls = document.getElementById("todo-priority")!.className;
+    expect(cls).toContain("lg:absolute");
+    expect(cls).toContain("lg:left-[-4.5rem]");
+  });
+
 });
 
 describe("arrow verbs (EI-318)", () => {

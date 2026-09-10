@@ -69,7 +69,7 @@ import { TimelineList, TimelineRow } from "@/components/board/timeline";
 import { cn } from "@/lib/utils";
 import { useExitRetained } from "@/lib/use-exit-retained";
 import { edge, effectiveListColor } from "@/lib/colors";
-import { PriorityGlyph } from "@/components/board/todo-row-parts";
+import { PriorityGlyph, PriorityRail } from "@/components/board/todo-row-parts";
 import { TITLE_LINES } from "@/lib/title";
 import { formatEventTime } from "@/lib/event-time";
 import { formatShortDate, type PlacementContext } from "@/lib/scheduling";
@@ -108,32 +108,6 @@ const NONE = "__none__";
 /** Stable empty default for `listsById` — a fresh `new Map()` per render
  * would defeat memoization downstream for no reason. */
 const EMPTY_LISTS_BY_ID: ReadonlyMap<string, List> = new Map();
-
-/**
- * The priority select's background, monochrome (EI-318).
- *
- * `docs/DESIGN.md` §7 decision A took hue off priority for a reason that has
- * not changed: red, orange, blue and cyan were the same hues as the list
- * color presets and the urgency red, so a Tomato "VIP" list beside a red "In
- * Overflow" badge beside a red P1 could not be told apart. Hue on this board
- * still means exactly two things — "belongs to this list", and "needs a
- * verdict". Importance is carried by weight.
- *
- * Not `PRIORITY_RAILS`' own numbers, which are 1 / 0.7 / 0.5 / 0.5 on a 3px
- * line: a fill at those opacities is a black box. Same idea, own values. And
- * no equivalent of the rail's dotted P4, because the rail has to separate two
- * levels that share a thickness and this control does not — the trigger says
- * "P4" in words, so the tint only has to give weight, never to discriminate.
- */
-function priorityTint(priority: Priority | null): string {
-  if (!priority) return "";
-  return {
-    1: "bg-foreground/15",
-    2: "bg-foreground/10",
-    3: "bg-foreground/[0.07]",
-    4: "bg-foreground/[0.04]",
-  }[priority];
-}
 
 /**
  * One metadata row: label on the leading edge, control beside it.
@@ -628,6 +602,19 @@ function TodoSheetContent({
         overlayClassName="supports-backdrop-filter:backdrop-blur-none"
         onKeyDown={handleSheetKeyDown}
       >
+        {/*
+          The sheet's leading edge IS the card's priority rail — same width,
+          same opacity, same dotted P4, from the same `PRIORITY_RAILS`
+          (EI-318). A to-do wears one mark on the board and the same mark
+          here, so the sheet reads as that card opened rather than as a
+          different surface that happens to be about it.
+
+          `inset-y-0`, unlike the card's `inset-y-1`: there is no next sheet
+          below this one to fuse with, and the gap the card needs to read as a
+          tick would just look like an unfinished edge here.
+        */}
+        <PriorityRail priority={todo.priority} className="inset-y-0 z-10" />
+
         <SheetHeader className={backToDay ? "gap-1.5 pr-10" : undefined}>
           <SheetTitle className="sr-only">Edit to-do</SheetTitle>
           <SheetDescription className="sr-only">
@@ -684,8 +671,26 @@ function TodoSheetContent({
                   // `h-8` is the title's line box exactly (see below), which is
                   // what makes `items-start` read as vertical centering on the
                   // first line without pinning it to the middle of a tall one.
-                  "h-8 w-[4.5rem] shrink-0 px-2 text-xs",
-                  priorityTint(todo.priority),
+                  "h-8 w-[4.5rem] shrink-0 bg-popover px-2 text-xs",
+                  /*
+                    From `lg` up it leaves the header and hangs off the sheet's
+                    leading edge as a tab, flush against it — `left` is exactly
+                    its own width, and the leading corners are the only round
+                    ones, so it reads as attached rather than as floating in
+                    the board.
+
+                    Absolute against `SheetContent`: that is `fixed`, so it is
+                    the containing block, and `SheetHeader` sets no `position`
+                    of its own. The DOM order is untouched, so Shift+Tab from
+                    the title still lands here.
+
+                    Gated on `lg` and not on the desktop shell, because what
+                    matters is whether there is board to hang over: the sheet
+                    is `w-full` below `sm` and 75ch above it, so a narrow
+                    desktop window has no room and keeps it inline.
+                  */
+                  "lg:absolute lg:top-5 lg:left-[-4.5rem] lg:rounded-r-none lg:border-r-0",
+                  "lg:shadow-(--shadow-overlay)",
                 )}
               >
                 {/* Base UI's SelectValue shows the raw `value` string by
