@@ -664,74 +664,101 @@ function TodoSheetContent({
                 })
               }
             >
-              <SelectTrigger
-                id="todo-priority"
-                aria-label="Priority"
+              {/*
+                The tab. Below `lg` it is nothing — a bare `shrink-0` flex
+                item holding the select beside the title. From `lg` up it
+                becomes the box that hangs off the sheet's leading edge, and
+                the select inside it goes borderless, because the TAB is the
+                control's chrome at that point.
+
+                Attached, not floating, and that is four separate things:
+
+                - No shadow. It had `--shadow-overlay`, which casts on every
+                  side including into the seam, drawing a dark halo exactly
+                  where the two surfaces are supposed to be one.
+                - `bg-popover` — the sheet's own background, not the board's.
+                - No right border, and no right radius, so nothing draws a
+                  line down the join.
+                - `left` is its own width MINUS a pixel, so it laps over the
+                  sheet's `border-l` rather than sitting against it. A hairline
+                  gap between two white surfaces reads as a crack.
+
+                Absolute against `SheetContent`: that is `fixed`, so it is the
+                containing block, and `SheetHeader` sets no `position` of its
+                own. DOM order is untouched, so Shift+Tab from the title still
+                lands on the select.
+
+                Gated on `lg` rather than the desktop shell, because what
+                matters is whether there is board to hang over: the sheet is
+                `w-full` below `sm`.
+              */}
+              <div
                 className={cn(
-                  // `h-8` is the title's line box exactly (see below), which is
-                  // what makes `items-start` read as vertical centering on the
-                  // first line without pinning it to the middle of a tall one.
-                  "h-8 w-[4.5rem] shrink-0 bg-popover px-2 text-xs",
-                  /*
-                    From `lg` up it leaves the header and hangs off the sheet's
-                    leading edge as a tab, flush against it — `left` is exactly
-                    its own width, and the leading corners are the only round
-                    ones, so it reads as attached rather than as floating in
-                    the board.
-
-                    Absolute against `SheetContent`: that is `fixed`, so it is
-                    the containing block, and `SheetHeader` sets no `position`
-                    of its own. The DOM order is untouched, so Shift+Tab from
-                    the title still lands here.
-
-                    Gated on `lg` and not on the desktop shell, because what
-                    matters is whether there is board to hang over: the sheet
-                    is `w-full` below `sm` and 75ch above it, so a narrow
-                    desktop window has no room and keeps it inline.
-                  */
-                  "lg:absolute lg:top-5 lg:left-[-4.5rem] lg:rounded-r-none lg:border-r-0",
-                  "lg:shadow-(--shadow-overlay)",
+                  "shrink-0",
+                  "lg:absolute lg:top-4 lg:left-[calc(-6rem+1px)] lg:w-24",
+                  "lg:space-y-1 lg:rounded-l-xl lg:rounded-r-none lg:border lg:border-r-0",
+                  "lg:bg-popover lg:py-2 lg:pr-2 lg:pl-3",
                 )}
               >
-                {/* Base UI's SelectValue shows the raw `value` string by
-                    default ("1" rather than "P1") unless given a way to
-                    resolve a label — see ListField's comment for the fuller
-                    explanation. An em dash for "none": there is no room for
-                    the word, and the menu below says it in full. */}
-                {/*
-                  The rail plus the number, and nothing else (EI-318).
+                <Label htmlFor="todo-priority" className="hidden lg:flex">
+                  Priority
+                </Label>
+                <SelectTrigger
+                  id="todo-priority"
+                  aria-label="Priority"
+                  className={cn(
+                    // `h-8` is the title's line box exactly (see below), which
+                    // is what makes `items-start` read as vertical centering on
+                    // the first line without pinning it to the middle of a tall
+                    // one. Only matters below `lg`, where this sits beside the
+                    // title rather than in the tab.
+                    "h-8 w-[4.5rem] shrink-0 bg-popover px-2 text-xs",
+                    // Inside the tab the box IS the tab: no border, no
+                    // background, no padding of its own.
+                    "lg:h-6 lg:w-full lg:border-0 lg:bg-transparent lg:px-0 lg:shadow-none",
+                    "lg:focus-visible:ring-0",
+                  )}
+                >
+                  {/*
+                    The rail plus the number, and nothing else (EI-318).
 
-                  The rail carries the level — it is the same mark, from the
-                  same `PRIORITY_RAILS`, that this to-do already wears on the
-                  board, so reading the sheet and scanning the column use one
-                  vocabulary. `P2` is the label beside it because that is the
-                  token quick-add and ⌘K parse; spelling it "High" cost the
-                  width of an adjective to say what the rail had already said.
-                */}
-                <SelectValue>
-                  {(value: string) =>
-                    value === NONE ? (
-                      <span className="text-muted-foreground">None</span>
-                    ) : (
-                      <span className="flex items-center gap-1.5">
-                        <PriorityGlyph priority={Number(value) as Priority} />
-                        <span className="num">P{value}</span>
-                      </span>
-                    )
-                  }
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={NONE}>
-                  <span className="text-muted-foreground">None</span>
-                </SelectItem>
-                {([1, 2, 3, 4] as const).map((p) => (
-                  <SelectItem key={p} className="num" value={String(p)}>
-                    <PriorityGlyph priority={p} />
-                    P{p}
+                    Base UI's `SelectValue` renders the raw `value` string
+                    unless given a way to resolve a label — see `ListField`'s
+                    comment for the fuller explanation.
+
+                    The rail carries the level: it is the same mark, from the
+                    same `PRIORITY_RAILS`, that this to-do already wears on
+                    the board, so reading the sheet and scanning the column
+                    use one vocabulary. `P2` is the label beside it because
+                    that is the token quick-add and ⌘K parse; spelling it
+                    "High" cost the width of an adjective to say what the rail
+                    had already said.
+                  */}
+                  <SelectValue>
+                    {(value: string) =>
+                      value === NONE ? (
+                        <span className="text-muted-foreground">None</span>
+                      ) : (
+                        <span className="flex items-center gap-1.5">
+                          <PriorityGlyph priority={Number(value) as Priority} />
+                          <span className="num">P{value}</span>
+                        </span>
+                      )
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>
+                    <span className="text-muted-foreground">None</span>
                   </SelectItem>
-                ))}
-              </SelectContent>
+                  {([1, 2, 3, 4] as const).map((p) => (
+                    <SelectItem key={p} className="num" value={String(p)}>
+                      <PriorityGlyph priority={p} />
+                      P{p}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </div>
             </Select>
             <div className="relative flex-1">
             <Textarea

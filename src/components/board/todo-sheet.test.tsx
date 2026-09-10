@@ -695,9 +695,34 @@ describe("priority in the header (EI-318)", () => {
     // Gated on `lg`, not on the desktop shell: what matters is whether the
     // sheet leaves room beside it, and it is `w-full` below `sm`.
     render(<Harness todo={{ ...TODO, priority: 2 }} />);
-    const cls = document.getElementById("todo-priority")!.className;
-    expect(cls).toContain("lg:absolute");
-    expect(cls).toContain("lg:left-[-4.5rem]");
+    const tab = document.getElementById("todo-priority")!.parentElement!;
+    expect(tab.className).toContain("lg:absolute");
+    // Its own width minus a pixel, so it laps over the sheet's `border-l`
+    // rather than leaving a hairline crack between two white surfaces.
+    expect(tab.className).toContain("lg:left-[calc(-6rem+1px)]");
+  });
+
+  it("gives the tab no shadow, which is what made it look detached", () => {
+    // `--shadow-overlay` casts on every side, including into the seam the two
+    // surfaces are supposed to share. The tab is chrome ON the sheet, so it
+    // carries the sheet's background and three borders instead.
+    render(<Harness todo={{ ...TODO, priority: 2 }} />);
+    const tab = document.getElementById("todo-priority")!.parentElement!;
+    expect(tab.className).not.toContain("shadow-(--shadow-overlay)");
+    expect(tab.className).toContain("lg:bg-popover");
+    expect(tab.className).toContain("lg:border-r-0");
+    expect(tab.className).toContain("lg:rounded-r-none");
+  });
+
+  it("labels the tab, and hides that label when there is no tab", () => {
+    render(<Harness todo={{ ...TODO, priority: 2 }} />);
+    const label = document.querySelector('label[for="todo-priority"]') as HTMLElement;
+    expect(label.textContent).toBe("Priority");
+    // Below `lg` the control sits beside the title with no room for a word,
+    // and its `aria-label` carries the name instead.
+    expect(label.className).toContain("hidden");
+    expect(label.className).toContain("lg:flex");
+    expect(document.getElementById("todo-priority")!.getAttribute("aria-label")).toBe("Priority");
   });
 
 });
