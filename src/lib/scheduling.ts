@@ -172,6 +172,28 @@ export function formatDay(date: CivilDate): { weekday: string; label: string } {
   return { weekday: WEEKDAY.format(dt), label: MONTH_DAY_YEAR.format(dt) };
 }
 
+/**
+ * A timeline day header: "Today", "Yesterday", "3 days ago · Aug 4", "Aug 4",
+ * "Aug 4, 2025".
+ *
+ * Shared by the global activity feed and a to-do's own History (EI-318),
+ * unlike the event LABELS beside them, which stay local to each sheet
+ * (`timeline.tsx`'s header comment explains that split). A day is the same
+ * day on both surfaces; "Assigned here" is not the same sentence.
+ *
+ * The ladder gets less relative as it goes back, because "37 days ago" is a
+ * number nobody converts and a date everybody reads.
+ */
+export function dayLabel(day: CivilDate, today: CivilDate): string {
+  const diff = daysBetween(day, today);
+  if (diff === 0) return "Today";
+  if (diff === 1) return "Yesterday";
+  if (diff <= 6) return `${diff} days ago · ${formatShortDate(day)}`;
+  if (diff <= 13) return `Last week · ${formatShortDate(day)}`;
+  if (day.slice(0, 4) === today.slice(0, 4)) return formatShortDate(day);
+  return formatDay(day).label;
+}
+
 /** Compact form for inline badges: "Aug 4". Year is almost always noise here. */
 export function formatShortDate(date: CivilDate): string {
   return MONTH_DAY.format(toUtcNoon(date));

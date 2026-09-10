@@ -341,6 +341,47 @@ export const USER_DB_MIGRATIONS: readonly UserDbMigration[] = [
       "ALTER TABLE settings ADD COLUMN good_job_mode integer NOT NULL DEFAULT 0",
     ],
   },
+  {
+    id: 21,
+    name: "settings-show-attachment-activity",
+    statements: [
+      // Backfill, not just a new default. `visible_activity_kinds` is
+      // NOT NULL with a literal 11-kind default, so every settings row that
+      // already exists holds an array written before `attached`/`detached`
+      // existed — and the feed shows only what the array names. Without this,
+      // the two new kinds would be permanently invisible on every account
+      // created before EI-318, silently, while looking fine on a fresh one.
+      //
+      // A kind that did not exist when a preference was saved was never
+      // DESELECTED; the user has no opinion about it, and "no opinion" has to
+      // mean visible or every future kind ships dark.
+      //
+      // String surgery rather than JSON functions: this runs inside a Durable
+      // Object, and splicing before the closing bracket needs nothing beyond
+      // core SQLite. Guarded three ways so it is idempotent and never
+      // corrupts a value it does not understand — already migrated, not an
+      // array, or an empty one (a deliberate "show nothing") are all skipped.
+      `UPDATE settings
+         SET visible_activity_kinds =
+           substr(visible_activity_kinds, 1, length(visible_activity_kinds) - 1)
+           || ',"attached","detached"]'
+       WHERE visible_activity_kinds NOT LIKE '%"attached"%'
+         AND visible_activity_kinds LIKE '[%]'
+         AND length(visible_activity_kinds) > 2`,
+    ],
+  },
+  {
+    id: 22,
+    name: "settings-add-visible-history-kinds",
+    statements: [
+      // NOT NULL with a DEFAULT matching the Zod default, same reasoning as
+      // migrations 3/7/11/13/20: every existing row comes out showing the
+      // full vocabulary, which is what it was doing before this was a
+      // setting. A brand new column needs no backfill for the same reason
+      // migration 21 needed one — nobody has an opinion stored here yet.
+      `ALTER TABLE settings ADD COLUMN visible_history_kinds text NOT NULL DEFAULT '["created","scheduled","unscheduled","moved","done","dropped","reopened","edited","deleted","attached","detached","rolledOver","overflowed"]'`,
+    ],
+  },
   // Add new migrations here. Never edit one above this line.
   //
   // Example — adding a nullable column (the safe, ordinary case):

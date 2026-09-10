@@ -490,6 +490,7 @@ export function Board() {
         reminderPresets={data.reminderPresets}
         events={data.todoEvents}
         timezone={data.settings?.timezone ?? "UTC"}
+        settings={data.settings}
         listsById={data.listsById}
         onClose={ui.closeTodoSheet}
         onSave={actions.handleSheetSave}

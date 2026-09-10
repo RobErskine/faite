@@ -26,10 +26,13 @@ function event(overrides: Partial<TodoEvent> & Pick<TodoEvent, "kind" | "at">): 
 
 describe("buildTodoTimeline", () => {
   it("synthesizes a `created` row + marker when no real `created` event exists", () => {
+    // Newest-first (EI-318), so: day header, the row, then the marker at the
+    // OLDEST end — "nothing recorded beyond this point" belongs at the bottom.
     const items = buildTodoTimeline([], TODO);
-    expect(items).toHaveLength(2);
-    expect(items[0]).toMatchObject({ type: "event", event: { kind: "created", synthetic: true, at: TODO.createdAt } });
-    expect(items[1]).toEqual({ type: "marker", key: "history-start" });
+    expect(items).toHaveLength(3);
+    expect(items[0]).toMatchObject({ type: "day-header" });
+    expect(items[1]).toMatchObject({ type: "event", event: { kind: "created", synthetic: true, at: TODO.createdAt } });
+    expect(items[2]).toEqual({ type: "marker", key: "history-start" });
   });
 
   it(
@@ -47,32 +50,55 @@ describe("buildTodoTimeline", () => {
       expect(recentTodo.createdAt > HISTORY_STARTS_AT).toBe(true);
 
       const items = buildTodoTimeline([], recentTodo);
-      expect(items).toHaveLength(1);
-      expect(items[0]).toMatchObject({ type: "event", event: { kind: "created", synthetic: true } });
+      expect(items.filter((i) => i.type === "event")).toHaveLength(1);
+      expect(items.some((i) => i.type === "marker")).toBe(false);
+      expect(items[1]).toMatchObject({ type: "event", event: { kind: "created", synthetic: true } });
     },
   );
 
   it("suppresses the synthetic `created` when a real one exists", () => {
     const created = event({ kind: "created", at: "2026-08-13T01:00:00.000Z" });
     const items = buildTodoTimeline([created], TODO);
-    expect(items).toHaveLength(1);
-    expect(items[0]).toMatchObject({ type: "event", event: { kind: "created" } });
-    if (items[0].type === "event") expect(items[0].event.synthetic).toBeUndefined();
+    const events = items.filter((i) => i.type === "event");
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ type: "event", event: { kind: "created" } });
+    if (events[0].type === "event") expect(events[0].event.synthetic).toBeUndefined();
     expect(items.some((i) => i.type === "marker")).toBe(false);
   });
 
-  it("orders by `at`, tiebreaking by `id` when instants are identical", () => {
+  it("orders NEWEST first, tiebreaking by `id` when instants are identical", () => {
+    // Reversed in EI-318 to match the global activity feed: what a to-do did
+    // most recently is what someone opening the sheet came for.
     const SAME = "2026-08-13T01:00:00.000Z";
     const a = event({ id: "b-event", kind: "scheduled", at: SAME });
     const b = event({ id: "a-event", kind: "moved", at: SAME });
     const created = event({ id: "0-created", kind: "created", at: "2026-08-13T00:00:00.000Z" });
 
     const items = buildTodoTimeline([a, b, created], TODO);
-    expect(items.map((i) => (i.type === "event" ? i.event.key : i.key))).toEqual([
-      "0-created",
-      "a-event",
-      "b-event",
-    ]);
+    const keys = items.filter((i) => i.type === "event").map((i) => (i.type === "event" ? i.event.key : ""));
+    expect(keys).toEqual(["b-event", "a-event", "0-created"]);
+  });
+
+  it("groups rows under one day header per day", () => {
+    const day1 = event({ id: "e1", kind: "created", at: "2026-08-13T01:00:00.000Z" });
+    const day1b = event({ id: "e2", kind: "moved", at: "2026-08-13T09:00:00.000Z" });
+    const day2 = event({ id: "e3", kind: "done", at: "2026-08-14T09:00:00.000Z" });
+
+    const items = buildTodoTimeline([day1, day1b, day2], TODO, undefined, "UTC", "2026-08-14");
+    const headers = items.filter((i) => i.type === "day-header");
+    expect(headers).toHaveLength(2);
+    // Newest day first, and the anchor makes the top one relative.
+    expect(headers[0]).toMatchObject({ day: "2026-08-14", label: "Today" });
+    expect(headers[1]).toMatchObject({ day: "2026-08-13", label: "Yesterday" });
+  });
+
+  it("groups by the VIEWER's day, not UTC's", () => {
+    // 2026-08-14T02:00Z is still Aug 13 in New York. A header that said
+    // otherwise would file the row under a day the user never saw.
+    const late = event({ id: "e1", kind: "done", at: "2026-08-14T02:00:00.000Z" });
+    const items = buildTodoTimeline([late], TODO, undefined, "America/New_York", "2026-08-14");
+    const headers = items.filter((i) => i.type === "day-header");
+    expect(headers[0]).toMatchObject({ day: "2026-08-13" });
   });
 
   it("passes an unrecognized `kind` through unchanged, rather than throwing", () => {
@@ -209,7 +235,10 @@ describe("buildTodoTimeline", () => {
       const kinds = items.filter((i) => i.type === "event").map((i) => (i.type === "event" ? i.event.kind : ""));
       // The collapsed rolledOver row is timestamped at the FIRST roll
       // (2026-08-11T00:00Z), which precedes the created event the same day.
-      expect(kinds).toEqual(["rolledOver", "created"]);
+      // Newest first: the created event (12:00) precedes nothing, and the
+      // collapsed rolledOver row is stamped at the FIRST roll's midnight, so
+      // it now sorts BELOW it.
+      expect(kinds).toEqual(["created", "rolledOver"]);
     });
 
     it("shows no roll rows for a recurring occurrence — one miss bypasses the loop", () => {

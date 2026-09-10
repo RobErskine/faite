@@ -29,7 +29,12 @@ import { deleteAttachmentBytes, uploadAttachment } from "@/lib/attachments";
 import { getDb } from "./db";
 import { create, materialize, mutate, mutateSettings, newId, now, remove, seedWrite } from "./mutate";
 import { getCurrentOwnerId, LOCAL_OWNER_ID } from "./owner";
-import { buildEditedPayload, DELETED_TITLE_MAX_LENGTH, logTodoEvent } from "./todo-events";
+import {
+  ATTACHMENT_FILENAME_MAX_LENGTH,
+  buildEditedPayload,
+  DELETED_TITLE_MAX_LENGTH,
+  logTodoEvent,
+} from "./todo-events";
 
 /**
  * CRUD for every entity, expressed on top of mutate().
@@ -1121,7 +1126,19 @@ export async function createAttachment(file: File, todoId: string): Promise<stri
     byteSize: uploaded.byteSize,
     storageKey: uploaded.storageKey,
   };
-  return create("attachment", attachment);
+  // Journalled at the repository call site, in the same Dexie transaction as
+  // the row and the outbox entry, exactly like every other change that earns
+  // a history row (`mutate.ts`'s `opts.events`). Attaching a file to a to-do
+  // is a change to that to-do, and the timeline said nothing about it at all
+  // until EI-318.
+  return create("attachment", attachment, {
+    events: [
+      logTodoEvent(todoId, "attached", {
+        v: 1,
+        filename: uploaded.filename.slice(0, ATTACHMENT_FILENAME_MAX_LENGTH),
+      }),
+    ],
+  });
 }
 
 /**
@@ -1138,7 +1155,32 @@ export async function createAttachment(file: File, todoId: string): Promise<stri
  * bytes".
  */
 export async function deleteAttachment(id: string): Promise<void> {
-  await remove("attachment", id);
+  // Read BEFORE the tombstone, and read it HERE rather than taking the row
+  // from the caller: the event needs `todoId` and `filename`, and a caller
+  // that forgot to pass them would silently drop the history row instead of
+  // failing.
+  //
+  // Two rows earn no event. A missing one — `remove` throws on it, and did
+  // before this, so the read only decides what to journal and never whether
+  // to proceed. And an ALREADY tombstoned one, because "removed file" is a
+  // thing that happened once; journalling it again on a double delete would
+  // put a second row in the timeline for an event that never recurred.
+  const attachment = await getDb().attachments.get(id);
+  const journal = attachment !== undefined && attachment.deletedAt === null;
+  await remove(
+    "attachment",
+    id,
+    journal && attachment
+      ? {
+          events: [
+            logTodoEvent(attachment.todoId, "detached", {
+              v: 1,
+              filename: attachment.filename.slice(0, ATTACHMENT_FILENAME_MAX_LENGTH),
+            }),
+          ],
+        }
+      : undefined,
+  );
   try {
     await deleteAttachmentBytes(id);
   } catch (error) {

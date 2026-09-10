@@ -2,7 +2,12 @@ import type { CivilDate, Todo, TodoEvent } from "./schema";
 import type { TodoEventKind } from "./store/todo-events";
 import { parseEventPayload } from "./store/todo-events";
 import { rollEventsFor } from "./rollover-events";
-import type { PlacementContext } from "./scheduling";
+import {
+  civilDateOf,
+  dayLabel,
+  formatShortDate,
+  type PlacementContext,
+} from "./scheduling";
 import { zonedInstant } from "./zoned";
 
 /**
@@ -33,9 +38,14 @@ export interface TodoTimelineEvent {
 
 export type TodoTimelineItem =
   | { type: "event"; event: TodoTimelineEvent }
-  /** "History recorded from here" — shown once, directly after a synthetic
-   * `created` row, so the gap above the first real event reads as "nothing
-   * was recorded" rather than "nothing happened". */
+  /** Groups the rows below it, exactly as the global activity feed does
+   * (EI-318). A to-do's history spans months, and an undivided run of rows
+   * each stamped with its own date is a list you have to read rather than
+   * scan. */
+  | { type: "day-header"; key: string; day: CivilDate; label: string }
+  /** "History recorded from here" — shown once, at the OLDEST end, so the gap
+   * beyond the first real event reads as "nothing was recorded" rather than
+   * "nothing happened". Newest-first ordering puts that end at the bottom. */
   | { type: "marker"; key: "history-start" };
 
 /**
@@ -170,6 +180,11 @@ export function buildTodoTimeline(
    * renders the real log alone, same as before EI-96. */
   ctx?: PlacementContext,
   timezone = "UTC",
+  /** Anchors the day headers' relative wording ("Yesterday", "3 days ago").
+   * Falls back to `ctx.today`, and finally to the newest event's own day —
+   * which makes the top header read "Today" for a caller that has neither,
+   * rather than inventing a clock in a pure module. */
+  today?: CivilDate,
 ): TodoTimelineItem[] {
   // Sort by `at`, tiebreak by `id` — UUIDv7 sorts by creation, mirroring
   // `day-timeline.ts`'s total-order rule.
@@ -182,26 +197,50 @@ export function buildTodoTimeline(
   const rollEvents = ctx ? rollTimelineEvents(todo, ctx, timezone) : [];
   // Re-sort after merging: a roll's synthetic midnight instant can interleave
   // anywhere among the todo's real events.
-  const timelineEvents: TodoTimelineItem[] = [...coalesced, ...rollEvents]
-    .sort((a, b) => a.at.localeCompare(b.at) || a.key.localeCompare(b.key))
-    .map((event): TodoTimelineItem => ({ type: "event", event }));
+  const all: TodoTimelineEvent[] = [...coalesced, ...rollEvents];
 
-  if (hasRealCreated) return timelineEvents;
+  if (!hasRealCreated) {
+    all.push({
+      key: `${todo.id}:synthetic-created`,
+      kind: "created",
+      at: todo.createdAt,
+      payload: null,
+      synthetic: true,
+    });
+  }
 
-  const synthetic: TodoTimelineEvent = {
-    key: `${todo.id}:synthetic-created`,
-    kind: "created",
-    at: todo.createdAt,
-    payload: null,
-    synthetic: true,
-  };
+  // NEWEST FIRST, matching the global activity feed (EI-318). What a to-do
+  // did most recently is what someone opening the sheet is looking for; the
+  // oldest-first order made you scroll past months of settled history to
+  // reach it.
+  all.sort((a, b) => b.at.localeCompare(a.at) || b.key.localeCompare(a.key));
+
+  const anchor = today ?? ctx?.today ?? civilDateOf(all[0]?.at ?? "", timezone);
+  const items: TodoTimelineItem[] = [];
+  let lastDay: CivilDate | null = null;
+
+  for (const event of all) {
+    const day = civilDateOf(event.at, timezone);
+    if (day && day !== lastDay) {
+      items.push({
+        type: "day-header",
+        key: `day:${day}`,
+        day,
+        label: anchor ? dayLabel(day, anchor) : formatShortDate(day),
+      });
+      lastDay = day;
+    }
+    items.push({ type: "event", event });
+  }
 
   // Only a todo that genuinely predates the log gets the marker — a
   // post-launch recurrence template (no `created` event by design, see the
-  // doc comment on HISTORY_STARTS_AT) gets the synthetic row alone.
-  const items: TodoTimelineItem[] = [{ type: "event", event: synthetic }];
-  if (todo.createdAt < HISTORY_STARTS_AT) {
+  // doc comment on HISTORY_STARTS_AT) gets the synthetic row alone. At the
+  // BOTTOM now: newest-first puts the oldest end there, and the marker means
+  // "nothing recorded beyond this point".
+  if (!hasRealCreated && todo.createdAt < HISTORY_STARTS_AT) {
     items.push({ type: "marker", key: "history-start" });
   }
-  return [...items, ...timelineEvents];
+
+  return items;
 }

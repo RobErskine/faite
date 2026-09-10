@@ -11,6 +11,8 @@ import {
   Check,
   ChevronDown,
   CornerDownRight,
+  FileX,
+  Paperclip,
   Pencil,
   Plus,
   RotateCcw,
@@ -45,6 +47,17 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { AttachmentsSection } from "@/components/board/attachments-section";
 import { RepeatDialog } from "@/components/board/repeat-dialog";
 import { RepeatSection, type RecurrenceInfo } from "@/components/board/repeat-section";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { buttonVariants } from "@/components/ui/button";
+import { HiddenByFilterNotice, TimelineDayHeader } from "@/components/board/timeline";
+import { mutateSettings } from "@/lib/store/mutate";
+import { LOCAL_OWNER_ID } from "@/lib/store/owner";
 import { LocationField } from "@/components/board/location-field";
 import { CaptureSourceBadge } from "@/components/todo/capture-source-badge";
 import { ListField } from "@/components/board/list-field";
@@ -57,7 +70,7 @@ import { cn } from "@/lib/utils";
 import { useExitRetained } from "@/lib/use-exit-retained";
 import { edge, effectiveListColor } from "@/lib/colors";
 import { TITLE_LINES } from "@/lib/title";
-import { formatEventStamp } from "@/lib/event-time";
+import { formatEventTime } from "@/lib/event-time";
 import { formatShortDate, type PlacementContext } from "@/lib/scheduling";
 import { parseQuickAdd } from "@/lib/quick-add";
 import { isTextEntry } from "@/lib/undo";
@@ -69,15 +82,18 @@ import {
   buildTodoTimeline,
   type RollSummaryPayload,
   type TodoTimelineEvent,
+  type TodoTimelineItem,
 } from "@/lib/todo-timeline";
 import type { RecurrenceRule } from "@/lib/recurrence";
 import type {
+  ActivityEventKind,
   CivilDate,
   Label as LabelRecord,
   List,
   Place,
   Priority,
   ReminderPreset,
+  Settings,
   Tab,
   Todo,
   TodoEvent,
@@ -148,6 +164,10 @@ interface TodoSheetProps {
    * have to thread empty collections through. */
   events?: TodoEvent[];
   timezone?: string;
+  /** Backs the History section's kind filter (`visibleHistoryKinds`).
+   * Optional, same reasoning as `events` — a caller with no settings to read
+   * gets the full vocabulary. */
+  settings?: Settings;
   /**
    * The board's placement context — needed by the History section to derive
    * this todo's Faite Loop rows (EI-96, `rolledOver`/`overflowed`) the same
@@ -243,6 +263,7 @@ function TodoSheetContent({
   reminderPresets = [],
   events = [],
   timezone = "UTC",
+  settings,
   ctx,
   listsById = EMPTY_LISTS_BY_ID,
   onClose,
@@ -811,8 +832,10 @@ function TodoSheetContent({
             todo={todo}
             events={events}
             timezone={timezone}
+            today={today}
             ctx={ctx}
             listsById={listsById}
+            settings={settings}
           />
         </div>
 
@@ -1081,6 +1104,8 @@ const HISTORY_EVENT_LABEL: Partial<Record<HistoryEventKind, string>> = {
   reopened: "Reopened",
   edited: "Edited",
   deleted: "Deleted",
+  attached: "Attached",
+  detached: "Removed file",
   rolledOver: "Rolled over",
   overflowed: "Fell into Overflow",
 };
@@ -1095,6 +1120,8 @@ const HISTORY_EVENT_ICON: Partial<Record<HistoryEventKind, ComponentType<{ class
   reopened: RotateCcw,
   edited: Pencil,
   deleted: Trash2,
+  attached: Paperclip,
+  detached: FileX,
   rolledOver: CornerDownRight,
   overflowed: Archive,
 };
@@ -1133,6 +1160,13 @@ function historyDetail(event: TodoTimelineEvent): string | null {
     if (fields.length === 0) return null;
     return fields.map((field) => FIELD_LABELS[field] ?? field).join(", ");
   }
+  if (event.kind === "attached" || event.kind === "detached") {
+    // The filename comes from the payload, not from a lookup: by the time a
+    // `detached` row is read its attachment is a tombstone, so resolving it
+    // would render "Removed file" with nothing after it.
+    const payload = event.payload as { filename?: string } | null;
+    return payload?.filename ?? null;
+  }
   if (event.kind === "rolledOver" || event.kind === "overflowed") {
     const payload = event.payload as RollSummaryPayload | null;
     if (!payload) return null;
@@ -1162,70 +1196,179 @@ interface HistorySectionProps {
   todo: Todo;
   events: TodoEvent[];
   timezone: string;
+  /** Anchors the day headers' relative wording. */
+  today: CivilDate;
   /** Omitted renders the real log alone — no Faite Loop rows. See the note
    * on `TodoSheetProps.ctx`. */
   ctx?: PlacementContext;
   listsById: ReadonlyMap<string, List>;
+  settings?: Settings;
 }
 
+/** Every kind, in the order the filter menu lists them. */
+const HISTORY_KIND_FILTER_OPTIONS: ReadonlyArray<{ value: ActivityEventKind; label: string }> = (
+  Object.keys(HISTORY_EVENT_LABEL) as ActivityEventKind[]
+).map((value) => ({ value, label: HISTORY_EVENT_LABEL[value] ?? FALLBACK_LABEL }));
+
+const ALL_HISTORY_KINDS: ActivityEventKind[] = HISTORY_KIND_FILTER_OPTIONS.map((o) => o.value);
+
 /**
+ * A to-do's own history, reading like the global activity feed rather than
+ * like a different feature (EI-318): newest first, grouped under day headers,
+ * filterable by kind, and stamped with a time because the header already
+ * carries the date.
+ *
  * Behind a disclosure with a count in the heading, open by default — a
- * todo's history is usually exactly what someone opening the sheet wants to
+ * to-do's history is usually exactly what someone opening the sheet wants to
  * see, so it no longer costs an extra click to reveal.
+ *
+ * `visibleHistoryKinds` is its OWN settings field, never
+ * `visibleActivityKinds`: sharing one would let filtering the global feed
+ * silently filter every to-do's history too. `timeline.tsx`'s header comment
+ * is the standing warning about exactly this.
  */
-function HistorySection({ todo, events, timezone, ctx, listsById }: HistorySectionProps) {
+function HistorySection({
+  todo,
+  events,
+  timezone,
+  today,
+  ctx,
+  listsById,
+  settings,
+}: HistorySectionProps) {
   const [open, setOpen] = useState(true);
   const items = useMemo(
-    () => buildTodoTimeline(events, todo, ctx, timezone),
-    [events, todo, ctx, timezone],
+    () => buildTodoTimeline(events, todo, ctx, timezone, today),
+    [events, todo, ctx, timezone, today],
   );
-  const count = items.filter((item) => item.type === "event").length;
+
+  const visibleKinds = settings?.visibleHistoryKinds ?? ALL_HISTORY_KINDS;
+  const isVisible = (item: TodoTimelineItem) =>
+    item.type !== "event" || visibleKinds.includes(item.event.kind as ActivityEventKind);
+
+  const eventItems = items.filter((item) => item.type === "event");
+  const count = eventItems.length;
+  const hiddenCount = eventItems.filter((item) => !isVisible(item)).length;
+
+  // Filter the EVENTS, then drop any day header left with nothing under it —
+  // a bare date with no rows beneath it reads as a day something happened on
+  // and then failed to render.
+  const visibleItems = useMemo(() => {
+    const kept = items.filter(isVisible);
+    return kept.filter((item, index) => {
+      if (item.type !== "day-header") return true;
+      const next = kept[index + 1];
+      return next !== undefined && next.type === "event";
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, visibleKinds]);
+
+  const toggleKind = (kind: ActivityEventKind, checked: boolean) => {
+    const next = checked
+      ? [...visibleKinds, kind]
+      : visibleKinds.filter((k) => k !== kind);
+    void mutateSettings(LOCAL_OWNER_ID, { visibleHistoryKinds: next });
+  };
+
+  const lastEventKey = [...visibleItems].reverse().find((i) => i.type === "event");
 
   return (
     <section className="space-y-1.5">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        className="type-eyebrow flex items-center gap-1 hover:text-foreground"
-      >
-        <ChevronDown
-          aria-hidden
-          className={cn("size-3.5 transition-transform", !open && "-rotate-90")}
-        />
-        History ({count})
-      </button>
+      <div className="flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          className="type-eyebrow flex items-center gap-1 hover:text-foreground"
+        >
+          <ChevronDown
+            aria-hidden
+            className={cn("size-3.5 transition-transform", !open && "-rotate-90")}
+          />
+          History ({count})
+        </button>
+        {open && count > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              aria-label="Which history to show"
+              className={cn(buttonVariants({ variant: "ghost", size: "xs" }), "text-muted-foreground")}
+            >
+              Filter
+              <ChevronDown aria-hidden />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuGroup>
+                {HISTORY_KIND_FILTER_OPTIONS.map((option) => (
+                  <DropdownMenuCheckboxItem
+                    key={option.value}
+                    checked={visibleKinds.includes(option.value)}
+                    closeOnClick={false}
+                    onCheckedChange={(checked) => toggleKind(option.value, checked)}
+                  >
+                    {option.label}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </div>
 
-      {open && (
-        <TimelineList ariaLabel={`History for ${todo.title}`}>
-          {items.map((item, index) => {
-            if (item.type === "marker") {
-              return (
-                <li key={item.key} className="pl-7 text-2xs text-muted-foreground">
-                  — History recorded from here —
-                </li>
-              );
-            }
-            const { event } = item;
-            const Icon =
-              HISTORY_EVENT_ICON[event.kind as HistoryEventKind] ?? FALLBACK_ICON;
-            const label = HISTORY_EVENT_LABEL[event.kind as HistoryEventKind] ?? FALLBACK_LABEL;
-            const detail = historyDetail(event);
-            return (
-              <TimelineRow
-                key={event.key}
-                icon={Icon}
-                label={label}
-                at={event.at}
-                when={formatEventStamp(event.at, timezone)}
-                accent={historyAccent(event, listsById)}
-                isLast={index === items.length - 1}
-              >
-                {detail && <p className="mt-0.5 text-xs text-muted-foreground">{detail}</p>}
-              </TimelineRow>
-            );
-          })}
-        </TimelineList>
+      {open && hiddenCount > 0 && count === hiddenCount ? (
+        <HiddenByFilterNotice
+          count={hiddenCount}
+          onShowAll={() =>
+            void mutateSettings(LOCAL_OWNER_ID, { visibleHistoryKinds: ALL_HISTORY_KINDS })
+          }
+        />
+      ) : (
+        open && (
+          <>
+            <TimelineList ariaLabel={`History for ${todo.title}`}>
+              {visibleItems.map((item) => {
+                if (item.type === "day-header") {
+                  return <TimelineDayHeader key={item.key} label={item.label} />;
+                }
+                if (item.type === "marker") {
+                  return (
+                    <li key={item.key} className="pl-7 text-2xs text-muted-foreground">
+                      — History recorded from here —
+                    </li>
+                  );
+                }
+                const { event } = item;
+                const Icon =
+                  HISTORY_EVENT_ICON[event.kind as HistoryEventKind] ?? FALLBACK_ICON;
+                const label =
+                  HISTORY_EVENT_LABEL[event.kind as HistoryEventKind] ?? FALLBACK_LABEL;
+                const detail = historyDetail(event);
+                return (
+                  <TimelineRow
+                    key={event.key}
+                    icon={Icon}
+                    label={label}
+                    at={event.at}
+                    // Time only: the day header above carries the date, the
+                    // same division the global feed uses.
+                    when={formatEventTime(event.at, timezone)}
+                    accent={historyAccent(event, listsById)}
+                    isLast={lastEventKey !== undefined && item === lastEventKey}
+                  >
+                    {detail && <p className="mt-0.5 text-xs text-muted-foreground">{detail}</p>}
+                  </TimelineRow>
+                );
+              })}
+            </TimelineList>
+            {hiddenCount > 0 && (
+              <HiddenByFilterNotice
+                count={hiddenCount}
+                onShowAll={() =>
+                  void mutateSettings(LOCAL_OWNER_ID, { visibleHistoryKinds: ALL_HISTORY_KINDS })
+                }
+              />
+            )}
+          </>
+        )
       )}
     </section>
   );

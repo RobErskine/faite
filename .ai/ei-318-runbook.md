@@ -16,7 +16,7 @@ the execution order and the running state.
 - [x] 5. Field order — Tab field deleted, repeat summary line
 - [x] 6. Footer weights + arrow verbs + shortcuts.ts + docs/KEYBOARD.md
 - [x] 7. List combobox
-- [ ] 8. Attachment events + timeline alignment + docs
+- [x] 8. Attachment events + timeline alignment + docs
 - [ ] 9. typecheck -> test -> typecheck -> prod-build e2e -> full matrix -> PR
 
 ## Decisions (from the planning conversation)

@@ -2,7 +2,7 @@ import type { CivilDate, TodoEvent } from "./schema";
 import type { TodoEventKind } from "./store/todo-events";
 import { parseEventPayload } from "./store/todo-events";
 import type { DailyRollSummary } from "./rollover-events";
-import { civilDateOf, daysBetween, formatDay, formatShortDate } from "./scheduling";
+import { civilDateOf, dayLabel } from "./scheduling";
 
 /**
  * Assembles the whole-app activity feed (the "Global Timeline") from the
@@ -102,30 +102,6 @@ function toGlobalEvent(row: TodoEvent, titles: ReadonlyMap<string, TodoTitleInfo
     title,
     deleted,
   };
-}
-
-/**
- * "Today" / "Yesterday" / "3 days ago · Aug 19" / "Last week · Aug 15" /
- * "Aug 2" / "Aug 2, 2025" — the boundary-naming convention `rampLabel`
- * (`lib/overdrive.ts`) uses for a handful of cases, extended to cover a
- * feed that can span months: a bare "Aug 19" reads fine on its own, but
- * pairing it with a relative phrase for anything inside the last two weeks
- * is what makes "how recent is this" scannable without doing the date math
- * yourself.
- *
- * `diff` is always >= 0 in practice — every `day` this is called with comes
- * from either a real event's `at` (logged at write time, never future) or a
- * rollover day (never past `ctx.today` — see `rollEventsFor`), so there is
- * no reachable case where `day` is in the future relative to `today`.
- */
-function dayLabel(day: CivilDate, today: CivilDate): string {
-  const diff = daysBetween(day, today);
-  if (diff === 0) return "Today";
-  if (diff === 1) return "Yesterday";
-  if (diff <= 6) return `${diff} days ago · ${formatShortDate(day)}`;
-  if (diff <= 13) return `Last week · ${formatShortDate(day)}`;
-  if (day.slice(0, 4) === today.slice(0, 4)) return formatShortDate(day);
-  return formatDay(day).label;
 }
 
 interface SortableRow {

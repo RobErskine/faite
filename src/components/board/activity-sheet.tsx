@@ -10,6 +10,8 @@ import {
   Check,
   ChevronDown,
   CornerDownRight,
+  FileX,
+  Paperclip,
   Pencil,
   Plus,
   RotateCcw,
@@ -31,7 +33,12 @@ import {
   DropdownMenuGroup,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { HiddenByFilterNotice, TimelineList, TimelineRow } from "./timeline";
+import {
+  HiddenByFilterNotice,
+  TimelineDayHeader,
+  TimelineList,
+  TimelineRow,
+} from "./timeline";
 import { edge, effectiveListColor } from "@/lib/colors";
 import { formatEventTime } from "@/lib/event-time";
 import { formatShortDate, type PlacementContext } from "@/lib/scheduling";
@@ -81,6 +88,8 @@ const ACTIVITY_EVENT_LABEL: Record<ActivityEventKind, string> = {
   reopened: "Reopened",
   edited: "Edited",
   deleted: "Deleted",
+  attached: "Attached",
+  detached: "Removed file",
   rolledOver: "Rolled over",
   overflowed: "Fell into Overflow",
 };
@@ -95,6 +104,8 @@ const ACTIVITY_EVENT_ICON: Record<ActivityEventKind, ComponentType<{ className?:
   reopened: RotateCcw,
   edited: Pencil,
   deleted: Trash2,
+  attached: Paperclip,
+  detached: FileX,
   rolledOver: CornerDownRight,
   overflowed: Archive,
 };
@@ -142,6 +153,12 @@ function activityDetail(event: GlobalTimelineEvent): string | null {
     const fields = event.fields ?? [];
     if (fields.length === 0) return null;
     return fields.map((field) => FIELD_LABELS[field] ?? field).join(", ");
+  }
+  if (event.kind === "attached" || event.kind === "detached") {
+    // From the payload, not a lookup — by the time a `detached` row is read
+    // its attachment is a tombstone (EI-318).
+    const payload = event.payload as { filename?: string } | null;
+    return payload?.filename ?? null;
   }
   return null;
 }
@@ -310,39 +327,7 @@ export function ActivitySheet({
               <TimelineList ariaLabel="Activity">
                 {visibleItems.map((item) => {
                   if (item.type === "day-header") {
-                    return (
-                      <li
-                        key={item.key}
-                        // `-mx-4` cancels the sheet body's own `px-4`
-                        // (activity-sheet.tsx's scroll container below), so
-                        // the background paints edge-to-edge instead of
-                        // stopping at the timeline column like every other
-                        // row's content does. `pl-11` puts the TEXT back
-                        // where it would have sat without the cancellation —
-                        // 16px (the padding just removed) + 28px (`pl-7`,
-                        // every `TimelineRow`'s own left inset) — so the
-                        // label still lines up with the rows above and below
-                        // it; only the background bleeds wider.
-                        className="type-eyebrow relative -mx-4 bg-muted/60 py-1.5 pr-4 pl-11"
-                      >
-                        {/*
-                          Keeps the rail unbroken through the header — without
-                          this, the line stops at the row above and resumes at
-                          the row below, reading as two separate timelines
-                          rather than one continuous one. `left-[25.5px]` is
-                          `TimelineRow`'s own rail position (`left-[9.5px]`,
-                          centered under its size-5 dot) PLUS the 16px `-mx-4`
-                          just added back above — the rail has to account for
-                          the same shift the text's `pl-11` does, or it drifts
-                          out of alignment with the rows on either side of this
-                          header for exactly the width of the header. Same
-                          `-0.75rem` bottom overshoot as `TimelineRow`'s own
-                          rail, to bridge the `space-y-3` gap to what follows.
-                        */}
-                        <span aria-hidden className="absolute left-[25.5px] top-0 bottom-[-0.75rem] w-px bg-border" />
-                        {item.label}
-                      </li>
-                    );
+                    return <TimelineDayHeader key={item.key} label={item.label} />;
                   }
                   if (item.type === "marker") {
                     return (
