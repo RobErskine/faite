@@ -564,8 +564,22 @@ function TodoSheetContent({
         See the matching comment in `day-sheet.tsx`, which shares this sheet
         width so the two don't read as two different components.
       */}
+      {/*
+        The overlay drops its blur, not its dim — the same trade
+        `settings-sheet.tsx` and the Overdrive overlay already make, for the
+        same reason. Almost every field in here writes straight through to a
+        card on the board behind it: changing the date moves it to another
+        day, changing the list moves it to another column, marking it done
+        takes it off the board entirely. A blurred backdrop smears the only
+        confirmation those actions have.
+
+        The dim stays. The sheet is still modal — Base UI keeps the focus
+        trap, and `openTodoExists` still feeds `computeModalOpen` — so the
+        board behind is visible, not usable, and the scrim is what says so.
+      */}
       <SheetContent
         className="flex w-full flex-col gap-0 data-[side=right]:w-full data-[side=right]:sm:max-w-[75ch]"
+        overlayClassName="supports-backdrop-filter:backdrop-blur-none"
         onKeyDown={handleSheetKeyDown}
       >
         <SheetHeader className={backToDay ? "gap-1.5 pr-10" : undefined}>

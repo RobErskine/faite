@@ -717,3 +717,29 @@ describe("arrow verbs (EI-318)", () => {
     expect(onSetStatus).not.toHaveBeenCalled();
   });
 });
+
+describe("the backdrop (EI-318)", () => {
+  const overlay = () => document.querySelector('[data-slot="sheet-overlay"]')!;
+
+  it("drops the blur, so a change lands visibly on the board behind", () => {
+    // Almost every field here writes straight through to a card: the date
+    // moves it to another day, the list to another column, Mark done takes it
+    // off the board. A blurred backdrop smears the only confirmation those
+    // actions have.
+    //
+    // Asserted on the resolved class string rather than trusted, because the
+    // override goes through tailwind-merge and the variant is part of the
+    // key: a bare `backdrop-blur-none` would NOT beat
+    // `supports-backdrop-filter:backdrop-blur-xs`, and would fail silently.
+    render(<Harness />);
+    expect(overlay().className).not.toContain("backdrop-blur-xs");
+    expect(overlay().className).toContain("backdrop-blur-none");
+  });
+
+  it("keeps the dim — the sheet is still modal", () => {
+    // Visible, not usable. Base UI keeps the focus trap and `openTodoExists`
+    // still feeds `computeModalOpen`; the scrim is what says so.
+    render(<Harness />);
+    expect(overlay().className).toContain("bg-black/10");
+  });
+});
