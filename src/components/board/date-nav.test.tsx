@@ -93,6 +93,7 @@ const baseProps = {
   onJump: () => {},
   onJumpToDate: () => {},
   onToday: () => {},
+  onOpenHistory: () => {},
 };
 
 describe("DateNav activity trigger", () => {
@@ -111,6 +112,26 @@ describe("DateNav activity trigger", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open activity feed" }));
     expect(onOpenActivity).toHaveBeenCalledOnce();
   });
+});
+
+describe("DateNav history trigger (EI-322)", () => {
+  afterEach(cleanup);
+
+  for (const compact of [false, true]) {
+    it(`renders in the ${compact ? "compact (phone)" : "full (desktop)"} branch, before the range`, () => {
+      const onOpenHistory = vi.fn();
+      render(
+        <DateNav {...baseProps} compact={compact} onOpenActivity={() => {}} onOpenHistory={onOpenHistory} />,
+      );
+      const trigger = screen.getByRole("button", { name: "Open history" });
+      // Earlier is to the left of now: the button precedes the range label.
+      const heading = screen.getByRole("heading", { level: 1 });
+      expect(trigger.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+      fireEvent.click(trigger);
+      expect(onOpenHistory).toHaveBeenCalledOnce();
+    });
+  }
 });
 
 describe("DateNav jump buttons — page-aligned steps", () => {

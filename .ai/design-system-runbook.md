@@ -14,6 +14,11 @@ driver, dark theme, Editorial pairing. Cut font pairings from 4 to 2. Confetti s
 opt-in. Animated strike-through on completion. `docs/DESIGN.md` is the spec of record and
 must serve the marketing site later.
 
+> **Update 2026-09-11 (EI-322).** "Forward-looking only: no past days" still
+> holds for the **board** — it never scrolls before today. Past days now live
+> in a separate History sheet (the button left of the date range), never as
+> board columns. Decided with Rob when EI-322 was planned.
+
 ## Locked decisions
 
 | # | Decision |

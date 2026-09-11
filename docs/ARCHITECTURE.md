@@ -1073,6 +1073,35 @@ captured anywhere in the meantime, so it is a strictly harder gap to close
 later than the todo-only feed was to ship now — see `git log` on this file
 for whether a follow-up has landed.
 
+**History (`history-sheet.tsx`, EI-322) is the third reader of `todoEvent`,
+and the first that answers "what happened on this date?"** The board is
+forward-only — it starts at today and never scrolls back — and stays that
+way; the past is a separate sheet, opened from the button left of the date
+range in `DateNav` or from ⌘K, deep-linked as `?history=YYYY-MM-DD`. It shows
+one day at a time: Done, Decisions (won't do, rescheduled, sent back to a
+list, deleted, tagged when made in Overdrive) and Added, beside that day's
+note, under a month calendar with a presence-only dot on each day something
+was finished (no counts — `docs/DESIGN.md` §4).
+
+It deliberately does **not** reuse the day sheet's derived timeline. That one
+is rebuilt from each to-do's current state, so a reopen or a reschedule
+rewrites the past (`day-timeline.ts`, limits 1–8); a look-back that can
+change after the fact is not a record. `lib/day-log.ts` reads only log rows,
+with two rules that keep a day honest: the **last** status change of the day
+decides (done then reopened that afternoon is not "done"), and several
+reschedules in one day collapse to first-from → last-to. Undone events
+(tombstoned) are skipped; `edited`/`attached`/`detached` are left out as noise
+for a look-back.
+
+Cost is bounded by the day, not the log: two indexed range scans on `at`
+(`useEventsBetween` — the month on screen for the dots, the day for the log)
+and a `bulkGet` of just that day's to-dos (`useTodosById`), never
+`useTodoTitles()`'s whole-table read. The board's render path is untouched.
+Two things had to be fixed first for the log to be worth reading back:
+kind filters that could not learn new kinds (EI-320, `lib/kind-filter.ts`)
+and status changes from MCP/Raycast/the API that wrote no event at all
+(EI-321, `buildUpdateTodoEntry`).
+
 ### P2 is live
 
 DNS, OAuth apps, secrets, Email Sending, and CI are all done — see

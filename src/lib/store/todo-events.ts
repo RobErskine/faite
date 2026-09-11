@@ -24,18 +24,29 @@ export type TodoEventKind =
   | "attached"
   | "detached";
 
+/**
+ * Where a decision was made, when that is worth knowing later (EI-321).
+ * Absent means the ordinary way — a click, a drag, a sheet field. An
+ * optional key on a JSON payload, so no migration and no `v` bump: an older
+ * bundle reads straight past it.
+ */
+export type EventVia = "overdrive";
+
 interface EmptyPayload {
   v: 1;
+  via?: EventVia;
 }
 
 export interface ScheduledPayload {
   v: 1;
   from: CivilDate | null;
   to: CivilDate | null;
+  via?: EventVia;
 }
 
 export interface MovedPayload {
   v: 1;
+  via?: EventVia;
   /** Denormalized alongside the id, so "Moved to Groceries" still reads that
    * way after Groceries is renamed or deleted — the id resolves through
    * `listsById` for an accent color when it can, and degrades to no accent
@@ -115,15 +126,13 @@ export type TodoEventPayload =
  * - `recurrenceRule`/`recurrenceParentId` — logged explicitly by
  *   `createSeriesFromTodo`/`setSeriesUntil` with `fields: ["recurrenceRule"]`.
  *
- * `scheduledDate` and `listId` ARE included even though `scheduleTodo`/
- * `moveTodoToList` also exist as dedicated repository functions with their
- * own kinds (`scheduled`/`moved`) — the todo sheet's Date field and List
- * select both patch these fields straight through `updateTodo`, bypassing
- * those functions. Rather than teach `updateTodo` to reclassify a date/list
- * change into a different event kind (duplicating `scheduleTodo`/
- * `moveTodoToList`'s logic and risking drift between the two paths), a
- * sheet-driven date/list change simply logs as `edited` with the field name
- * — visible in history, just not relabeled as `scheduled`/`moved`.
+ * `scheduledDate` and `listId` are listed so a patch that touches them is
+ * still journalled, but `updateTodo` (`repositories.ts`) takes them OUT of
+ * the `edited` payload and logs them as `scheduled`/`unscheduled`/`moved`
+ * with where they came from — the same events dragging writes (EI-321).
+ * Before that, the todo sheet's Date and List fields logged a bare
+ * `edited`, so the one decision had two records and only one of them could
+ * say "Mon → Fri".
  */
 export const JOURNALLED_FIELDS = new Set([
   "title",

@@ -15,6 +15,7 @@ import {
 } from "@/lib/service/entities";
 import { createLabel, createList, createTab } from "../service/entities";
 import { createTodo, deleteTodo, pushTransportFor, updateTodo } from "../service/todos";
+import { UPDATE_TODO_MAX_ENTRIES } from "@/lib/service/todos";
 import type { UserDurableObject } from "../user-do";
 import {
   backlogTodos,
@@ -301,13 +302,12 @@ async function handleUpdateTodo(
   const parsed = parseUpdateTodoRequest(await request.json().catch(() => null));
   if (!parsed) return json({ error: "invalid-request" }, 400, headers);
 
-  // Two stamps requested even though an update MAY need only one (no
-  // companion `todoEvent` when the patch touches no journalled field) — see
-  // `durableHlcQueue`'s doc comment for why over-requesting is harmless.
-  const nextHlc = await durableHlcQueue(stub, 2);
+  // Sized for the most entries an update can push, though most need fewer —
+  // see `durableHlcQueue`'s doc comment for why over-requesting is harmless.
+  const nextHlc = await durableHlcQueue(stub, UPDATE_TODO_MAX_ENTRIES);
   const ctx: ServiceContext = { userId, nextHlc };
 
-  const result = await updateTodo(ctx, id, parsed, pushTransportFor(stub, userId));
+  const result = await updateTodo(ctx, id, parsed, pushTransportFor(stub, userId), existing);
   if (result.rejected.length > 0) {
     console.error("v1 update-todo push rejected", result.rejected);
     return json({ error: "internal-error" }, 500, headers);

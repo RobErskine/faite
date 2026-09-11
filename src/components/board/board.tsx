@@ -28,6 +28,7 @@ import { TabInfoDialog } from "./tab-info-dialog";
 import { ArchivedListsSheet } from "./archived-lists-sheet";
 import { HelpSheet } from "./help-sheet";
 import { ActivitySheet } from "./activity-sheet";
+import { HistorySheet } from "./history-sheet";
 import { SettingsSheet } from "@/components/settings/settings-sheet";
 import { CommandPalette } from "./command-palette";
 import { DaySheet } from "./day-sheet";
@@ -272,6 +273,7 @@ export function Board() {
       overdriveSource: ui.overdriveSource,
       helpSheetOpen: ui.helpSheetOpen,
       activityOpen: ui.activityOpen,
+      historyOpen: !!ui.historyDay,
       contextMenuOpen,
     }),
   };
@@ -315,6 +317,9 @@ export function Board() {
   if (!data.ready || !data.ctx || !data.board || !data.settings) {
     return <BoardFallback />;
   }
+  // Read once past the gate above: a callback prop loses TypeScript's
+  // narrowing of `data.ctx`, and the palette's History entry needs it.
+  const today = data.ctx.today;
 
   return (
     /*
@@ -559,6 +564,25 @@ export function Board() {
         }}
       />
 
+      {/* Plain rows like `ActivitySheet`, so also safe inside the DndContext. */}
+      <HistorySheet
+        day={ui.historyDay}
+        today={data.ctx.today}
+        timezone={data.settings?.timezone ?? "UTC"}
+        dayNotes={data.dayNotes}
+        listsById={data.listsById}
+        tabsById={data.tabsById}
+        onSelectDay={ui.setHistoryDay}
+        onClose={() => ui.setHistoryDay(null)}
+        onSaveNote={(day, body) => void setDayNote(day, body)}
+        // Swap sheets rather than stacking them, same as the day sheet: a
+        // second right-side sheet would cover this one completely.
+        onOpenTodo={(todoId) => {
+          ui.openTodoSheet(todoId);
+          ui.setHistoryDay(null);
+        }}
+      />
+
       <CommandPalette
         open={ui.paletteOpen}
         onOpenChange={ui.setPaletteOpen}
@@ -582,6 +606,7 @@ export function Board() {
         onOpenOverdrive={() => ui.setOverdriveSource(OVERFLOW)}
         onOpenHelp={() => ui.setHelpSheetOpen(true)}
         onOpenActivity={() => ui.setActivityOpen(true)}
+        onOpenHistory={() => ui.setHistoryDay(today)}
       />
 
       <SessionProvider />

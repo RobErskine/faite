@@ -48,6 +48,9 @@ export interface BoardOverlayState {
    * same as every other sheet regardless, for consistency with the rest of
    * this list rather than because it holds anything undo could corrupt. */
   activityOpen: boolean;
+  /** The History sheet (EI-322). Holds a day note's rich-text editor, so
+   * undo must stay off behind it for the same reason as the day sheet. */
+  historyOpen: boolean;
   /** Any right-click context menu (EI-284). Base UI owns focus and Escape
    * inside its popup but not ⌘Z, which would otherwise bubble to `document`
    * and rewrite the board behind a menu whose items still describe the
@@ -79,12 +82,14 @@ export function computeModalOpen(state: BoardOverlayState): boolean {
     state.overdriveSource !== null ||
     state.helpSheetOpen ||
     state.activityOpen ||
+    state.historyOpen ||
     state.contextMenuOpen
   );
 }
 
 const TODO_PARAM = "todo";
 const DAY_PARAM = "day";
+const HISTORY_PARAM = "history";
 
 /**
  * Reads `?todo=<id>` / `?day=<date>` off the current URL — the deep-link
@@ -106,14 +111,23 @@ const DAY_PARAM = "day";
  * todo): a `todo` param wins over a `day` param if a URL somehow carries
  * both.
  */
-function readDeepLinkParams(): { todoId: string | null; day: CivilDate | null } {
-  if (typeof window === "undefined") return { todoId: null, day: null };
+function readDeepLinkParams(): {
+  todoId: string | null;
+  day: CivilDate | null;
+  historyDay: CivilDate | null;
+} {
+  const none = { todoId: null, day: null, historyDay: null };
+  if (typeof window === "undefined") return none;
   const params = new URLSearchParams(window.location.search);
   const todoId = params.get(TODO_PARAM);
-  if (todoId) return { todoId, day: null };
-  const rawDay = params.get(DAY_PARAM);
-  const day = rawDay && civilDateSchema.safeParse(rawDay).success ? rawDay : null;
-  return { todoId: null, day };
+  if (todoId) return { ...none, todoId };
+  const civil = (raw: string | null) =>
+    raw && civilDateSchema.safeParse(raw).success ? raw : null;
+  const day = civil(params.get(DAY_PARAM));
+  if (day) return { ...none, day };
+  // `?history=` (EI-322) comes last: it is the only one of the three that is
+  // a place to browse from rather than one thing to look at.
+  return { ...none, historyDay: civil(params.get(HISTORY_PARAM)) };
 }
 
 /**
@@ -135,12 +149,18 @@ const EMPTY_SELECTION: ReadonlySet<string> = new Set();
  * one where the URL is often already correct (it's where the values came
  * from in the first place).
  */
-function writeDeepLinkParams(todoId: string | null, day: CivilDate | null): void {
+function writeDeepLinkParams(
+  todoId: string | null,
+  day: CivilDate | null,
+  historyDay: CivilDate | null,
+): void {
   const params = new URLSearchParams(window.location.search);
   params.delete(TODO_PARAM);
   params.delete(DAY_PARAM);
+  params.delete(HISTORY_PARAM);
   if (todoId) params.set(TODO_PARAM, todoId);
   else if (day) params.set(DAY_PARAM, day);
+  else if (historyDay) params.set(HISTORY_PARAM, historyDay);
   const query = params.toString();
   const next = `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`;
   const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
@@ -181,6 +201,11 @@ export function useBoardUiState() {
   const [helpSheetOpen, setHelpSheetOpen] = useState(false);
   /** The global activity feed, opened by `⌘⇧A`. */
   const [activityOpen, setActivityOpen] = useState(false);
+  /** The day the History sheet (EI-322) shows; null when it is closed. Same
+   * lazy-initializer reasoning as `openTodoId` — see `readDeepLinkParams`. */
+  const [historyDay, setHistoryDay] = useState<CivilDate | null>(
+    () => readDeepLinkParams().historyDay,
+  );
 
   /**
    * Which page the phone shell's bottom bar shows (`phone-board.tsx`, P3).
@@ -501,8 +526,8 @@ export function useBoardUiState() {
    * desktop shell's webview.
    */
   useEffect(() => {
-    writeDeepLinkParams(openTodoId, openDay);
-  }, [openTodoId, openDay]);
+    writeDeepLinkParams(openTodoId, openDay, historyDay);
+  }, [openTodoId, openDay, historyDay]);
 
   /**
    * Back/forward support for the same deep links. `popstate` only fires for
@@ -516,10 +541,11 @@ export function useBoardUiState() {
    */
   useEffect(() => {
     function onPopState() {
-      const { todoId, day } = readDeepLinkParams();
+      const { todoId, day, historyDay: nextHistoryDay } = readDeepLinkParams();
       setOpenTodoId(todoId);
       setTodoOriginDay(null);
       setOpenDay(day);
+      setHistoryDay(nextHistoryDay);
     }
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
@@ -552,6 +578,8 @@ export function useBoardUiState() {
     setHelpSheetOpen,
     activityOpen,
     setActivityOpen,
+    historyDay,
+    setHistoryDay,
     phoneView,
     setPhoneView,
     landingTodoIds,

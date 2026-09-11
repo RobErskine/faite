@@ -347,6 +347,46 @@ export function useGlobalEvents(shown: number): GlobalEventsPage {
 }
 
 /**
+ * Every event with `start <= at < end`, undone ones included (the caller
+ * decides what an undo means) — the History sheet's read (EI-322).
+ *
+ * A range over the `at` index, so the cost is the rows in the range, never
+ * the whole log. Plain string comparison is exact here: `at` and the bounds
+ * are all `toISOString()` output (`now()`, `zonedInstant`), which sorts
+ * lexically in time order. `null` skips the query — the sheet is closed.
+ */
+export function useEventsBetween(start: string | null, end: string | null): TodoEvent[] {
+  return useLiveQuery(
+    () =>
+      start && end
+        ? getDb().todoEvents.where("at").between(start, end, true, false).toArray()
+        : Promise.resolve([] as TodoEvent[]),
+    [start, end],
+    [] as TodoEvent[],
+  );
+}
+
+/**
+ * The to-dos with these ids, tombstones included — a deleted to-do still
+ * needs its title on the day it was finished. `bulkGet` by primary key, so
+ * the History sheet reads only the handful of rows one day names, never the
+ * whole table the way `useTodoTitles` does.
+ */
+export function useTodosById(ids: readonly string[]): ReadonlyMap<string, Todo> {
+  // A string key, so a new array with the same ids does not re-run the query.
+  const key = [...ids].sort().join("\n");
+  const rows = useLiveQuery(
+    () => (key ? getDb().todos.bulkGet(key.split("\n")) : Promise.resolve([] as (Todo | undefined)[])),
+    [key],
+    [] as (Todo | undefined)[],
+  );
+  return useMemo(
+    () => new Map(rows.filter((t): t is Todo => !!t).map((t) => [t.id, t])),
+    [rows],
+  );
+}
+
+/**
  * `id -> { title, deleted }` for EVERY todo, including tombstones —
  * deliberately not `alive()`-filtered, unlike every other hook here. A
  * global feed shows events for todos that no longer exist on the board, and

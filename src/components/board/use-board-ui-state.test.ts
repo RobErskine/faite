@@ -27,6 +27,7 @@ const CLOSED: BoardOverlayState = {
   overdriveSource: null,
   helpSheetOpen: false,
   activityOpen: false,
+  historyOpen: false,
   contextMenuOpen: false,
 };
 
@@ -64,6 +65,37 @@ describe("useBoardUiState deep links (EI-149)", () => {
     const { result } = renderHook(() => useBoardUiState());
 
     expect(result.current.openDay).toBeNull();
+  });
+
+  it("opens History on the day in ?history=<date> (EI-322)", () => {
+    window.history.pushState({}, "", "/board?history=2026-09-03");
+
+    const { result } = renderHook(() => useBoardUiState());
+
+    expect(result.current.historyDay).toBe("2026-09-03");
+    expect(result.current.openDay).toBeNull();
+    expect(result.current.openTodoId).toBeNull();
+  });
+
+  it("ignores a malformed ?history= value", () => {
+    window.history.pushState({}, "", "/board?history=yesterday");
+
+    const { result } = renderHook(() => useBoardUiState());
+
+    expect(result.current.historyDay).toBeNull();
+  });
+
+  it("writes ?history= as the day changes, and clears it on close", () => {
+    const { result } = renderHook(() => useBoardUiState());
+
+    act(() => result.current.setHistoryDay("2026-09-03"));
+    expect(window.location.search).toBe("?history=2026-09-03");
+
+    act(() => result.current.setHistoryDay("2026-09-02"));
+    expect(window.location.search).toBe("?history=2026-09-02");
+
+    act(() => result.current.setHistoryDay(null));
+    expect(window.location.search).toBe("");
   });
 
   it("a ?todo= id wins over a simultaneous ?day= (matches board.tsx's own day-to-todo handoff)", () => {

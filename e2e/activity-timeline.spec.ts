@@ -47,7 +47,7 @@ test("logs a created and a done event, newest first under Today, and the filter 
 
   // Filtering out both logged kinds empties the page and shows the notice —
   // same "N hidden by the view filter · Show all" component the day sheet
-  // uses, backed by `visibleActivityKinds`, not `visibleEventKinds`.
+  // uses, backed by `hiddenActivityKinds`, not `hiddenEventKinds`.
   await sheet.getByRole("button", { name: "Which activity to show" }).click();
   await page.getByRole("menuitemcheckbox", { name: "Created" }).click();
   await page.getByRole("menuitemcheckbox", { name: "Completed" }).click();
@@ -84,4 +84,44 @@ test("a deleted todo's row keeps its title and isn't clickable", async ({ page }
   // and as no button anywhere in the sheet.
   await expect(activitySheet.getByText(title).first()).toBeVisible();
   await expect(activitySheet.getByRole("button", { name: title })).toHaveCount(0);
+});
+
+/**
+ * History (EI-322) — `history-sheet.tsx`, opened from the button left of the
+ * date range. Lives in this spec because it reads the same event log the
+ * feed does, and because a new spec file would need its own `testMatch`
+ * entry (AGENTS.md).
+ */
+test("History lists today's completion under Done, and steps back to an empty day", async ({
+  page,
+}) => {
+  await switchToLists(page);
+  const backlog = page.getByRole("region", { name: "Backlog" });
+  const title = "Ship the history sheet";
+
+  await backlog.getByPlaceholder("Add a to-do").fill(title);
+  await page.keyboard.press("Enter");
+  await page.getByRole("checkbox", { name: new RegExp(title) }).click();
+
+  await switchToDays(page);
+  await page.getByRole("button", { name: "Open history" }).click();
+  const sheet = page.locator('[data-slot="sheet-content"]');
+  await expect(sheet.getByRole("heading", { name: "History" })).toBeVisible();
+  await expect(page).toHaveURL(/[?&]history=\d{4}-\d{2}-\d{2}/);
+
+  // Opens on today, with the completion under Done and today's calendar day
+  // marked.
+  const done = sheet.getByRole("list", { name: /^Done on/ });
+  await expect(done.getByRole("button", { name: title })).toBeVisible();
+  await expect(sheet.getByRole("button", { name: /, something finished$/ })).toBeVisible();
+  await expect(sheet.getByRole("button", { name: "Next day", exact: true })).toBeDisabled();
+
+  await sheet.getByRole("button", { name: "Previous day", exact: true }).click();
+  await expect(sheet.getByText("Nothing finished or decided on this day.")).toBeVisible();
+
+  // A row opens its to-do, and the History sheet gives way to it.
+  await sheet.getByRole("button", { name: "Today", exact: true }).click();
+  await done.getByRole("button", { name: title }).click();
+  await expect(page).toHaveURL(/[?&]todo=/);
+  await expect(page).not.toHaveURL(/[?&]history=/);
 });

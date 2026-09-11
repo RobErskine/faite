@@ -20,9 +20,10 @@ import { Button } from "@/components/ui/button";
  *   always shows the date (`formatEventStamp`, `lib/event-time.ts`).
  * - The kind-filter dropdown itself and which settings field backs it — each
  *   sheet filters a different kind vocabulary through its own setting
- *   (`visibleEventKinds` for the day sheet, `visibleActivityKinds` for the
- *   global feed), so sharing the dropdown would risk one surface's filter
- *   silently reading or writing the other's field.
+ *   (`hiddenEventKinds` for the day sheet, `hiddenActivityKinds` for the
+ *   global feed, `hiddenHistoryKinds` for a to-do's History — see
+ *   `lib/kind-filter.ts`), so sharing the dropdown would risk one surface's
+ *   filter silently reading or writing the other's field.
  */
 
 interface TimelineListProps {

@@ -57,6 +57,7 @@ export interface PaletteCommandCtx {
   openHelp: () => void;
   openOverdrive: () => void;
   openActivity: () => void;
+  openHistory: () => void;
   close: () => void;
   setVisibleDays: (days: number) => void | Promise<void>;
   setVisibleStatuses: (next: TodoStatus[]) => void | Promise<void>;
@@ -139,6 +140,17 @@ const MANAGE_COMMANDS: PaletteCommand[] = [
     shortcut: (ctx) => formatCombo("mod+shift+a", ctx.platform),
     run: (ctx) => {
       ctx.openActivity();
+      ctx.close();
+    },
+  },
+  {
+    // No shortcut: ⌘⇧H is the browser's Home, and the History button sits
+    // beside the date range in both shells (EI-322).
+    id: "manage-history",
+    group: "Manage",
+    label: () => "History",
+    run: (ctx) => {
+      ctx.openHistory();
       ctx.close();
     },
   },

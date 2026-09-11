@@ -4724,6 +4724,48 @@
               ]
             }
           },
+          "hiddenEventKinds": {
+            "default": null,
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "hiddenActivityKinds": {
+            "default": null,
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "hiddenHistoryKinds": {
+            "default": null,
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "showWeekends": {
             "default": true,
             "type": "boolean"
@@ -4875,6 +4917,9 @@
           "visibleEventKinds",
           "visibleActivityKinds",
           "visibleHistoryKinds",
+          "hiddenEventKinds",
+          "hiddenActivityKinds",
+          "hiddenHistoryKinds",
           "showWeekends",
           "fontPairing",
           "theme",

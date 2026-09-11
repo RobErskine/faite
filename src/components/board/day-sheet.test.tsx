@@ -127,6 +127,9 @@ const settings = (over: Partial<Settings> = {}): Settings => ({
   visibleEventKinds: ["created", "scheduled", "done", "dropped"],
   visibleActivityKinds: ["created", "scheduled", "unscheduled", "moved", "done", "dropped", "reopened", "edited", "deleted", "attached", "detached", "rolledOver", "overflowed"],
   visibleHistoryKinds: ["created", "scheduled", "unscheduled", "moved", "done", "dropped", "reopened", "edited", "deleted", "attached", "detached", "rolledOver", "overflowed"],
+  hiddenEventKinds: null,
+  hiddenActivityKinds: null,
+  hiddenHistoryKinds: null,
   showWeekends: true,
   fontPairing: "hyperlegible",
   theme: "system",
@@ -492,9 +495,7 @@ describe("timeline — kind filter", () => {
     render(<Harness settings={settings()} />);
     openFilterMenu();
     fireEvent.click(await screen.findByRole("menuitemcheckbox", { name: "Assigned" }));
-    expect(lastPatch()).toEqual({
-      visibleEventKinds: ["created", "done", "dropped"],
-    });
+    expect(lastPatch()).toEqual({ hiddenEventKinds: ["scheduled"] });
   });
 
   /**
@@ -503,33 +504,27 @@ describe("timeline — kind filter", () => {
    * state that guard exists to avoid building.
    */
   it("allows turning off the last remaining kind", async () => {
-    render(<Harness settings={settings({ visibleEventKinds: ["done"] })} />);
+    const allButDone = ["created", "scheduled", "dropped", "rolledOver", "overflowed"];
+    render(<Harness settings={settings({ hiddenEventKinds: allButDone })} />);
     openFilterMenu();
     fireEvent.click(await screen.findByRole("menuitemcheckbox", { name: "Completed" }));
-    expect(lastPatch()).toEqual({ visibleEventKinds: [] });
+    expect(lastPatch()).toEqual({ hiddenEventKinds: [...allButDone, "done"] });
   });
 
   it("hides events of unchecked kinds and notes how many, with a reset", () => {
     render(
-      <Harness todos={threeKinds} settings={settings({ visibleEventKinds: ["done"] })} />,
+      <Harness todos={threeKinds} settings={settings({ hiddenEventKinds: ["created", "dropped"] })} />,
     );
     expect(entryLabels()).toEqual(["Completed·9:00 AM"]);
     expect(
       screen.getByText("2 entries hidden by the view filter"),
     ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Show all" }));
-    expect(lastPatch()).toEqual({
-      visibleEventKinds: [
-        "created",
-        "scheduled",
-        "done",
-        "dropped",
-        "rolledOver",
-        "overflowed",
-      ],
-    });
+    expect(lastPatch()).toEqual({ hiddenEventKinds: [] });
   });
 
+  // A value saved before EI-320 — the old shown-set — still filters, read
+  // through `resolveHiddenKinds`.
   it("replaces the list with the notice when every event is filtered out", () => {
     render(<Harness todos={threeKinds} settings={settings({ visibleEventKinds: [] })} />);
     expect(document.querySelector("ol")).toBeNull();

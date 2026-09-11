@@ -295,6 +295,17 @@ populate-only). It would be invisible. Prefer a client backfill through
 `mutate()`, which gets a real HLC and ordinary LWW for free — and which is the
 only kind that works for a signed-out user, who has no Durable Object at all.
 
+**Migration 21 is the worked example of that failure.** It appended two new
+event kinds to `visible_activity_kinds` on the server, and existing devices
+never saw it (EI-320). The deeper fix was the shape of the field: a
+preference that stores what is **shown** cannot learn a value added later, so
+every new kind needs a backfill that cannot reach devices. Store what is
+**hidden** instead — "no opinion" is then visible, and nothing needs a
+backfill. The three kind filters now do this (`hidden*Kinds`, migration 23),
+and convert the old value when it is read, not with a one-time write — see
+`src/lib/kind-filter.ts`. Reach for the same shape for any future opt-out
+list.
+
 ---
 
 ## Verifying a schema change

@@ -41,6 +41,11 @@ import {
 } from "./timeline";
 import { edge, effectiveListColor } from "@/lib/colors";
 import { formatEventTime } from "@/lib/event-time";
+import {
+  ACTIVITY_KIND_GENERATIONS,
+  resolveHiddenKinds,
+  toggleHiddenKind,
+} from "@/lib/kind-filter";
 import { formatShortDate, type PlacementContext } from "@/lib/scheduling";
 import {
   buildGlobalTimeline,
@@ -229,7 +234,16 @@ export function ActivitySheet({
     [events, rollups, titles, timezone, ctx.today, atCap],
   );
 
-  const visibleKinds = settings?.visibleActivityKinds ?? ALL_ACTIVITY_KINDS;
+  const hiddenSetting = settings?.hiddenActivityKinds;
+  const legacyVisible = settings?.visibleActivityKinds;
+  const hiddenKinds = useMemo(
+    () => resolveHiddenKinds(hiddenSetting, legacyVisible, ACTIVITY_KIND_GENERATIONS),
+    [hiddenSetting, legacyVisible],
+  );
+  const visibleKinds = useMemo(
+    () => ALL_ACTIVITY_KINDS.filter((kind) => !hiddenKinds.includes(kind)),
+    [hiddenKinds],
+  );
   const visibleItems = useMemo(() => {
     const kept = items.filter((item) => {
       if (item.type === "event") {
@@ -263,15 +277,12 @@ export function ActivitySheet({
     // Unchecking the last kind is allowed, same reasoning as the day
     // sheet's filter — `HiddenByFilterNotice` is the empty state that
     // guarding against it would exist only to avoid building.
-    const nextKinds = next
-      ? ACTIVITY_KIND_FILTER_OPTIONS.filter((o) => o.value === value || visibleKinds.includes(o.value)).map(
-          (o) => o.value,
-        )
-      : visibleKinds.filter((k) => k !== value);
-    void mutateSettings(LOCAL_OWNER_ID, { visibleActivityKinds: nextKinds });
+    void mutateSettings(LOCAL_OWNER_ID, {
+      hiddenActivityKinds: toggleHiddenKind(hiddenKinds, value, next),
+    });
   };
 
-  const showAllKinds = () => void mutateSettings(LOCAL_OWNER_ID, { visibleActivityKinds: ALL_ACTIVITY_KINDS });
+  const showAllKinds = () => void mutateSettings(LOCAL_OWNER_ID, { hiddenActivityKinds: [] });
 
   const renderableItems = visibleItems.filter((i) => i.type !== "marker" || i.key !== "truncated");
   const lastRenderableKey = keyOf(renderableItems.at(-1));

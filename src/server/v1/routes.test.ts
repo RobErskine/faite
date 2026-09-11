@@ -242,6 +242,32 @@ describe("PATCH /api/v1/todos/{id}", () => {
     expect(Object.keys(pushedEntries(stub)[0].patch).sort()).toEqual(["status", "updatedAt"]);
   });
 
+  /**
+   * EI-321. Completing through the API wrote no `done` event, so the to-do
+   * was missing from every timeline. The route passes the row it already
+   * read, and sizes the HLC queue for every entry the builder can return —
+   * an undersized queue throws, which would turn this into a 500.
+   */
+  it("logs `done` and `scheduled` beside an `edited` row, in ONE push", async () => {
+    stub.getTodo.mockResolvedValue(rawTodoRow({ scheduledDate: "2026-09-10" }));
+
+    const res = await handleV1Request(
+      v1Request("PATCH", "/api/v1/todos/todo-1", {
+        title: "Buy oat milk",
+        status: "done",
+        scheduledDate: "2026-09-12",
+      }),
+      env,
+    );
+
+    expect(res.status).toBe(200);
+    expect(stub.push).toHaveBeenCalledTimes(1);
+    const kinds = pushedEntries(stub)
+      .filter((e) => e.kind === "todoEvent")
+      .map((e) => (e.patch as Record<string, unknown>).kind);
+    expect(kinds).toEqual(["edited", "done", "scheduled"]);
+  });
+
   it("404s BEFORE pushing, so a patch never insert-creates a ghost row", async () => {
     const res = await handleV1Request(
       v1Request("PATCH", "/api/v1/todos/nope", { status: "done" }),

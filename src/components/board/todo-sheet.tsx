@@ -73,6 +73,11 @@ import { PriorityGlyph, PriorityRail } from "@/components/board/todo-row-parts";
 import { priorityRail, railBorderStyle } from "@/lib/priority";
 import { TITLE_LINES } from "@/lib/title";
 import { formatEventTime } from "@/lib/event-time";
+import {
+  HISTORY_KIND_GENERATIONS,
+  resolveHiddenKinds,
+  toggleHiddenKind,
+} from "@/lib/kind-filter";
 import { formatShortDate, type PlacementContext } from "@/lib/scheduling";
 import { parseQuickAdd } from "@/lib/quick-add";
 import { isTextEntry } from "@/lib/undo";
@@ -210,7 +215,7 @@ interface TodoSheetProps {
    * have to thread empty collections through. */
   events?: TodoEvent[];
   timezone?: string;
-  /** Backs the History section's kind filter (`visibleHistoryKinds`).
+  /** Backs the History section's kind filter (`hiddenHistoryKinds`).
    * Optional, same reasoning as `events` — a caller with no settings to read
    * gets the full vocabulary. */
   settings?: Settings;
@@ -1415,8 +1420,6 @@ const HISTORY_KIND_FILTER_OPTIONS: ReadonlyArray<{ value: ActivityEventKind; lab
   Object.keys(HISTORY_EVENT_LABEL) as ActivityEventKind[]
 ).map((value) => ({ value, label: HISTORY_EVENT_LABEL[value] ?? FALLBACK_LABEL }));
 
-const ALL_HISTORY_KINDS: ActivityEventKind[] = HISTORY_KIND_FILTER_OPTIONS.map((o) => o.value);
-
 /**
  * A to-do's own history, reading like the global activity feed rather than
  * like a different feature (EI-318): newest first, grouped under day headers,
@@ -1427,8 +1430,8 @@ const ALL_HISTORY_KINDS: ActivityEventKind[] = HISTORY_KIND_FILTER_OPTIONS.map((
  * to-do's history is usually exactly what someone opening the sheet wants to
  * see, so it no longer costs an extra click to reveal.
  *
- * `visibleHistoryKinds` is its OWN settings field, never
- * `visibleActivityKinds`: sharing one would let filtering the global feed
+ * `hiddenHistoryKinds` is its OWN settings field, never
+ * `hiddenActivityKinds`: sharing one would let filtering the global feed
  * silently filter every to-do's history too. `timeline.tsx`'s header comment
  * is the standing warning about exactly this.
  */
@@ -1447,9 +1450,17 @@ function HistorySection({
     [events, todo, ctx, timezone, today],
   );
 
-  const visibleKinds = settings?.visibleHistoryKinds ?? ALL_HISTORY_KINDS;
+  const hiddenSetting = settings?.hiddenHistoryKinds;
+  const legacyVisible = settings?.visibleHistoryKinds;
+  const hiddenKinds = useMemo(
+    () => resolveHiddenKinds(hiddenSetting, legacyVisible, HISTORY_KIND_GENERATIONS),
+    [hiddenSetting, legacyVisible],
+  );
+  // Checks HIDDEN, not shown, so a kind this build has no checkbox for still
+  // renders (as the "Updated" fallback) instead of vanishing — the same
+  // fail-open rule the activity feed follows.
   const isVisible = (item: TodoTimelineItem) =>
-    item.type !== "event" || visibleKinds.includes(item.event.kind as ActivityEventKind);
+    item.type !== "event" || !hiddenKinds.includes(item.event.kind);
 
   const eventItems = items.filter((item) => item.type === "event");
   const count = eventItems.length;
@@ -1466,14 +1477,13 @@ function HistorySection({
       return next !== undefined && next.type === "event";
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, visibleKinds]);
+  }, [items, hiddenKinds]);
 
-  const toggleKind = (kind: ActivityEventKind, checked: boolean) => {
-    const next = checked
-      ? [...visibleKinds, kind]
-      : visibleKinds.filter((k) => k !== kind);
-    void mutateSettings(LOCAL_OWNER_ID, { visibleHistoryKinds: next });
-  };
+  const toggleKind = (kind: ActivityEventKind, checked: boolean) =>
+    void mutateSettings(LOCAL_OWNER_ID, {
+      hiddenHistoryKinds: toggleHiddenKind(hiddenKinds, kind, checked),
+    });
+  const showAllKinds = () => void mutateSettings(LOCAL_OWNER_ID, { hiddenHistoryKinds: [] });
 
   const lastEventKey = [...visibleItems].reverse().find((i) => i.type === "event");
 
@@ -1509,7 +1519,7 @@ function HistorySection({
                 {HISTORY_KIND_FILTER_OPTIONS.map((option) => (
                   <DropdownMenuCheckboxItem
                     key={option.value}
-                    checked={visibleKinds.includes(option.value)}
+                    checked={!hiddenKinds.includes(option.value)}
                     closeOnClick={false}
                     onCheckedChange={(checked) => toggleKind(option.value, checked)}
                   >
@@ -1525,9 +1535,7 @@ function HistorySection({
       {open && hiddenCount > 0 && count === hiddenCount ? (
         <HiddenByFilterNotice
           count={hiddenCount}
-          onShowAll={() =>
-            void mutateSettings(LOCAL_OWNER_ID, { visibleHistoryKinds: ALL_HISTORY_KINDS })
-          }
+          onShowAll={showAllKinds}
         />
       ) : (
         open && (
@@ -1570,9 +1578,7 @@ function HistorySection({
             {hiddenCount > 0 && (
               <HiddenByFilterNotice
                 count={hiddenCount}
-                onShowAll={() =>
-                  void mutateSettings(LOCAL_OWNER_ID, { visibleHistoryKinds: ALL_HISTORY_KINDS })
-                }
+                onShowAll={showAllKinds}
               />
             )}
           </>

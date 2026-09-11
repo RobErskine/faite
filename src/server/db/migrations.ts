@@ -382,6 +382,21 @@ export const USER_DB_MIGRATIONS: readonly UserDbMigration[] = [
       `ALTER TABLE settings ADD COLUMN visible_history_kinds text NOT NULL DEFAULT '["created","scheduled","unscheduled","moved","done","dropped","reopened","edited","deleted","attached","detached","rolledOver","overflowed"]'`,
     ],
   },
+  {
+    id: 23,
+    name: "settings-add-hidden-kinds",
+    statements: [
+      // EI-320: the three kind filters store what is HIDDEN from now on, so a
+      // kind added later is visible without a backfill. Nullable with no
+      // default, on purpose — NULL is "not converted yet", which the client
+      // resolves from the old `visible_*_kinds` value at read time
+      // (`lib/kind-filter.ts`). A DEFAULT '[]' would claim "nothing hidden"
+      // for a user who had hidden something, and override their choice.
+      "ALTER TABLE settings ADD COLUMN hidden_event_kinds text",
+      "ALTER TABLE settings ADD COLUMN hidden_activity_kinds text",
+      "ALTER TABLE settings ADD COLUMN hidden_history_kinds text",
+    ],
+  },
   // Add new migrations here. Never edit one above this line.
   //
   // Example — adding a nullable column (the safe, ordinary case):
