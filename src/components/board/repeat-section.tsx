@@ -21,7 +21,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { RepeatDialog } from "./repeat-dialog";
 import { formatShortDate } from "@/lib/scheduling";
 import { summarizeEnd, summarizeSchedule, type RecurrenceRule } from "@/lib/recurrence";
 import type { CivilDate } from "@/lib/schema";
@@ -72,18 +71,7 @@ interface RepeatSectionProps {
  * what each does to already-materialized children.
  */
 export function RepeatSection({ recurrence }: RepeatSectionProps) {
-  const [changeOpen, setChangeOpen] = useState(false);
-  // Bumped on every "Change…" click so `RepeatDialog` gets a fresh `key` —
-  // it seeds its draft state once per mount and does not track prop changes
-  // afterward, so without this a canceled edit reopens showing the
-  // abandoned draft rather than the saved rule.
-  const [changeGeneration, setChangeGeneration] = useState(0);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
-
-  const openChangeDialog = () => {
-    setChangeGeneration((g) => g + 1);
-    setChangeOpen(true);
-  };
 
   const nextLine = recurrence.nextDate
     ? `Next: ${formatShortDate(recurrence.nextDate)}`
@@ -106,10 +94,14 @@ export function RepeatSection({ recurrence }: RepeatSectionProps) {
             <Badge variant="outline">×{recurrence.missedCount}</Badge>
           )}
         </div>
+        {/*
+          No "Change…" button. Editing the rule is the Repeat entry inside the
+          date control now — one way in, because a schedule edited from two
+          places is how Date and Repeat came to disagree in the first place
+          (EI-318). What is left here is the two verbs that are not schedule
+          edits at all: stop, and delete.
+        */}
         <div className="flex items-center gap-2 pt-1">
-          <Button variant="outline" size="sm" onClick={openChangeDialog}>
-            Change…
-          </Button>
           <DropdownMenu>
             <DropdownMenuTrigger
               render={<Button variant="ghost" size="icon-sm" aria-label="More repeat actions" />}
@@ -128,16 +120,6 @@ export function RepeatSection({ recurrence }: RepeatSectionProps) {
           </DropdownMenu>
         </div>
       </div>
-
-      <RepeatDialog
-        key={changeGeneration}
-        open={changeOpen}
-        onOpenChange={setChangeOpen}
-        seriesStart={recurrence.occurrenceDate}
-        initialRule={recurrence.rule}
-        onSave={recurrence.onChangeRule}
-        title="Edit repeat"
-      />
 
       <AlertDialog open={confirmDeleteOpen} onOpenChange={setConfirmDeleteOpen}>
         <AlertDialogContent>

@@ -16,35 +16,105 @@ import type { Priority, Todo } from "./schema";
  * things — "belongs to this list" and "needs a verdict" — and importance is
  * carried by form alone.
  *
- * **Two channels, arranged so no level shares both.** Thickness is the coarse
- * signal (3 / 2 / 1 / 1px); opacity and line style carry the rest. A four-step
- * width ramp was rejected: 4px shouts at the column floor, and a 1.5px step
- * rounds to 1 or 2 device pixels depending on the display — a rail that
- * changes thickness when you move the window to another monitor. The pair that
- * shares a thickness (P3/P4) is told apart by P4 being dotted, which survives
- * every color-vision deficiency and both themes because it is not a color.
+ * **Four levels, four line styles — the four CSS actually has.** Double,
+ * solid, dashed, dotted, for P1 to P4, with thickness stepping down alongside
+ * (5 / 3 / 2 / 2px) to reinforce it. Every level is identifiable on its own,
+ * with no neighbour to compare against: a width ramp alone answers "which of
+ * these two is higher", never "what is this one".
+ *
+ * Double leads because it reads as emphasis before you know the scale — the
+ * same instinct as a double underline — and because it is the one style that
+ * NEEDS width to exist at all: two lines and a gap is three pixels at minimum,
+ * and at 5px it is two clear 2px strokes. Solid, dashed and dotted then run
+ * from continuous to most broken.
+ *
+ * Mapping onto CSS's own four styles is not a coincidence, it is the point.
+ * The drag chip and the sheet's priority tab draw the mark as a real border,
+ * and with four rhythms and three styles they used to have to approximate.
+ * Now every surface draws exactly the same four things.
+ *
+ * All of it is form rather than color, so it survives every color-vision
+ * deficiency and both themes (docs/DESIGN.md §7, decision A).
  *
  * The rail is drawn in `--foreground`, so it inverts with the theme and always
  * holds full contrast against its column. `opacity` below is applied to the
  * span, not baked into a color, so the same values serve both themes.
  */
+export type RailStyle = "double" | "solid" | "dashed" | "dotted";
+
 export interface PriorityRail {
   /** Rail thickness in px. */
   width: number;
   /** 0–1. Applied to the rail span; the color is always `--foreground`. */
   opacity: number;
-  /** Dotted rather than solid — the second channel for the 1px pair. */
-  dotted: boolean;
+  /**
+   * Which of CSS's four line styles this level is. The name IS the
+   * `border-style` value, so the border surfaces pass it straight through
+   * and the span surfaces rebuild it with a gradient.
+   */
+  style: RailStyle;
   /** What a screen reader hears in place of the old `P1` chip. */
   label: string;
 }
 
 export const PRIORITY_RAILS: Record<Priority, PriorityRail> = {
-  1: { width: 3, opacity: 1, dotted: false, label: "Priority 1, highest" },
-  2: { width: 2, opacity: 0.7, dotted: false, label: "Priority 2" },
-  3: { width: 1, opacity: 0.5, dotted: false, label: "Priority 3" },
-  4: { width: 1, opacity: 0.5, dotted: true, label: "Priority 4, lowest" },
+  1: { width: 5, opacity: 1, style: "double", label: "Priority 1, highest" },
+  2: { width: 3, opacity: 0.9, style: "solid", label: "Priority 2" },
+  3: { width: 2, opacity: 0.75, style: "dashed", label: "Priority 3" },
+  4: { width: 2, opacity: 0.6, style: "dotted", label: "Priority 4, lowest" },
 };
+
+/**
+ * The vertical rhythms a span uses to draw `dashed` and `dotted`, in CSS
+ * pixels of ink and gap.
+ *
+ * Every period is 9px or under, because a card rail is only ~27px tall: a
+ * longer period lands two marks and reads as solid, which is an encoding that
+ * is present and invisible. `priority.test.ts` holds that ceiling.
+ */
+export const RAIL_RHYTHMS = {
+  dashed: { on: 6, off: 3 },
+  dotted: { on: 2, off: 3 },
+} as const;
+
+/**
+ * The rail's fill as a `background-image`, for the surfaces that draw it as a
+ * SPAN — the board card, the homepage's echo of it, the sheet's leading edge.
+ * `null` means solid: the caller paints a flat color.
+ *
+ * - `double` runs ACROSS the width: two strokes with a gap between, which is
+ *   what a double border is.
+ * - `dashed` and `dotted` run DOWN it, repeating.
+ */
+export function railBackgroundImage(rail: PriorityRail): string | null {
+  const ink = "var(--foreground)";
+  switch (rail.style) {
+    case "solid":
+      return null;
+    case "double": {
+      // Two equal strokes around a gap of whatever is left — 2 / 1 / 2 at
+      // 5px. `floor` keeps the strokes on whole pixels so they stay sharp.
+      const stroke = Math.floor((rail.width - 1) / 2);
+      const far = rail.width - stroke;
+      return `linear-gradient(to right, ${ink} 0 ${stroke}px, transparent ${stroke}px ${far}px, ${ink} ${far}px)`;
+    }
+    case "dashed":
+    case "dotted": {
+      const { on, off } = RAIL_RHYTHMS[rail.style];
+      return `repeating-linear-gradient(to bottom, ${ink} 0 ${on}px, transparent ${on}px ${on + off}px)`;
+    }
+  }
+}
+
+/**
+ * The rail as a `border-style`, for the two surfaces that draw it as a
+ * BORDER — the drag chip and the sheet's priority tab.
+ *
+ * Exact, not an approximation: the four levels ARE CSS's four line styles.
+ */
+export function railBorderStyle(rail: PriorityRail): RailStyle {
+  return rail.style;
+}
 
 /** `undefined` for an unprioritised to-do, so callers can render nothing. */
 export function priorityRail(

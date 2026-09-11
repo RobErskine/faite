@@ -210,7 +210,13 @@ export const settings = sqliteTable("settings", {
   visibleActivityKinds: text("visible_activity_kinds")
     .notNull()
     .default(
-      '["created","scheduled","unscheduled","moved","done","dropped","reopened","edited","deleted","rolledOver","overflowed"]',
+      '["created","scheduled","unscheduled","moved","done","dropped","reopened","edited","deleted","attached","detached","rolledOver","overflowed"]',
+    ),
+  /** JSON-encoded array of kinds — see `settingsSchema.visibleHistoryKinds`. */
+  visibleHistoryKinds: text("visible_history_kinds")
+    .notNull()
+    .default(
+      '["created","scheduled","unscheduled","moved","done","dropped","reopened","edited","deleted","attached","detached","rolledOver","overflowed"]',
     ),
   showWeekends: integer("show_weekends", { mode: "boolean" }).notNull().default(true),
   fontPairing: text("font_pairing").notNull(),

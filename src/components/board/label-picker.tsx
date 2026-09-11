@@ -16,7 +16,6 @@ import {
   ComboboxPositioner,
   useComboboxFilter,
 } from "@/components/ui/combobox";
-import { Label } from "@/components/ui/label";
 import { createLabel } from "@/lib/store/repositories";
 import { edge, tint } from "@/lib/colors";
 import type { Label as LabelRecord, Todo } from "@/lib/schema";
@@ -85,9 +84,11 @@ export function LabelPicker({ todo, labels, onToggleLabel }: LabelPickerProps) {
   };
 
   return (
+    // No `<Label>` of its own: the sheet lays these fields out as label-left,
+    // control-right rows and owns the label so every one of them aligns on a
+    // single column (EI-318). `htmlFor` still reaches this input from there —
+    // the association is by id, not by nesting.
     <div className="space-y-1.5">
-      <Label htmlFor="todo-label-input">Labels</Label>
-
       <Combobox
         items={items}
         multiple

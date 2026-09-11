@@ -102,6 +102,46 @@ export function TimelineRow({ icon: Icon, label, at, when, accent, isLast, child
 }
 
 /**
+ * The sticky-looking day divider between runs of rows — the global activity
+ * feed's, extracted when a to-do's own History became the second consumer
+ * (EI-318). One hand-tuned block, not two: every number in it is measured
+ * against `TimelineRow`'s geometry, and a copy would drift the moment either
+ * moved.
+ *
+ * The label is NOT computed here. `dayLabel` (lib/scheduling.ts) is shared,
+ * but the decision to show a header at all belongs to whichever
+ * `build*Timeline` produced the items.
+ */
+export function TimelineDayHeader({ label }: { label: string }) {
+  return (
+    <li
+      // `-mx-4` cancels the sheet body's own `px-4`, so the background paints
+      // edge-to-edge instead of stopping at the timeline column like every
+      // other row's content does. `pl-11` puts the TEXT back where it would
+      // have sat without the cancellation — 16px (the padding just removed)
+      // plus 28px (`pl-7`, every `TimelineRow`'s own left inset) — so the
+      // label still lines up with the rows above and below it; only the
+      // background bleeds wider.
+      className="type-eyebrow relative -mx-4 bg-muted/60 py-1.5 pr-4 pl-11"
+    >
+      {/*
+        Keeps the rail unbroken through the header — without this, the line
+        stops at the row above and resumes at the row below, reading as two
+        separate timelines rather than one. `left-[25.5px]` is
+        `TimelineRow`'s own rail position (`left-[9.5px]`, centered under its
+        size-5 dot) PLUS the 16px `-mx-4` added back above: the rail has to
+        account for the same shift the text's `pl-11` does, or it drifts out
+        of alignment for exactly the width of this header. Same `-0.75rem`
+        bottom overshoot as `TimelineRow`'s own rail, to bridge the
+        `space-y-3` gap to whatever follows.
+      */}
+      <span aria-hidden className="absolute left-[25.5px] top-0 bottom-[-0.75rem] w-px bg-border" />
+      {label}
+    </li>
+  );
+}
+
+/**
  * "N hidden by the view filter · Show all" — one component for every
  * kind-filtered timeline: replacing the list entirely when the filter hides
  * every event, and as a footer line when it hides some. Reused rather than

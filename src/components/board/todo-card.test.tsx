@@ -5,6 +5,7 @@ import { DndContext } from "@dnd-kit/core";
 import { SortableContext } from "@dnd-kit/sortable";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { TodoCard, startsDrag } from "./todo-card";
+import { PRIORITY_RAILS } from "@/lib/priority";
 import type { TodoContextActions } from "./todo-card-menu";
 import { cardStop, type NavKey } from "@/lib/column-nav";
 import type { ReminderPreset, Todo } from "@/lib/schema";
@@ -213,7 +214,9 @@ describe("priority", () => {
     render(<Harness todo={todo({ priority: 1 })} />);
     const rail = document.querySelector<HTMLElement>("[data-priority-rail]")!;
     expect(rail.getAttribute("data-priority-rail")).toBe("1");
-    expect(rail.style.width).toBe("3px");
+    // From the table, not restated: this test used to hard-code `3px` and
+    // broke the moment the ramp widened, which proved nothing about the card.
+    expect(rail.style.width).toBe(`${PRIORITY_RAILS[1].width}px`);
   });
 
   it("renders no rail without a priority", () => {

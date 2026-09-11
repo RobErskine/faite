@@ -461,15 +461,19 @@ export function TodoCard({
           border eats the content box, so a P1 card's checkbox and title would
           sit 3px right of a P4's. Inside one column that reads as broken
           alignment rather than as encoding.
-        - The row already has `border-b`. A 3px colored left border mitres
-          against it into a visible diagonal wedge in the corner — worst exactly
-          at P1, where the rail is thickest.
+        - A 3px colored left border mitres against a row border into a visible
+          diagonal wedge in the corner — worst exactly at P1, where the rail is
+          thickest. (Rows carry no `border-b` since the Air pass, but a border
+          would come back the moment one did.)
         - The insertion line below is positioned against the PADDING box, so a
           left border would shift where the drop indicator starts, per level.
           That position is load bearing: `data-drop-indicator` doubles as the
           drop animation's flight target (DRAG-AND-DROP §4.7).
-        - `inset-y-0` stops the rail 1px short of `border-b`, so a run of
-          same-priority cards reads as ticks rather than fusing into one stripe.
+        - The vertical inset lives on `PriorityRail` itself, and is why a run
+          of cards reads as ticks rather than fusing into one stripe. It used
+          to be `inset-y-0` relying on the row's `border-b` for that gap; the
+          Air pass removed the border and the rails silently fused. See the
+          comment there.
 
         The rail is `aria-hidden`; the level reaches screen readers as text
         inside the title button below.

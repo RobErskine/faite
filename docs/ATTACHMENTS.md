@@ -332,3 +332,25 @@ npm run preview          # the Worker, with real bindings, on :8787
     a quoted field, a newline inside a quoted field, and a doubled quote;
     all three are what a naive split gets wrong, and all three are covered by
     `src/lib/csv.test.ts`.
+
+## History
+
+Attaching and removing a file are journalled on the **to-do**, as `attached`
+and `detached` `todoEvent` rows (EI-318). They render in that to-do's History
+section and in the global activity feed, with the filename as the detail line.
+
+Three decisions worth keeping:
+
+- **Written at the repository call site**, in the same Dexie transaction as
+  the attachment row and its outbox entry — `mutate.ts`'s `opts.events`, the
+  same path every other journalled change uses. Never by diffing.
+- **The filename is stored inline in the payload**, not resolved through the
+  attachment row. By the time anyone reads a `detached` event its row is a
+  tombstone, so a lookup would render "Removed file" with nothing after it.
+  It is the SERVER's sanitized name, matching the row itself.
+- **The `deleteTodo` cascade writes none.** The to-do's own `deleted` event
+  covers it; one row per file would flood both timelines with noise, and the
+  cascade is one decision rather than N.
+
+A repeated delete of the same attachment journals once — "removed file"
+happened once, and `deleteAttachment` checks `deletedAt` before logging.

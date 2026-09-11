@@ -3,7 +3,7 @@ import { badgeVariants } from "@/components/ui/badge";
 // `edge` only — the column accent is a real feature (lists and tabs both have
 // a ColorPicker). `tint` went with the fabricated label colors.
 import { edge } from "@/lib/colors";
-import { priorityRail } from "@/lib/priority";
+import { priorityRail, railBackgroundImage } from "@/lib/priority";
 import { STORY_BEATS } from "@/lib/story-beats";
 import { TITLE_CLAMP_CLASS } from "@/lib/title";
 import { cn } from "@/lib/utils";
@@ -353,14 +353,14 @@ function DemoCard({ todo }: { todo: DemoTodo }) {
           style={{
             width: rail.width,
             opacity: rail.opacity,
-            ...(rail.dotted
-              ? {
-                  backgroundImage:
-                    "repeating-linear-gradient(to bottom, var(--foreground) 0 2px, transparent 2px 5px)",
-                }
+            ...(railBackgroundImage(rail)
+              ? { backgroundImage: railBackgroundImage(rail)! }
               : { backgroundColor: "var(--foreground)" }),
           }}
-          className="pointer-events-none absolute inset-y-0 left-0"
+          // `inset-y-1`, matching `PriorityRail` on the real board: rows sit
+          // flush, so a full-height rail abuts the next one exactly and a run
+          // of them fuses into one stripe (EI-318).
+          className="pointer-events-none absolute inset-y-1 left-0"
         />
       )}
 

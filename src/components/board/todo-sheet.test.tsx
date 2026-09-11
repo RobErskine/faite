@@ -4,7 +4,8 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { TodoSheet, type RecurrenceInfo } from "./todo-sheet";
 import { defaultRule } from "@/lib/recurrence";
-import type { Label as LabelRecord, List, Tab, Todo, TodoEvent } from "@/lib/schema";
+import { PRIORITY_RAILS } from "@/lib/priority";
+import type { Label as LabelRecord, List, Todo, TodoEvent } from "@/lib/schema";
 import type { PlacementContext } from "@/lib/scheduling";
 
 /**
@@ -65,7 +66,6 @@ interface HarnessProps {
   events?: TodoEvent[];
   ctx?: PlacementContext;
   listsById?: ReadonlyMap<string, List>;
-  tabsById?: ReadonlyMap<string, Tab>;
 }
 
 function Harness({
@@ -83,7 +83,6 @@ function Harness({
   events,
   ctx,
   listsById,
-  tabsById,
 }: HarnessProps) {
   return (
     <TodoSheet
@@ -97,7 +96,6 @@ function Harness({
       events={events}
       ctx={ctx}
       listsById={listsById}
-      tabsById={tabsById}
       onClose={vi.fn()}
       onSave={onSave}
       onSetStatus={onSetStatus}
@@ -143,7 +141,10 @@ describe("repeat section (a materialized occurrence)", () => {
       />,
     );
     expect(screen.getByText("Every week on Fri")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Change…" })).toBeTruthy();
+    // No "Change…" here any more — editing the rule is the Repeat entry
+    // inside the date control, so there is one way in (EI-318). What stays
+    // is the two verbs that are not schedule edits.
+    expect(screen.queryByRole("button", { name: "Change…" })).toBeNull();
     expect(screen.getByRole("button", { name: "More repeat actions" })).toBeTruthy();
   });
 });
@@ -636,85 +637,249 @@ describe("History — the Faite Loop (EI-96)", () => {
   });
 });
 
-/**
- * EI-62: the Project picker is retired. The sheet now shows a read-only Tab
- * field, derived `listId → list.tabId → tab` (see `tabForTodo`, lib/board.ts)
- * rather than a stored, independently-editable field.
- */
-describe("derived Tab field (EI-62)", () => {
-  const PERSONAL_TAB: Tab = {
-    id: "tab-personal",
-    ownerId: "local-user",
-    createdAt: "",
-    updatedAt: "",
-    deletedAt: null,
-    name: "Personal",
-    description: null,
-    isDefault: false,
-    archivedAt: null,
-    position: "a0",
-    color: null,
-    emoji: null,
-    iconUrl: null,
-  };
 
-  const TO_READ_LIST: List = {
-    id: "list-to-read",
-    ownerId: "local-user",
-    createdAt: "",
-    updatedAt: "",
-    deletedAt: null,
-    name: "To Read",
-    isBacklog: false,
-    archivedAt: null,
-    archivedWithTabId: null,
-    position: "a0",
-    tabId: PERSONAL_TAB.id,
-    defaultReminderPresetId: null,
-    description: null,
-    color: null,
-    emoji: null,
-    iconUrl: null,
-  };
-
-  const BACKLOG_LIST: List = {
-    ...TO_READ_LIST,
-    id: "list-backlog",
-    name: "Backlog",
-    isBacklog: true,
-    tabId: null,
-  };
-
-  it("has no Project field", () => {
+describe("priority in the header (EI-318)", () => {
+  it("sits before the title in the DOM, which is the tab order", () => {
+    // Shift+Tab from the title lands on priority and Tab lands on Date —
+    // both fall out of source order, so this asserts the order rather than
+    // simulating a browser's focus walk, which happy-dom does not implement.
     render(<Harness />);
-    expect(screen.queryByText("Project")).toBeNull();
+    const priority = document.getElementById("todo-priority")!;
+    const title = screen.getByLabelText("Title");
+    expect(priority.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("shows the tab its list belongs to", () => {
-    render(
-      <Harness
-        todo={{ ...TODO, listId: TO_READ_LIST.id }}
-        listsById={new Map([[TO_READ_LIST.id, TO_READ_LIST]])}
-        tabsById={new Map([[PERSONAL_TAB.id, PERSONAL_TAB]])}
-      />,
+  it("reads P1..P4, and None when unset", () => {
+    // The rail carries the level; `P2` is the label beside it because that is
+    // the token quick-add and ⌘K parse. An adjective spent width saying what
+    // the rail had already said.
+    const { rerender } = render(<Harness todo={{ ...TODO, priority: null }} />);
+    expect(document.getElementById("todo-priority")!.textContent).toContain("None");
+    rerender(<Harness todo={{ ...TODO, priority: 2 }} />);
+    expect(document.getElementById("todo-priority")!.textContent).toContain("P2");
+  });
+
+  it("draws the same rail the card wears, from the same table", () => {
+    // One vocabulary for reading the sheet and scanning the column — the
+    // glyph is `PriorityRail` with a positioning override, not a copy.
+    render(<Harness todo={{ ...TODO, priority: 1 }} />);
+    const glyph = document
+      .getElementById("todo-priority")!
+      .querySelector("[data-priority-rail]") as HTMLElement;
+    expect(glyph).toBeTruthy();
+    expect(glyph.getAttribute("data-priority-rail")).toBe("1");
+    expect(glyph.style.width).toBe(`${PRIORITY_RAILS[1].width}px`);
+  });
+
+  it("puts the level on the SHEET's leading edge, as the card's own rail", () => {
+    // One mark, one table. The sheet reads as that card opened rather than as
+    // a different surface that happens to be about it — which is also why the
+    // select no longer carries a tint of its own: saying it twice in two
+    // different ways is not consistency.
+    render(<Harness todo={{ ...TODO, priority: 1 }} />);
+    const edge = sheetContent().querySelector(":scope > [data-priority-rail]") as HTMLElement;
+    expect(edge).toBeTruthy();
+    expect(edge.getAttribute("data-priority-rail")).toBe("1");
+    expect(edge.style.width).toBe(`${PRIORITY_RAILS[1].width}px`);
+    // Full height here, unlike the card's inset tick: there is no next sheet
+    // below this one to fuse with.
+    expect(edge.className).toContain("inset-y-0");
+  });
+
+  it("wears nothing on that edge when the to-do is unprioritized", () => {
+    render(<Harness todo={{ ...TODO, priority: null }} />);
+    expect(sheetContent().querySelector(":scope > [data-priority-rail]")).toBeNull();
+  });
+
+  it("hangs the control off that edge once there is board to hang it over", () => {
+    // Gated on `lg`, not on the desktop shell: what matters is whether the
+    // sheet leaves room beside it, and it is `w-full` below `sm`.
+    render(<Harness todo={{ ...TODO, priority: 2 }} />);
+    const tab = document.getElementById("todo-priority")!.parentElement!;
+    expect(tab.className).toContain("lg:absolute");
+    // Exactly its own width, so its right edge meets the sheet's padding edge
+    // where the rail begins, and the rail runs on past it unbroken.
+    expect(tab.className).toContain("lg:-left-24");
+    expect(tab.className).toContain("lg:w-24");
+  });
+
+  it("gives the tab no shadow, which is what made it look detached", () => {
+    // `--shadow-overlay` casts on every side, including into the seam the two
+    // surfaces are supposed to share. The tab is chrome ON the sheet, so it
+    // carries the sheet's background and three borders instead.
+    render(<Harness todo={{ ...TODO, priority: 2 }} />);
+    const tab = document.getElementById("todo-priority")!.parentElement!;
+    expect(tab.className).not.toContain("shadow-(--shadow-overlay)");
+    expect(tab.className).toContain("lg:bg-popover");
+    expect(tab.className).toContain("lg:border-r-0");
+    expect(tab.className).toContain("lg:rounded-r-none");
+  });
+
+  it("outlines the tab in the rail's own treatment, so the edge wraps it", () => {
+    // The sheet's edge comes down, goes behind the tab, and is picked up by
+    // the tab's border in the same width, color and dottedness — one line
+    // that wraps, rather than a box parked on a line.
+    render(<Harness todo={{ ...TODO, priority: 1 }} />);
+    const tab = document.getElementById("todo-priority")!.parentElement!;
+    expect(tab.style.getPropertyValue("--priority-edge-width")).toBe(
+      `${PRIORITY_RAILS[1].width}px`,
     );
-    expect(screen.getByText("Tab")).toBeTruthy();
-    expect(screen.getByText("Personal")).toBeTruthy();
+    // P1 is `double` now — the four levels are CSS's four line styles.
+    expect(tab.style.getPropertyValue("--priority-edge-style")).toBe("double");
+    expect(tab.style.getPropertyValue("--priority-edge-color")).toContain("--foreground");
   });
 
-  it("is blank for a Backlog todo — list.tabId === null means pinned into every tab", () => {
-    render(
-      <Harness
-        todo={{ ...TODO, listId: BACKLOG_LIST.id }}
-        listsById={new Map([[BACKLOG_LIST.id, BACKLOG_LIST]])}
-        tabsById={new Map([[PERSONAL_TAB.id, PERSONAL_TAB]])}
-      />,
-    );
-    expect(screen.queryByText("Personal")).toBeNull();
+  it("outlines the tab in each level's own line style, exactly", () => {
+    // The four levels are CSS's four `border-style` values, so the tab needs
+    // no approximation — it draws the same thing the rail does.
+    for (const [priority, style] of [
+      [1, "double"],
+      [2, "solid"],
+      [3, "dashed"],
+      [4, "dotted"],
+    ] as const) {
+      cleanup();
+      render(<Harness todo={{ ...TODO, priority }} />);
+      const tab = document.getElementById("todo-priority")!.parentElement!;
+      expect(tab.style.getPropertyValue("--priority-edge-style")).toBe(style);
+    }
   });
 
-  it("is blank for an unfiled todo (listId === null)", () => {
-    render(<Harness todo={{ ...TODO, listId: null }} />);
-    expect(screen.queryByText("Personal")).toBeNull();
+  it("falls back to the ordinary field border when unprioritized", () => {
+    // Which is also what every to-do gets below `lg`, where the variables are
+    // set and nothing reads them.
+    render(<Harness todo={{ ...TODO, priority: null }} />);
+    const tab = document.getElementById("todo-priority")!.parentElement!;
+    expect(tab.style.getPropertyValue("--priority-edge-width")).toBe("1px");
+    expect(tab.style.getPropertyValue("--priority-edge-color")).toBe("var(--input)");
+  });
+
+  it("layers the rail above the sheet's contents, and the tab above the rail", () => {
+    // This test used to assert the rail had NO z-index — a proxy for "the tab
+    // paints over it". The proxy was wrong: it also let every later POSITIONED
+    // element paint over the rail, and History's day headers did, cutting the
+    // edge into segments. Assert the actual relationship instead, and see
+    // `core-flows.spec.ts` for the paint order checked in a real browser.
+    render(<Harness todo={{ ...TODO, priority: 1 }} />);
+    const edge = sheetContent().querySelector(":scope > [data-priority-rail]") as HTMLElement;
+    const tab = document.getElementById("todo-priority")!.parentElement!;
+    expect(edge.className).toContain("z-10");
+    expect(tab.className).toContain("lg:z-20");
+  });
+
+  it("labels the tab, and hides that label when there is no tab", () => {
+    render(<Harness todo={{ ...TODO, priority: 2 }} />);
+    const label = document.querySelector('label[for="todo-priority"]') as HTMLElement;
+    expect(label.textContent).toBe("Priority");
+    // Below `lg` the control sits beside the title with no room for a word,
+    // and its `aria-label` carries the name instead.
+    expect(label.className).toContain("hidden");
+    expect(label.className).toContain("lg:flex");
+    expect(document.getElementById("todo-priority")!.getAttribute("aria-label")).toBe("Priority");
+  });
+
+});
+
+describe("arrow verbs (EI-318)", () => {
+  it("up marks the to-do done", () => {
+    const onSetStatus = vi.fn();
+    render(<Harness onSetStatus={onSetStatus} />);
+    fireEvent.keyDown(sheetContent(), { key: "ArrowUp" });
+    expect(onSetStatus).toHaveBeenCalledWith("t1", "done", null);
+  });
+
+  it("left marks it dropped — the same two keys Overdrive uses", () => {
+    const onSetStatus = vi.fn();
+    render(<Harness onSetStatus={onSetStatus} />);
+    fireEvent.keyDown(sheetContent(), { key: "ArrowLeft" });
+    expect(onSetStatus).toHaveBeenCalledWith("t1", "dropped");
+  });
+
+  it("does NOTHING while the caret is in a text field — there it moves the caret", () => {
+    // The guard, not the keypress (docs/KEYBOARD.md §9). This is the whole
+    // reason the sheet does not autofocus the title on open.
+    const onSetStatus = vi.fn();
+    render(<Harness onSetStatus={onSetStatus} />);
+    fireEvent.keyDown(screen.getByLabelText("Title"), { key: "ArrowUp" });
+    fireEvent.keyDown(screen.getByLabelText("Title"), { key: "ArrowLeft" });
+    expect(onSetStatus).not.toHaveBeenCalled();
+  });
+
+  it("ignores a modified arrow — those belong to the OS and the browser", () => {
+    const onSetStatus = vi.fn();
+    render(<Harness onSetStatus={onSetStatus} />);
+    for (const mod of ["metaKey", "ctrlKey", "altKey", "shiftKey"]) {
+      fireEvent.keyDown(sheetContent(), { key: "ArrowUp", [mod]: true });
+    }
+    expect(onSetStatus).not.toHaveBeenCalled();
+  });
+
+  it("leaves down and right alone", () => {
+    // Overdrive's meanings for them need its verdict state machine; giving
+    // them different ones here would break the shared muscle memory.
+    const onSetStatus = vi.fn();
+    render(<Harness onSetStatus={onSetStatus} />);
+    fireEvent.keyDown(sheetContent(), { key: "ArrowDown" });
+    fireEvent.keyDown(sheetContent(), { key: "ArrowRight" });
+    expect(onSetStatus).not.toHaveBeenCalled();
+  });
+});
+
+describe("the header's title and priority (EI-318)", () => {
+  it("sizes the title so it survives Textarea's own responsive class", () => {
+    // `Textarea`'s base ends in `md:text-sm`. tailwind-merge treats the
+    // variant as part of the key, so a bare `text-lg` loses at every width
+    // this sheet is read at — measured 14px on a 1280px viewport with the
+    // class present and doing nothing. Same shape as the backdrop-blur
+    // override below.
+    render(<Harness />);
+    const cls = screen.getByLabelText("Title").className;
+    expect(cls).toContain("md:text-lg");
+  });
+
+  it("gives the title and the priority select the same line box", () => {
+    // `leading-8` on the title, `h-8` on the select: equal boxes are what
+    // make `items-start` read as vertical centering on the first line,
+    // without pinning the select to the middle of a three-line title.
+    render(<Harness />);
+    expect(screen.getByLabelText("Title").className).toContain("leading-8");
+    expect(document.getElementById("todo-priority")!.className).toContain("h-8");
+  });
+});
+
+describe("the backdrop (EI-318)", () => {
+  const overlay = () => document.querySelector('[data-slot="sheet-overlay"]')!;
+
+  it("drops the blur, so a change lands visibly on the board behind", () => {
+    // Almost every field here writes straight through to a card: the date
+    // moves it to another day, the list to another column, Mark done takes it
+    // off the board. A blurred backdrop smears the only confirmation those
+    // actions have.
+    //
+    // Asserted on the resolved class string rather than trusted, because the
+    // override goes through tailwind-merge and the variant is part of the
+    // key: a bare `backdrop-blur-none` would NOT beat
+    // `supports-backdrop-filter:backdrop-blur-xs`, and would fail silently.
+    render(<Harness />);
+    expect(overlay().className).not.toContain("backdrop-blur-xs");
+    expect(overlay().className).toContain("backdrop-blur-none");
+  });
+
+  it("holds the exit's last frame, so the dim cannot flash back on close", () => {
+    // Measured before this existed: opacity ran to 0.00005 at 188ms, snapped
+    // back to 1 at 206ms, unmounted at 223ms — two frames of full dim after
+    // the sheet had gone. `tw-animate-css` defaults `animation-fill-mode` to
+    // `none`, and Base UI waits for the panel (the longer animation) before
+    // unmounting. Asserted here on the RESOLVED class, where tailwind-merge
+    // has run; `ui/overlay-exit.test.ts` covers the other two primitives.
+    render(<Harness />);
+    expect(overlay().className).toContain("data-closed:fill-mode-forwards");
+  });
+
+  it("keeps the dim — the sheet is still modal", () => {
+    // Visible, not usable. Base UI keeps the focus trap and `openTodoExists`
+    // still feeds `computeModalOpen`; the scrim is what says so.
+    render(<Harness />);
+    expect(overlay().className).toContain("bg-black/10");
   });
 });

@@ -39,7 +39,28 @@ function SheetOverlay({ className, ...props }: SheetPrimitive.Backdrop.Props) {
         */
         "duration-(--dur-base) ease-out-soft motion-reduce:animate-none",
         "data-open:animate-in data-open:fade-in-0",
+        /*
+          `fill-mode-forwards` is load-bearing, not decoration.
+
+          `tw-animate-css` builds `animate-out` with
+          `var(--tw-animation-fill-mode, none)`, and its `exit` keyframe has
+          only a `to` frame. So the moment the fade ends the element reverts
+          to its BASE computed style — a fully opaque backdrop — and sits
+          there until Base UI takes the node out. Base UI waits for the
+          LONGEST animation in the popup, which is the panel's exit, so there
+          is always a window.
+
+          Measured on the to-do sheet before this line existed: opacity ran
+          down to 0.00005 at 188ms, snapped back to 1 at 206ms, and unmounted
+          at 223ms. Roughly two frames of full dim after the sheet had gone —
+          reported as "it flashes at the end".
+
+          Matching the exit duration to the panel's closes the window as well,
+          but the fill mode is what makes it impossible: any future drift
+          between the two durations reopens the gap, and this holds regardless.
+        */
         "data-closed:animate-out data-closed:fade-out-0",
+        "data-closed:duration-(--dur-overlay-exit) data-closed:fill-mode-forwards",
         className
       )}
       {...props}
@@ -113,7 +134,7 @@ function SheetContent({
           */
           "duration-(--dur-sheet) ease-out-soft",
           "data-open:animate-in data-closed:animate-out",
-          "data-closed:duration-(--dur-overlay-exit)",
+          "data-closed:duration-(--dur-overlay-exit) data-closed:fill-mode-forwards",
           // Reduced motion keeps the overlay and drops the journey. Position is
           // layout, not animation, so it stays correct with the motion removed.
           "motion-reduce:animate-none",

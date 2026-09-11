@@ -1021,6 +1021,8 @@ the todo sheet's Notes field, behind a collapsed disclosure. See
 `docs/SCHEMA-CHANGES.md` for the plumbing and `lib/store/todo-events.ts` for
 the payload shapes and the write-site table.
 
+Since EI-318 the vocabulary also covers **attachments** (`attached` / `detached`, `docs/ATTACHMENTS.md`), and a to-do's own History reads like the global feed: newest first, grouped under shared `dayLabel` day headers, filtered through its own `visibleHistoryKinds` setting. That third filter field is deliberately not a reuse of `visibleActivityKinds` — sharing one would let filtering the feed silently filter every to-do's history.
+
 **The global activity feed (`activity-sheet.tsx`) is a second reader of the
 same `todoEvent` table — todos only, no new schema.** Opened from a
 `list-clock` button in `DateNav` (present in both board shells; see

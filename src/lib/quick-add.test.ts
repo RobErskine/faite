@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { foldQuickAddDraft, parseQuickAdd, quickAddDraftToString } from "./quick-add";
+import {
+  foldQuickAddDraft,
+  parseDatePhrase,
+  parseQuickAdd,
+  quickAddDraftToString,
+} from "./quick-add";
 import type { ReminderPreset } from "./schema";
 
 // A Wednesday, chosen to make weekday wraparound cases unambiguous.
@@ -366,5 +371,55 @@ describe("quickAddDraftToString", () => {
     expect(quickAddDraftToString("", [{ raw: "tomorrow", kind: "date", label: "Fri Aug 14" }])).toBe(
       "tomorrow",
     );
+  });
+});
+
+describe("parseDatePhrase (EI-318)", () => {
+  /** 2026-08-03 is a Monday. */
+  const MONDAY = "2026-08-03";
+
+  it("reads the one-word forms the quick-add row already accepts", () => {
+    expect(parseDatePhrase("today", MONDAY)).toBe("2026-08-03");
+    expect(parseDatePhrase("tomorrow", MONDAY)).toBe("2026-08-04");
+    expect(parseDatePhrase("tmr", MONDAY)).toBe("2026-08-04");
+    expect(parseDatePhrase("fri", MONDAY)).toBe("2026-08-07");
+    expect(parseDatePhrase("2026-12-25", MONDAY)).toBe("2026-12-25");
+    expect(parseDatePhrase("12/25", MONDAY)).toBe("2026-12-25");
+  });
+
+  it("reads the two-word forms", () => {
+    expect(parseDatePhrase("next fri", MONDAY)).toBe("2026-08-14");
+    expect(parseDatePhrase("sep 14", MONDAY)).toBe("2026-09-14");
+  });
+
+  it("is case- and whitespace-insensitive", () => {
+    expect(parseDatePhrase("  NEXT   Fri  ", MONDAY)).toBe("2026-08-14");
+  });
+
+  it("drops the deadline marker rather than rejecting it", () => {
+    // This field sets a date; Deadline is its own field beside it.
+    expect(parseDatePhrase("!fri", MONDAY)).toBe("2026-08-07");
+  });
+
+  it("refuses anything longer than a date, rather than reading a prefix", () => {
+    // "sep 14 ok" is not a date, and quietly taking the first two words would
+    // set a date the user had not finished typing.
+    expect(parseDatePhrase("sep 14 ok", MONDAY)).toBeNull();
+    expect(parseDatePhrase("fri please", MONDAY)).toBeNull();
+  });
+
+  it("is null for empty input and for words that are not dates", () => {
+    expect(parseDatePhrase("", MONDAY)).toBeNull();
+    expect(parseDatePhrase("   ", MONDAY)).toBeNull();
+    expect(parseDatePhrase("banana", MONDAY)).toBeNull();
+    expect(parseDatePhrase("2026-13-01", MONDAY)).toBeNull();
+  });
+
+  it("agrees with parseQuickAdd on the same words", () => {
+    // The whole point of reusing the matchers: one grammar, two entry points.
+    for (const phrase of ["today", "tomorrow", "fri", "next fri", "sep 14"]) {
+      const scanned = parseQuickAdd(`Pay rent ${phrase}`, MONDAY).scheduledDate;
+      expect(parseDatePhrase(phrase, MONDAY)).toBe(scanned);
+    }
   });
 });

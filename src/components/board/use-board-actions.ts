@@ -50,7 +50,7 @@ import { OVERFLOW, addDays, formatShortDate } from "@/lib/scheduling";
 import { parseQuickAdd } from "@/lib/quick-add";
 import {
   nextOccurrenceAfter,
-  parseOccurrenceId,
+  occurrenceAnchor,
   parseRule,
   summarizeRule,
   type RecurrenceRule,
@@ -1900,38 +1900,54 @@ export function useBoardActions(
     if (!template || !rule || !template.scheduledDate) return null;
     const todoId = openTodo.id;
     const seriesStart = template.scheduledDate;
-    const occurrence = parseOccurrenceId(todoId);
+    // Where this occurrence actually IS, which stops being what its id says
+    // the moment the user moves it: the id records the slot the occurrence
+    // was born in and never changes (`occurrenceId`), while `scheduledDate`
+    // follows the card. Every series action below means "from here onward",
+    // and "here" is the day on screen. Anchored to the id instead, a card
+    // dragged BACKWARD would keep generating the slots it was dragged past
+    // after "Stop repeating", and "Change…" would restart the series on a day
+    // the card is not on — discarding the move without saying so. The id
+    // stays the IDENTITY; `expandRecurrences` still matches on it. (EI-318)
+    //
+    // `null` for the ORIGIN one-off todo a series was started from
+    // (`createSeriesFromTodo`): its id was never in `${templateId}@${date}`
+    // form, so it is not an occurrence and has no occurrence date at all.
+    const movedDate = occurrenceAnchor(openTodo);
     // The occurrence currently open, not the template's own start — a
     // "Change…" edit retargets the series to begin HERE (see
     // `retargetSeries`), so the dialog it opens must default and bound
     // itself from this date, not from wherever the series originally began.
-    const occurrenceDate = occurrence?.date ?? seriesStart;
+    const occurrenceDate = movedDate ?? seriesStart;
     return {
       rule,
       seriesStart,
       occurrenceDate,
       summary: summarizeRule(rule, seriesStart),
-      // `occurrence` is null for the ORIGIN one-off todo a series was just
+      // `movedDate` is null for the ORIGIN one-off todo a series was just
       // started from (`createSeriesFromTodo`) — it links to the template via
       // `recurrenceParentId` for display, but its own id was never in
       // `${templateId}@${date}` form, so it isn't itself an occurrence to
       // compute "next after". `seriesStart` — the template's own scheduled
       // date — IS the next occurrence in that case.
-      nextDate: occurrence ? nextOccurrenceAfter(rule, seriesStart, occurrence.date) : seriesStart,
+      nextDate: movedDate ? nextOccurrenceAfter(rule, seriesStart, movedDate) : seriesStart,
       missedCount: recurrenceExpansion?.missedCounts.get(todoId) ?? null,
       onStop: async () => {
         // Materialize FIRST: `openTodo` may still be a virtual occurrence,
         // and ending the series before this date would otherwise make the
         // very card being viewed stop existing on the next render. A no-op
         // for the origin todo (already a real row) or an already-real one.
-        const materialized = await materializeIfNeeded(openTodo);
-        // Ends the series the day before this occurrence, so this one and
-        // anything already materialized are untouched — only FUTURE
-        // occurrences stop generating. Falls back to the day before the
-        // template's own start when `materialized` isn't itself a
-        // parseable occurrence (the origin todo again) — stopping from
-        // there means "cancel the series before it ever begins."
-        const cutoff = parseOccurrenceId(materialized.id)?.date ?? addDays(seriesStart, -1);
+        await materializeIfNeeded(openTodo);
+        // Ends the series at this occurrence (`until` is inclusive), so this
+        // one and anything already materialized are untouched — only FUTURE
+        // occurrences stop generating. `movedDate`, not the id's date: on a
+        // card dragged backward the two differ, and the id's would leave the
+        // slots between them still generating, which is the opposite of what
+        // "stop repeating" was just clicked for. Falls back to the day before
+        // the template's own start for the origin todo, which is not an
+        // occurrence — stopping from there means "cancel the series before it
+        // ever begins."
+        const cutoff = movedDate ?? addDays(seriesStart, -1);
         await setSeriesUntil(template.id, cutoff);
         toast.success("Stopped repeating");
       },

@@ -34,13 +34,19 @@ import type { CivilDate } from "./schema";
  * something else. Keep that column if you keep these rules.
  */
 
-/** Monday, in `dayOfWeek`'s 0 = Sunday numbering. Where "next week" lands. */
+/** In `dayOfWeek`'s 0 = Sunday numbering. */
+const SUNDAY = 0;
+/** Where "next week" lands. */
 const MONDAY = 1;
+/** Where "this weekend" lands. */
+const SATURDAY = 6;
 
 export type QuickRescheduleKind =
+  | "today"
   | "tomorrow"
   | "in2days"
   | "in3days"
+  | "thisWeekend"
   | "nextWeek"
   | "nextMonth";
 
@@ -61,12 +67,30 @@ const QUICK_RESCHEDULE_LABELS: readonly {
   kind: QuickRescheduleKind;
   label: string;
 }[] = [
+  { kind: "today", label: "Today" },
   { kind: "tomorrow", label: "Tomorrow" },
   { kind: "in2days", label: "In 2 days" },
   { kind: "in3days", label: "In 3 days" },
+  { kind: "thisWeekend", label: "This weekend" },
   { kind: "nextWeek", label: "Next week" },
   { kind: "nextMonth", label: "Next month" },
 ];
+
+/**
+ * The four the date popover shows above its calendar (EI-318), in this order.
+ *
+ * A subset, not a second vocabulary: every kind here is defined once above
+ * and resolved by the same `quickRescheduleDate`, so the popover and the
+ * card menu can never disagree about what "next week" means. The popover
+ * shows fewer because it also has to fit a month grid and two footer buttons
+ * inside one phone viewport, where a menu has the whole screen to grow into.
+ */
+export const DATE_POPOVER_KINDS = [
+  "today",
+  "tomorrow",
+  "thisWeekend",
+  "nextWeek",
+] as const satisfies readonly QuickRescheduleKind[];
 
 /**
  * The next `weekday` STRICTLY AFTER `from` — Monday asked from a Monday is
@@ -98,8 +122,29 @@ export function firstOfNextMonth(from: CivilDate): CivilDate {
   return m === 12 ? toCivilDate(y + 1, 1, 1) : toCivilDate(y, m + 1, 1);
 }
 
+/**
+ * "This weekend" — the coming Saturday, or today when today is already the
+ * weekend.
+ *
+ * Inclusive, unlike `nextWeekdayAfter`, and for quick-add's reason rather
+ * than this module's: typing "fri" on a Friday sensibly means this Friday,
+ * and "this weekend" on a Saturday plainly means today, not eight days away.
+ * Sunday counts as the weekend it is the back half of, so it also resolves to
+ * today. "Next week" stays strict — a row promising a fresh week that
+ * resolved to the current moment would be a different promise entirely.
+ */
+function thisWeekendDate(from: CivilDate): CivilDate {
+  const day = dayOfWeek(from);
+  if (day === SATURDAY || day === SUNDAY) return from;
+  return addDays(from, (SATURDAY - day + 7) % 7);
+}
+
 export function quickRescheduleDate(kind: QuickRescheduleKind, from: CivilDate): CivilDate {
   switch (kind) {
+    case "today":
+      return from;
+    case "thisWeekend":
+      return thisWeekendDate(from);
     case "tomorrow":
       return addDays(from, 1);
     case "in2days":

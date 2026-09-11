@@ -4,6 +4,7 @@ import { useState } from "react";
 import { CalendarDays, ChevronLeft, ChevronRight, ListClock } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
+import { civilDateToLocalDate } from "@/components/ui/date-picker-field";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import type { CivilDate, Settings } from "@/lib/schema";
@@ -246,11 +247,12 @@ function JumpButton({
  * live entirely in local time, so counting whole days between them is exact
  * even across a DST transition — only cross-checking a local `Date` against a
  * UTC-parsed civil date risks the off-by-one this module exists to avoid.
+ *
+ * The conversion itself moved to `ui/date-picker-field.tsx` when the sheet's
+ * date fields became the second and third caller (EI-318); it is re-exported
+ * here so this module's own callers did not have to move with it.
  */
-export function civilDateToLocalDate(date: CivilDate): Date {
-  const [y, m, d] = date.split("-").map(Number);
-  return new Date(y, m - 1, d);
-}
+export { civilDateToLocalDate };
 
 export function daysBetweenLocalDates(from: Date, to: Date): number {
   const msPerDay = 86_400_000;

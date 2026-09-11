@@ -1,18 +1,28 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { X } from "lucide-react";
 import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  Combobox,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxList,
+  ComboboxPopup,
+  ComboboxPortal,
+  ComboboxPositioner,
+} from "@/components/ui/combobox";
 import type { List, Tab, Todo } from "@/lib/schema";
 
-const NONE = "__none__";
+interface ListEntry {
+  kind: "list";
+  list: List;
+  /** The owning tab's name. Null for Backlog, which is pinned into every tab
+   * (`List.tabId` null) rather than owned by one. */
+  tabName: string | null;
+}
+
+type Entry = ListEntry;
 
 interface ListFieldProps {
   todo: Todo;
@@ -24,8 +34,7 @@ interface ListFieldProps {
 
 /**
  * "{tabName} > {listName}" — Backlog excepted, since it's pinned into every
- * tab (`List.tabId` null) rather than owned by one, so prefixing it with a
- * tab would misname it.
+ * tab rather than owned by one, so prefixing it with a tab would misname it.
  */
 function listLabel(list: List, tabsById: ReadonlyMap<string, Tab>): string {
   const name = list.emoji ? `${list.emoji} ${list.name}` : list.name;
@@ -35,69 +44,187 @@ function listLabel(list: List, tabsById: ReadonlyMap<string, Tab>): string {
 }
 
 /**
- * The "List" field, grouped into sections by tab — "My Lists / Brain Dump,
- * Grocery List", "Work / Project 1, Project 2", etc. — with Backlog pinned
- * ungrouped at the top, matching how it's pinned leftmost on the board
- * itself.
+ * The "List" field: type to search every list you have, across every tab.
  *
- * Base UI's `Select.Value` renders the raw `value` string by default (an id
- * or seed slug) unless given a way to resolve a label — there is no path
- * from a `<Select.Item>`'s JSX children back to the closed trigger. This
- * uses the function-as-children form (`<SelectValue>{(value) => ...}</SelectValue>`)
- * rather than the `items` prop, since it also needs to render something
- * sensible for a DANGLING reference: archiving a list (unlike deleting one)
- * leaves every todo's `listId` pointing at it unchanged, and `lists` here —
- * like `useLists()` everywhere else — excludes archived rows, so that id
- * has no entry to resolve a label from at all.
+ * Was a `Select` (EI-62), which meant scrolling a full inventory of lists to
+ * file one to-do. Now a `Combobox` in **single** mode, built the way
+ * `ReminderPicker` is — `value={null}` because `todo.listId` is the single
+ * source of truth, `filter={null}` because the filtering happens in `items`,
+ * and the current selection shown as the input's PLACEHOLDER rather than as
+ * text, the same "current state as resting text" pattern the reminder and
+ * label pickers already use.
+ *
+ * ## Four things that had to survive the rewrite
+ *
+ * 1. **"{tab} > {list}" at rest.** Load-bearing now that the sheet's derived
+ *    Tab field is gone (EI-318): this trigger is the only place a to-do's tab
+ *    is stated, and it was only safe to delete that field because this says
+ *    the same thing.
+ * 2. **The dangling reference.** Archiving a list (unlike deleting one)
+ *    leaves every to-do's `listId` pointing at it, and `lists` here — like
+ *    `useLists()` everywhere else — excludes archived rows. That id resolves
+ *    to nothing, and must read "Archived list" rather than blank.
+ * 3. **Backlog pinned first, unprefixed**, matching how it is pinned leftmost
+ *    on the board.
+ * 4. **A way to unfile.** Was a "None" row; it is the chip's own X now — see
+ *    below.
+ *
+ * ## The selection is a chip, not the placeholder
+ *
+ * It read as placeholder text at first, which is how the reminder and label
+ * pickers show their current state — and it was wrong here for a reason
+ * neither of those has: placeholder text is not a control. There was no way
+ * to take a to-do OUT of a list at all, short of picking a different one, and
+ * a greyed-out "My Lists > To Read" looks like an empty field rather than a
+ * filled one. A chip with an X says both things at once.
+ *
+ * The chip is hand-rolled rather than Base UI's `Combobox.Chips`/`Chip`.
+ * Those assume the combobox's value is an ARRAY — `ComboboxInput`'s chip
+ * navigation reads `selectedValue.length` unguarded — and this field is
+ * single-mode with `value={null}`, because the to-do is the truth. Inside
+ * their context, one Backspace on a filled field threw
+ * "Cannot read properties of null (reading 'length')" and took the board
+ * down with it. Backspace on an empty query is handled below instead, which
+ * is the behavior those chips would have given anyway.
+ *
+ * Clearing writes `listId: null`, which files the to-do under **Backlog** —
+ * `groupTodosByList` (lib/board.ts) has always resolved "no list, or a
+ * pointer at a deleted one" that way rather than letting a card vanish. That
+ * is what "remove it from this list" means here, and why there is no separate
+ * "move to Backlog" row.
+ *
+ * ## Why the tab is on every row instead of a group header
+ *
+ * The `Select` grouped lists under a heading per tab. A filtered list cannot:
+ * once "proj" has narrowed six tabs down to two rows, a heading is either
+ * re-rendered per surviving group (noise, at one row each) or stale. Naming
+ * the tab on the row itself survives filtering, and is what lets the query
+ * match a TAB name too — typing "Work" surfaces every list in Work, which is
+ * how people actually look for a list they cannot name exactly.
  */
 export function ListField({ todo, lists, tabs, onSave }: ListFieldProps) {
+  const [query, setQuery] = useState("");
+
   const tabsById = useMemo(() => new Map(tabs.map((t) => [t.id, t])), [tabs]);
   const listsById = useMemo(() => new Map(lists.map((l) => [l.id, l])), [lists]);
-  const backlog = useMemo(() => lists.find((l) => l.isBacklog), [lists]);
-  const listsByTab = useMemo(() => {
-    const map = new Map<string, List[]>();
-    for (const list of lists) {
-      if (list.isBacklog || !list.tabId) continue;
-      const bucket = map.get(list.tabId);
-      if (bucket) bucket.push(list);
-      else map.set(list.tabId, [list]);
-    }
-    return map;
-  }, [lists]);
+
+  /** Backlog first, then tab by tab in board order, lists in their own order. */
+  const entries = useMemo<ListEntry[]>(() => {
+    const backlog = lists.filter((l) => l.isBacklog);
+    const byTab = tabs.flatMap((tab) =>
+      lists.filter((l) => !l.isBacklog && l.tabId === tab.id).map((list) => ({
+        kind: "list" as const,
+        list,
+        tabName: tab.name,
+      })),
+    );
+    // A list whose tab has been archived still has to be reachable, or the
+    // only way to move a to-do out of it is to know its name by heart.
+    const orphaned = lists
+      .filter((l) => !l.isBacklog && (!l.tabId || !tabsById.has(l.tabId)))
+      .map((list) => ({ kind: "list" as const, list, tabName: null }));
+    return [
+      ...backlog.map((list) => ({ kind: "list" as const, list, tabName: null })),
+      ...byTab,
+      ...orphaned,
+    ];
+  }, [lists, tabs, tabsById]);
+
+  const items = useMemo<Entry[]>(() => {
+    const q = query.trim().toLowerCase();
+    if (q === "") return entries;
+    return entries.filter(
+      (entry) =>
+        entry.list.name.toLowerCase().includes(q) ||
+        (entry.tabName?.toLowerCase().includes(q) ?? false),
+    );
+  }, [entries, query]);
+
+  const clear = () => onSave(todo.id, { listId: null });
+
+  const current = todo.listId ? listsById.get(todo.listId) : undefined;
+  // A dangling id — its list was archived — still has to read as SOMETHING.
+  const chipLabel = todo.listId
+    ? current
+      ? listLabel(current, tabsById)
+      : "Archived list"
+    : null;
 
   return (
-    <Select
-      value={todo.listId ?? NONE}
-      onValueChange={(v) => onSave(todo.id, { listId: v === NONE ? null : v })}
+    <Combobox
+      items={items}
+      value={null}
+      onValueChange={(entry: Entry | null) => {
+        if (!entry) return;
+        onSave(todo.id, { listId: entry.list.id });
+        setQuery("");
+      }}
+      inputValue={query}
+      onInputValueChange={setQuery}
+      itemToStringLabel={(entry: Entry) => listLabel(entry.list, tabsById)}
+      filter={null}
+      openOnInputClick
+      // Highlights the first row as soon as there is one, so Enter commits it.
+      // Without this, typing a query that leaves exactly one list and pressing
+      // Enter cleared the field instead of picking it — the combobox had
+      // nothing highlighted to commit, which is the opposite of what one
+      // remaining match means.
+      autoHighlight
     >
-      <SelectTrigger id="todo-list">
-        <SelectValue>
-          {(value: string) => {
-            if (value === NONE) return "None";
-            const list = listsById.get(value);
-            return list ? listLabel(list, tabsById) : "Archived list";
+      {/* `ComboboxChips`' own classes, on a plain div — see the note above on
+          why Base UI's chip parts cannot back a single-mode field. */}
+      <div className="flex min-h-9 w-full flex-wrap items-center gap-1 rounded-lg border border-input bg-transparent px-2 py-1 transition-colors has-[input:focus-visible]:border-ring has-[input:focus-visible]:ring-3 has-[input:focus-visible]:ring-ring/50 dark:bg-input/30">
+        {chipLabel && (
+          <span className="flex items-center gap-1 rounded-full border border-border bg-muted px-1.5 py-0.5 text-xs font-medium leading-none">
+            {chipLabel}
+            <button
+              type="button"
+              aria-label={`Remove from ${chipLabel}`}
+              onClick={clear}
+              className="rounded-full p-0.5 outline-none hover:bg-foreground/10 focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <X className="size-2.5" aria-hidden />
+            </button>
+          </span>
+        )}
+        <ComboboxInput
+          id="todo-list"
+          placeholder={chipLabel ? "Move to…" : "Search lists…"}
+          onKeyDown={(e) => {
+            // Backspace on an empty query clears the list, the way it removes
+            // the last chip in a multi-select. Guarded on the query being
+            // empty so it never eats a character mid-search.
+            if (e.key === "Backspace" && query === "" && todo.listId !== null) {
+              e.preventDefault();
+              clear();
+            }
           }}
-        </SelectValue>
-      </SelectTrigger>
-      <SelectContent>
-        <SelectItem value={NONE}>None</SelectItem>
-        {backlog && <SelectItem value={backlog.id}>{listLabel(backlog, tabsById)}</SelectItem>}
-        {tabs.map((tab) => {
-          const tabLists = listsByTab.get(tab.id);
-          if (!tabLists || tabLists.length === 0) return null;
-          return (
-            <SelectGroup key={tab.id}>
-              <SelectLabel>{tab.name}</SelectLabel>
-              {tabLists.map((list) => (
-                <SelectItem key={list.id} value={list.id}>
-                  {list.emoji ? `${list.emoji} ` : ""}
-                  {list.name}
-                </SelectItem>
-              ))}
-            </SelectGroup>
-          );
-        })}
-      </SelectContent>
-    </Select>
+          className="h-6 min-w-16 flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground md:text-sm"
+        />
+      </div>
+      <ComboboxPortal>
+        <ComboboxPositioner>
+          <ComboboxPopup>
+            {/* Always mounted — see ComboboxEmpty's own comment for why
+                skipping it lets Escape bubble past this popup and close the
+                whole sheet instead of just the popup. */}
+            <ComboboxEmpty>No lists match.</ComboboxEmpty>
+            <ComboboxList>
+              {(entry: Entry) => (
+                <ComboboxItem key={entry.list.id} value={entry}>
+                  {entry.list.emoji ? `${entry.list.emoji} ` : ""}
+                  {entry.list.name}
+                  {entry.tabName && (
+                    <span className="ml-auto pl-3 text-xs text-muted-foreground">
+                      {entry.tabName}
+                    </span>
+                  )}
+                </ComboboxItem>
+              )}
+            </ComboboxList>
+          </ComboboxPopup>
+        </ComboboxPositioner>
+      </ComboboxPortal>
+    </Combobox>
   );
 }

@@ -181,6 +181,36 @@ function matchDateCombo(rawWord1: string, rawWord2: string, today: CivilDate): D
   return null;
 }
 
+/**
+ * A whole input read as one date — the date popover's "Type a date" field
+ * (EI-318).
+ *
+ * Deliberately the SAME grammar as the quick-add row and ⌘K rather than a
+ * new one. Someone who has learned that "next fri" works when capturing will
+ * type it here, and a second date grammar that almost agreed with the first
+ * would be worse than having none at all. `parseQuickAdd` scans a sentence
+ * for a date token among other words; this reads the entire input as one
+ * token, which is why it can accept the two-word forms without having to
+ * decide what the remaining words were.
+ *
+ * Strict about length: one word goes to `matchDateSingle`, exactly two to
+ * `matchDateCombo`, anything else is `null`. "sep 14 ok" is not a date, and
+ * quietly reading the first two words of it would set a date the user did
+ * not finish typing.
+ *
+ * The deadline marker ("!fri") parses and its meaning is dropped — this
+ * field sets a date, and Deadline is its own field beside it.
+ *
+ * `null` for anything unrecognized: the field shows no suggestion, and the
+ * calendar underneath is still the way to pick a day.
+ */
+export function parseDatePhrase(input: string, today: CivilDate): CivilDate | null {
+  const words = input.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 1) return matchDateSingle(words[0], today)?.date ?? null;
+  if (words.length === 2) return matchDateCombo(words[0], words[1], today)?.date ?? null;
+  return null;
+}
+
 function matchPriority(word: string): Priority | null {
   const match = /^p([1-4])$/i.exec(word);
   return match ? (Number(match[1]) as Priority) : null;

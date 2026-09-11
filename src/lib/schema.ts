@@ -70,6 +70,8 @@ export const activityEventKindSchema = z.enum([
   "reopened",
   "edited",
   "deleted",
+  "attached",
+  "detached",
   "rolledOver",
   "overflowed",
 ]);
@@ -564,6 +566,34 @@ export const settingsSchema = z.object({
     "reopened",
     "edited",
     "deleted",
+    "attached",
+    "detached",
+    "rolledOver",
+    "overflowed",
+  ]),
+  /**
+   * Which kinds render in a to-do's own History section (`todo-sheet.tsx`) —
+   * a THIRD field, not a reuse of `visibleActivityKinds` above (EI-318).
+   * Sharing one would let filtering the global feed silently filter every
+   * to-do's history too, which is the trap `timeline.tsx`'s header comment
+   * warns about. Same may-legally-be-empty rule as the other two.
+   *
+   * New in EI-318, so unlike `visibleActivityKinds` it needs no backfill:
+   * every existing settings row is missing the column entirely, and the
+   * column default below hands them the full set.
+   */
+  visibleHistoryKinds: z.array(activityEventKindSchema).default([
+    "created",
+    "scheduled",
+    "unscheduled",
+    "moved",
+    "done",
+    "dropped",
+    "reopened",
+    "edited",
+    "deleted",
+    "attached",
+    "detached",
     "rolledOver",
     "overflowed",
   ]),

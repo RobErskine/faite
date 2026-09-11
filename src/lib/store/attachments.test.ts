@@ -199,3 +199,116 @@ describe("deleteAttachment", () => {
     expect((await getDb().attachments.get(id))?.deletedAt).toBeTruthy();
   });
 });
+
+/**
+ * EI-318 — attaching and removing a file are changes to the TO-DO, and the
+ * history log said nothing about either until now. Journalled at the
+ * repository call site in the same Dexie transaction as the row itself,
+ * exactly like every other change that earns a history row.
+ */
+describe("attachment history events", () => {
+  async function eventsFor(todoId: string) {
+    return getDb().todoEvents.where("todoId").equals(todoId).toArray();
+  }
+
+  it("logs `attached` with the filename when a file lands", async () => {
+    uploadAttachment.mockImplementation(async (_f, todoId, id) => ({
+      ...uploadResult(id),
+      todoId,
+    }));
+    const todoId = await createTodo({ title: "Has files" });
+    await createAttachment({ name: "report.pdf" } as File, todoId);
+
+    const attached = (await eventsFor(todoId)).filter((e) => e.kind === "attached");
+    expect(attached).toHaveLength(1);
+    expect(JSON.parse(attached[0].payload!)).toEqual({ v: 1, filename: "report.pdf" });
+  });
+
+  it("records the SERVER's sanitized filename, not the browser's", async () => {
+    // Same rule the row itself follows — the event must not disagree with
+    // what is actually stored.
+    uploadAttachment.mockImplementation(async (_f, todoId, id) => ({
+      ...uploadResult(id),
+      todoId,
+      filename: "report.pdf",
+    }));
+    const todoId = await createTodo({ title: "Has files" });
+    await createAttachment({ name: 'evil"name.pdf' } as File, todoId);
+
+    const attached = (await eventsFor(todoId)).filter((e) => e.kind === "attached");
+    expect(JSON.parse(attached[0].payload!).filename).toBe("report.pdf");
+  });
+
+  it("logs `detached` with the filename when one is removed", async () => {
+    uploadAttachment.mockImplementation(async (_f, todoId, id) => ({
+      ...uploadResult(id),
+      todoId,
+    }));
+    deleteAttachmentBytes.mockResolvedValue(undefined);
+    const todoId = await createTodo({ title: "Has files" });
+    const attachmentId = await createAttachment({ name: "report.pdf" } as File, todoId);
+
+    await deleteAttachment(attachmentId);
+
+    const detached = (await eventsFor(todoId)).filter((e) => e.kind === "detached");
+    expect(detached).toHaveLength(1);
+    expect(JSON.parse(detached[0].payload!)).toEqual({ v: 1, filename: "report.pdf" });
+  });
+
+  it("throws on a missing row exactly as it did before, journalling nothing", async () => {
+    // The read added for the event only decides WHAT to journal; it must not
+    // quietly turn a missing row into a success. `mutate` has always thrown
+    // here and still does.
+    deleteAttachmentBytes.mockResolvedValue(undefined);
+    await expect(deleteAttachment("att-missing")).rejects.toThrow(/no local attachment row/);
+  });
+
+  it("does not journal a second `detached` when a delete is repeated", async () => {
+    // "Removed file" happened once. A second tombstone of the same row is
+    // not a second event, and a timeline that said so would be lying.
+    uploadAttachment.mockImplementation(async (_f, todoId, id) => ({
+      ...uploadResult(id),
+      todoId,
+    }));
+    deleteAttachmentBytes.mockResolvedValue(undefined);
+    const todoId = await createTodo({ title: "Has files" });
+    const attachmentId = await createAttachment({ name: "report.pdf" } as File, todoId);
+
+    await deleteAttachment(attachmentId);
+    await deleteAttachment(attachmentId);
+
+    const detached = (await eventsFor(todoId)).filter((e) => e.kind === "detached");
+    expect(detached).toHaveLength(1);
+  });
+
+  it("writes NO attachment events for the deleteTodo cascade", async () => {
+    // The to-do's own `deleted` event covers it. One row per file would
+    // flood both this timeline and the global feed with noise nobody asked
+    // for — the cascade is not a series of decisions, it is one.
+    uploadAttachment.mockImplementation(async (_f, todoId, id) => ({
+      ...uploadResult(id),
+      todoId,
+    }));
+    const todoId = await createTodo({ title: "Has files" });
+    await createAttachment({ name: "a.pdf" } as File, todoId);
+    await createAttachment({ name: "b.pdf" } as File, todoId);
+
+    await deleteTodo(todoId);
+
+    const kinds = (await eventsFor(todoId)).map((e) => e.kind);
+    expect(kinds.filter((k) => k === "detached")).toHaveLength(0);
+    expect(kinds).toContain("deleted");
+  });
+
+  it("enqueues each event to the outbox, so it syncs like any other row", async () => {
+    uploadAttachment.mockImplementation(async (_f, todoId, id) => ({
+      ...uploadResult(id),
+      todoId,
+    }));
+    const todoId = await createTodo({ title: "Has files" });
+    await createAttachment({ name: "report.pdf" } as File, todoId);
+
+    const outbox = await getDb().outbox.toArray();
+    expect(outbox.some((entry) => entry.kind === "todoEvent")).toBe(true);
+  });
+});

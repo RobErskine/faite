@@ -314,6 +314,37 @@ export function parseOccurrenceId(id: string): { templateId: string; date: Civil
   return { templateId: id.slice(0, at), date };
 }
 
+/**
+ * Where a materialized occurrence ACTUALLY sits — `null` if `todo` is not an
+ * occurrence at all.
+ *
+ * The one place the id-versus-field question is answered, because three call
+ * sites used to answer it separately and two got it wrong (EI-318).
+ *
+ * An occurrence's id is `${templateId}@${date}` and is frozen at creation:
+ * it records the slot the occurrence was BORN in, and is the identity every
+ * device converges on. `scheduledDate` is where the card is now, which the
+ * user may have dragged somewhere else entirely. The two agree until someone
+ * moves one, and then:
+ *
+ * - **Identity** stays the id. `expandRecurrences` matches slots on it, and
+ *   two devices materializing the same occurrence offline must produce one
+ *   row.
+ * - **Position** — "which day is this card on", and therefore every action
+ *   that means "from here onward" — is this function.
+ *
+ * The origin one-off todo a series was started from (`createSeriesFromTodo`)
+ * carries `recurrenceParentId` for display but a plain UUID id, so it returns
+ * `null`: it is linked to the series without ever being a slot in it.
+ */
+export function occurrenceAnchor(
+  todo: { id: string; scheduledDate: CivilDate | null },
+): CivilDate | null {
+  const occurrence = parseOccurrenceId(todo.id);
+  if (!occurrence) return null;
+  return todo.scheduledDate ?? occurrence.date;
+}
+
 // ---------------------------------------------------------------------------
 // Human-readable summary
 // ---------------------------------------------------------------------------

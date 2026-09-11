@@ -77,6 +77,7 @@ const JSON_ENCODED_FIELDS = new Set([
   "visibleStatuses",
   "visibleEventKinds",
   "visibleActivityKinds",
+  "visibleHistoryKinds",
 ]);
 
 function buildColumnsByKind(): Record<SyncKind, Record<string, ColumnMeta>> {

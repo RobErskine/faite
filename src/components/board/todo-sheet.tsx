@@ -11,9 +11,10 @@ import {
   Check,
   ChevronDown,
   CornerDownRight,
+  FileX,
+  Paperclip,
   Pencil,
   Plus,
-  Repeat,
   RotateCcw,
   Trash2,
   X,
@@ -28,6 +29,8 @@ import {
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { DatePickerField } from "@/components/ui/date-picker-field";
+import { DatePopover } from "@/components/board/date-popover";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { MarkdownField } from "@/components/ui/markdown-field";
@@ -44,11 +47,21 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { AttachmentsSection } from "@/components/board/attachments-section";
 import { RepeatDialog } from "@/components/board/repeat-dialog";
 import { RepeatSection, type RecurrenceInfo } from "@/components/board/repeat-section";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { buttonVariants } from "@/components/ui/button";
+import { HiddenByFilterNotice, TimelineDayHeader } from "@/components/board/timeline";
+import { mutateSettings } from "@/lib/store/mutate";
+import { LOCAL_OWNER_ID } from "@/lib/store/owner";
 import { LocationField } from "@/components/board/location-field";
 import { CaptureSourceBadge } from "@/components/todo/capture-source-badge";
 import { ListField } from "@/components/board/list-field";
 import { LabelPicker } from "@/components/board/label-picker";
-import { ReminderPicker } from "@/components/board/reminder-picker";
 import { QuickAddPreview, type QuickAddChip } from "@/components/board/quick-add-preview";
 import { MentionMenu, useMention, type MentionSource } from "@/components/mention-menu";
 import type { MentionListOption, MentionPick } from "@/components/board/board-column";
@@ -56,9 +69,10 @@ import { TimelineList, TimelineRow } from "@/components/board/timeline";
 import { cn } from "@/lib/utils";
 import { useExitRetained } from "@/lib/use-exit-retained";
 import { edge, effectiveListColor } from "@/lib/colors";
-import { tabForTodo } from "@/lib/board";
+import { PriorityGlyph, PriorityRail } from "@/components/board/todo-row-parts";
+import { priorityRail, railBorderStyle } from "@/lib/priority";
 import { TITLE_LINES } from "@/lib/title";
-import { formatEventStamp } from "@/lib/event-time";
+import { formatEventTime } from "@/lib/event-time";
 import { formatShortDate, type PlacementContext } from "@/lib/scheduling";
 import { parseQuickAdd } from "@/lib/quick-add";
 import { isTextEntry } from "@/lib/undo";
@@ -70,15 +84,18 @@ import {
   buildTodoTimeline,
   type RollSummaryPayload,
   type TodoTimelineEvent,
+  type TodoTimelineItem,
 } from "@/lib/todo-timeline";
 import type { RecurrenceRule } from "@/lib/recurrence";
 import type {
+  ActivityEventKind,
   CivilDate,
   Label as LabelRecord,
   List,
   Place,
   Priority,
   ReminderPreset,
+  Settings,
   Tab,
   Todo,
   TodoEvent,
@@ -93,8 +110,80 @@ const NONE = "__none__";
  * would defeat memoization downstream for no reason. */
 const EMPTY_LISTS_BY_ID: ReadonlyMap<string, List> = new Map();
 
-/** Same rationale as `EMPTY_LISTS_BY_ID`, for `tabsById`. */
-const EMPTY_TABS_BY_ID: ReadonlyMap<string, Tab> = new Map();
+/**
+ * The tab's outline, expressed as the rail it continues.
+ *
+ * `PriorityRail` draws with a width, an opacity on the span, and a repeating
+ * gradient for P4's dots. A border cannot take an opacity without fading the
+ * text inside it too, so the level's opacity is folded into the color with
+ * `color-mix`. The line style needs no translation at all: the four levels
+ * are CSS's four `border-style` values, so `railBorderStyle` passes it
+ * straight through.
+ *
+ * Every value falls back to the ordinary field border, which is what an
+ * unprioritized to-do gets — and what every to-do gets below `lg`, where the
+ * variables are set but nothing reads them.
+ */
+function priorityEdge(priority: Priority | null): React.CSSProperties {
+  const rail = priorityRail(priority);
+  return {
+    "--priority-edge-width": rail ? `${rail.width}px` : "1px",
+    "--priority-edge-color": rail
+      ? `color-mix(in oklch, var(--foreground) ${rail.opacity * 100}%, transparent)`
+      : "var(--input)",
+    "--priority-edge-style": rail ? railBorderStyle(rail) : "solid",
+  } as React.CSSProperties;
+}
+
+/**
+ * One metadata row: label on the leading edge, control beside it.
+ *
+ * Stacked label-over-control cost 162px for List, Labels and Location
+ * together, measured; as rows they cost 106px, and the sheet's scroll body is
+ * ~820px. That is the smaller half of the reason. The larger one is that a
+ * column of labels reads as a properties table — a thing you scan — where
+ * three stacked forms read as three equally important questions, which is the
+ * hierarchy problem this whole redesign is about.
+ *
+ * `items-start`, not centered: Labels grows chips onto a second line and
+ * Location can open a nickname step under itself. The label stays on the
+ * first line where the control's own first line is. `pt-2.5` is what optically
+ * centers a 14px label against a 36px control rather than hanging it at the
+ * top.
+ *
+ * Date and Deadline are deliberately NOT rows — they are a two-up grid whose
+ * labels sit above, because two controls side by side have no room for a
+ * label column each.
+ */
+function SheetRow({
+  label,
+  htmlFor,
+  children,
+}: {
+  label: string;
+  /** Omitted for a control with no single focusable input to point at. */
+  htmlFor?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="grid grid-cols-[5rem_1fr] items-start gap-3">
+      {/* No color of its own. Every label in this sheet is one thing —
+          `Label`'s own `text-sm font-medium` in the foreground — whether it
+          sits above its control (Date, Deadline, Notes) or beside it. A muted
+          row label made the same word look like two different kinds of word
+          depending on which layout it landed in. */}
+      <Label htmlFor={htmlFor} className="pt-2.5">
+        {label}
+      </Label>
+      <div className="min-w-0">{children}</div>
+    </div>
+  );
+}
+
+/** `RepeatDialog.onSave` is required, and the branch that would pass nothing
+ * is already unreachable — `canRepeat` demands `onStartSeries` when there is
+ * no series yet. This satisfies the type without widening the prop. */
+const noop = () => {};
 
 interface TodoSheetProps {
   todo: Todo | null;
@@ -121,6 +210,10 @@ interface TodoSheetProps {
    * have to thread empty collections through. */
   events?: TodoEvent[];
   timezone?: string;
+  /** Backs the History section's kind filter (`visibleHistoryKinds`).
+   * Optional, same reasoning as `events` — a caller with no settings to read
+   * gets the full vocabulary. */
+  settings?: Settings;
   /**
    * The board's placement context — needed by the History section to derive
    * this todo's Faite Loop rows (EI-96, `rolledOver`/`overflowed`) the same
@@ -130,12 +223,8 @@ interface TodoSheetProps {
    */
   ctx?: PlacementContext;
   /** Live AND archived lists, so a `moved` event still colors its dot after
-   * the target list is filed. Mirrors `DaySheet`'s `listsById`. Also backs the
-   * derived Tab field below (EI-62) — see `tabForTodo` (`lib/board.ts`). */
+   * the target list is filed. Mirrors `DaySheet`'s `listsById`. */
   listsById?: ReadonlyMap<string, List>;
-  /** Live AND archived tabs, same reasoning as `listsById` — a todo's list can
-   * point at a tab that has since been archived. Backs the derived Tab field. */
-  tabsById?: ReadonlyMap<string, Tab>;
   onClose: () => void;
   onSave: (id: string, patch: Partial<Todo>) => void;
   /**
@@ -220,9 +309,9 @@ function TodoSheetContent({
   reminderPresets = [],
   events = [],
   timezone = "UTC",
+  settings,
   ctx,
   listsById = EMPTY_LISTS_BY_ID,
-  tabsById: tabsByIdProp = EMPTY_TABS_BY_ID,
   onClose,
   onSave,
   onSetStatus,
@@ -236,6 +325,11 @@ function TodoSheetContent({
 }: TodoSheetProps & { todo: Todo; open: boolean }) {
   const [title, setTitle] = useState(todo.title);
   const [repeatDialogOpen, setRepeatDialogOpen] = useState(false);
+  // Bumped on every open so `RepeatDialog` gets a fresh `key` — it seeds its
+  // draft state once per mount and does not track prop changes afterward, so
+  // without this a canceled edit reopens showing the abandoned draft rather
+  // than the saved rule.
+  const [repeatGeneration, setRepeatGeneration] = useState(0);
   const platform = usePlatform();
 
   /**
@@ -274,11 +368,6 @@ function TodoSheetContent({
         color: effectiveListColor(list, liveTabsById),
       })),
     [lists, liveTabsById],
-  );
-  /** `listId → list.tabId → tab`, derived (EI-62) — see `tabForTodo`. */
-  const todoTab = useMemo(
-    () => tabForTodo(todo, listsById, tabsByIdProp),
-    [todo, listsById, tabsByIdProp],
   );
   const mentionSources = useMemo((): MentionSource<MentionPick>[] => [
     {
@@ -406,6 +495,21 @@ function TodoSheetContent({
   /** The "Mark done" button's box — the confetti origin for both it and `⌘↵`. */
   const markDoneRef = useRef<HTMLButtonElement | null>(null);
 
+  /**
+   * Where a rule edit starts from. A series already running restarts at the
+   * occurrence on screen (`retargetSeries`'s "this and following"); a plain
+   * to-do anchors on its own day. Null means there is nothing to repeat from
+   * yet, which is also what disables the popover's Repeat button —
+   * `createSeriesFromTodo` throws without a date to anchor to.
+   */
+  const repeatAnchor = recurrence ? recurrence.occurrenceDate : todo.scheduledDate;
+  const canRepeat = repeatAnchor !== null && (recurrence !== null || onStartSeries !== undefined);
+
+  const openRepeatDialog = () => {
+    setRepeatGeneration((g) => g + 1);
+    setRepeatDialogOpen(true);
+  };
+
   const markDone = () => {
     // Measured before `onClose()`, while the footer is still on screen.
     onSetStatus(
@@ -440,6 +544,39 @@ function TodoSheetContent({
    */
   const handleSheetKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     if (e.defaultPrevented) return;
+
+    /*
+      The same two verbs the Overdrive overlay binds to the same two keys
+      (`ACTION_BY_KEY`, overdrive-overlay.tsx) — up is done, left is won't
+      do — so triaging in the sheet and triaging in the overlay are one set
+      of muscle memory rather than two (EI-318).
+
+      Bare arrows only, and never while the caret is in a text field, where
+      they move it: `isTextEntry` is the same guard Overdrive uses. Down and
+      right stay unbound, because Overdrive's meanings for them (back to the
+      list, walk the ramp) need its verdict state machine and this sheet has
+      no equivalent — giving them different meanings here would break the
+      very muscle memory the other two exist to share.
+
+      Local rather than a `Hotkey` registry entry, for the same reason as the
+      chords below: `GuardContext` is one global `modalOpen` boolean with no
+      per-surface discriminator, so a registry entry cannot be scoped to one
+      sheet (docs/KEYBOARD.md §1). Registered by hand in `lib/shortcuts.ts`
+      so the `?` sheet and the palette can still find them.
+    */
+    if (!e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && !isTextEntry(e.target)) {
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        markDone();
+        return;
+      }
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        wontDo();
+        return;
+      }
+    }
+
     // Exactly one of Ctrl/Meta, never both, never Alt — the same rule
     // `hasExactModifiers` (lib/keyboard.ts) enforces for the global registry.
     // Hand-checked here because that helper only serves the registry.
@@ -473,10 +610,56 @@ function TodoSheetContent({
         See the matching comment in `day-sheet.tsx`, which shares this sheet
         width so the two don't read as two different components.
       */}
+      {/*
+        The overlay drops its blur, not its dim — the same trade
+        `settings-sheet.tsx` and the Overdrive overlay already make, for the
+        same reason. Almost every field in here writes straight through to a
+        card on the board behind it: changing the date moves it to another
+        day, changing the list moves it to another column, marking it done
+        takes it off the board entirely. A blurred backdrop smears the only
+        confirmation those actions have.
+
+        The dim stays. The sheet is still modal — Base UI keeps the focus
+        trap, and `openTodoExists` still feeds `computeModalOpen` — so the
+        board behind is visible, not usable, and the scrim is what says so.
+      */}
       <SheetContent
         className="flex w-full flex-col gap-0 data-[side=right]:w-full data-[side=right]:sm:max-w-[75ch]"
+        overlayClassName="supports-backdrop-filter:backdrop-blur-none"
         onKeyDown={handleSheetKeyDown}
       >
+        {/*
+          The sheet's leading edge IS the card's priority rail — same width,
+          same opacity, same dotted P4, from the same `PRIORITY_RAILS`
+          (EI-318). A to-do wears one mark on the board and the same mark
+          here, so the sheet reads as that card opened rather than as a
+          different surface that happens to be about it.
+
+          `inset-y-0`, unlike the card's `inset-y-1`: there is no next sheet
+          below this one to fuse with, and the gap the card needs to read as a
+          tick would just look like an unfinished edge here.
+
+          Explicit layering, two steps, and both are load-bearing:
+
+          - `z-10` here puts the edge above everything in the sheet's body. It
+            has to be explicit. With no z-index this was ordinary DOM order,
+            and anything POSITIONED later won: the History timeline's day
+            headers are `relative`, and bleed edge to edge with `-mx-4`, so
+            each one cut a segment out of the rail.
+
+            Measured with `elementFromPoint` on the rail's own x — which needs
+            the rail's `pointer-events: none` lifted first, or the probe cannot
+            see the rail at all and blames whatever sits beneath it. Without
+            this z-index the day header came back topmost; with it, the rail.
+          - `lg:z-20` on the priority tab puts IT above this, which is what
+            lets the edge run down, disappear behind the tab, and be picked up
+            by the tab's own outline in the same treatment.
+
+          An earlier version dropped this z-index to get the second effect and
+          silently lost the first. Both are asserted now, in the browser.
+        */}
+        <PriorityRail priority={todo.priority} className="inset-y-0 z-10" />
+
         <SheetHeader className={backToDay ? "gap-1.5 pr-10" : undefined}>
           <SheetTitle className="sr-only">Edit to-do</SheetTitle>
           <SheetDescription className="sr-only">
@@ -506,7 +689,144 @@ function TodoSheetContent({
             Enter still commits rather than inserting a newline: a title is one
             line of text, and `commitTitle` already runs on blur.
           */}
-          <div className="relative">
+          {/*
+            Priority on the LEADING edge of the title rather than below the
+            fold in the field stack (EI-318). It is a judgement about the
+            to-do whose title you are reading, and the two belong in one
+            glance. `items-start`, not centered: a title that grows to three
+            lines must not drag the select down the block with it.
+
+            DOM order is priority-then-title, which is also the tab order the
+            annotation asked for — Shift+Tab from the title lands on
+            priority, Tab from it lands on Date.
+          */}
+          <div className="flex items-start gap-2">
+            <Select
+              value={todo.priority ? String(todo.priority) : NONE}
+              onValueChange={(v) =>
+                onSave(todo.id, {
+                  priority: v === NONE ? null : (Number(v) as Priority),
+                })
+              }
+            >
+              {/*
+                The tab. Below `lg` it is nothing — a bare `shrink-0` flex
+                item holding the select beside the title. From `lg` up it
+                becomes the box that hangs off the sheet's leading edge, and
+                the select inside it goes borderless, because the TAB is the
+                control's chrome at that point.
+
+                Attached, not floating, and that is four separate things:
+
+                - No shadow. It had `--shadow-overlay`, which casts on every
+                  side including into the seam, drawing a dark halo exactly
+                  where the two surfaces are supposed to be one.
+                - `bg-popover` — the sheet's own background, not the board's.
+                - No right border, and no right radius, so nothing draws a
+                  line down the join.
+                - `left` is exactly its own width (`-left-24`, -6rem), so its
+                  right edge lands on the sheet's padding edge — where the
+                  rail starts. The rail runs unbroken down the sheet right
+                  past the tab, and the tab's own outline takes it around the
+                  outside.
+                - Its remaining three borders are the RAIL's own treatment,
+                  not `border-input`: same width, same `--foreground` at the
+                  same opacity, dotted for P4. So the sheet's edge comes down,
+                  wraps around the tab, and carries on — one continuous line
+                  rather than a box stuck to a line.
+
+                Those three come through CSS variables rather than an inline
+                `border` shorthand, because they must only apply from `lg` up,
+                where the tab exists at all — and an inline style cannot be
+                gated on a media query. Below `lg` the variables are set and
+                simply unread. Each falls back to the ordinary field border,
+                which is what an unprioritized to-do gets at every width.
+
+                Absolute against `SheetContent`: that is `fixed`, so it is the
+                containing block, and `SheetHeader` sets no `position` of its
+                own. DOM order is untouched, so Shift+Tab from the title still
+                lands on the select.
+
+                Gated on `lg` rather than the desktop shell, because what
+                matters is whether there is board to hang over: the sheet is
+                `w-full` below `sm`.
+              */}
+              <div
+                style={priorityEdge(todo.priority)}
+                className={cn(
+                  "shrink-0",
+                  "lg:absolute lg:top-4 lg:-left-24 lg:z-20 lg:w-24",
+                  "lg:space-y-1 lg:rounded-l-xl lg:rounded-r-none",
+                  "lg:border-t-[length:var(--priority-edge-width)]",
+                  "lg:border-b-[length:var(--priority-edge-width)]",
+                  "lg:border-l-[length:var(--priority-edge-width)]",
+                  "lg:border-r-0",
+                  "lg:[border-color:var(--priority-edge-color)]",
+                  "lg:[border-style:var(--priority-edge-style)]",
+                  "lg:bg-popover lg:py-2 lg:pr-2 lg:pl-3",
+                )}
+              >
+                <Label htmlFor="todo-priority" className="hidden lg:flex">
+                  Priority
+                </Label>
+                <SelectTrigger
+                  id="todo-priority"
+                  aria-label="Priority"
+                  className={cn(
+                    // `h-8` is the title's line box exactly (see below), which
+                    // is what makes `items-start` read as vertical centering on
+                    // the first line without pinning it to the middle of a tall
+                    // one. Only matters below `lg`, where this sits beside the
+                    // title rather than in the tab.
+                    "h-8 w-[4.5rem] shrink-0 bg-popover px-2 text-xs",
+                    // Inside the tab the box IS the tab: no border, no
+                    // background, no padding of its own.
+                    "lg:h-6 lg:w-full lg:border-0 lg:bg-transparent lg:px-0 lg:shadow-none",
+                    "lg:focus-visible:ring-0",
+                  )}
+                >
+                  {/*
+                    The rail plus the number, and nothing else (EI-318).
+
+                    Base UI's `SelectValue` renders the raw `value` string
+                    unless given a way to resolve a label — see `ListField`'s
+                    comment for the fuller explanation.
+
+                    The rail carries the level: it is the same mark, from the
+                    same `PRIORITY_RAILS`, that this to-do already wears on
+                    the board, so reading the sheet and scanning the column
+                    use one vocabulary. `P2` is the label beside it because
+                    that is the token quick-add and ⌘K parse; spelling it
+                    "High" cost the width of an adjective to say what the rail
+                    had already said.
+                  */}
+                  <SelectValue>
+                    {(value: string) =>
+                      value === NONE ? (
+                        <span className="text-muted-foreground">None</span>
+                      ) : (
+                        <span className="flex items-center gap-1.5">
+                          <PriorityGlyph priority={Number(value) as Priority} />
+                          <span className="num">P{value}</span>
+                        </span>
+                      )
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>
+                    <span className="text-muted-foreground">None</span>
+                  </SelectItem>
+                  {([1, 2, 3, 4] as const).map((p) => (
+                    <SelectItem key={p} className="num" value={String(p)}>
+                      <PriorityGlyph priority={p} />
+                      P{p}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </div>
+            </Select>
+            <div className="relative flex-1">
             <Textarea
               ref={titleRef}
               value={title}
@@ -553,10 +873,21 @@ function TodoSheetContent({
                 }
               }}
               rows={1}
-              style={{ maxHeight: `calc(${TITLE_LINES} * 1.5rem)` }}
+              style={{ maxHeight: `calc(${TITLE_LINES} * 2rem)` }}
               aria-label="Title"
               className={cn(
-                "min-h-0 resize-none border-0 px-0 py-0 text-base font-medium leading-6",
+                // `md:text-lg` as well as `text-lg`, and that is not
+                // belt-and-braces: `Textarea`'s base ends in `md:text-sm`, and
+                // tailwind-merge treats the variant as part of the key — so a
+                // bare `text-lg` loses at every width this sheet is actually
+                // read at. Measured 14px on a 1280px viewport before the
+                // `md:` was added, with the class present and doing nothing.
+                //
+                // `leading-8` (2rem) is not decoration either: it makes the
+                // title's line box exactly the priority select's `h-8`, so the
+                // two sit on one baseline under `items-start`. Size and
+                // leading have to move together or they drift apart again.
+                "min-h-0 resize-none border-0 px-0 py-0 text-lg font-medium leading-8 md:text-lg",
                 "shadow-none focus-visible:border-0 focus-visible:ring-0",
               )}
             />
@@ -570,6 +901,7 @@ function TodoSheetContent({
                 ariaLabel={mention.sigil === "#" ? "Labels" : "Lists"}
               />
             )}
+            </div>
           </div>
           <QuickAddPreview chips={titleChips} className="px-0 pt-1 pb-0" />
           {/*
@@ -585,136 +917,61 @@ function TodoSheetContent({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label htmlFor="todo-scheduled">Date</Label>
-              <Input
+              {/*
+                One control for *when* (EI-318): the day, the time of the
+                reminder, and whether it repeats. Reminder and Repeat used to
+                be two more fields down this stack, which let the sheet say a
+                to-do was on Sep 14 in one place and that it happened every
+                Monday in another. `DatePopover`'s own doc comment has the
+                rest.
+              */}
+              <DatePopover
                 id="todo-scheduled"
-                type="date"
-                value={todo.scheduledDate ?? ""}
-                onChange={(e) => {
-                  const next = e.target.value || null;
-                  // Clearing the date orphans any reminder — it resolves
-                  // against `scheduledDate` (lib/reminders.ts) and would
-                  // otherwise silently resurrect the moment a date is set
-                  // again.
-                  onSave(
-                    todo.id,
-                    next
-                      ? { scheduledDate: next }
-                      : { scheduledDate: null, reminderTime: null },
-                  );
-                }}
+                todo={todo}
+                presets={reminderPresets}
+                recurrence={recurrence ?? null}
+                today={today}
+                onSave={onSave}
+                onOpenRepeat={canRepeat ? openRepeatDialog : undefined}
               />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="todo-deadline">Deadline</Label>
-              <Input
+              {/*
+                No `disabled` bound, unlike the board's "Jump to date": a
+                deadline already in the past is an ordinary thing to record,
+                and the card badges it rather than refusing it.
+              */}
+              <DatePickerField
                 id="todo-deadline"
-                type="date"
-                value={todo.deadline ?? ""}
-                onChange={(e) => onSave(todo.id, { deadline: e.target.value || null })}
+                value={todo.deadline}
+                onChange={(next) => onSave(todo.id, { deadline: next })}
+                placeholder="No deadline"
               />
             </div>
           </div>
 
-          {/* Gated behind scheduledDate — a preset is a time of day; with no
-              date there is nothing for zonedInstant to resolve against
-              (EI-106 decision 5, unchanged from EI-88). */}
-          {todo.scheduledDate && (
-            <ReminderPicker todo={todo} presets={reminderPresets} onSave={onSave} />
-          )}
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="todo-list">List</Label>
-              <ListField todo={todo} lists={lists} tabs={tabs} onSave={onSave} />
-            </div>
-
-            <div className="space-y-1.5">
-              <Label htmlFor="todo-priority">Priority</Label>
-              <Select
-                value={todo.priority ? String(todo.priority) : NONE}
-                onValueChange={(v) =>
-                  onSave(todo.id, {
-                    priority: v === NONE ? null : (Number(v) as Priority),
-                  })
-                }
-              >
-                <SelectTrigger id="todo-priority">
-                  {/* Base UI's SelectValue shows the raw `value` string by
-                      default ("1" rather than "P1") unless given a way to
-                      resolve a label — see ListField's comment for the fuller
-                      explanation. */}
-                  <SelectValue>
-                    {(value: string) => (value === NONE ? "None" : `P${value}`)}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NONE}>None</SelectItem>
-                  {[1, 2, 3, 4].map((p) => (
-                    <SelectItem key={p} className="num" value={String(p)}>
-                      P{p}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
           {/*
-            Read-only and derived (EI-62), not a picker: `listId → list.tabId
-            → tab` (`tabForTodo`, lib/board.ts) replaces the old Project
-            field. Setting it means moving the todo to a different list, not
-            editing a field here. Blank is a real state — a Backlog todo
-            (`tabId === null` means "pinned into every tab") and an unfiled
-            todo both render nothing, on purpose — see `tabForTodo`'s doc
-            comment for why a placeholder would be wrong.
+            The rule's DETAIL, directly under the field it belongs to — the
+            schedule summary, the end condition, what is next, and the two
+            verbs that are not schedule edits (stop, delete). Editing the rule
+            itself is the Repeat entry inside the date control above.
           */}
-          <div className="space-y-1.5">
-            <Label id="todo-tab-label">Tab</Label>
-            <div
-              aria-labelledby="todo-tab-label"
-              className="flex h-9 items-center gap-1.5 rounded-md border border-input bg-transparent px-3 text-sm"
-            >
-              {todoTab && (
-                <>
-                  {todoTab.color && (
-                    <span
-                      aria-hidden
-                      className="size-2 shrink-0 rounded-full"
-                      style={{ backgroundColor: todoTab.color }}
-                    />
-                  )}
-                  <span className="truncate">
-                    {todoTab.emoji ? `${todoTab.emoji} ` : ""}
-                    {todoTab.name}
-                  </span>
-                </>
-              )}
-            </div>
+          {recurrence && <RepeatSection recurrence={recurrence} />}
+
+          <div className="space-y-2">
+            <SheetRow label="List" htmlFor="todo-list">
+              <ListField todo={todo} lists={lists} tabs={tabs} onSave={onSave} />
+            </SheetRow>
+
+            <SheetRow label="Labels" htmlFor="todo-label-input">
+              <LabelPicker todo={todo} labels={labels} onToggleLabel={onToggleLabel} />
+            </SheetRow>
+
+            <SheetRow label="Location" htmlFor="todo-location-input">
+              <LocationField todo={todo} places={places} onSave={onSave} />
+            </SheetRow>
           </div>
-
-          <LabelPicker todo={todo} labels={labels} onToggleLabel={onToggleLabel} />
-
-          <LocationField todo={todo} places={places} onSave={onSave} />
-
-          {recurrence ? (
-            <RepeatSection recurrence={recurrence} />
-          ) : (
-            onStartSeries &&
-            todo.scheduledDate && (
-              <div className="space-y-1.5">
-                <Label>Repeat</Label>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setRepeatDialogOpen(true)}
-                  className="w-fit"
-                >
-                  <Repeat className="size-3.5" aria-hidden />
-                  Repeat…
-                </Button>
-              </div>
-            )
-          )}
 
           {/*
             One level of nesting only (EI-55): a todo that is itself a
@@ -774,24 +1031,56 @@ function TodoSheetContent({
             todo={todo}
             events={events}
             timezone={timezone}
+            today={today}
             ctx={ctx}
             listsById={listsById}
+            settings={settings}
           />
         </div>
 
         {/*
-          3-up, not stacked: `SheetFooter` is `flex-col` by default (one
-          button had no reason to fight that), so this overrides to a row and
-          gives each button an equal third.
+          Not three equal thirds (EI-318). The three verbs are not equally
+          weighted and the old footer said they were: 50 / 30 / 20, so the
+          one you almost always want is the one your eye lands on, and the
+          irreversible one is the smallest thing down there.
+
+          Green on Mark done, grey on Won't do, and Delete reduced to its
+          icon. `aria-label="Delete"` keeps the accessible name it had as
+          text, which is what the unit and e2e specs match on.
+
+          The chords render inline rather than only on hover — a shortcut
+          nobody can find is a shortcut nobody uses. `aria-hidden` on the
+          `<kbd>`, so the accessible name stays "Mark done" rather than
+          "Mark done ⌘↵"; the tooltip still carries the chord for anyone who
+          cannot see it.
+
+          `size="lg"` rather than `sm`: these are the sheet's only committing
+          actions and were 28px tall in 12px type, smaller than every field
+          above them. 36px in 14px is the same height as the Date and Deadline
+          controls, so the footer reads as the bottom of the same form rather
+          than a row of secondary links.
         */}
-        <SheetFooter className="grid grid-cols-3 gap-2 border-t">
+        <SheetFooter className="grid grid-cols-10 gap-2 border-t">
           <Tooltip>
             <TooltipTrigger
               render={
-                <Button ref={markDoneRef} variant="outline" size="sm" onClick={markDone} />
+                <Button
+                  ref={markDoneRef}
+                  variant={todo.status === "done" ? "outline" : "success"}
+                  size="lg"
+                  onClick={markDone}
+                  className="col-span-5"
+                />
               }
             >
               {todo.status === "done" ? "Reopen" : "Mark done"}
+              <kbd
+                aria-hidden
+                data-slot="kbd"
+                className="ml-1 hidden font-mono text-xs opacity-60 sm:inline"
+              >
+                {formatCombo("mod+enter", platform)}
+              </kbd>
             </TooltipTrigger>
             <TooltipContent>
               {todo.status === "done" ? "Reopen" : "Mark done"}
@@ -805,8 +1094,17 @@ function TodoSheetContent({
             the item in history as abandoned rather than completed.
           */}
           <Tooltip>
-            <TooltipTrigger render={<Button variant="outline" size="sm" onClick={wontDo} />}>
+            <TooltipTrigger
+              render={<Button variant="outline" size="lg" onClick={wontDo} className="col-span-3" />}
+            >
               Won&apos;t do
+              <kbd
+                aria-hidden
+                data-slot="kbd"
+                className="ml-1 hidden font-mono text-xs opacity-60 sm:inline"
+              >
+                {formatCombo("mod+backspace", platform)}
+              </kbd>
             </TooltipTrigger>
             <TooltipContent>
               Won&apos;t do
@@ -820,14 +1118,14 @@ function TodoSheetContent({
               render={
                 <Button
                   variant="ghost"
-                  size="sm"
-                  className="text-destructive hover:text-destructive"
+                  size="lg"
+                  aria-label="Delete"
+                  className="col-span-2 text-destructive hover:text-destructive"
                   onClick={remove}
                 />
               }
             >
               <Trash2 className="size-4" aria-hidden />
-              Delete
             </TooltipTrigger>
             <TooltipContent>
               {recurrence ? "Skip this occurrence" : "Delete"}
@@ -839,13 +1137,25 @@ function TodoSheetContent({
         </SheetFooter>
       </SheetContent>
 
-      {onStartSeries && todo.scheduledDate && (
+      {/*
+        ONE dialog, two entry points, and it lives here rather than inside
+        `DatePopover` — a dialog rendered inside a popover inside a sheet is
+        three stacked focus traps, and the middle one closing takes the top
+        one with it. The popover asks for it through `onOpenRepeat` instead.
+
+        `RepeatSection` used to own a second copy of this for its "Change…"
+        button. Two dialogs editing one rule is how Date and Repeat came to
+        disagree in the first place (EI-318), so there is now one.
+      */}
+      {repeatAnchor && (
         <RepeatDialog
+          key={repeatGeneration}
           open={repeatDialogOpen}
           onOpenChange={setRepeatDialogOpen}
-          seriesStart={todo.scheduledDate}
-          initialRule={null}
-          onSave={onStartSeries}
+          seriesStart={repeatAnchor}
+          initialRule={recurrence?.rule ?? null}
+          onSave={recurrence ? recurrence.onChangeRule : (onStartSeries ?? noop)}
+          title={recurrence ? "Edit repeat" : undefined}
         />
       )}
     </Sheet>
@@ -999,6 +1309,8 @@ const HISTORY_EVENT_LABEL: Partial<Record<HistoryEventKind, string>> = {
   reopened: "Reopened",
   edited: "Edited",
   deleted: "Deleted",
+  attached: "Attached",
+  detached: "Removed file",
   rolledOver: "Rolled over",
   overflowed: "Fell into Overflow",
 };
@@ -1013,6 +1325,8 @@ const HISTORY_EVENT_ICON: Partial<Record<HistoryEventKind, ComponentType<{ class
   reopened: RotateCcw,
   edited: Pencil,
   deleted: Trash2,
+  attached: Paperclip,
+  detached: FileX,
   rolledOver: CornerDownRight,
   overflowed: Archive,
 };
@@ -1051,6 +1365,13 @@ function historyDetail(event: TodoTimelineEvent): string | null {
     if (fields.length === 0) return null;
     return fields.map((field) => FIELD_LABELS[field] ?? field).join(", ");
   }
+  if (event.kind === "attached" || event.kind === "detached") {
+    // The filename comes from the payload, not from a lookup: by the time a
+    // `detached` row is read its attachment is a tombstone, so resolving it
+    // would render "Removed file" with nothing after it.
+    const payload = event.payload as { filename?: string } | null;
+    return payload?.filename ?? null;
+  }
   if (event.kind === "rolledOver" || event.kind === "overflowed") {
     const payload = event.payload as RollSummaryPayload | null;
     if (!payload) return null;
@@ -1080,70 +1401,182 @@ interface HistorySectionProps {
   todo: Todo;
   events: TodoEvent[];
   timezone: string;
+  /** Anchors the day headers' relative wording. */
+  today: CivilDate;
   /** Omitted renders the real log alone — no Faite Loop rows. See the note
    * on `TodoSheetProps.ctx`. */
   ctx?: PlacementContext;
   listsById: ReadonlyMap<string, List>;
+  settings?: Settings;
 }
 
+/** Every kind, in the order the filter menu lists them. */
+const HISTORY_KIND_FILTER_OPTIONS: ReadonlyArray<{ value: ActivityEventKind; label: string }> = (
+  Object.keys(HISTORY_EVENT_LABEL) as ActivityEventKind[]
+).map((value) => ({ value, label: HISTORY_EVENT_LABEL[value] ?? FALLBACK_LABEL }));
+
+const ALL_HISTORY_KINDS: ActivityEventKind[] = HISTORY_KIND_FILTER_OPTIONS.map((o) => o.value);
+
 /**
+ * A to-do's own history, reading like the global activity feed rather than
+ * like a different feature (EI-318): newest first, grouped under day headers,
+ * filterable by kind, and stamped with a time because the header already
+ * carries the date.
+ *
  * Behind a disclosure with a count in the heading, open by default — a
- * todo's history is usually exactly what someone opening the sheet wants to
+ * to-do's history is usually exactly what someone opening the sheet wants to
  * see, so it no longer costs an extra click to reveal.
+ *
+ * `visibleHistoryKinds` is its OWN settings field, never
+ * `visibleActivityKinds`: sharing one would let filtering the global feed
+ * silently filter every to-do's history too. `timeline.tsx`'s header comment
+ * is the standing warning about exactly this.
  */
-function HistorySection({ todo, events, timezone, ctx, listsById }: HistorySectionProps) {
+function HistorySection({
+  todo,
+  events,
+  timezone,
+  today,
+  ctx,
+  listsById,
+  settings,
+}: HistorySectionProps) {
   const [open, setOpen] = useState(true);
   const items = useMemo(
-    () => buildTodoTimeline(events, todo, ctx, timezone),
-    [events, todo, ctx, timezone],
+    () => buildTodoTimeline(events, todo, ctx, timezone, today),
+    [events, todo, ctx, timezone, today],
   );
-  const count = items.filter((item) => item.type === "event").length;
+
+  const visibleKinds = settings?.visibleHistoryKinds ?? ALL_HISTORY_KINDS;
+  const isVisible = (item: TodoTimelineItem) =>
+    item.type !== "event" || visibleKinds.includes(item.event.kind as ActivityEventKind);
+
+  const eventItems = items.filter((item) => item.type === "event");
+  const count = eventItems.length;
+  const hiddenCount = eventItems.filter((item) => !isVisible(item)).length;
+
+  // Filter the EVENTS, then drop any day header left with nothing under it —
+  // a bare date with no rows beneath it reads as a day something happened on
+  // and then failed to render.
+  const visibleItems = useMemo(() => {
+    const kept = items.filter(isVisible);
+    return kept.filter((item, index) => {
+      if (item.type !== "day-header") return true;
+      const next = kept[index + 1];
+      return next !== undefined && next.type === "event";
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, visibleKinds]);
+
+  const toggleKind = (kind: ActivityEventKind, checked: boolean) => {
+    const next = checked
+      ? [...visibleKinds, kind]
+      : visibleKinds.filter((k) => k !== kind);
+    void mutateSettings(LOCAL_OWNER_ID, { visibleHistoryKinds: next });
+  };
+
+  const lastEventKey = [...visibleItems].reverse().find((i) => i.type === "event");
 
   return (
     <section className="space-y-1.5">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        className="type-eyebrow flex items-center gap-1 hover:text-foreground"
-      >
-        <ChevronDown
-          aria-hidden
-          className={cn("size-3.5 transition-transform", !open && "-rotate-90")}
-        />
-        History ({count})
-      </button>
+      <div className="flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
+          // `Label`'s type, not `type-eyebrow`: this is the heading for the
+          // section under it, exactly like "Notes" and "Attachments", and it
+          // was the only one shouting in uppercase 10px.
+          className="flex items-center gap-1 text-sm leading-none font-medium"
+        >
+          <ChevronDown
+            aria-hidden
+            className={cn("size-3.5 transition-transform", !open && "-rotate-90")}
+          />
+          History ({count})
+        </button>
+        {open && count > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              aria-label="Which history to show"
+              className={cn(buttonVariants({ variant: "ghost", size: "xs" }), "text-muted-foreground")}
+            >
+              Filter
+              <ChevronDown aria-hidden />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuGroup>
+                {HISTORY_KIND_FILTER_OPTIONS.map((option) => (
+                  <DropdownMenuCheckboxItem
+                    key={option.value}
+                    checked={visibleKinds.includes(option.value)}
+                    closeOnClick={false}
+                    onCheckedChange={(checked) => toggleKind(option.value, checked)}
+                  >
+                    {option.label}
+                  </DropdownMenuCheckboxItem>
+                ))}
+              </DropdownMenuGroup>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </div>
 
-      {open && (
-        <TimelineList ariaLabel={`History for ${todo.title}`}>
-          {items.map((item, index) => {
-            if (item.type === "marker") {
-              return (
-                <li key={item.key} className="pl-7 text-2xs text-muted-foreground">
-                  — History recorded from here —
-                </li>
-              );
-            }
-            const { event } = item;
-            const Icon =
-              HISTORY_EVENT_ICON[event.kind as HistoryEventKind] ?? FALLBACK_ICON;
-            const label = HISTORY_EVENT_LABEL[event.kind as HistoryEventKind] ?? FALLBACK_LABEL;
-            const detail = historyDetail(event);
-            return (
-              <TimelineRow
-                key={event.key}
-                icon={Icon}
-                label={label}
-                at={event.at}
-                when={formatEventStamp(event.at, timezone)}
-                accent={historyAccent(event, listsById)}
-                isLast={index === items.length - 1}
-              >
-                {detail && <p className="mt-0.5 text-xs text-muted-foreground">{detail}</p>}
-              </TimelineRow>
-            );
-          })}
-        </TimelineList>
+      {open && hiddenCount > 0 && count === hiddenCount ? (
+        <HiddenByFilterNotice
+          count={hiddenCount}
+          onShowAll={() =>
+            void mutateSettings(LOCAL_OWNER_ID, { visibleHistoryKinds: ALL_HISTORY_KINDS })
+          }
+        />
+      ) : (
+        open && (
+          <>
+            <TimelineList ariaLabel={`History for ${todo.title}`}>
+              {visibleItems.map((item) => {
+                if (item.type === "day-header") {
+                  return <TimelineDayHeader key={item.key} label={item.label} />;
+                }
+                if (item.type === "marker") {
+                  return (
+                    <li key={item.key} className="pl-7 text-2xs text-muted-foreground">
+                      — History recorded from here —
+                    </li>
+                  );
+                }
+                const { event } = item;
+                const Icon =
+                  HISTORY_EVENT_ICON[event.kind as HistoryEventKind] ?? FALLBACK_ICON;
+                const label =
+                  HISTORY_EVENT_LABEL[event.kind as HistoryEventKind] ?? FALLBACK_LABEL;
+                const detail = historyDetail(event);
+                return (
+                  <TimelineRow
+                    key={event.key}
+                    icon={Icon}
+                    label={label}
+                    at={event.at}
+                    // Time only: the day header above carries the date, the
+                    // same division the global feed uses.
+                    when={formatEventTime(event.at, timezone)}
+                    accent={historyAccent(event, listsById)}
+                    isLast={lastEventKey !== undefined && item === lastEventKey}
+                  >
+                    {detail && <p className="mt-0.5 text-xs text-muted-foreground">{detail}</p>}
+                  </TimelineRow>
+                );
+              })}
+            </TimelineList>
+            {hiddenCount > 0 && (
+              <HiddenByFilterNotice
+                count={hiddenCount}
+                onShowAll={() =>
+                  void mutateSettings(LOCAL_OWNER_ID, { visibleHistoryKinds: ALL_HISTORY_KINDS })
+                }
+              />
+            )}
+          </>
+        )
       )}
     </section>
   );

@@ -106,9 +106,9 @@ already applied would be a confusing way to fail.
 
 Neither has an established test file to copy verbatim before `LabelPicker`'s
 — `location-field.tsx` has none. `label-picker.test.tsx` and
-`list-field.test.tsx` (a Base UI `Select`, same underlying interaction
-model) are the templates now. Three gotchas, all Base UI–specific rather than
-these components':
+`list-field.test.tsx` (a `Combobox` too since EI-318 — it was a `Select`) are
+the templates now. Four gotchas, all Base UI–specific rather than these
+components':
 
 - **`fireEvent.change` never opens the popup.** `ComboboxInput`'s (shared by
   both `Autocomplete` and `Combobox` — `Autocomplete` wraps `Combobox`
@@ -118,6 +118,14 @@ these components':
   `fireEvent.input(el, { target: { value }, inputType: "insertText" })`
   constructs a real `InputEvent` (testing-library's event map maps `"input"`
   to `InputEvent`, `"change"` to plain `Event`) and works.
+- **A bare `fireEvent.click()` on the INPUT never opens the popup either.**
+  `openOnInputClick` wants a real pointer sequence that the event helpers do
+  not reproduce under happy-dom, so the popup silently stays closed and the
+  assertion fails against a component that is perfectly fine — the same shape
+  of false negative as the `fireEvent.change` case above. Open it the way a
+  keyboard user would instead: focus the input, then
+  `fireEvent.keyDown(el, { key: "ArrowDown" })`. Only affects a test that
+  wants the RESTING list; a test that types has already opened it (EI-318).
 - **A bare `fireEvent.click()` on an item is ignored.** Base UI distinguishes
   a real mouse interaction (`pointerdown` originating on the item, then
   `click`) from a synthetic/assistive-tech click. `fireEvent.pointerDown(el,

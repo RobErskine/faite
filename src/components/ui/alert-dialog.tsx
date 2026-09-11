@@ -35,7 +35,28 @@ function AlertDialogOverlay({
         // opacity clips outside 0..1 (docs/DESIGN.md §4).
         "duration-(--dur-base) ease-out-soft motion-reduce:animate-none",
         "data-open:animate-in data-open:fade-in-0",
+        /*
+          `fill-mode-forwards` is load-bearing, not decoration.
+
+          `tw-animate-css` builds `animate-out` with
+          `var(--tw-animation-fill-mode, none)`, and its `exit` keyframe has
+          only a `to` frame. So the moment the fade ends the element reverts
+          to its BASE computed style — a fully opaque backdrop — and sits
+          there until Base UI takes the node out. Base UI waits for the
+          LONGEST animation in the popup, which is the panel's exit, so there
+          is always a window.
+
+          Measured on the to-do sheet before this line existed: opacity ran
+          down to 0.00005 at 188ms, snapped back to 1 at 206ms, and unmounted
+          at 223ms. Roughly two frames of full dim after the sheet had gone —
+          reported as "it flashes at the end".
+
+          Matching the exit duration to the panel's closes the window as well,
+          but the fill mode is what makes it impossible: any future drift
+          between the two durations reopens the gap, and this holds regardless.
+        */
         "data-closed:animate-out data-closed:fade-out-0",
+        "data-closed:duration-(--dur-overlay-exit) data-closed:fill-mode-forwards",
         className
       )}
       {...props}
@@ -64,7 +85,7 @@ function AlertDialogContent({
           // the centering above is left alone.
           "duration-(--dur-overlay) ease-spring-overlay",
           "data-open:animate-in data-closed:animate-out",
-          "data-closed:duration-(--dur-overlay-exit) data-closed:ease-out-soft",
+          "data-closed:duration-(--dur-overlay-exit) data-closed:ease-out-soft data-closed:fill-mode-forwards",
           "motion-reduce:animate-none",
           "max-sm:data-open:slide-in-from-bottom-full max-sm:data-closed:slide-out-to-bottom-full",
           "sm:data-open:zoom-in-95 sm:data-open:fade-in-0",

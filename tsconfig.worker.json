@@ -19,5 +19,13 @@
   // that file's exclude comment. It needs the same CloudflareEnv-aware
   // program `src/server` gets, since `generate.ts` imports `auth-cli.ts`.
   "include": ["src/server/**/*.ts", "scripts/openapi/**/*.ts", "cloudflare-env.d.ts"],
-  "exclude": ["node_modules"]
+  // `migration-21-backfill.test.ts` runs a migration's real SQL against
+  // `node:sqlite`, which only exists in Node — this program is typed against
+  // `@cloudflare/workers-types` alone, so the import cannot resolve here. It
+  // lives under `src/server/` because that is where the migration lives, not
+  // because the Worker ever runs it; vitest types and runs it under the root
+  // config. Excluding it is what keeps `types` honest: adding Node types to
+  // the Worker program to satisfy one test would let every Worker file reach
+  // for APIs that are not there at runtime.
+  "exclude": ["node_modules", "src/server/db/migration-21-backfill.test.ts"]
 }

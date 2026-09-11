@@ -20,7 +20,9 @@ export type TodoEventKind =
   | "dropped"
   | "reopened"
   | "edited"
-  | "deleted";
+  | "deleted"
+  | "attached"
+  | "detached";
 
 interface EmptyPayload {
   v: 1;
@@ -72,12 +74,33 @@ export interface DeletedPayload {
   title: string;
 }
 
+/** Cap on `AttachmentPayload.filename`, for `DELETED_TITLE_MAX_LENGTH`'s
+ * reason: long enough for any real filename, short enough that a
+ * pathological one cannot bloat a synced table. */
+export const ATTACHMENT_FILENAME_MAX_LENGTH = 200;
+
+export interface AttachmentPayload {
+  v: 1;
+  /**
+   * Stored inline rather than resolved through the attachment row, following
+   * `MovedPayload`'s precedent: `detached` describes a row that is a
+   * tombstone by the time anyone reads the event, so a lookup would render
+   * "Removed file" with nothing after it. The name is also the only part of
+   * an attachment a timeline ever needs.
+   *
+   * The SERVER's sanitized filename, never the browser's original — see
+   * `createAttachment`.
+   */
+  filename: string;
+}
+
 export type TodoEventPayload =
   | EmptyPayload
   | ScheduledPayload
   | MovedPayload
   | EditedPayload
-  | DeletedPayload;
+  | DeletedPayload
+  | AttachmentPayload;
 
 /**
  * Fields that trigger an `edited` event when patched through `updateTodo`.

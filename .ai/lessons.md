@@ -1582,3 +1582,161 @@ viewport edge — takes a landing ease (`--ease-out-soft`); only centred things
 may spring. And when reusing a spring on something much larger or smaller than
 it was tuned for, re-derive the overshoot in pixels before assuming the
 percentage still reads the same.
+
+## A test that opens a Base UI combobox with a click passes on nothing (EI-318)
+
+Rewriting `list-field.test.tsx` for a `Combobox`, every test that typed first
+passed and every test that wanted the RESTING list failed with "Unable to find
+role=option". The component was fine. `fireEvent.click` on the input never
+opens a Base UI combobox under happy-dom — `openOnInputClick` wants a pointer
+sequence the event helpers do not reproduce — so the popup silently stays
+closed and the assertion fails against working code.
+
+`fireEvent.keyDown(input, { key: "ArrowDown" })` after focusing is the
+combobox's own open key and works.
+
+**Rule:** this is the same shape of false negative as the `fireEvent.change`
+gotcha already in `docs/PICKERS.md` §4, and it is now §4's fourth bullet. When
+a Base UI popup test fails with "cannot find the option", suspect the OPEN
+step before the component.
+
+## Do not claim idempotence you have not checked (EI-318)
+
+Adding a history event to `deleteAttachment`, I wrote a comment saying
+"tombstone anyway, since `remove` is idempotent" and a test asserting a
+missing row resolves. `mutate` throws `no local attachment row for id …` and
+always has. The comment was invented, and the test I wrote around it was
+asserting my invention rather than the code.
+
+**Rule:** a comment describing a DEPENDENCY's behavior is a claim about code
+you did not write. Check it — the test that fails is the cheap version of
+finding out.
+
+## Prove a flaky failure against a clean tree before owning it (EI-318)
+
+`touch-smoke.spec.ts`'s swipe failed once in the full e2e run on a feature
+branch that had touched the to-do sheet, the settings schema, and a
+migration. Stashing the branch and running it on clean `main` gave
+flaky / pass / fail across three runs — pre-existing, masked most of the time
+by its own `toPass` retry.
+
+**Rule:** before debugging a red e2e leg on a feature branch, run that ONE
+spec on a stashed-clean tree several times. `git stash push -u -m "<tag>"`,
+capture the SHA from `git stash list --format='%H %gs'`, `git stash apply
+<sha>`, then drop by tag — never bare `stash`/`pop`, the stack is shared with
+every other worktree.
+
+## A collapsing popover moves its own popups out from under the pointer (EI-318)
+
+The date popover's Time control originally swapped the popover body for a
+short reminder panel: ~420px to ~120px. floating-ui repositioned the whole
+popover to suit, which moved the combobox anchored inside it, and clicks
+landed on nothing. Playwright reported "element is not stable / element was
+detached from the DOM"; a person would report the menu jumping away. Unit
+tests could not see it — happy-dom has no layout.
+
+**Rule:** inside a positioned popup, reveal in place rather than swapping for
+content of a very different height. And read "element is not stable" as a
+layout bug in the app, not as a test that needs a longer timeout.
+
+## Base UI's chip parts assume the value is an ARRAY (EI-318)
+
+Giving the single-select List field a removable chip, I reached for
+`Combobox.Chips` / `Combobox.Chip` — the parts `LabelPicker` uses. One
+Backspace on a filled field threw `Cannot read properties of null (reading
+'length')` and took the whole board down.
+
+`ComboboxInput`'s chip-navigation path reads `selectedValue.length` unguarded
+(`combobox/input/ComboboxInput.js:164`). One branch further down DOES guard
+with `Array.isArray`, which is the tell that the unguarded one is a bug rather
+than a contract. This field is single-mode with `value={null}`, because the
+to-do is the source of truth — exactly the shape those parts do not expect.
+
+Unit tests did not catch it because none of them pressed Backspace: the chip
+was tested through its X button, which is the mouse path.
+
+**Rule:** a component part borrowed from a MULTI-select sibling carries that
+sibling's assumptions about the value's shape. Before reusing one in single
+mode, grep the primitive for `.length` / `Array.isArray` on the value. And
+test the keyboard path, not just the pointer one — Backspace, Enter and Escape
+each reach code a click never does.
+
+## An exit animation with no fill mode flashes back before it unmounts (EI-318)
+
+The to-do sheet's backdrop dimmed away and then flashed fully opaque right at
+the end of the close. Measured it frame by frame in a real browser rather than
+guessing: opacity ran down to 0.00005 at 188ms, snapped back to **1** at
+206ms, and unmounted at 223ms — two frames of full dim after the sheet had
+visibly gone.
+
+`tw-animate-css` builds `animate-out` with
+`var(--tw-animation-fill-mode, none)`, and its `exit` keyframe declares only a
+`to` frame. So the moment the animation ends, the element reverts to its base
+computed style. Base UI unmounts on the LONGEST animation in the popup, and
+the backdrop (180ms) is shorter than the panel (200ms), so there is always a
+window. Every overlay in the app had it — sheet, dialog and alert-dialog.
+
+**Rule:** any `data-closed:animate-out` needs `data-closed:fill-mode-forwards`
+beside it, or it reverts before the node is gone. Matching the two durations
+closes the window too, but only the fill mode survives one of them drifting.
+`src/components/ui/overlay-exit.test.ts` is the backstop.
+
+**And:** a one-or-two-frame visual bug is measurable, not a matter of taste.
+`page.evaluate` with a `requestAnimationFrame` loop sampling
+`getComputedStyle` gives a timeline that says exactly what happened — worth
+doing before and after, since "looks fixed" at 60fps is not evidence.
+
+## tailwind-merge keys on the VARIANT, so a bare utility loses to a prefixed one (EI-318)
+
+Twice on one branch. `backdrop-blur-none` did nothing against
+`supports-backdrop-filter:backdrop-blur-xs`. `text-lg` on the sheet's title
+did nothing against `Textarea`'s base `md:text-sm` — the class was present in
+the DOM and the computed font-size was still 14px at every width the sheet is
+actually read at. Both fail SILENTLY: the class is there, it just never wins.
+
+**Rule:** before overriding a base class from a consumer, read the base for a
+variant prefix (`md:`, `dark:`, `supports-*:`, `data-*:`) and match it. Then
+assert the RESOLVED value, not the class list — `getComputedStyle` in a
+browser, or at minimum the merged `className` in a render test. A test that
+only checks the class you passed will pass while the pixel is wrong.
+
+## A comment can describe a layout that a later change quietly removed (EI-318)
+
+`PriorityRail` was `inset-y-0` with a comment saying it "stops the rail 1px
+short of `border-b`, so a run of same-priority cards reads as ticks rather
+than fusing into one stripe". The Air pass removed the row's `border-b` months
+later. Nothing failed, nothing was flagged, and every run of cards on the
+board fused into one tapering stripe — four different priorities reading as
+one strange line. Measured: each rail's bottom was EXACTLY the next one's top
+(669.3 → 669.3), and `border-bottom-width` came back `0px`.
+
+**Rule:** a comment that explains a gap by naming another element's property
+is a dependency the type system cannot see. When removing a border, a padding
+or a margin, grep for its name in comments, not just in code. And prefer
+spacing that owns itself — the fix was to put the inset on the rail rather
+than borrow it from a neighbour.
+
+## `elementFromPoint` cannot see a `pointer-events: none` element (EI-318)
+
+Probing paint order on the sheet's priority rail with `elementFromPoint`, the
+footer and a History day header both came back "topmost" — so I told Rob the
+footer was covering the rail too. It was not. The rail is
+`pointer-events: none`, and `elementFromPoint` skips any such element
+entirely, so the probe could never report the rail and blamed whatever sat
+beneath it. Lifting it for the probe (`rail.style.pointerEvents = "auto"`,
+restored after) gave the real answer: only the day header covered it, which
+is exactly what the screenshot showed.
+
+Two more ways the same probe silently lies: it returns `null` for any point
+outside the viewport (History is below the fold on a phone — scroll it into
+view first), and it measures hit-testing, not painting, in general.
+
+**Rule:** when a probe reports something surprising, check the probe before
+reporting the finding. And prove a new regression test FAILS without the fix
+before trusting that it passes with it — this one was confirmed failing on
+both shells with the rail's `z-10` removed.
+
+A second lesson from the same bug: the test I wrote a turn earlier asserted
+the rail had NO z-index, as a proxy for "the tab paints over it". The proxy
+also let every later positioned element paint over the rail. Assert the
+relationship you care about, not a mechanism that happens to produce it.
