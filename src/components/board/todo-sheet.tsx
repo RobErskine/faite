@@ -724,13 +724,11 @@ function TodoSheetContent({
                 - `bg-popover` — the sheet's own background, not the board's.
                 - No right border, and no right radius, so nothing draws a
                   line down the join.
-                - `left` is its own width minus `MAX_RAIL_WIDTH` — 5px, P1's
-                  double. The tab has to cover the rail behind it completely,
-                  at every level, or a sliver of it pokes out past the tab's
-                  right edge and the wrap breaks. A Tailwind class cannot read
-                  a constant, so `todo-sheet.test.tsx` checks the literal here
-                  against it; widening a rail without widening this fails a
-                  test instead of shipping a sliver.
+                - `left` is exactly its own width (`-left-24`, -6rem), so its
+                  right edge lands on the sheet's padding edge — where the
+                  rail starts. The rail runs unbroken down the sheet right
+                  past the tab, and the tab's own outline takes it around the
+                  outside.
                 - Its remaining three borders are the RAIL's own treatment,
                   not `border-input`: same width, same `--foreground` at the
                   same opacity, dotted for P4. So the sheet's edge comes down,
@@ -757,7 +755,7 @@ function TodoSheetContent({
                 style={priorityEdge(todo.priority)}
                 className={cn(
                   "shrink-0",
-                  "lg:absolute lg:top-4 lg:left-[calc(-6rem+5px)] lg:z-20 lg:w-24",
+                  "lg:absolute lg:top-4 lg:-left-24 lg:z-20 lg:w-24",
                   "lg:space-y-1 lg:rounded-l-xl lg:rounded-r-none",
                   "lg:border-t-[length:var(--priority-edge-width)]",
                   "lg:border-b-[length:var(--priority-edge-width)]",

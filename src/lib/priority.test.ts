@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  MAX_RAIL_WIDTH,
   PRIORITY_RAILS,
   RAIL_RHYTHMS,
   byPriorityThenPosition,
@@ -110,9 +109,6 @@ describe("the encoding", () => {
     }
   });
 
-  it("reports the widest rail, which the sheet's tab has to cover", () => {
-    expect(MAX_RAIL_WIDTH).toBe(Math.max(...LEVELS.map((p) => PRIORITY_RAILS[p].width)));
-  });
 });
 
 describe("byPriorityThenPosition", () => {

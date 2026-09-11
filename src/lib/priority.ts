@@ -64,12 +64,6 @@ export const PRIORITY_RAILS: Record<Priority, PriorityRail> = {
   4: { width: 2, opacity: 0.6, style: "dotted", label: "Priority 4, lowest" },
 };
 
-/** The widest any rail gets. The sheet's priority tab has to cover this much
- * of the sheet's edge, or a sliver of the rail behind it pokes out. */
-export const MAX_RAIL_WIDTH = Math.max(
-  ...Object.values(PRIORITY_RAILS).map((rail) => rail.width),
-);
-
 /**
  * The vertical rhythms a span uses to draw `dashed` and `dotted`, in CSS
  * pixels of ink and gap.

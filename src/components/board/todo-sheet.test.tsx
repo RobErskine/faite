@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { TodoSheet, type RecurrenceInfo } from "./todo-sheet";
 import { defaultRule } from "@/lib/recurrence";
-import { MAX_RAIL_WIDTH, PRIORITY_RAILS } from "@/lib/priority";
+import { PRIORITY_RAILS } from "@/lib/priority";
 import type { Label as LabelRecord, List, Todo, TodoEvent } from "@/lib/schema";
 import type { PlacementContext } from "@/lib/scheduling";
 
@@ -697,12 +697,10 @@ describe("priority in the header (EI-318)", () => {
     render(<Harness todo={{ ...TODO, priority: 2 }} />);
     const tab = document.getElementById("todo-priority")!.parentElement!;
     expect(tab.className).toContain("lg:absolute");
-    // Its own width minus the WIDEST rail. The tab must cover the rail behind
-    // it completely at every level, or a sliver pokes out past its right edge
-    // and the wrap breaks. Derived from the table rather than restated, so
-    // widening a rail without widening this is a failure here, not a sliver
-    // on screen.
-    expect(tab.className).toContain(`lg:left-[calc(-6rem+${MAX_RAIL_WIDTH}px)]`);
+    // Exactly its own width, so its right edge meets the sheet's padding edge
+    // where the rail begins, and the rail runs on past it unbroken.
+    expect(tab.className).toContain("lg:-left-24");
+    expect(tab.className).toContain("lg:w-24");
   });
 
   it("gives the tab no shadow, which is what made it look detached", () => {
