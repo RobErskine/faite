@@ -4663,6 +4663,8 @@
               "reopened",
               "edited",
               "deleted",
+              "attached",
+              "detached",
               "rolledOver",
               "overflowed"
             ],
@@ -4679,6 +4681,44 @@
                 "reopened",
                 "edited",
                 "deleted",
+                "attached",
+                "detached",
+                "rolledOver",
+                "overflowed"
+              ]
+            }
+          },
+          "visibleHistoryKinds": {
+            "default": [
+              "created",
+              "scheduled",
+              "unscheduled",
+              "moved",
+              "done",
+              "dropped",
+              "reopened",
+              "edited",
+              "deleted",
+              "attached",
+              "detached",
+              "rolledOver",
+              "overflowed"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "created",
+                "scheduled",
+                "unscheduled",
+                "moved",
+                "done",
+                "dropped",
+                "reopened",
+                "edited",
+                "deleted",
+                "attached",
+                "detached",
                 "rolledOver",
                 "overflowed"
               ]
@@ -4834,6 +4874,7 @@
           "visibleStatuses",
           "visibleEventKinds",
           "visibleActivityKinds",
+          "visibleHistoryKinds",
           "showWeekends",
           "fontPairing",
           "theme",
