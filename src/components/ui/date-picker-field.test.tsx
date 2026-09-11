@@ -44,25 +44,32 @@ describe("civil date <-> local Date", () => {
   });
 
   it("builds a LOCAL midnight, not a UTC one", () => {
-    // `new Date("2026-08-07")` is UTC midnight, which is Aug 6 anywhere west
-    // of Greenwich. This is the trap the bridge exists to avoid, so assert
-    // the two really are different rather than trusting the comment.
+    // `new Date("2026-08-07")` is UTC midnight — a different instant from
+    // local midnight in every zone but UTC itself. Assert the PROPERTY (local
+    // midnight, on the right day) rather than the inequality: CI runs in UTC,
+    // where the two instants coincide and an inequality assertion fails on
+    // correct code. That is what it did — this suite was written against
+    // America/New_York and only ever run there.
     const local = civilDateToLocalDate("2026-08-07");
     expect(local.getHours()).toBe(0);
+    expect(local.getMinutes()).toBe(0);
+    expect(local.getFullYear()).toBe(2026);
+    expect(local.getMonth()).toBe(7);
     expect(local.getDate()).toBe(7);
-    expect(local.getTime()).not.toBe(new Date("2026-08-07").getTime());
   });
 
   it("reads LOCAL parts on the way out, not UTC ones", () => {
-    // The other half of the same trap. Which direction `toISOString` shifts a
-    // day depends on the sign of the offset — east of Greenwich a local
-    // midnight is already the previous day in UTC; west of it, a local
-    // evening is already the next. This suite runs in America/New_York, so
-    // the evening is the case that shows here: 23:00 on the 7th is the 8th
-    // in UTC, and `.toISOString().slice(0, 10)` would save the wrong day.
-    const evening = new Date(2026, 7, 7, 23, 0, 0);
-    expect(localDateToCivilDate(evening)).toBe("2026-08-07");
-    expect(evening.toISOString().slice(0, 10)).toBe("2026-08-08");
+    // The other half of the same trap: `.toISOString().slice(0, 10)` answers
+    // in UTC. Which way it shifts depends on the sign of the offset — east of
+    // Greenwich a local midnight is already the previous day, west of it a
+    // local evening is already the next — and in UTC it does not shift at
+    // all. So assert that the reader returns the LOCAL calendar day at both
+    // ends of a day, which holds in every zone, instead of asserting a
+    // specific disagreement that only exists in some.
+    for (const hour of [0, 23]) {
+      const at = new Date(2026, 7, 7, hour, 30, 0);
+      expect(localDateToCivilDate(at)).toBe("2026-08-07");
+    }
   });
 });
 
