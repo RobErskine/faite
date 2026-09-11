@@ -1836,3 +1836,38 @@ last-to.
 
 **Rule:** before building a view of the past, ask whether its inputs can
 change after the fact. If they can, it is a picture of now wearing a date.
+
+## A container query is not a viewport query, and a sheet is not the window (EI-323)
+
+History's Quarter view laid three months out with `@xl:grid-cols-3`, which
+looked right in every unit test and stacked them vertically in the browser. A
+1289px window sounds wide; the sheet inside it is `75ch` minus padding —
+about **490px**. `@xl` is 576px, so the breakpoint never matched. `@md`
+(448px) is the widest one that fits, and it still stacks a phone.
+
+The same mistake in the other direction had already bitten: react-day-picker's
+day cell carries `min-w-(--cell-size)` = 28px, and seven of those are 196px,
+wider than one of three columns (~155px). The months **overlapped**. Neither
+the DOM assertions nor the accessible names noticed — every element existed
+and was labelled correctly.
+
+**Rule:** when a component renders inside a panel, sheet or drawer, size it
+against the CONTAINER's width, measured, not the viewport's. And take the
+screenshot: a layout bug in a grid is invisible to tests that only ask what is
+in the DOM.
+
+## Recording a fact beats deriving it, again — now for color (EI-323)
+
+Tinting a History day by "the list that got the most done" reads each
+completion's list. The obvious source is the to-do's current `listId`, and it
+is wrong for the same reason EI-322's whole design was: file that to-do
+somewhere else next week and an old day silently changes color. The past
+moved again.
+
+`done`/`dropped` events now carry `listId` in their payload — additive JSON,
+no migration, no `v` bump — and readers fall back to the current list only for
+rows written before that. The rule this is the second instance of:
+
+**Rule:** if a view claims to show what was true at a moment, every input it
+reads has to have been recorded at that moment. A field you read "now" is a
+field that can change after the fact, and a record that changes is not one.
