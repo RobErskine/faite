@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { TodoSheet, type RecurrenceInfo } from "./todo-sheet";
 import { defaultRule } from "@/lib/recurrence";
-import { PRIORITY_RAILS } from "@/lib/priority";
+import { MAX_RAIL_WIDTH, PRIORITY_RAILS } from "@/lib/priority";
 import type { Label as LabelRecord, List, Todo, TodoEvent } from "@/lib/schema";
 import type { PlacementContext } from "@/lib/scheduling";
 
@@ -697,10 +697,12 @@ describe("priority in the header (EI-318)", () => {
     render(<Harness todo={{ ...TODO, priority: 2 }} />);
     const tab = document.getElementById("todo-priority")!.parentElement!;
     expect(tab.className).toContain("lg:absolute");
-    // Its own width minus THREE pixels — the widest a rail ever gets. The tab
-    // must cover the rail behind it completely at every level, or a sliver
-    // pokes out past its right edge and the wrap breaks.
-    expect(tab.className).toContain("lg:left-[calc(-6rem+3px)]");
+    // Its own width minus the WIDEST rail. The tab must cover the rail behind
+    // it completely at every level, or a sliver pokes out past its right edge
+    // and the wrap breaks. Derived from the table rather than restated, so
+    // widening a rail without widening this is a failure here, not a sliver
+    // on screen.
+    expect(tab.className).toContain(`lg:left-[calc(-6rem+${MAX_RAIL_WIDTH}px)]`);
   });
 
   it("gives the tab no shadow, which is what made it look detached", () => {
@@ -724,14 +726,25 @@ describe("priority in the header (EI-318)", () => {
     expect(tab.style.getPropertyValue("--priority-edge-width")).toBe(
       `${PRIORITY_RAILS[1].width}px`,
     );
-    expect(tab.style.getPropertyValue("--priority-edge-style")).toBe("solid");
+    // P1 is `double` now — the four levels are CSS's four line styles.
+    expect(tab.style.getPropertyValue("--priority-edge-style")).toBe("double");
     expect(tab.style.getPropertyValue("--priority-edge-color")).toContain("--foreground");
   });
 
-  it("dots the tab's outline for P4, matching the rail's dots", () => {
-    render(<Harness todo={{ ...TODO, priority: 4 }} />);
-    const tab = document.getElementById("todo-priority")!.parentElement!;
-    expect(tab.style.getPropertyValue("--priority-edge-style")).toBe("dotted");
+  it("outlines the tab in each level's own line style, exactly", () => {
+    // The four levels are CSS's four `border-style` values, so the tab needs
+    // no approximation — it draws the same thing the rail does.
+    for (const [priority, style] of [
+      [1, "double"],
+      [2, "solid"],
+      [3, "dashed"],
+      [4, "dotted"],
+    ] as const) {
+      cleanup();
+      render(<Harness todo={{ ...TODO, priority }} />);
+      const tab = document.getElementById("todo-priority")!.parentElement!;
+      expect(tab.style.getPropertyValue("--priority-edge-style")).toBe(style);
+    }
   });
 
   it("falls back to the ordinary field border when unprioritized", () => {

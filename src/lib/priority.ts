@@ -16,86 +16,110 @@ import type { Priority, Todo } from "./schema";
  * things — "belongs to this list" and "needs a verdict" — and importance is
  * carried by form alone.
  *
- * **Three channels, and every level is unique on its own.** Thickness is the
- * coarse signal (3 / 2 / 1 / 1px); opacity trims the weight; and the RHYTHM —
- * solid, then progressively more broken — is what lets a level be read without
- * a neighbour to compare it against. That last one is the point: a width ramp
- * alone answers "which of these two is higher", never "what is this one".
+ * **Four levels, four line styles — the four CSS actually has.** Double,
+ * solid, dashed, dotted, for P1 to P4, with thickness stepping down alongside
+ * (5 / 3 / 2 / 2px) to reinforce it. Every level is identifiable on its own,
+ * with no neighbour to compare against: a width ramp alone answers "which of
+ * these two is higher", never "what is this one".
  *
- * The rhythm runs solid → long dash → short dash → sparse dots, which is
- * legible as decreasing insistence before you know the scale. All of it is
- * form rather than color, so it survives every color-vision deficiency and
- * both themes.
+ * Double leads because it reads as emphasis before you know the scale — the
+ * same instinct as a double underline — and because it is the one style that
+ * NEEDS width to exist at all: two lines and a gap is three pixels at minimum,
+ * and at 5px it is two clear 2px strokes. Solid, dashed and dotted then run
+ * from continuous to most broken.
  *
- * A four-step width ramp was rejected: 4px shouts at the column floor, and a
- * 1.5px step rounds to 1 or 2 device pixels depending on the display — a rail
- * that changes thickness when you move the window to another monitor. Rhythm
- * has no such problem, which is why the pair sharing a thickness (P3/P4) is
- * told apart by it.
+ * Mapping onto CSS's own four styles is not a coincidence, it is the point.
+ * The drag chip and the sheet's priority tab draw the mark as a real border,
+ * and with four rhythms and three styles they used to have to approximate.
+ * Now every surface draws exactly the same four things.
+ *
+ * All of it is form rather than color, so it survives every color-vision
+ * deficiency and both themes (docs/DESIGN.md §7, decision A).
  *
  * The rail is drawn in `--foreground`, so it inverts with the theme and always
  * holds full contrast against its column. `opacity` below is applied to the
  * span, not baked into a color, so the same values serve both themes.
  */
+export type RailStyle = "double" | "solid" | "dashed" | "dotted";
+
 export interface PriorityRail {
   /** Rail thickness in px. */
   width: number;
   /** 0–1. Applied to the rail span; the color is always `--foreground`. */
   opacity: number;
   /**
-   * The repeating rhythm, in CSS pixels: `on` of mark, `off` of gap. `null` is
-   * an unbroken line.
-   *
-   * Chosen so each level reads differently at the rail's REAL size — roughly
-   * 27px on a card — rather than only in a swatch. Every period is 9px or
-   * under so at least three marks land in that height; a longer one shows two
-   * and reads as solid, which is an encoding that is present and invisible.
-   * `priority.test.ts` holds that ceiling, and caught a 12px P2 that did
-   * exactly this.
-   *
-   * P2's 6/3 is mostly ink with clear breaks; P3's 4/3 is plainly a broken
-   * line; P4's 2/5 is dots with air around them.
+   * Which of CSS's four line styles this level is. The name IS the
+   * `border-style` value, so the border surfaces pass it straight through
+   * and the span surfaces rebuild it with a gradient.
    */
-  dash: { on: number; off: number } | null;
+  style: RailStyle;
   /** What a screen reader hears in place of the old `P1` chip. */
   label: string;
 }
 
 export const PRIORITY_RAILS: Record<Priority, PriorityRail> = {
-  1: { width: 3, opacity: 1, dash: null, label: "Priority 1, highest" },
-  2: { width: 2, opacity: 0.8, dash: { on: 6, off: 3 }, label: "Priority 2" },
-  3: { width: 1, opacity: 0.62, dash: { on: 4, off: 3 }, label: "Priority 3" },
-  4: { width: 1, opacity: 0.5, dash: { on: 2, off: 5 }, label: "Priority 4, lowest" },
+  1: { width: 5, opacity: 1, style: "double", label: "Priority 1, highest" },
+  2: { width: 3, opacity: 0.9, style: "solid", label: "Priority 2" },
+  3: { width: 2, opacity: 0.75, style: "dashed", label: "Priority 3" },
+  4: { width: 2, opacity: 0.6, style: "dotted", label: "Priority 4, lowest" },
 };
 
+/** The widest any rail gets. The sheet's priority tab has to cover this much
+ * of the sheet's edge, or a sliver of the rail behind it pokes out. */
+export const MAX_RAIL_WIDTH = Math.max(
+  ...Object.values(PRIORITY_RAILS).map((rail) => rail.width),
+);
+
 /**
- * The rail's fill as a `background-image`, or `null` for a solid one.
+ * The vertical rhythms a span uses to draw `dashed` and `dotted`, in CSS
+ * pixels of ink and gap.
  *
- * Every surface that draws a rail as a SPAN goes through this — the board
- * card, the homepage's echo of it, the sheet's leading edge — so a rhythm
- * cannot be right in one place and stale in another.
+ * Every period is 9px or under, because a card rail is only ~27px tall: a
+ * longer period lands two marks and reads as solid, which is an encoding that
+ * is present and invisible. `priority.test.ts` holds that ceiling.
+ */
+export const RAIL_RHYTHMS = {
+  dashed: { on: 6, off: 3 },
+  dotted: { on: 2, off: 3 },
+} as const;
+
+/**
+ * The rail's fill as a `background-image`, for the surfaces that draw it as a
+ * SPAN — the board card, the homepage's echo of it, the sheet's leading edge.
+ * `null` means solid: the caller paints a flat color.
+ *
+ * - `double` runs ACROSS the width: two strokes with a gap between, which is
+ *   what a double border is.
+ * - `dashed` and `dotted` run DOWN it, repeating.
  */
 export function railBackgroundImage(rail: PriorityRail): string | null {
-  if (!rail.dash) return null;
-  const { on, off } = rail.dash;
-  return `repeating-linear-gradient(to bottom, var(--foreground) 0 ${on}px, transparent ${on}px ${on + off}px)`;
+  const ink = "var(--foreground)";
+  switch (rail.style) {
+    case "solid":
+      return null;
+    case "double": {
+      // Two equal strokes around a gap of whatever is left — 2 / 1 / 2 at
+      // 5px. `floor` keeps the strokes on whole pixels so they stay sharp.
+      const stroke = Math.floor((rail.width - 1) / 2);
+      const far = rail.width - stroke;
+      return `linear-gradient(to right, ${ink} 0 ${stroke}px, transparent ${stroke}px ${far}px, ${ink} ${far}px)`;
+    }
+    case "dashed":
+    case "dotted": {
+      const { on, off } = RAIL_RHYTHMS[rail.style];
+      return `repeating-linear-gradient(to bottom, ${ink} 0 ${on}px, transparent ${on}px ${on + off}px)`;
+    }
+  }
 }
 
 /**
- * The nearest `border-style` for a rail's rhythm, for the two surfaces that
- * draw it as a BORDER rather than a span — the drag chip and the sheet's
- * priority tab.
+ * The rail as a `border-style`, for the two surfaces that draw it as a
+ * BORDER — the drag chip and the sheet's priority tab.
  *
- * An approximation, and knowingly so: CSS offers three line styles where the
- * table above has four rhythms, so P2 and P3 both land on `dashed`. They still
- * read apart, because a browser scales its dash length with the border width
- * and those two differ (2px against 1px). A border cannot express 9/3 against
- * 5/3 exactly, and a span cannot follow a rounded corner — each surface uses
- * the form its shape allows.
+ * Exact, not an approximation: the four levels ARE CSS's four line styles.
  */
-export function railBorderStyle(rail: PriorityRail): "solid" | "dashed" | "dotted" {
-  if (!rail.dash) return "solid";
-  return rail.dash.on <= 2 ? "dotted" : "dashed";
+export function railBorderStyle(rail: PriorityRail): RailStyle {
+  return rail.style;
 }
 
 /** `undefined` for an unprioritised to-do, so callers can render nothing. */

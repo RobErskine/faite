@@ -116,8 +116,9 @@ const EMPTY_LISTS_BY_ID: ReadonlyMap<string, List> = new Map();
  * `PriorityRail` draws with a width, an opacity on the span, and a repeating
  * gradient for P4's dots. A border cannot take an opacity without fading the
  * text inside it too, so the level's opacity is folded into the color with
- * `color-mix`, and the rhythm becomes the nearest `border-style` — see
- * `railBorderStyle` for why that is an approximation and why it still reads.
+ * `color-mix`. The line style needs no translation at all: the four levels
+ * are CSS's four `border-style` values, so `railBorderStyle` passes it
+ * straight through.
  *
  * Every value falls back to the ordinary field border, which is what an
  * unprioritized to-do gets — and what every to-do gets below `lg`, where the
@@ -710,10 +711,13 @@ function TodoSheetContent({
                 - `bg-popover` — the sheet's own background, not the board's.
                 - No right border, and no right radius, so nothing draws a
                   line down the join.
-                - `left` is its own width minus THREE pixels — the widest a
-                  rail ever gets (P1). The tab has to cover the rail behind it
-                  completely, at every level, or a sliver of it pokes out past
-                  the tab's right edge and the wrap breaks.
+                - `left` is its own width minus `MAX_RAIL_WIDTH` — 5px, P1's
+                  double. The tab has to cover the rail behind it completely,
+                  at every level, or a sliver of it pokes out past the tab's
+                  right edge and the wrap breaks. A Tailwind class cannot read
+                  a constant, so `todo-sheet.test.tsx` checks the literal here
+                  against it; widening a rail without widening this fails a
+                  test instead of shipping a sliver.
                 - Its remaining three borders are the RAIL's own treatment,
                   not `border-input`: same width, same `--foreground` at the
                   same opacity, dotted for P4. So the sheet's edge comes down,
@@ -740,7 +744,7 @@ function TodoSheetContent({
                 style={priorityEdge(todo.priority)}
                 className={cn(
                   "shrink-0",
-                  "lg:absolute lg:top-4 lg:left-[calc(-6rem+3px)] lg:w-24",
+                  "lg:absolute lg:top-4 lg:left-[calc(-6rem+5px)] lg:w-24",
                   "lg:space-y-1 lg:rounded-l-xl lg:rounded-r-none",
                   "lg:border-t-[length:var(--priority-edge-width)]",
                   "lg:border-b-[length:var(--priority-edge-width)]",

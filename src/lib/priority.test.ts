@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  MAX_RAIL_WIDTH,
   PRIORITY_RAILS,
+  RAIL_RHYTHMS,
   byPriorityThenPosition,
   priorityRail,
   priorityRank,
@@ -17,56 +19,67 @@ describe("priorityRail", () => {
     expect(priorityRail(undefined)).toBeUndefined();
   });
 
-  it("resolves every level", () => {
-    expect(LEVELS.map((p) => priorityRail(p)?.width)).toEqual([3, 2, 1, 1]);
+  it("resolves every level to its line style and width", () => {
+    expect(LEVELS.map((p) => priorityRail(p)?.style)).toEqual([
+      "double",
+      "solid",
+      "dashed",
+      "dotted",
+    ]);
+    expect(LEVELS.map((p) => priorityRail(p)?.width)).toEqual([5, 3, 2, 2]);
   });
 });
 
 describe("the encoding", () => {
   /*
-    The whole point of the rail is that thickness, weight and rhythm are three
-    channels. If a future edit made two levels identical on all three, the
-    design would silently stop encoding anything — so the invariant is a test,
-    not a comment.
+    Four levels, four line styles, and every level identifiable ALONE. A width
+    ramp answers "which of these two is higher" but never "what is this one";
+    the line style is what does. If two levels ever shared a style, the one
+    thing this design exists to guarantee would silently stop being true.
   */
-  it("never lets two levels share width, opacity and rhythm", () => {
-    const keys = LEVELS.map((p) => {
-      const rail = PRIORITY_RAILS[p];
-      return `${rail.width}:${rail.opacity}:${JSON.stringify(rail.dash)}`;
-    });
-    expect(new Set(keys).size).toBe(LEVELS.length);
+  it("gives every level a line style no other level shares", () => {
+    const styles = LEVELS.map((p) => PRIORITY_RAILS[p].style);
+    expect(new Set(styles).size).toBe(LEVELS.length);
   });
 
-  /*
-    Stronger than the above, and the reason the rhythms exist: a width ramp
-    answers "which of these two is higher" but never "what is this one". Every
-    level has to be identifiable with no neighbour beside it, which means the
-    rhythm alone must be unique.
-  */
-  it("gives every level a rhythm no other level shares", () => {
-    const rhythms = LEVELS.map((p) => JSON.stringify(PRIORITY_RAILS[p].dash));
-    expect(new Set(rhythms).size).toBe(LEVELS.length);
+  it("uses exactly CSS's four line styles, in order of insistence", () => {
+    // Mapping onto `border-style` 1:1 is the point: the border surfaces (drag
+    // chip, sheet tab) draw these exactly rather than approximating.
+    expect(LEVELS.map((p) => PRIORITY_RAILS[p].style)).toEqual([
+      "double",
+      "solid",
+      "dashed",
+      "dotted",
+    ]);
   });
 
-  it("breaks the line more as the level drops", () => {
-    // Solid, then progressively more gap than mark — legible as decreasing
-    // insistence before you know what the scale is.
-    const inked = LEVELS.map((p) => {
-      const { dash } = PRIORITY_RAILS[p];
-      return dash ? dash.on / (dash.on + dash.off) : 1;
-    });
-    for (let i = 1; i < inked.length; i++) {
-      expect(inked[i]).toBeLessThan(inked[i - 1]);
-    }
-  });
-
-  it("keeps every rhythm visible at the rail's real height", () => {
-    // ~27px on a board card. A period longer than a third of that shows one
-    // mark and reads as solid; the encoding would be there and invisible.
+  it("gives double enough width to be two strokes and a gap", () => {
+    // Below 3px there is no room for a gap at all, and a "double" rail renders
+    // as a solid one — present in the table, invisible on screen.
     for (const p of LEVELS) {
-      const { dash } = PRIORITY_RAILS[p];
-      if (dash) expect(dash.on + dash.off).toBeLessThanOrEqual(9);
+      if (PRIORITY_RAILS[p].style === "double") {
+        expect(PRIORITY_RAILS[p].width).toBeGreaterThanOrEqual(3);
+      }
     }
+  });
+
+  it("never widens as the level drops", () => {
+    const widths = LEVELS.map((p) => PRIORITY_RAILS[p].width);
+    for (let i = 1; i < widths.length; i++) {
+      expect(widths[i]).toBeLessThanOrEqual(widths[i - 1]);
+    }
+  });
+
+  it("keeps every dashed and dotted rhythm visible at a card rail's height", () => {
+    // ~27px on a board card. A period over 9px lands two marks and reads as
+    // solid. This caught a 12px dash once already.
+    for (const rhythm of Object.values(RAIL_RHYTHMS)) {
+      expect(rhythm.on + rhythm.off).toBeLessThanOrEqual(9);
+    }
+  });
+
+  it("makes dotted's marks shorter than dashed's, or the two would blur", () => {
+    expect(RAIL_RHYTHMS.dotted.on).toBeLessThan(RAIL_RHYTHMS.dashed.on);
   });
 
   // Decision A (docs/DESIGN.md §7): the rail carries no hue, so red can mean
@@ -84,18 +97,6 @@ describe("the encoding", () => {
     }
   });
 
-  // Only the top level is unbroken. Everything below it is told apart by form
-  // rather than color, so it survives every color-vision deficiency and both
-  // themes.
-  it("leaves only the highest level solid", () => {
-    expect(LEVELS.map((p) => PRIORITY_RAILS[p].dash === null)).toEqual([
-      true,
-      false,
-      false,
-      false,
-    ]);
-  });
-
   it("keeps every opacity legible", () => {
     for (const p of LEVELS) {
       expect(PRIORITY_RAILS[p].opacity).toBeGreaterThanOrEqual(0.5);
@@ -107,6 +108,10 @@ describe("the encoding", () => {
     for (const p of LEVELS) {
       expect(PRIORITY_RAILS[p].label).toMatch(/^Priority \d/);
     }
+  });
+
+  it("reports the widest rail, which the sheet's tab has to cover", () => {
+    expect(MAX_RAIL_WIDTH).toBe(Math.max(...LEVELS.map((p) => PRIORITY_RAILS[p].width)));
   });
 });
 
@@ -154,32 +159,34 @@ describe("byPriorityThenPosition", () => {
 });
 
 describe("railBackgroundImage", () => {
-  it("is null for a solid rail, so the caller paints a flat color", () => {
-    expect(railBackgroundImage(PRIORITY_RAILS[1])).toBeNull();
+  it("is null for solid, so the caller paints a flat color", () => {
+    expect(railBackgroundImage(PRIORITY_RAILS[2])).toBeNull();
   });
 
-  it("builds the rhythm's period from `on` and `on + off`", () => {
-    // P4 is 2 on, 5 off — so ink to 2px, gap to 7px, repeat.
+  it("draws double ACROSS the width: two whole-pixel strokes and a gap", () => {
+    // 5px -> 2 / 1 / 2. Whole pixels, so the strokes stay sharp.
+    expect(railBackgroundImage(PRIORITY_RAILS[1])).toBe(
+      "linear-gradient(to right, var(--foreground) 0 2px, transparent 2px 3px, var(--foreground) 3px)",
+    );
+  });
+
+  it("draws dashed and dotted DOWN the length, repeating", () => {
+    expect(railBackgroundImage(PRIORITY_RAILS[3])).toBe(
+      "repeating-linear-gradient(to bottom, var(--foreground) 0 6px, transparent 6px 9px)",
+    );
     expect(railBackgroundImage(PRIORITY_RAILS[4])).toBe(
-      "repeating-linear-gradient(to bottom, var(--foreground) 0 2px, transparent 2px 7px)",
+      "repeating-linear-gradient(to bottom, var(--foreground) 0 2px, transparent 2px 5px)",
     );
   });
 });
 
 describe("railBorderStyle", () => {
-  it("maps the four rhythms onto the three styles CSS has", () => {
-    // P2 and P3 collide on `dashed` — knowingly. A browser scales its dash
-    // length with the border width, and those two differ (2px against 1px),
-    // so they still read apart. See the function's own comment.
-    expect(LEVELS.map((p) => railBorderStyle(PRIORITY_RAILS[p]))).toEqual([
-      "solid",
-      "dashed",
-      "dashed",
-      "dotted",
-    ]);
-  });
-
-  it("keeps the width difference that separates the two dashed levels", () => {
-    expect(PRIORITY_RAILS[2].width).not.toBe(PRIORITY_RAILS[3].width);
+  it("passes the style straight through — exact, not approximated", () => {
+    // It used to have to squeeze four rhythms into three styles, landing P2
+    // and P3 on the same one. Four styles for four levels means it no longer
+    // translates anything.
+    for (const p of LEVELS) {
+      expect(railBorderStyle(PRIORITY_RAILS[p])).toBe(PRIORITY_RAILS[p].style);
+    }
   });
 });
