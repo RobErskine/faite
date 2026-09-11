@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CalendarDays, ChevronLeft, ChevronRight, ListClock } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, History, ListClock } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { civilDateToLocalDate } from "@/components/ui/date-picker-field";
@@ -58,6 +58,14 @@ interface DateNavProps {
    * with no new prop threading through either shell. */
   onOpenActivity: () => void;
   /**
+   * Opens the History sheet (EI-322) — the one way to look at a past day.
+   * The board itself never scrolls before today, and that is deliberate: the
+   * past is a separate place, not more columns to the left. The button sits
+   * directly LEFT of the range label for the same reason — earlier is to the
+   * left of now.
+   */
+  onOpenHistory: () => void;
+  /**
    * The phone shell's context bar (`phone-board.tsx`, mobile plan M3). Drops
    * `ViewSettings` (the day-count toggle is moot — the pager always shows
    * one), `SavedViewsMenu` (a saved view snapshots `visibleDays` among other
@@ -95,6 +103,7 @@ export function DateNav({
   onJumpToDate,
   onToday,
   onOpenActivity,
+  onOpenHistory,
   compact,
 }: DateNavProps) {
   const rangeStart = addDays(today, anchorIndex);
@@ -114,6 +123,7 @@ export function DateNav({
   if (compact) {
     return (
       <div className="flex items-center gap-2 px-4 py-2">
+        <HistoryTrigger onClick={onOpenHistory} />
         {/*
           The board's one serif display moment (docs/DESIGN.md §2): "where am
           I" is the first thing worth reading on the page, and there was no
@@ -148,10 +158,16 @@ export function DateNav({
         The board's one serif display moment (docs/DESIGN.md §2): "where am
         I" is the first thing worth reading on the page, and there was no
         `<h1>` anywhere under /board until this one.
+
+        Wrapped with the History button so the pair shares the left track's
+        `flex-1` — the view controls stay centered on the bar.
       */}
-      <h1 className="nums min-w-0 flex-1 truncate font-heading text-lg font-semibold tracking-tight text-foreground">
-        {range}
-      </h1>
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <HistoryTrigger onClick={onOpenHistory} />
+        <h1 className="nums min-w-0 truncate font-heading text-lg font-semibold tracking-tight text-foreground">
+          {range}
+        </h1>
+      </div>
 
       <div className="flex items-center gap-0.5 rounded-lg border border-line/60 bg-surface-0 p-0.5">
         <ViewSettings settings={settings} />
@@ -189,6 +205,20 @@ export function DateNav({
         <ActivityTrigger onClick={onOpenActivity} />
       </div>
     </div>
+  );
+}
+
+function HistoryTrigger({ onClick }: { onClick: () => void }) {
+  return (
+    <Button
+      variant="ghost"
+      size="icon-xs"
+      className="shrink-0 text-muted-foreground"
+      onClick={onClick}
+      aria-label="Open history"
+    >
+      <History aria-hidden />
+    </Button>
   );
 }
 

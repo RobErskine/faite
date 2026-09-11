@@ -16,12 +16,12 @@ One branch, one PR `feat(EI-320/EI-321/EI-322): …`, squash merge. One commit p
   - [x] `service/todos.ts`: a status patch writes a status event
   - [x] `updateTodo`: a date or list change writes `scheduled {from,to}` / `moved`
   - [x] Overdrive payloads get `via: "overdrive"`
-- [ ] **EI-322** — the History sheet
-  - [ ] `src/lib/day-log.ts` and its tests
-  - [ ] `useEventsBetween` hook, plus a `bulkGet` for titles
-  - [ ] `history-sheet.tsx`, the `DateNav` trigger, the palette command, `?history=`, `computeModalOpen`
-  - [ ] e2e: extend `activity-timeline.spec.ts`
-  - [ ] Docs: ARCHITECTURE, design-system-runbook
+- [x] **EI-322** — the History sheet
+  - [x] `src/lib/day-log.ts` and its tests
+  - [x] `useEventsBetween` hook, plus a `bulkGet` for titles
+  - [x] `history-sheet.tsx`, the `DateNav` trigger, the palette command, `?history=`, `computeModalOpen`
+  - [x] e2e: extend `activity-timeline.spec.ts`
+  - [x] Docs: ARCHITECTURE, design-system-runbook
 - [ ] Verify: `npm test`, typecheck, `e2e:ci` (prod server on port 3100), full `npm run e2e`
 - [ ] PR, CI green, squash merge, Linear learnings on all 3 tickets
 
@@ -32,3 +32,8 @@ One branch, one PR `feat(EI-320/EI-321/EI-322): …`, squash merge. One commit p
 - `hidden*` is `z.array(z.string())`, not the enum. An older bundle must accept a kind that a newer bundle hid, for the same reason `todoEvent.kind` is a `z.string()`.
 - EI-321: every server update route requested exactly 2 HLC stamps (`durableHlcQueue(stub, 2)`). One update can now push 4 entries (todo + edited + status + scheduled), and the queue throws when it runs out. So the size is now the exported `UPDATE_TODO_MAX_ENTRIES`, and a route test covers a patch that uses all 4.
 - EI-321: on the server, a list change stays `edited`, because a `moved` row carries both list names and the service builder has no store. The client logs `moved`.
+- EI-322: my first e2e title, "Look back at the day", became the to-do "Look back at the" with an End-of-day reminder, because quick-add reads "day" as a date word. Use a title with no date words in an e2e quick-add.
+- EI-322: a callback prop loses TypeScript's narrowing of `data.ctx` in `board.tsx`, even past the ready gate. Read `today` into a const right after the gate.
+- EI-322: `modifiersClassNames` on the shared `Calendar` applies to the day cell (`td`, already `relative`), and the day button is `z-10`. So the dot is an `::after` with `z-20`. The cell has `data-selected`, so the dot can switch color on the selected day.
+- Visual check (production build on port 3100, dark theme, 1440×900 and iPhone 13): the button sits left of the range in both shells, the sheet is full width on the phone, and the empty day reads cleanly. I made the calendar background transparent after seeing it as a dark box inside the sheet.
+- Local e2e: `touch-smoke` "a horizontal swipe scrolls the day track" fails on phone-iphone, phone-pixel and phone-iphone-landscape on this machine (scrollLeft does not change). It **also fails on a clean `main` build here** (97a1346, checked out detached and rebuilt). CI on `main` is green for the same test, so it is local and was there before this branch. Local gate: 137 passed, 1 failed (this test). Full matrix: 184 passed, 3 failed (this test, 3 projects), 1 skipped.

@@ -85,6 +85,8 @@ interface CommandPaletteProps {
   onOpenHelp: () => void;
   /** `⌘⇧A` opens the same sheet — see activity-sheet.tsx. */
   onOpenActivity: () => void;
+  /** Opens the History sheet on today — see history-sheet.tsx. */
+  onOpenHistory: () => void;
 }
 
 /** `PaletteEntryMode` (command-registry.ts) plus the always-present root. */
@@ -116,6 +118,7 @@ export function CommandPalette({
   onOpenOverdrive,
   onOpenHelp,
   onOpenActivity,
+  onOpenHistory,
 }: CommandPaletteProps) {
   const platform = usePlatform();
   const [mode, setMode] = useState<Mode>({ kind: "root" });
@@ -428,6 +431,7 @@ export function CommandPalette({
     openHelp: onOpenHelp,
     openOverdrive: onOpenOverdrive,
     openActivity: onOpenActivity,
+    openHistory: onOpenHistory,
     close,
     setVisibleDays: async (days) => {
       await mutateSettings(LOCAL_OWNER_ID, { visibleDays: days });

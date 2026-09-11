@@ -167,6 +167,7 @@ function renderPalette(
     onOpenOverdrive: () => {},
     onOpenHelp: () => {},
     onOpenActivity: () => {},
+    onOpenHistory: () => {},
     ...overrides,
   };
   return render(<CommandPalette {...props} />);

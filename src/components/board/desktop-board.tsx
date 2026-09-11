@@ -234,6 +234,7 @@ export function DesktopBoard({
         onJumpToDate={jumpToIndex}
         onToday={jumpToToday}
         onOpenActivity={() => ui.setActivityOpen(true)}
+        onOpenHistory={() => ui.setHistoryDay(ctx.today)}
       />
 
       {/*

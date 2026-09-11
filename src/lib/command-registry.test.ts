@@ -51,6 +51,7 @@ function makeCtx(overrides: Partial<PaletteCommandCtx> = {}): PaletteCommandCtx 
     openHelp: vi.fn(),
     openOverdrive: vi.fn(),
     openActivity: vi.fn(),
+    openHistory: vi.fn(),
     close: vi.fn(),
     setVisibleDays: vi.fn(),
     setVisibleStatuses: vi.fn(),
@@ -159,6 +160,17 @@ describe("commandsByGroup", () => {
 
     manage.find((c) => c.id === "manage-activity-feed")!.run(ctx);
     expect(openActivity).toHaveBeenCalled();
+    expect(close).toHaveBeenCalled();
+  });
+
+  it("routes the History entry to openHistory+close (EI-322)", () => {
+    const openHistory = vi.fn();
+    const close = vi.fn();
+    const ctx = makeCtx({ openHistory, close });
+    const manage = commandsByGroup(ctx).get("Manage")!;
+
+    manage.find((c) => c.id === "manage-history")!.run(ctx);
+    expect(openHistory).toHaveBeenCalled();
     expect(close).toHaveBeenCalled();
   });
 });

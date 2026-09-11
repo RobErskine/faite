@@ -27,6 +27,7 @@ const CLOSED: BoardOverlayState = {
   overdriveSource: null,
   helpSheetOpen: false,
   activityOpen: false,
+  historyOpen: false,
   contextMenuOpen: false,
 };
 
@@ -42,6 +43,7 @@ const OPEN_VALUE: { [K in keyof BoardOverlayState]: BoardOverlayState[K] } = {
   overdriveSource: OVERFLOW,
   helpSheetOpen: true,
   activityOpen: true,
+  historyOpen: true,
   contextMenuOpen: true,
 };
 
