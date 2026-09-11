@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { HistorySheet } from "./history-sheet";
-import type { DayNote, TodoEvent, Todo } from "@/lib/schema";
+import type { DayNote, List, TodoEvent, Todo } from "@/lib/schema";
 
 /**
  * The sheet reads the log through two thin Dexie live-queries — mocked, so
@@ -56,16 +56,20 @@ function todo(id: string, title: string, deletedAt: string | null = null): Todo 
   return { id, title, deletedAt, listId: null } as Todo;
 }
 
+const GROCERIES = { id: "groceries", name: "Groceries", color: "#30a46c", tabId: null } as List;
+
 function Harness({
   day = DAY,
   onSelectDay = () => {},
   onOpenTodo = () => {},
   dayNotes = new Map<string, DayNote>(),
+  listsById = new Map<string, List>(),
 }: {
   day?: string;
   onSelectDay?: (day: string) => void;
   onOpenTodo?: (id: string) => void;
   dayNotes?: ReadonlyMap<string, DayNote>;
+  listsById?: ReadonlyMap<string, List>;
 }) {
   return (
     <HistorySheet
@@ -73,7 +77,8 @@ function Harness({
       today={TODAY}
       timezone="UTC"
       dayNotes={dayNotes}
-      listsById={new Map()}
+      listsById={listsById}
+      backlog={undefined}
       tabsById={new Map()}
       onSelectDay={onSelectDay}
       onClose={() => {}}
@@ -148,6 +153,16 @@ describe("HistorySheet", () => {
     expect(screen.getByText("Nothing finished or decided on this day.")).toBeTruthy();
   });
 
+  it("adds 'yet' on today, where the day is not over (EI-323)", () => {
+    render(<Harness day={TODAY} />);
+    expect(screen.getByText("Nothing finished or decided on this day yet.")).toBeTruthy();
+  });
+
+  it("draws Today as a real button, with a border (EI-323)", () => {
+    render(<Harness />);
+    expect(screen.getByRole("button", { name: "Today" }).className).toMatch(/\bborder\b/);
+  });
+
   it("says where the log begins for a day before it", () => {
     render(<Harness day="2026-07-20" />);
     expect(screen.getByText("History starts Aug 1, 2026.")).toBeTruthy();
@@ -173,6 +188,49 @@ describe("HistorySheet", () => {
       screen.getByRole("button", { name: "Thursday, September 3, something finished" }),
     ).toBeTruthy();
     expect(screen.getByRole("button", { name: "Friday, September 4" })).toBeTruthy();
+  });
+
+  it("tints a day by the list that got the most done, and names it (EI-323)", () => {
+    todosFixture = new Map([["a", todo("a", "Buy milk")]]);
+    eventsFixture = [event("a", "done", "2026-09-03T10:00:00.000Z", { listId: "groceries" })];
+    render(<Harness listsById={new Map([["groceries", GROCERIES]])} />);
+
+    const button = screen.getByRole("button", {
+      name: "Thursday, September 3, something finished, mostly Groceries",
+    });
+    // The tint sits on the day cell, at the one fixed strength (`tint()`, 12%).
+    expect((button.closest("td") as HTMLElement).style.backgroundColor).not.toBe("");
+  });
+
+  it("does not tint a day of Won't do", () => {
+    todosFixture = new Map([["a", todo("a", "Buy milk")]]);
+    eventsFixture = [event("a", "dropped", "2026-09-03T10:00:00.000Z", { listId: "groceries" })];
+    render(<Harness listsById={new Map([["groceries", GROCERIES]])} />);
+    expect(screen.queryByRole("button", { name: /mostly Groceries/ })).toBeNull();
+  });
+
+  it("shows one month, a rolling quarter, or a rolling year (EI-323)", () => {
+    render(<Harness />);
+    expect(screen.getAllByRole("grid")).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Quarter" }));
+    expect(screen.getAllByRole("grid")).toHaveLength(3);
+    // Rolling: the quarter ENDS at the day's month, Jul–Sep, not a calendar quarter.
+    expect(screen.getByText("July 2026")).toBeTruthy();
+    expect(screen.getByText("September 2026")).toBeTruthy();
+    expect(screen.queryByText("October 2026")).toBeNull();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Year" }));
+    expect(screen.getAllByRole("grid")).toHaveLength(12);
+    expect(screen.getByText("October 2025")).toBeTruthy();
+  });
+
+  it("keeps the quarter in place when the chosen day is already on screen", () => {
+    const { rerender } = render(<Harness />);
+    fireEvent.click(screen.getByRole("tab", { name: "Quarter" }));
+    rerender(<Harness day="2026-07-20" />);
+    expect(screen.getByText("September 2026")).toBeTruthy();
+    expect(screen.queryByText("May 2026")).toBeNull();
   });
 
   it("shows the day's note", () => {

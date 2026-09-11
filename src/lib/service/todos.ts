@@ -106,6 +106,13 @@ interface DeletedPayload {
   title: string;
 }
 
+/** Mirrors `todo-events.ts`'s `StatusPayload`, minus `via`: the list a
+ * to-do was in when it was settled (EI-323). */
+interface StatusPayload {
+  v: 1;
+  listId: string | null;
+}
+
 /** Mirrors `todo-events.ts`'s `ScheduledPayload`, minus `via` — nothing on
  * the server path is a triage decision. */
 interface ScheduledPayload {
@@ -155,7 +162,7 @@ function buildTodoEventEntry(
   ctx: ServiceContext,
   todoId: string,
   kind: string,
-  payload: EditedPayload | DeletedPayload | ScheduledPayload | null,
+  payload: EditedPayload | DeletedPayload | ScheduledPayload | StatusPayload | null,
   at: string,
 ): PushEntry {
   const timestamp = new Date().toISOString();
@@ -250,7 +257,7 @@ export type UpdateTodoInput = Partial<Omit<Todo, "id" | "ownerId" | "createdAt">
 /** The fields of the stored row `buildUpdateTodoEntry` compares a patch
  * against. Every caller has already read the row (to 404 an unknown id), so
  * this costs nothing extra. */
-export type UpdateTodoBefore = Pick<Todo, "status" | "scheduledDate">;
+export type UpdateTodoBefore = Pick<Todo, "status" | "scheduledDate" | "listId">;
 
 /**
  * The most `PushEntry`s one `buildUpdateTodoEntry` call can return: the todo,
@@ -335,7 +342,12 @@ export function buildUpdateTodoEntry(
   if (before && validated.status !== undefined && validated.status !== before.status) {
     const kind =
       validated.status === "done" ? "done" : validated.status === "dropped" ? "dropped" : "reopened";
-    entries.push(buildTodoEventEntry(ctx, id, kind, null, timestamp));
+    // The list it is in AFTER this patch — a patch may move and settle it
+    // at once. Recorded on a settle only, like the client (EI-323).
+    const listId = "listId" in validated ? (validated.listId ?? null) : (before.listId ?? null);
+    entries.push(
+      buildTodoEventEntry(ctx, id, kind, kind === "reopened" ? null : { v: 1, listId }, timestamp),
+    );
   }
 
   if (dateChanged) {

@@ -571,6 +571,7 @@ export function Board() {
         timezone={data.settings?.timezone ?? "UTC"}
         dayNotes={data.dayNotes}
         listsById={data.listsById}
+        backlog={data.backlogList}
         tabsById={data.tabsById}
         onSelectDay={ui.setHistoryDay}
         onClose={() => ui.setHistoryDay(null)}

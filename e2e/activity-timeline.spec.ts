@@ -116,6 +116,14 @@ test("History lists today's completion under Done, and steps back to an empty da
   await expect(sheet.getByRole("button", { name: /, something finished$/ })).toBeVisible();
   await expect(sheet.getByRole("button", { name: "Next day", exact: true })).toBeDisabled();
 
+  // Month · Quarter · Year (EI-323): one, three, then twelve months on screen.
+  await expect(sheet.getByRole("grid")).toHaveCount(1);
+  await sheet.getByRole("tab", { name: "Quarter" }).click();
+  await expect(sheet.getByRole("grid")).toHaveCount(3);
+  await sheet.getByRole("tab", { name: "Year" }).click();
+  await expect(sheet.getByRole("grid")).toHaveCount(12);
+  await sheet.getByRole("tab", { name: "Month" }).click();
+
   await sheet.getByRole("button", { name: "Previous day", exact: true }).click();
   await expect(sheet.getByText("Nothing finished or decided on this day.")).toBeVisible();
 

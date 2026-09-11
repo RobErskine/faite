@@ -1249,11 +1249,16 @@ describe("todoEvent history log (EI-94)", () => {
       ]);
     });
 
-    it("leaves ordinary status events with no payload, as before", async () => {
-      const id = await createTodo({ title: "A" });
+    it("EI-323: a settle records the list it happened in; a reopen records none", async () => {
+      const list = await createList("Groceries");
+      const id = await createTodo({ title: "A", listId: list });
       await setTodoStatus(id, "done");
-      const done = (await eventsFor(id)).find((e) => e.kind === "done")!;
-      expect(done.payload).toBeNull();
+      await setTodoStatus(id, "open");
+
+      const events = await eventsFor(id);
+      const done = events.find((e) => e.kind === "done")!;
+      expect(JSON.parse(done.payload!)).toEqual({ v: 1, listId: list });
+      expect(events.find((e) => e.kind === "reopened")!.payload).toBeNull();
     });
   });
 

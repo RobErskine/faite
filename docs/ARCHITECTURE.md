@@ -1093,6 +1093,18 @@ reschedules in one day collapse to first-from → last-to. Undone events
 (tombstoned) are skipped; `edited`/`attached`/`detached` are left out as noise
 for a look-back.
 
+The calendar (EI-323) shows a Month, a rolling Quarter or a rolling Year —
+every span ENDS at the month on screen, so the current month is always in
+view. Each day is tinted by the effective list color that got the most
+**completions** that day (`dayTints`, `lib/day-log.ts`: grouped by color,
+tie → most recent, Won't do never tints), at ONE strength (`tint()`) whether
+it was one completion or twenty — the calendar says which list a day was
+about, never how much, which is what keeps a year of it on the right side of
+`docs/DESIGN.md` §4. To keep a day's color from moving when a to-do is filed
+elsewhere later, `done`/`dropped` events now record the list they happened in
+(`StatusPayload.listId`, client and server); rows written before that fall
+back to the to-do's current list.
+
 Cost is bounded by the day, not the log: two indexed range scans on `at`
 (`useEventsBetween` — the month on screen for the dots, the day for the log)
 and a `bulkGet` of just that day's to-dos (`useTodosById`), never

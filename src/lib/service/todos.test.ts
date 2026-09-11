@@ -126,7 +126,7 @@ describe("buildUpdateTodoEntry", () => {
   });
 
   describe("EI-321: status and date changes are logged as decisions", () => {
-    const open = { status: "open" as const, scheduledDate: "2026-09-10" };
+    const open = { status: "open" as const, scheduledDate: "2026-09-10", listId: "work" };
     const kindsOf = (entries: ReturnType<typeof buildUpdateTodoEntry>) =>
       entries
         .filter((e) => e.kind === "todoEvent")
@@ -152,6 +152,23 @@ describe("buildUpdateTodoEntry", () => {
       expect(kindsOf(buildUpdateTodoEntry(fakeContext(), "t", { status: "open" }, done))).toEqual([
         "reopened",
       ]);
+    });
+
+    it("EI-323: a settle records the list it happened in", () => {
+      const entries = buildUpdateTodoEntry(fakeContext(), "t", { status: "done" }, open);
+      expect(payloadOf(entries, "done")).toEqual({ v: 1, listId: "work" });
+    });
+
+    it("EI-323: a patch that moves and settles at once records the NEW list", () => {
+      const entries = buildUpdateTodoEntry(fakeContext(), "t", { status: "done", listId: "home" }, open);
+      expect(payloadOf(entries, "done")).toEqual({ v: 1, listId: "home" });
+    });
+
+    it("EI-323: a reopen records no list", () => {
+      const done = { ...open, status: "done" as const };
+      const entries = buildUpdateTodoEntry(fakeContext(), "t", { status: "open" }, done);
+      const reopened = entries.find((e) => (e.patch as Record<string, unknown>).kind === "reopened")!;
+      expect((reopened.patch as Record<string, unknown>).payload).toBeNull();
     });
 
     it("logs nothing for a status set to what it already was", () => {

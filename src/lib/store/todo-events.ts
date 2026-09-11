@@ -37,6 +37,20 @@ interface EmptyPayload {
   via?: EventVia;
 }
 
+/**
+ * A `done`/`dropped` row (EI-323): the list the to-do was in WHEN it was
+ * settled. History tints each day by the list that got the most done, and
+ * reading the to-do's current list instead would let a later move repaint
+ * an old day — the past changing after the fact, which is the one thing a
+ * look-back must not do. Rows written before this carry no `listId`; readers
+ * fall back to the current list for those (`lib/day-log.ts`).
+ */
+export interface StatusPayload {
+  v: 1;
+  listId: string | null;
+  via?: EventVia;
+}
+
 export interface ScheduledPayload {
   v: 1;
   from: CivilDate | null;
@@ -107,6 +121,7 @@ export interface AttachmentPayload {
 
 export type TodoEventPayload =
   | EmptyPayload
+  | StatusPayload
   | ScheduledPayload
   | MovedPayload
   | EditedPayload

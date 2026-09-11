@@ -197,3 +197,95 @@ export function activeDays(events: readonly TodoEvent[], timezone: string): Set<
   }
   return days;
 }
+
+/** What a day's calendar cell shows as its tint — see `dayTints`. */
+export interface DayTint {
+  /** A tintable `#rrggbb` color — the caller's resolver already checked. */
+  color: string;
+  /** The list that contributed most to `color`, for the day's label. */
+  listName: string;
+}
+
+/**
+ * Where a list id points, for tinting: its effective color (own, else its
+ * tab's) and its name. `null` for no list, a list with no color, or a color
+ * the UI cannot tint. Passed in so this module never learns about
+ * `colors.ts` or the list maps.
+ */
+export type ListTintResolver = (listId: string | null) => { color: string; name: string } | null;
+
+/**
+ * Each day's tint in `events`: the effective list color with the most
+ * completions that day (EI-323).
+ *
+ * - **Completed only.** A day of letting things go is not tinted.
+ * - **Same "last change of the day" rule** as `buildDayLog` and `activeDays`,
+ *   so a to-do finished and reopened that afternoon does not count.
+ * - **Grouped by color, not by list**, so two lists that share a color pool
+ *   their completions; the winning color's label names the list inside it
+ *   with the most.
+ * - **Ties go to the most recent completion.** Deterministic, and it favors
+ *   what the day ended on.
+ * - **The list at the time.** A `done` row's payload records where the to-do
+ *   was when it was finished (`StatusPayload`); older rows fall back to the
+ *   to-do's current list from `todosById`.
+ *
+ * Deliberately NOT returned: how many. The caller paints every tint at one
+ * strength, so the calendar says which list a day was about, never how
+ * much of it there was (`docs/DESIGN.md` §4).
+ */
+export function dayTints(
+  events: readonly TodoEvent[],
+  todosById: ReadonlyMap<string, Pick<Todo, "listId">>,
+  resolve: ListTintResolver,
+  timezone: string,
+): Map<CivilDate, DayTint> {
+  // The last status change per (day, to-do), same as `activeDays`.
+  const last = new Map<string, { day: CivilDate; event: TodoEvent }>();
+  for (const event of [...events].sort(byAt)) {
+    if (event.deletedAt || !STATUS_KINDS.has(event.kind)) continue;
+    const day = civilDateOf(event.at, timezone);
+    if (day) last.set(`${day}|${event.todoId}`, { day, event });
+  }
+
+  type Tally = { count: number; lastAt: string; names: Map<string, number> };
+  const byDay = new Map<CivilDate, Map<string, Tally>>();
+  for (const { day, event } of last.values()) {
+    if (event.kind !== "done") continue;
+    const payload = payloadOf(event) as { listId?: string | null } | null;
+    const listId =
+      payload && "listId" in payload
+        ? (payload.listId ?? null)
+        : (todosById.get(event.todoId)?.listId ?? null);
+    const resolved = resolve(listId);
+    if (!resolved) continue;
+
+    const colors = byDay.get(day) ?? new Map<string, Tally>();
+    byDay.set(day, colors);
+    const tally = colors.get(resolved.color) ?? { count: 0, lastAt: "", names: new Map() };
+    colors.set(resolved.color, tally);
+    tally.count += 1;
+    if (event.at > tally.lastAt) tally.lastAt = event.at;
+    tally.names.set(resolved.name, (tally.names.get(resolved.name) ?? 0) + 1);
+  }
+
+  const tints = new Map<CivilDate, DayTint>();
+  for (const [day, colors] of byDay) {
+    let winner: [string, Tally] | null = null;
+    for (const entry of colors) {
+      const [, tally] = entry;
+      if (
+        !winner ||
+        tally.count > winner[1].count ||
+        (tally.count === winner[1].count && tally.lastAt > winner[1].lastAt)
+      ) {
+        winner = entry;
+      }
+    }
+    if (!winner) continue;
+    const [color, tally] = winner;
+    const listName = [...tally.names].sort((a, b) => b[1] - a[1])[0][0];
+    tints.set(day, { color, listName });
+  }
+  return tints;
+}
