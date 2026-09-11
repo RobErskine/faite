@@ -1,5 +1,6 @@
 import { test, expect } from "./support/fixtures";
 import { switchToDays, switchToLists } from "./support/phone";
+import { openSheet } from "./support/sheet";
 
 /**
  * Cross-viewport functional contract — runs on every project in
@@ -55,7 +56,7 @@ test("a todo opens and deletes from the sheet footer", async ({ page }) => {
   // Delete is the only per-row destructive action today — it lives here in
   // the sheet footer, not on the row (see the mobile plan's Decision 3: this
   // gap is why P4 adds a row action sheet rather than a swipe gesture).
-  const sheet = page.locator('[data-slot="sheet-content"]');
+  const sheet = openSheet(page);
   await expect(sheet).toBeVisible();
   await sheet.getByRole("button", { name: "Delete" }).click();
 
@@ -96,7 +97,7 @@ test("a todo's History section logs `created`, then `done` (EI-94)", async ({ pa
   const card = page.getByRole("button", { name: title, exact: true });
   await card.click();
 
-  const sheet = page.locator('[data-slot="sheet-content"]');
+  const sheet = openSheet(page);
   await expect(sheet).toBeVisible();
 
   // Open by default (todo-sheet.tsx HistorySection) — no click needed.
@@ -187,7 +188,7 @@ test("the due banner opens the day sheet to an unscheduled due item", async ({ p
     .getByRole("button", { name: "Show the 1 to-do due on this day" })
     .click();
 
-  const sheet = page.locator('[data-slot="sheet-content"]');
+  const sheet = openSheet(page);
   await expect(sheet).toBeVisible();
   await expect(sheet.getByRole("heading", { name: "1 due" })).toBeVisible();
   // Not `exact: true`: the card's own upcoming-deadline marker
@@ -242,7 +243,7 @@ test("the sheet's priority edge is never covered by History's day headers (EI-31
   await page.keyboard.press("Enter");
   await page.getByRole("button", { name: title, exact: true }).click();
 
-  const sheet = page.locator('[data-slot="sheet-content"]');
+  const sheet = openSheet(page);
   await expect(sheet).toBeVisible();
 
   await page.locator("#todo-priority").click();

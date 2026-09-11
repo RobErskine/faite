@@ -60,7 +60,7 @@ function SheetOverlay({ className, ...props }: SheetPrimitive.Backdrop.Props) {
           between the two durations reopens the gap, and this holds regardless.
         */
         "data-closed:animate-out data-closed:fade-out-0",
-        "data-closed:duration-(--dur-overlay-exit) data-closed:fill-mode-forwards",
+        "data-closed:duration-(--dur-overlay-exit) data-closed:fill-mode-forwards data-closed:pointer-events-none",
         className
       )}
       {...props}
@@ -134,7 +134,7 @@ function SheetContent({
           */
           "duration-(--dur-sheet) ease-out-soft",
           "data-open:animate-in data-closed:animate-out",
-          "data-closed:duration-(--dur-overlay-exit) data-closed:fill-mode-forwards",
+          "data-closed:duration-(--dur-overlay-exit) data-closed:fill-mode-forwards data-closed:pointer-events-none",
           // Reduced motion keeps the overlay and drops the journey. Position is
           // layout, not animation, so it stays correct with the motion removed.
           "motion-reduce:animate-none",

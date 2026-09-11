@@ -1620,6 +1620,10 @@ migration. Stashing the branch and running it on clean `main` gave
 flaky / pass / fail across three runs — pre-existing, masked most of the time
 by its own `toPass` retry.
 
+**Follow-up (EI-325):** "pre-existing" was right and "not our bug" was wrong.
+The swipe was being swallowed by a closing overlay — see "A backdrop held for
+its exit is still in the way" below.
+
 **Rule:** before debugging a red e2e leg on a feature branch, run that ONE
 spec on a stashed-clean tree several times. `git stash push -u -m "<tag>"`,
 capture the SHA from `git stash list --format='%H %gs'`, `git stash apply
@@ -1889,3 +1893,29 @@ and the `--shadow-raised` token in place of `shadow-md`.
 before using it. Revert any dependency you did not ask for, point `cn` at
 `@/lib/utils`, and match the new component to its nearest sibling in
 `components/ui/` (for a floating panel, `popover.tsx`).
+
+## A backdrop held for its exit is still in the way (EI-325)
+
+`touch-smoke`'s swipe failed on every local run, on clean `main` too, and some
+of the time in CI. Two sessions filed it as "local-only, do not chase". The
+cause: dialog, sheet and alert-dialog hold their exit frame with
+`data-closed:fill-mode-forwards` for 200ms (on purpose, see
+`overlay-exit.test.ts`), and the backdrop kept `pointer-events: auto` the whole
+time. Right after "Continue without an account", `elementFromPoint` at the
+swipe start was the `dialog-overlay` at opacity 0.1. Users lose a tap the same
+way after closing any sheet.
+
+Why nothing else saw it: Playwright's actionability check WAITS while "another
+element intercepts pointer events", so every click-based test sat out the
+200ms without a word. Only raw CDP touch input went straight into the
+backdrop. A fast machine hit the window every time; CI hit it by luck.
+
+Making closing surfaces inert (`data-closed:pointer-events-none`) then
+surfaced the second half: a click now lands during a sheet's exit, so for a
+moment there are two `sheet-content` nodes. Find "the open sheet" with
+`openSheet(page)` (`e2e/support/sheet.ts`); check "the sheet is gone" against
+every node, or the check passes while the sheet is still leaving.
+
+**Rule:** a failure that repeats every time on one machine is a reproduction,
+not noise. Chase it there. And an element that stays on screen for an exit
+animation must stop taking input at the moment the exit starts.

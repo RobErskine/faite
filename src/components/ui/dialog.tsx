@@ -56,9 +56,16 @@ function DialogOverlay({
           Matching the exit duration to the panel's closes the window as well,
           but the fill mode is what makes it impossible: any future drift
           between the two durations reopens the gap, and this holds regardless.
+
+          `pointer-events-none` goes with it (EI-325). Holding the backdrop in
+          place for the whole exit also holds it in the way: for 200ms after
+          "close", an almost-transparent layer swallowed the next tap or swipe
+          meant for the board. That is what made e2e's touch swipe fail every
+          time on a fast machine and some of the time in CI. A closing
+          overlay is still seen, but it takes no input.
         */
         "data-closed:animate-out data-closed:fade-out-0",
-        "data-closed:duration-(--dur-overlay-exit) data-closed:fill-mode-forwards",
+        "data-closed:duration-(--dur-overlay-exit) data-closed:fill-mode-forwards data-closed:pointer-events-none",
         className
       )}
       {...props}
@@ -113,7 +120,7 @@ function DialogContent({
           */
           "duration-(--dur-overlay) ease-spring-overlay",
           "data-open:animate-in data-closed:animate-out",
-          "data-closed:duration-(--dur-overlay-exit) data-closed:ease-out-soft data-closed:fill-mode-forwards",
+          "data-closed:duration-(--dur-overlay-exit) data-closed:ease-out-soft data-closed:fill-mode-forwards data-closed:pointer-events-none",
           "motion-reduce:animate-none",
           // Phone: rises by its own height. `slide-*` composes into the
           // keyframe's own translate, so it stacks on the centering above
