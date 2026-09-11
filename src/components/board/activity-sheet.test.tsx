@@ -135,6 +135,9 @@ const settings = (over: Partial<Settings> = {}): Settings => ({
     "rolledOver",
     "overflowed",
   ],
+  hiddenEventKinds: null,
+  hiddenActivityKinds: null,
+  hiddenHistoryKinds: null,
   showWeekends: true,
   fontPairing: "hyperlegible",
   theme: "system",
@@ -325,7 +328,7 @@ describe("rollups", () => {
 });
 
 describe("kind filter", () => {
-  it("writes visibleActivityKinds, not visibleEventKinds", async () => {
+  it("writes hiddenActivityKinds, and no other surface's field", async () => {
     titlesFixture = new Map([["todo-a", { title: "Task", deleted: false }]]);
     eventsFixture = [event({ todoId: "todo-a", kind: "created", at: `${DAY}T09:00:00.000Z` })];
     render(<Harness />);
@@ -333,9 +336,46 @@ describe("kind filter", () => {
     openFilterMenu();
     fireEvent.click(await screen.findByRole("menuitemcheckbox", { name: "Created" }));
 
-    const patch = lastPatch();
-    expect(patch).toHaveProperty("visibleActivityKinds");
-    expect(patch).not.toHaveProperty("visibleEventKinds");
+    expect(lastPatch()).toEqual({ hiddenActivityKinds: ["created"] });
+  });
+
+  it("EI-320: a filter saved before `attached` existed still shows attachment rows", () => {
+    // The shape an existing device holds: the 11-kind array from before
+    // EI-318, never converted. Migration 21 appended the new kinds on the
+    // server only, and that UPDATE never reaches a device that already has
+    // the row.
+    titlesFixture = new Map([["todo-a", { title: "Task", deleted: false }]]);
+    eventsFixture = [
+      event({
+        todoId: "todo-a",
+        kind: "attached",
+        at: `${DAY}T09:00:00.000Z`,
+        payload: JSON.stringify({ v: 1, filename: "receipt.pdf" }),
+      }),
+    ];
+    render(
+      <Harness
+        settingsOverride={settings({
+          hiddenActivityKinds: null,
+          visibleActivityKinds: [
+            "created",
+            "scheduled",
+            "unscheduled",
+            "moved",
+            "done",
+            "dropped",
+            "reopened",
+            "edited",
+            "deleted",
+            "rolledOver",
+            "overflowed",
+          ],
+        })}
+      />,
+    );
+
+    expect(screen.getByText("Attached")).toBeTruthy();
+    expect(screen.queryByText(/hidden by the view filter/)).toBeNull();
   });
 
   it("shows the hidden-by-filter notice when the filter empties the page", () => {

@@ -598,6 +598,22 @@ export const settingsSchema = z.object({
     "overflowed",
   ]),
   /**
+   * The kinds a user has HIDDEN on the day sheet, the activity feed, and a
+   * to-do's History (EI-320). These replace the three `visible*Kinds` fields
+   * above, which are now read only to convert a value saved before this
+   * existed and are never written again — see `lib/kind-filter.ts` for why a
+   * shown set could not learn new kinds, and for the read-time conversion.
+   *
+   * `null` means "not converted yet". `[]` means nothing is hidden.
+   *
+   * `z.string()`, not the kind enums: a newer build can hide a kind this
+   * build has never heard of, and that row must still parse here — the same
+   * reason `todoEventSchema.kind` is a string.
+   */
+  hiddenEventKinds: z.array(z.string()).nullable().default(null),
+  hiddenActivityKinds: z.array(z.string()).nullable().default(null),
+  hiddenHistoryKinds: z.array(z.string()).nullable().default(null),
+  /**
    * When false, each run of consecutive non-working days collapses into a
    * single expandable strip and stops counting toward `visibleDays`.
    *

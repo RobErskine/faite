@@ -47,7 +47,7 @@ test("logs a created and a done event, newest first under Today, and the filter 
 
   // Filtering out both logged kinds empties the page and shows the notice —
   // same "N hidden by the view filter · Show all" component the day sheet
-  // uses, backed by `visibleActivityKinds`, not `visibleEventKinds`.
+  // uses, backed by `hiddenActivityKinds`, not `hiddenEventKinds`.
   await sheet.getByRole("button", { name: "Which activity to show" }).click();
   await page.getByRole("menuitemcheckbox", { name: "Created" }).click();
   await page.getByRole("menuitemcheckbox", { name: "Completed" }).click();

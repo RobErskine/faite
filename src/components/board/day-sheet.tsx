@@ -28,6 +28,11 @@ import {
   type DayEventKind,
 } from "@/lib/day-timeline";
 import { formatEventStamp } from "@/lib/event-time";
+import {
+  DAY_SHEET_KIND_GENERATIONS,
+  resolveHiddenKinds,
+  toggleHiddenKind,
+} from "@/lib/kind-filter";
 import { formatDay, formatShortDate, type PlacementContext } from "@/lib/scheduling";
 import { mutateSettings } from "@/lib/store/mutate";
 import { LOCAL_OWNER_ID } from "@/lib/store/owner";
@@ -181,27 +186,31 @@ function DaySheetContent({
     [due],
   );
 
-  const visibleKinds = settings?.visibleEventKinds ?? ALL_EVENT_KINDS;
+  const hiddenSetting = settings?.hiddenEventKinds;
+  const legacyVisible = settings?.visibleEventKinds;
+  const hiddenKinds = useMemo(
+    () => resolveHiddenKinds(hiddenSetting, legacyVisible, DAY_SHEET_KIND_GENERATIONS),
+    [hiddenSetting, legacyVisible],
+  );
+  const visibleKinds = useMemo(
+    () => ALL_EVENT_KINDS.filter((kind) => !hiddenKinds.includes(kind)),
+    [hiddenKinds],
+  );
   const visibleEvents = useMemo(
     () => events.filter((event) => visibleKinds.includes(event.kind)),
     [events, visibleKinds],
   );
   const hiddenCount = events.length - visibleEvents.length;
 
-  const toggleEventKind = (value: DayEventKind, next: boolean) => {
-    // Unlike `ViewSettings`' status filter, unchecking the last kind is
-    // allowed — see `HiddenByFilterNotice` below, which is the empty state
-    // that guard exists to avoid building.
-    const nextKinds = next
-      ? KIND_FILTER_OPTIONS.filter(
-          (o) => o.value === value || visibleKinds.includes(o.value),
-        ).map((o) => o.value)
-      : visibleKinds.filter((k) => k !== value);
-    void mutateSettings(LOCAL_OWNER_ID, { visibleEventKinds: nextKinds });
-  };
+  // Unlike `ViewSettings`' status filter, unchecking the last kind is
+  // allowed — see `HiddenByFilterNotice` below, which is the empty state
+  // that guard exists to avoid building.
+  const toggleEventKind = (value: DayEventKind, next: boolean) =>
+    void mutateSettings(LOCAL_OWNER_ID, {
+      hiddenEventKinds: toggleHiddenKind(hiddenKinds, value, next),
+    });
 
-  const showAllKinds = () =>
-    void mutateSettings(LOCAL_OWNER_ID, { visibleEventKinds: ALL_EVENT_KINDS });
+  const showAllKinds = () => void mutateSettings(LOCAL_OWNER_ID, { hiddenEventKinds: [] });
 
   return (
     <Sheet open={sheetOpen} onOpenChange={(next) => !next && onClose()}>

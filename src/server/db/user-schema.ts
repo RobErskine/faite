@@ -218,6 +218,10 @@ export const settings = sqliteTable("settings", {
     .default(
       '["created","scheduled","unscheduled","moved","done","dropped","reopened","edited","deleted","attached","detached","rolledOver","overflowed"]',
     ),
+  /** JSON-encoded arrays of kinds, nullable — see `settingsSchema.hiddenEventKinds`. */
+  hiddenEventKinds: text("hidden_event_kinds"),
+  hiddenActivityKinds: text("hidden_activity_kinds"),
+  hiddenHistoryKinds: text("hidden_history_kinds"),
   showWeekends: integer("show_weekends", { mode: "boolean" }).notNull().default(true),
   fontPairing: text("font_pairing").notNull(),
   theme: text("theme").notNull(),
