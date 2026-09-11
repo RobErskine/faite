@@ -218,3 +218,58 @@ test("GOOD JOB mode throws confetti when a to-do is completed", async ({ page })
 
   await expect(confettiCanvas).toBeAttached();
 });
+
+/**
+ * EI-318 — the sheet's leading edge is the to-do's priority rail, and nothing
+ * in the sheet may paint over it. History's day headers are `relative` and
+ * bleed edge to edge with `-mx-4`, and with no z-index on the rail each one
+ * cut a segment out of it — reported from a screenshot, where it read as a
+ * broken edge down the timeline.
+ *
+ * Paint order, not class names: this checks what is actually on top at the
+ * rail's own x. The rail is `pointer-events: none`, which hides it from
+ * `elementFromPoint` entirely, so it is lifted for the probe and restored —
+ * without that, every reading blames whatever sits beneath the rail.
+ * Confirmed to fail with the rail's `z-10` removed.
+ */
+test("the sheet's priority edge is never covered by History's day headers (EI-318)", async ({
+  page,
+}) => {
+  await switchToLists(page);
+  const backlog = page.getByRole("region", { name: "Backlog" });
+  const title = "Edge stays whole";
+  await backlog.getByPlaceholder("Add a to-do").fill(title);
+  await page.keyboard.press("Enter");
+  await page.getByRole("button", { name: title, exact: true }).click();
+
+  const sheet = page.locator('[data-slot="sheet-content"]');
+  await expect(sheet).toBeVisible();
+
+  await page.locator("#todo-priority").click();
+  await page.getByRole("option", { name: /^P1/ }).first().click();
+
+  // A day header only exists once History has an event under it.
+  const history = sheet.getByRole("list", { name: /^History for/ });
+  await expect(history.getByText("Today")).toBeVisible();
+  // The rail is a `double` at P1; wait for it rather than for a timeout.
+  await expect(sheet.locator(":scope > [data-priority-rail='1']")).toHaveCount(1);
+
+  const topmostOnTheEdge = await page.evaluate(() => {
+    const content = document.querySelector('[data-slot="sheet-content"]') as HTMLElement;
+    const rail = content.querySelector(":scope > [data-priority-rail]") as HTMLElement;
+    const header = Array.from(content.querySelectorAll("li")).find((li) =>
+      /Today/.test(li.textContent ?? ""),
+    ) as HTMLElement;
+    // `elementFromPoint` returns null for anything outside the viewport, and
+    // on a phone History sits well below the fold of a full-height sheet.
+    header.scrollIntoView({ block: "center" });
+    rail.style.pointerEvents = "auto";
+    const r = rail.getBoundingClientRect();
+    const h = header.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + 1, h.top + h.height / 2);
+    rail.style.pointerEvents = "";
+    return hit === rail ? "rail" : hit?.tagName.toLowerCase() ?? "nothing";
+  });
+
+  expect(topmostOnTheEdge).toBe("rail");
+});

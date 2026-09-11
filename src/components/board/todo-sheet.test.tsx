@@ -756,13 +756,17 @@ describe("priority in the header (EI-318)", () => {
     expect(tab.style.getPropertyValue("--priority-edge-color")).toBe("var(--input)");
   });
 
-  it("lets the tab paint OVER the sheet's rail, never under it", () => {
-    // The rail carries no `z-index` on purpose: the tab is later in the DOM,
-    // so it wins, and the edge disappears behind it instead of drawing a line
-    // across it.
+  it("layers the rail above the sheet's contents, and the tab above the rail", () => {
+    // This test used to assert the rail had NO z-index — a proxy for "the tab
+    // paints over it". The proxy was wrong: it also let every later POSITIONED
+    // element paint over the rail, and History's day headers did, cutting the
+    // edge into segments. Assert the actual relationship instead, and see
+    // `core-flows.spec.ts` for the paint order checked in a real browser.
     render(<Harness todo={{ ...TODO, priority: 1 }} />);
     const edge = sheetContent().querySelector(":scope > [data-priority-rail]") as HTMLElement;
-    expect(edge.className).not.toContain("z-10");
+    const tab = document.getElementById("todo-priority")!.parentElement!;
+    expect(edge.className).toContain("z-10");
+    expect(tab.className).toContain("lg:z-20");
   });
 
   it("labels the tab, and hides that label when there is no tab", () => {

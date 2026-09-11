@@ -639,13 +639,26 @@ function TodoSheetContent({
           below this one to fuse with, and the gap the card needs to read as a
           tick would just look like an unfinished edge here.
 
-          No `z-index`, deliberately. The priority tab is later in the DOM, so
-          it paints over this — which is what lets the edge run down, disappear
-          behind the tab, and be picked up by the tab's own outline in the same
-          treatment. One line that wraps, rather than a line with a box parked
-          on it.
+          Explicit layering, two steps, and both are load-bearing:
+
+          - `z-10` here puts the edge above everything in the sheet's body. It
+            has to be explicit. With no z-index this was ordinary DOM order,
+            and anything POSITIONED later won: the History timeline's day
+            headers are `relative`, and bleed edge to edge with `-mx-4`, so
+            each one cut a segment out of the rail.
+
+            Measured with `elementFromPoint` on the rail's own x — which needs
+            the rail's `pointer-events: none` lifted first, or the probe cannot
+            see the rail at all and blames whatever sits beneath it. Without
+            this z-index the day header came back topmost; with it, the rail.
+          - `lg:z-20` on the priority tab puts IT above this, which is what
+            lets the edge run down, disappear behind the tab, and be picked up
+            by the tab's own outline in the same treatment.
+
+          An earlier version dropped this z-index to get the second effect and
+          silently lost the first. Both are asserted now, in the browser.
         */}
-        <PriorityRail priority={todo.priority} className="inset-y-0" />
+        <PriorityRail priority={todo.priority} className="inset-y-0 z-10" />
 
         <SheetHeader className={backToDay ? "gap-1.5 pr-10" : undefined}>
           <SheetTitle className="sr-only">Edit to-do</SheetTitle>
@@ -744,7 +757,7 @@ function TodoSheetContent({
                 style={priorityEdge(todo.priority)}
                 className={cn(
                   "shrink-0",
-                  "lg:absolute lg:top-4 lg:left-[calc(-6rem+5px)] lg:w-24",
+                  "lg:absolute lg:top-4 lg:left-[calc(-6rem+5px)] lg:z-20 lg:w-24",
                   "lg:space-y-1 lg:rounded-l-xl lg:rounded-r-none",
                   "lg:border-t-[length:var(--priority-edge-width)]",
                   "lg:border-b-[length:var(--priority-edge-width)]",

@@ -1715,3 +1715,28 @@ is a dependency the type system cannot see. When removing a border, a padding
 or a margin, grep for its name in comments, not just in code. And prefer
 spacing that owns itself — the fix was to put the inset on the rail rather
 than borrow it from a neighbour.
+
+## `elementFromPoint` cannot see a `pointer-events: none` element (EI-318)
+
+Probing paint order on the sheet's priority rail with `elementFromPoint`, the
+footer and a History day header both came back "topmost" — so I told Rob the
+footer was covering the rail too. It was not. The rail is
+`pointer-events: none`, and `elementFromPoint` skips any such element
+entirely, so the probe could never report the rail and blamed whatever sat
+beneath it. Lifting it for the probe (`rail.style.pointerEvents = "auto"`,
+restored after) gave the real answer: only the day header covered it, which
+is exactly what the screenshot showed.
+
+Two more ways the same probe silently lies: it returns `null` for any point
+outside the viewport (History is below the fold on a phone — scroll it into
+view first), and it measures hit-testing, not painting, in general.
+
+**Rule:** when a probe reports something surprising, check the probe before
+reporting the finding. And prove a new regression test FAILS without the fix
+before trusting that it passes with it — this one was confirmed failing on
+both shells with the rail's `z-10` removed.
+
+A second lesson from the same bug: the test I wrote a turn earlier asserted
+the rail had NO z-index, as a proxy for "the tab paints over it". The proxy
+also let every later positioned element paint over the rail. Assert the
+relationship you care about, not a mechanism that happens to produce it.
