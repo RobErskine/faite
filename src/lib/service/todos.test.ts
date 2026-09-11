@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { encodeHlc } from "@/lib/sync/hlc-core";
-import { buildCreateTodoEntry, buildUpdateTodoEntry } from "./todos";
+import { buildCreateTodoEntry, buildUpdateTodoEntry, UPDATE_TODO_MAX_ENTRIES } from "./todos";
 import type { ServiceContext } from "./context";
 
 function fakeContext(overrides: Partial<ServiceContext> = {}): ServiceContext {
@@ -123,6 +123,78 @@ describe("buildUpdateTodoEntry", () => {
   it("throws on an empty patch rather than pushing a no-op entry", () => {
     const ctx = fakeContext();
     expect(() => buildUpdateTodoEntry(ctx, "todo-1", {})).toThrow(/empty patch/);
+  });
+
+  describe("EI-321: status and date changes are logged as decisions", () => {
+    const open = { status: "open" as const, scheduledDate: "2026-09-10" };
+    const kindsOf = (entries: ReturnType<typeof buildUpdateTodoEntry>) =>
+      entries
+        .filter((e) => e.kind === "todoEvent")
+        .map((e) => (e.patch as Record<string, unknown>).kind);
+    const payloadOf = (entries: ReturnType<typeof buildUpdateTodoEntry>, kind: string) =>
+      JSON.parse(
+        (entries.find((e) => (e.patch as Record<string, unknown>).kind === kind)!.patch as Record<
+          string,
+          string
+        >).payload,
+      );
+
+    it("REGRESSION: completing from MCP/Raycast/the API logs `done`", () => {
+      const entries = buildUpdateTodoEntry(fakeContext(), "todo-1", { status: "done" }, open);
+      expect(kindsOf(entries)).toEqual(["done"]);
+    });
+
+    it("logs `dropped` and `reopened` the way setTodoStatus does", () => {
+      expect(kindsOf(buildUpdateTodoEntry(fakeContext(), "t", { status: "dropped" }, open))).toEqual([
+        "dropped",
+      ]);
+      const done = { ...open, status: "done" as const };
+      expect(kindsOf(buildUpdateTodoEntry(fakeContext(), "t", { status: "open" }, done))).toEqual([
+        "reopened",
+      ]);
+    });
+
+    it("logs nothing for a status set to what it already was", () => {
+      expect(kindsOf(buildUpdateTodoEntry(fakeContext(), "t", { status: "open" }, open))).toEqual([]);
+    });
+
+    it("logs a date change as `scheduled {from, to}`, not `edited`", () => {
+      const entries = buildUpdateTodoEntry(fakeContext(), "t", { scheduledDate: "2026-09-12" }, open);
+      expect(kindsOf(entries)).toEqual(["scheduled"]);
+      expect(payloadOf(entries, "scheduled")).toEqual({ v: 1, from: "2026-09-10", to: "2026-09-12" });
+    });
+
+    it("logs clearing the date as `unscheduled`", () => {
+      const entries = buildUpdateTodoEntry(fakeContext(), "t", { scheduledDate: null }, open);
+      expect(kindsOf(entries)).toEqual(["unscheduled"]);
+      expect(payloadOf(entries, "unscheduled")).toEqual({ v: 1, from: "2026-09-10", to: null });
+    });
+
+    it("keeps the other fields in one `edited` row beside it", () => {
+      const entries = buildUpdateTodoEntry(
+        fakeContext(),
+        "t",
+        { title: "New", scheduledDate: "2026-09-12" },
+        open,
+      );
+      expect(kindsOf(entries)).toEqual(["edited", "scheduled"]);
+      expect(payloadOf(entries, "edited").fields).toEqual(["title"]);
+    });
+
+    it("without the stored row, behaves as before: `edited`, no status event", () => {
+      const entries = buildUpdateTodoEntry(fakeContext(), "t", { status: "done", scheduledDate: "2026-09-12" });
+      expect(kindsOf(entries)).toEqual(["edited"]);
+    });
+
+    it("never returns more entries than UPDATE_TODO_MAX_ENTRIES, which callers size the HLC queue with", () => {
+      const entries = buildUpdateTodoEntry(
+        fakeContext(),
+        "t",
+        { title: "New", status: "done", scheduledDate: "2026-09-12" },
+        open,
+      );
+      expect(entries).toHaveLength(UPDATE_TODO_MAX_ENTRIES);
+    });
   });
 
   it("rejects a patch that fails schema validation", () => {

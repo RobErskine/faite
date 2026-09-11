@@ -34,6 +34,7 @@ import {
   buildEditedPayload,
   DELETED_TITLE_MAX_LENGTH,
   logTodoEvent,
+  type EventVia,
 } from "./todo-events";
 
 /**
@@ -171,13 +172,72 @@ export async function createSubtask(parentId: string, title: string): Promise<st
   return createTodo({ title, parentId });
 }
 
+/**
+ * A date or list change is a decision, not an edit, so it is logged the way
+ * dragging logs it — `scheduled`/`unscheduled` with `{from, to}`, `moved`
+ * with both list names — and only when the value actually changed (EI-321).
+ * Every other journalled field still goes into one `edited` row.
+ *
+ * With no local row to read the old value from, this falls back to logging
+ * the fields as `edited`, which is what every patch did before.
+ */
 export async function updateTodo(
   id: string,
   patch: Partial<Omit<Todo, "id" | "ownerId" | "createdAt">>,
 ): Promise<void> {
-  const payload = buildEditedPayload(patch);
-  await mutate("todo", id, patch, {
-    events: payload ? [logTodoEvent(id, "edited", payload)] : [],
+  const touchesPlacement = "scheduledDate" in patch || "listId" in patch;
+  const existing = touchesPlacement ? await getDb().todos.get(id) : undefined;
+
+  const events: TodoEvent[] = [];
+  const editedFields = existing
+    ? Object.fromEntries(
+        Object.entries(patch).filter(([field]) => field !== "scheduledDate" && field !== "listId"),
+      )
+    : patch;
+  const payload = buildEditedPayload(editedFields);
+  if (payload) events.push(logTodoEvent(id, "edited", payload));
+
+  if (existing && "scheduledDate" in patch) {
+    const to = patch.scheduledDate ?? null;
+    if (to !== existing.scheduledDate) {
+      events.push(
+        logTodoEvent(id, to ? "scheduled" : "unscheduled", {
+          v: 1,
+          from: existing.scheduledDate,
+          to,
+        }),
+      );
+    }
+  }
+  if (existing && "listId" in patch) {
+    const to = patch.listId ?? null;
+    if (to !== (existing.listId ?? null)) {
+      events.push(await movedEvent(id, existing.listId ?? null, to));
+    }
+  }
+
+  await mutate("todo", id, patch, { events });
+}
+
+/** A `moved` row, with both list names captured now — see `MovedPayload`. */
+async function movedEvent(
+  id: string,
+  fromListId: string | null,
+  toListId: string | null,
+  via?: EventVia,
+): Promise<TodoEvent> {
+  const db = getDb();
+  const [fromList, toList] = await Promise.all([
+    fromListId ? db.lists.get(fromListId) : undefined,
+    toListId ? db.lists.get(toListId) : undefined,
+  ]);
+  return logTodoEvent(id, "moved", {
+    v: 1,
+    fromListId,
+    fromListName: fromList?.name ?? null,
+    toListId,
+    toListName: toList?.name ?? null,
+    ...(via ? { via } : {}),
   });
 }
 
@@ -274,7 +334,11 @@ export const dayGroupPatch = (
  * so undoing an instant status change tombstones the event rather than
  * leaving e.g. "Completed" on something un-done a second later (EI-94 Phase 3).
  */
-export async function setTodoStatus(id: string, status: TodoStatus): Promise<string | null> {
+export async function setTodoStatus(
+  id: string,
+  status: TodoStatus,
+  via?: EventVia,
+): Promise<string | null> {
   // Read-before-write to know the PREVIOUS status: `reopened` only means
   // something relative to what it was, and a status set to what it already
   // was (unreachable from the UI today, but not from undo/redo replay of a
@@ -289,7 +353,7 @@ export async function setTodoStatus(id: string, status: TodoStatus): Promise<str
           ? "dropped"
           : "reopened";
   const eventIds = await mutate("todo", id, statusPatch(status), {
-    events: kind ? [logTodoEvent(id, kind)] : [],
+    events: kind ? [logTodoEvent(id, kind, via ? { v: 1, via } : null)] : [],
   });
   return eventIds[0] ?? null;
 }
@@ -300,6 +364,7 @@ export async function scheduleTodo(
   scheduledDate: CivilDate | null,
   previousDate: CivilDate | null,
   position?: string,
+  via?: EventVia,
 ): Promise<void> {
   // Same date-changed condition `schedulePatch` uses for `scheduledAt`, so
   // the guard and the stamp can't drift apart.
@@ -310,6 +375,7 @@ export async function scheduleTodo(
             v: 1,
             from: previousDate,
             to: scheduledDate,
+            ...(via ? { via } : {}),
           }),
         ]
       : [];
@@ -321,28 +387,23 @@ export async function moveTodoToList(
   id: string,
   listId: string | null,
   position?: string,
+  via?: EventVia,
 ): Promise<void> {
-  const db = getDb();
-  const existing = await db.todos.get(id);
+  const existing = await getDb().todos.get(id);
   const events: TodoEvent[] = [];
   if (existing) {
-    const [fromList, toList] = await Promise.all([
-      existing.listId ? db.lists.get(existing.listId) : undefined,
-      listId ? db.lists.get(listId) : undefined,
-    ]);
-    events.push(
-      logTodoEvent(id, "moved", {
-        v: 1,
-        fromListId: existing.listId ?? null,
-        fromListName: fromList?.name ?? null,
-        toListId: listId,
-        toListName: toList?.name ?? null,
-      }),
-    );
+    events.push(await movedEvent(id, existing.listId ?? null, listId, via));
     // `listPatch` unconditionally clears `scheduledDate` — only log
     // `unscheduled` when that actually changed something.
     if (existing.scheduledDate !== null) {
-      events.push(logTodoEvent(id, "unscheduled", { v: 1, from: existing.scheduledDate, to: null }));
+      events.push(
+        logTodoEvent(id, "unscheduled", {
+          v: 1,
+          from: existing.scheduledDate,
+          to: null,
+          ...(via ? { via } : {}),
+        }),
+      );
     }
   }
   await mutate("todo", id, listPatch(listId, position), { events });

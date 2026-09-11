@@ -106,6 +106,14 @@ interface DeletedPayload {
   title: string;
 }
 
+/** Mirrors `todo-events.ts`'s `ScheduledPayload`, minus `via` — nothing on
+ * the server path is a triage decision. */
+interface ScheduledPayload {
+  v: 1;
+  from: CivilDate | null;
+  to: CivilDate | null;
+}
+
 /** Hand-mirrors `todo-events.ts`'s `DELETED_TITLE_MAX_LENGTH` — not imported,
  * for the same reason nothing else in this file imports from `store/`. */
 export const DELETED_TITLE_MAX_LENGTH = 200;
@@ -147,7 +155,7 @@ function buildTodoEventEntry(
   ctx: ServiceContext,
   todoId: string,
   kind: string,
-  payload: EditedPayload | DeletedPayload | null,
+  payload: EditedPayload | DeletedPayload | ScheduledPayload | null,
   at: string,
 ): PushEntry {
   const timestamp = new Date().toISOString();
@@ -239,6 +247,19 @@ export function buildCreateTodoEntry(ctx: ServiceContext, input: CreateTodoInput
  * either identity or set once at creation. */
 export type UpdateTodoInput = Partial<Omit<Todo, "id" | "ownerId" | "createdAt">>;
 
+/** The fields of the stored row `buildUpdateTodoEntry` compares a patch
+ * against. Every caller has already read the row (to 404 an unknown id), so
+ * this costs nothing extra. */
+export type UpdateTodoBefore = Pick<Todo, "status" | "scheduledDate">;
+
+/**
+ * The most `PushEntry`s one `buildUpdateTodoEntry` call can return: the todo,
+ * plus an `edited`, a status and a `scheduled`/`unscheduled` event. Callers
+ * size `durableHlcQueue` with this — one stamp per entry, and the queue
+ * throws if it runs out.
+ */
+export const UPDATE_TODO_MAX_ENTRIES = 4;
+
 /**
  * Builds the `PushEntry` batch for patching an existing todo. `id` is the
  * `entityId` being patched, not part of the patch itself — same split
@@ -248,11 +269,23 @@ export type UpdateTodoInput = Partial<Omit<Todo, "id" | "ownerId" | "createdAt">
  * `mutate()` does on every client write and this did not; and emits an
  * `edited` `todoEvent` when the patch touches a `JOURNALLED_FIELDS` field,
  * mirroring `repositories.ts`'s `updateTodo` → `buildEditedPayload`.
+ *
+ * Two more from EI-321, both needing `before`:
+ * - A `status` change emits `done`/`dropped`/`reopened`, mirroring
+ *   `setTodoStatus`. Before this, completing a to-do from MCP, Raycast or
+ *   `PATCH /api/v1/todos` wrote no event at all, so it was missing from every
+ *   timeline and survived only in `completedAt`, which a reopen erases.
+ * - A `scheduledDate` change emits `scheduled`/`unscheduled` with
+ *   `{from, to}` instead of a bare `edited`, the same row a drag writes.
+ *
+ * `listId` stays in `edited`: a `moved` row carries both list NAMES, and
+ * this module has no store to read them from.
  */
 export function buildUpdateTodoEntry(
   ctx: ServiceContext,
   id: string,
   patch: UpdateTodoInput,
+  before?: UpdateTodoBefore,
 ): PushEntry[] {
   const keys = Object.keys(patch) as (keyof UpdateTodoInput)[];
   if (keys.length === 0) {
@@ -284,10 +317,39 @@ export function buildUpdateTodoEntry(
     hlc: ctx.nextHlc(),
   };
 
-  const editedPayload = buildEditedPayload(stamped);
-  if (!editedPayload) return [todoEntry];
+  const entries: PushEntry[] = [todoEntry];
 
-  return [todoEntry, buildTodoEventEntry(ctx, id, "edited", editedPayload, timestamp)];
+  const dateChanged =
+    before !== undefined &&
+    "scheduledDate" in validated &&
+    (validated.scheduledDate ?? null) !== before.scheduledDate;
+  const editedPayload = buildEditedPayload(
+    before && "scheduledDate" in validated
+      ? Object.fromEntries(Object.entries(stamped).filter(([field]) => field !== "scheduledDate"))
+      : stamped,
+  );
+  if (editedPayload) {
+    entries.push(buildTodoEventEntry(ctx, id, "edited", editedPayload, timestamp));
+  }
+
+  if (before && validated.status !== undefined && validated.status !== before.status) {
+    const kind =
+      validated.status === "done" ? "done" : validated.status === "dropped" ? "dropped" : "reopened";
+    entries.push(buildTodoEventEntry(ctx, id, kind, null, timestamp));
+  }
+
+  if (dateChanged) {
+    const to = validated.scheduledDate ?? null;
+    entries.push(
+      buildTodoEventEntry(ctx, id, to ? "scheduled" : "unscheduled", {
+        v: 1,
+        from: before.scheduledDate,
+        to,
+      }, timestamp),
+    );
+  }
+
+  return entries;
 }
 
 /** What `buildDeleteTodoEntry` needs the caller to have already read from the

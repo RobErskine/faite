@@ -1178,6 +1178,85 @@ describe("todoEvent history log (EI-94)", () => {
     expect(payload.to).toEqual({ priority: 2 });
   });
 
+  describe("EI-321: a sheet's date and list changes are logged as decisions", () => {
+    it("logs a date change as `scheduled {from, to}`, not `edited`", async () => {
+      const id = await createTodo({ title: "Buy milk", scheduledDate: "2026-08-20" });
+      await updateTodo(id, { scheduledDate: "2026-08-22" });
+
+      const events = await eventsFor(id);
+      expect(events.map((e) => e.kind)).toEqual(["created", "scheduled"]);
+      expect(JSON.parse(events[1].payload!)).toEqual({ v: 1, from: "2026-08-20", to: "2026-08-22" });
+    });
+
+    it("logs clearing the date as `unscheduled`", async () => {
+      const id = await createTodo({ title: "Buy milk", scheduledDate: "2026-08-20" });
+      await updateTodo(id, { scheduledDate: null });
+      expect((await eventsFor(id)).map((e) => e.kind)).toEqual(["created", "unscheduled"]);
+    });
+
+    it("logs a list change as `moved` with both names", async () => {
+      const from = await createList("Groceries");
+      const to = await createList("Errands");
+      const id = await createTodo({ title: "Buy milk", listId: from });
+      await updateTodo(id, { listId: to });
+
+      const events = await eventsFor(id);
+      expect(events.map((e) => e.kind)).toEqual(["created", "moved"]);
+      expect(JSON.parse(events[1].payload!)).toMatchObject({
+        fromListName: "Groceries",
+        toListName: "Errands",
+      });
+    });
+
+    it("logs nothing when the date or list did not actually change", async () => {
+      const list = await createList("Groceries");
+      const id = await createTodo({ title: "Buy milk", listId: list, scheduledDate: "2026-08-20" });
+      await updateTodo(id, { scheduledDate: "2026-08-20", listId: list });
+      expect((await eventsFor(id)).map((e) => e.kind)).toEqual(["created"]);
+    });
+
+    it("keeps the other fields in one `edited` row beside it", async () => {
+      const id = await createTodo({ title: "Buy milk", scheduledDate: "2026-08-20" });
+      await updateTodo(id, { title: "Buy oat milk", scheduledDate: "2026-08-21" });
+
+      const events = await eventsFor(id);
+      expect(events.map((e) => e.kind).sort()).toEqual(["created", "edited", "scheduled"]);
+      const edited = events.find((e) => e.kind === "edited")!;
+      expect(JSON.parse(edited.payload!).fields).toEqual(["title"]);
+    });
+  });
+
+  describe("EI-321: Overdrive marks its decisions", () => {
+    it("stamps `via` on status, schedule and list events", async () => {
+      const list = await createList("Someday");
+      const a = await createTodo({ title: "A", scheduledDate: "2026-08-20" });
+      const b = await createTodo({ title: "B", scheduledDate: "2026-08-20" });
+      const c = await createTodo({ title: "C", scheduledDate: "2026-08-20" });
+
+      await setTodoStatus(a, "dropped", "overdrive");
+      await scheduleTodo(b, "2026-08-25", "2026-08-20", undefined, "overdrive");
+      await moveTodoToList(c, list, undefined, "overdrive");
+
+      const via = async (id: string) =>
+        (await eventsFor(id))
+          .filter((e) => e.kind !== "created")
+          .map((e) => [e.kind, JSON.parse(e.payload!).via]);
+      expect(await via(a)).toEqual([["dropped", "overdrive"]]);
+      expect(await via(b)).toEqual([["scheduled", "overdrive"]]);
+      expect(await via(c)).toEqual([
+        ["moved", "overdrive"],
+        ["unscheduled", "overdrive"],
+      ]);
+    });
+
+    it("leaves ordinary status events with no payload, as before", async () => {
+      const id = await createTodo({ title: "A" });
+      await setTodoStatus(id, "done");
+      const done = (await eventsFor(id)).find((e) => e.kind === "done")!;
+      expect(done.payload).toBeNull();
+    });
+  });
+
   it("createSeriesFromTodo logs `edited` on the source todo, not the new template", async () => {
     const sourceId = await createTodo({ title: "Weekly sync", scheduledDate: "2026-08-20" });
     const rule = defaultRule("2026-08-20");

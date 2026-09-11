@@ -14,6 +14,7 @@ import {
 } from "@/lib/schema";
 import { contextFromSettings, deriveColumn, OVERFLOW } from "@/lib/scheduling";
 import type { ServiceContext } from "@/lib/service/context";
+import { UPDATE_TODO_MAX_ENTRIES } from "@/lib/service/todos";
 import { createAuth } from "../auth";
 import { scopeGranted, type ApiScope } from "../auth-scopes";
 import { extractBearerCredential } from "../bearer";
@@ -266,7 +267,7 @@ function buildServer(
       // exactly the server-originated UPDATE the milestone doc's own A4
       // rationale names ("An MCP 'mark this todo done' would" hit the
       // per-isolate collision the in-memory mode can't survive).
-      const nextHlc = await durableHlcQueue(stub, 2);
+      const nextHlc = await durableHlcQueue(stub, UPDATE_TODO_MAX_ENTRIES);
       const ctx: ServiceContext = { userId: identity.userId, nextHlc };
 
       const { rejected } = await updateTodo(
@@ -274,6 +275,7 @@ function buildServer(
         id,
         { status: "done", completedAt: new Date().toISOString() },
         pushTransportFor(stub, identity.userId),
+        existing,
       );
       if (rejected.length > 0) {
         throw new Error("The server refused this update — please try again.");
@@ -327,10 +329,16 @@ function buildServer(
       const existing = await stub.getTodo(id);
       if (!existing) throw new Error(`No such to-do: ${id}`);
 
-      const nextHlc = await durableHlcQueue(stub, 2);
+      const nextHlc = await durableHlcQueue(stub, UPDATE_TODO_MAX_ENTRIES);
       const ctx: ServiceContext = { userId: identity.userId, nextHlc };
 
-      const { rejected } = await updateTodo(ctx, id, patch, pushTransportFor(stub, identity.userId));
+      const { rejected } = await updateTodo(
+        ctx,
+        id,
+        patch,
+        pushTransportFor(stub, identity.userId),
+        existing,
+      );
       if (rejected.length > 0) {
         throw new Error("The server refused this update — please try again.");
       }

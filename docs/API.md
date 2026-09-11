@@ -208,6 +208,19 @@ from a plain closure. Over-requesting (always 2, whether or not a
 companion `todoEvent` ends up firing) is harmless — a wasted
 `sync_meta.server_last_hlc` tick costs nothing.
 
+**An update logs decisions, not just edits (EI-321).** Until EI-321, a
+`status` change through `PATCH /api/v1/todos/{id}` or MCP `complete_todo` /
+`update_todo` wrote **no** event — `status` is not a journalled field — so
+a to-do completed from Raycast was missing from every timeline. Now the
+route passes the row it already read (`before`) to `buildUpdateTodoEntry`,
+which logs `done`/`dropped`/`reopened` for a status change and
+`scheduled`/`unscheduled {from, to}` for a date change, the same rows the
+client writes. One update can therefore push up to
+`UPDATE_TODO_MAX_ENTRIES` (4) entries, and every update route sizes its
+`durableHlcQueue` with that constant, not a literal: the queue throws when
+it runs out. A `listId` change still logs as `edited`, because a `moved`
+row carries both list names and the builder has no store to read them from.
+
 ## MCP server (A6, EI-52)
 
 A remote MCP server at `/mcp` — deliberately not under `/api`, matching the

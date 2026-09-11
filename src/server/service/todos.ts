@@ -6,6 +6,7 @@ import {
   buildUpdateTodoEntry,
   type CreateTodoInput,
   type DeleteTodoInput,
+  type UpdateTodoBefore,
   type UpdateTodoInput,
 } from "@/lib/service/todos";
 import type { ServiceContext } from "@/lib/service/context";
@@ -76,15 +77,18 @@ export async function createTodo(
   return { response, todoId: entries[0].entityId };
 }
 
-/** Patch an existing todo via the sync push path. Pushes the todo AND (when
- * the patch touches a journalled field) its "edited" `todoEvent` together. */
+/** Patch an existing todo via the sync push path. Pushes the todo AND its
+ * `todoEvent`s together. `before` is the stored row the caller already read;
+ * it is what lets a status or date change be logged as one (EI-321). Size
+ * the caller's `durableHlcQueue` with `UPDATE_TODO_MAX_ENTRIES`. */
 export async function updateTodo(
   ctx: ServiceContext,
   id: string,
   patch: UpdateTodoInput,
   push: PushTransport,
+  before?: UpdateTodoBefore,
 ): Promise<PushResponse> {
-  return push(buildUpdateTodoEntry(ctx, id, patch));
+  return push(buildUpdateTodoEntry(ctx, id, patch, before));
 }
 
 /**

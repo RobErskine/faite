@@ -1518,13 +1518,15 @@ export function useBoardActions(
 
       void (async () => {
         await materializeIfNeeded(todo);
+        // `via` marks the row as a triage decision, so History can say
+        // where it was made (EI-321).
         if (verdict.kind === "dropped" || verdict.kind === "done") {
-          const eventId = await setTodoStatus(todo.id, verdict.kind);
+          const eventId = await setTodoStatus(todo.id, verdict.kind, "overdrive");
           if (eventId) attachEventIds(entryId, [eventId]);
         } else if (verdict.kind === "listed") {
-          await moveTodoToList(todo.id, verdict.listId);
+          await moveTodoToList(todo.id, verdict.listId, undefined, "overdrive");
         } else {
-          await scheduleTodo(todo.id, verdict.date, todo.scheduledDate);
+          await scheduleTodo(todo.id, verdict.date, todo.scheduledDate, undefined, "overdrive");
         }
       })();
 
