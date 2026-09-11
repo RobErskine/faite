@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { ComponentType } from "react";
 import {
   ArrowRightLeft,
@@ -22,18 +22,27 @@ import {
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { civilDateToLocalDate, localDateToCivilDate } from "@/components/ui/date-picker-field";
 import { Label } from "@/components/ui/label";
 import { MarkdownField } from "@/components/ui/markdown-field";
 import { Separator } from "@/components/ui/separator";
-import { edge, effectiveListColor } from "@/lib/colors";
-import { activeDays, buildDayLog, type DayLogEntry } from "@/lib/day-log";
+import { edge, effectiveListColor, isTintableColor, tint } from "@/lib/colors";
+import {
+  activeDays,
+  buildDayLog,
+  dayTints,
+  type DayLogEntry,
+  type ListTintResolver,
+} from "@/lib/day-log";
 import { formatEventTime } from "@/lib/event-time";
 import { addDays, formatDay, formatShortDate } from "@/lib/scheduling";
 import type { CivilDate, DayNote, List, Tab } from "@/lib/schema";
+import { parseEventPayload } from "@/lib/store/todo-events";
 import { useEventsBetween, useTodosById } from "@/lib/store/hooks";
 import { HISTORY_STARTS_AT } from "@/lib/todo-timeline";
 import { useExitRetained } from "@/lib/use-exit-retained";
+import { cn } from "@/lib/utils";
 import { zonedInstant } from "@/lib/zoned";
 import { TimelineList, TimelineRow } from "./timeline";
 
@@ -100,11 +109,61 @@ function entryDetail(entry: DayLogEntry): string | null {
 /** `YYYY-MM-01` for the month `day` falls in. */
 const monthOf = (day: CivilDate): CivilDate => `${day.slice(0, 7)}-01`;
 
-/** `YYYY-MM-01` of the month after `month`. */
-function nextMonth(month: CivilDate): CivilDate {
+/** `YYYY-MM-01`, `n` months after (or before, for a negative `n`) `month`. */
+function addMonths(month: CivilDate, n: number): CivilDate {
   const [y, m] = month.split("-").map(Number);
-  return m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, "0")}-01`;
+  const index = y * 12 + (m - 1) + n;
+  return `${Math.floor(index / 12)}-${String((index % 12) + 1).padStart(2, "0")}-01`;
 }
+
+/** `YYYY-MM-01` of the month after `month`. */
+const nextMonth = (month: CivilDate): CivilDate => addMonths(month, 1);
+
+/**
+ * How much of the calendar is on screen (EI-323). Every span is ROLLING: it
+ * ends at the anchor month and reaches back, so Quarter in September is
+ * Jul–Sep, not a calendar quarter — the month you are in is always in view.
+ */
+type CalendarView = "month" | "quarter" | "year";
+
+const VIEWS: ReadonlyArray<{
+  value: CalendarView;
+  label: string;
+  span: number;
+  /** The day button's height. Fixed, not `aspect-square`: a square cell at
+   * the sheet's full width would make one month ~550px tall. */
+  cellHeight: string;
+  /** The months' layout. Container queries, not viewport breakpoints —
+   * what matters is the sheet's width, which on a 1289px window is only
+   * ~490px inside. `@md` (448px) is the widest breakpoint that still puts a
+   * quarter side by side there; a phone (~358px) stacks. */
+  months: string;
+  /** Year only: twelve months must fit a sheet, so the labels shrink too. */
+  compact?: boolean;
+  /** The day picker's minimum cell width. Seven of the default 28px are
+   * 196px — wider than one of three columns in a ~490px sheet, so the
+   * months overlap unless the cells can shrink to fit. */
+  cellSize?: string;
+}> = [
+  { value: "month", label: "Month", span: 1, cellHeight: "h-10", months: "flex flex-col" },
+  {
+    value: "quarter",
+    label: "Quarter",
+    span: 3,
+    cellHeight: "h-8 text-xs",
+    months: "grid grid-cols-1 gap-6 @md:grid-cols-3 @md:gap-3",
+    cellSize: "[--cell-size:--spacing(5)]",
+  },
+  {
+    value: "year",
+    label: "Year",
+    span: 12,
+    cellHeight: "h-5 text-[0.65rem]",
+    months: "grid grid-cols-2 gap-x-3 gap-y-4 @md:grid-cols-3 @2xl:grid-cols-4",
+    compact: true,
+    cellSize: "[--cell-size:--spacing(5)]",
+  },
+];
 
 interface HistorySheetProps {
   /** The day on screen; null closes the sheet. */
@@ -115,6 +174,8 @@ interface HistorySheetProps {
   dayNotes: ReadonlyMap<CivilDate, DayNote>;
   /** Live AND archived lists, so a filed list still colors its rows. */
   listsById: ReadonlyMap<string, List>;
+  /** Where a to-do with no list lives — `DaySheet`'s same fallback. */
+  backlog: List | undefined;
   tabsById: ReadonlyMap<string, Pick<Tab, "color">>;
   onSelectDay: (day: CivilDate) => void;
   onClose: () => void;
@@ -137,6 +198,7 @@ function HistorySheetContent({
   timezone,
   dayNotes,
   listsById,
+  backlog,
   tabsById,
   onSelectDay,
   onClose,
@@ -145,21 +207,31 @@ function HistorySheetContent({
 }: Omit<HistorySheetProps, "day"> & { day: CivilDate; open: boolean }) {
   const { weekday, label } = formatDay(day);
 
-  // The calendar's month follows the day when the day changes (the ‹ / ›
-  // buttons, a deep link), and is free to browse otherwise. Adjusted during
-  // render with the `lastSeen` pattern, not an effect (`.ai/lessons.md`).
-  const [month, setMonth] = useState<CivilDate>(() => monthOf(day));
-  const [seenDay, setSeenDay] = useState(day);
-  if (day !== seenDay) {
-    setSeenDay(day);
-    setMonth(monthOf(day));
-  }
+  const [view, setView] = useState<CalendarView>("month");
+  const { span, cellHeight, months: monthsLayout, compact, cellSize } = VIEWS.find(
+    (v) => v.value === view,
+  )!;
 
-  // Two indexed range scans on `todoEvents.at`: the month on screen, for the
-  // dots, and the day on screen, for the log. See `useEventsBetween`.
+  // `anchor` is the LAST month on screen; the window reaches `span - 1`
+  // months back from it. It follows the day only when the day leaves the
+  // window (the ‹ / › day buttons, a deep link, a smaller view) — clicking a
+  // day already on screen must not slide Quarter or Year out from under the
+  // pointer. Adjusted during render with the `lastSeen` pattern, not an
+  // effect (`.ai/lessons.md`).
+  const [anchor, setAnchor] = useState<CivilDate>(() => monthOf(day));
+  const [seen, setSeen] = useState(`${day}|${view}`);
+  if (`${day}|${view}` !== seen) {
+    setSeen(`${day}|${view}`);
+    const dayMonth = monthOf(day);
+    if (dayMonth > anchor || dayMonth < addMonths(anchor, -(span - 1))) setAnchor(dayMonth);
+  }
+  const firstMonth = addMonths(anchor, -(span - 1));
+
+  // Two indexed range scans on `todoEvents.at`: the months on screen, for the
+  // dots and tints, and the day on screen, for the log. See `useEventsBetween`.
   const monthEvents = useEventsBetween(
-    zonedInstant(month, "00:00", timezone),
-    zonedInstant(nextMonth(month), "00:00", timezone),
+    zonedInstant(firstMonth, "00:00", timezone),
+    zonedInstant(nextMonth(anchor), "00:00", timezone),
   );
   const dayEvents = useEventsBetween(
     zonedInstant(day, "00:00", timezone),
@@ -176,6 +248,53 @@ function HistorySheetContent({
     () => [...activeDays(monthEvents, timezone)].map(civilDateToLocalDate),
     [monthEvents, timezone],
   );
+
+  // Tints (EI-323). A completion written since EI-323 carries the list it
+  // happened in; only older ones need the to-do's current list, so only
+  // those ids are read — for a year of new rows, none.
+  const lookupIds = useMemo(
+    () => [
+      ...new Set(
+        monthEvents
+          .filter((e) => {
+            if (e.kind !== "done") return false;
+            const payload = parseEventPayload(e.payload) as { listId?: unknown } | null;
+            return !payload || !("listId" in payload);
+          })
+          .map((e) => e.todoId),
+      ),
+    ],
+    [monthEvents],
+  );
+  const legacyTodos = useTodosById(lookupIds);
+  const resolveList = useCallback<ListTintResolver>(
+    (listId) => {
+      const list = (listId ? listsById.get(listId) : undefined) ?? backlog;
+      const color = effectiveListColor(list, tabsById);
+      return list && isTintableColor(color) ? { color, name: list.name } : null;
+    },
+    [listsById, backlog, tabsById],
+  );
+  const tints = useMemo(
+    () => dayTints(monthEvents, legacyTodos, resolveList, timezone),
+    [monthEvents, legacyTodos, resolveList, timezone],
+  );
+  // One day-picker modifier per color, each with its own inline background
+  // (`modifiersStyles` lands on the day cell). ONE strength for every tint —
+  // 1 completion or 20 look the same, so this says which list a day was
+  // about and never how much (docs/DESIGN.md §4).
+  const { tintModifiers, tintStyles } = useMemo(() => {
+    const modifiers: Record<string, Date[]> = {};
+    const styles: Record<string, { backgroundColor: string }> = {};
+    const keys = new Map<string, string>();
+    for (const [tinted, { color }] of tints) {
+      const key = keys.get(color) ?? `tint${keys.size}`;
+      keys.set(color, key);
+      (modifiers[key] ??= []).push(civilDateToLocalDate(tinted));
+      styles[key] = { backgroundColor: tint(color)! };
+    }
+    return { tintModifiers: modifiers, tintStyles: styles };
+  }, [tints]);
 
   const note = dayNotes.get(day);
   const isEmpty = log.done.length + log.decisions.length + log.added.length === 0;
@@ -240,32 +359,78 @@ function HistorySheetContent({
         </SheetHeader>
 
         <div className="flex-1 space-y-5 overflow-y-auto px-4 pb-4">
-          <Calendar
-            mode="single"
-            required
-            className="mx-auto bg-transparent"
-            showOutsideDays={false}
-            selected={civilDateToLocalDate(day)}
-            onSelect={(date) => onSelectDay(localDateToCivilDate(date))}
-            month={civilDateToLocalDate(month)}
-            onMonthChange={(date) => setMonth(monthOf(localDateToCivilDate(date)))}
-            startMonth={civilDateToLocalDate(HISTORY_START_DAY)}
-            endMonth={civilDateToLocalDate(today)}
-            disabled={{ after: civilDateToLocalDate(today) }}
-            modifiers={{ active: dots }}
-            modifiersClassNames={{
-              // A dot under the number, presence only (no count, no heat).
-              // `z-20` puts it above the day button, which is `z-10`.
-              active:
-                "after:pointer-events-none after:absolute after:bottom-1 after:left-1/2 after:z-20 after:size-1 after:-translate-x-1/2 after:rounded-full after:bg-foreground/60 data-[selected=true]:after:bg-primary-foreground",
-            }}
-            labels={{
-              labelDayButton: (date, modifiers) =>
-                `${date.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}${
-                  modifiers.active ? ", something finished" : ""
-                }`,
-            }}
-          />
+          <Tabs value={view} onValueChange={(next) => setView(next as CalendarView)} className="gap-3">
+            <TabsList aria-label="How much of the calendar to show" className="w-full">
+              {VIEWS.map((option) => (
+                <TabsTrigger key={option.value} value={option.value}>
+                  {option.label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+            {/* One panel, for whichever tab is active: the calendar itself.
+                `@container` so the months lay out by the SHEET's width. */}
+            <TabsContent value={view} className="@container">
+              <Calendar
+                mode="single"
+                required
+                className={cn("w-full bg-transparent p-0", cellSize)}
+                classNames={{
+                  root: "w-full",
+                  months: `relative ${monthsLayout}`,
+                  month: "flex w-full min-w-0 flex-col gap-2",
+                  week: "mt-1 flex w-full",
+                  // Replaces the shared cell class outright — `classNames`
+                  // is spread after the defaults, it does not merge. Same as
+                  // the default minus `aspect-square` and the range-mode
+                  // rounding this single-date picker never uses.
+                  day: "group/day relative w-full rounded-(--cell-radius) p-0 text-center select-none",
+                  day_button: `aspect-auto ${cellHeight}`,
+                  ...(compact
+                    ? {
+                        weekday: "flex-1 text-[0.6rem] font-normal text-muted-foreground select-none",
+                        caption_label: "text-xs font-medium select-none",
+                      }
+                    : {}),
+                }}
+                showOutsideDays={false}
+                numberOfMonths={span}
+                pagedNavigation
+                selected={civilDateToLocalDate(day)}
+                onSelect={(date) => onSelectDay(localDateToCivilDate(date))}
+                month={civilDateToLocalDate(firstMonth)}
+                onMonthChange={(date) =>
+                  setAnchor(addMonths(monthOf(localDateToCivilDate(date)), span - 1))
+                }
+                // Not the log's first month: with several months on screen
+                // that would push the window FORWARD past today (Aug–Oct in
+                // place of Jul–Sep). Far enough back that the LAST month on
+                // screen can still be the first month the log has.
+                startMonth={civilDateToLocalDate(addMonths(monthOf(HISTORY_START_DAY), -(span - 1)))}
+                endMonth={civilDateToLocalDate(today)}
+                disabled={[
+                  { after: civilDateToLocalDate(today) },
+                  { before: civilDateToLocalDate(HISTORY_START_DAY) },
+                ]}
+                modifiers={{ active: dots, ...tintModifiers }}
+                modifiersStyles={tintStyles}
+                modifiersClassNames={{
+                  // A dot under the number, presence only (no count, no heat).
+                  // It stays on a tinted day too, so color is never the only
+                  // signal. `z-20` puts it above the day button (`z-10`).
+                  active:
+                    "after:pointer-events-none after:absolute after:bottom-0.5 after:left-1/2 after:z-20 after:size-1 after:-translate-x-1/2 after:rounded-full after:bg-foreground/60 data-[selected=true]:after:bg-primary-foreground",
+                }}
+                labels={{
+                  labelDayButton: (date, modifiers) => {
+                    const mostly = tints.get(localDateToCivilDate(date));
+                    return `${date.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}${
+                      modifiers.active ? ", something finished" : ""
+                    }${mostly ? `, mostly ${mostly.listName}` : ""}`;
+                  },
+                }}
+              />
+            </TabsContent>
+          </Tabs>
 
           <div className="flex items-center gap-2">
             <h3 className="min-w-0 flex-1 truncate">
@@ -273,7 +438,7 @@ function HistorySheetContent({
               <span className="num text-xs text-muted-foreground">{label}</span>
             </h3>
             {day !== today && (
-              <Button variant="ghost" size="xs" className="text-muted-foreground" onClick={() => onSelectDay(today)}>
+              <Button variant="outline" size="xs" onClick={() => onSelectDay(today)}>
                 Today
               </Button>
             )}
@@ -304,7 +469,11 @@ function HistorySheetContent({
               History starts {formatDay(HISTORY_START_DAY).label}.
             </p>
           ) : isEmpty ? (
-            <p className="text-sm text-muted-foreground">Nothing finished or decided on this day.</p>
+            <p className="text-sm text-muted-foreground">
+              {day === today
+                ? "Nothing finished or decided on this day yet."
+                : "Nothing finished or decided on this day."}
+            </p>
           ) : (
             <>
               {section("Done", log.done)}

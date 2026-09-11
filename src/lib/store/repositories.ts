@@ -353,7 +353,20 @@ export async function setTodoStatus(
           ? "dropped"
           : "reopened";
   const eventIds = await mutate("todo", id, statusPatch(status), {
-    events: kind ? [logTodoEvent(id, kind, via ? { v: 1, via } : null)] : [],
+    events: kind
+      ? [
+          logTodoEvent(
+            id,
+            kind,
+            // `listId` on a settle, never on a reopen — see `StatusPayload`.
+            kind === "reopened"
+              ? via
+                ? { v: 1, via }
+                : null
+              : { v: 1, listId: existing?.listId ?? null, ...(via ? { via } : {}) },
+          ),
+        ]
+      : [],
   });
   return eventIds[0] ?? null;
 }
