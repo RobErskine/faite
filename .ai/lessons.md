@@ -1740,3 +1740,43 @@ A second lesson from the same bug: the test I wrote a turn earlier asserted
 the rail had NO z-index, as a proxy for "the tab paints over it". The proxy
 also let every later positioned element paint over the rail. Assert the
 relationship you care about, not a mechanism that happens to produce it.
+
+## `npm run typecheck` is TWO passes, and I only ever ran one (EI-318)
+
+`"typecheck": "tsc --noEmit && tsc -p tsconfig.worker.json --noEmit"`. I ran
+`npx tsc --noEmit -p tsconfig.json` all branch, so CI was the first thing to
+compile `src/server/**` against `@cloudflare/workers-types`. A test importing
+`node:sqlite` cannot resolve there, and the failure only appeared after merge
+time pressure had already started.
+
+**Rule:** run `npm run typecheck`, the script, not a `tsc` invocation you
+composed yourself. Same for `npm test` over `npx vitest run`. A script that
+chains two commands looks identical to one that chains one until the second
+fails.
+
+## Three CI-only gates, and a local gate that passes without them (EI-318)
+
+`npm run verify` is not the CI `verify` job. The job runs, in order:
+typecheck (both passes), `npm test`, **the OpenAPI drift check**, lint,
+`npm run build`, `npm run build:static`. The drift check
+(`npm run openapi:generate && git diff --exit-code openapi/`) exists ONLY
+there — already recorded in this file — and I still shipped drift, because I
+was running `e2e:ci` as my gate and treating it as the whole bar.
+
+**Rule:** before pushing a branch that touches a Zod schema, run the `verify`
+job's step list from `.github/workflows/ci.yml` in order. Reading the workflow
+takes a minute; three red CI rounds took forty.
+
+## A test that asserts a timezone-specific fact fails in UTC (EI-318)
+
+`date-picker-field.test.tsx` proved the UTC trap by asserting a specific
+DISAGREEMENT: that local midnight is a different instant from
+`new Date("2026-08-07")`, and that 23:00 local lands on the next UTC day.
+Both hold in America/New_York, where I wrote and ran them. Neither holds in
+UTC, where CI runs — the instants coincide and nothing shifts. Correct code,
+failing tests.
+
+**Rule:** assert the PROPERTY that holds in every zone (the reader returns the
+local calendar day), never a disagreement that exists only in some. And run
+`TZ=UTC npx vitest run` before pushing anything date-related — CI is UTC and
+your machine probably is not.
