@@ -1871,3 +1871,21 @@ rows written before that. The rule this is the second instance of:
 **Rule:** if a view claims to show what was true at a moment, every input it
 reads has to have been recorded at that moment. A field you read "now" is a
 field that can change after the fact, and a record that changes is not one.
+
+## `shadcn add` can install a package you did not ask for (EI-324)
+
+`npx shadcn add hover-card` (style `base-nova`, shadcn 4.16) wrote a
+`hover-card.tsx` that imported `cn` from **`"cn"`** — not `@/lib/utils` —
+and added `cn@^0.2.6`, an unrelated npm package, to `package.json`. It
+reported "Created 1 file" and nothing else. The typecheck would have passed,
+because the package exists and exports a `cn`, so the only sign was the
+`package.json` diff.
+
+The same generated file also left out two house rules every other overlay in
+`components/ui/` follows: `motion-reduce:animate-none` (docs/DESIGN.md §4)
+and the `--shadow-raised` token in place of `shadow-md`.
+
+**Rule:** after `shadcn add`, read `git diff package.json` and the new file
+before using it. Revert any dependency you did not ask for, point `cn` at
+`@/lib/utils`, and match the new component to its nearest sibling in
+`components/ui/` (for a floating panel, `popover.tsx`).

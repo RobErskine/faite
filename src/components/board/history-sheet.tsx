@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
-import type { ComponentType } from "react";
+import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import type { ComponentProps, ComponentType } from "react";
 import {
   ArrowRightLeft,
   Calendar as CalendarIcon,
@@ -21,7 +21,13 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
+import { Calendar, CalendarDayButton } from "@/components/ui/calendar";
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+  createHoverCardHandle,
+} from "@/components/ui/hover-card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { civilDateToLocalDate, localDateToCivilDate } from "@/components/ui/date-picker-field";
 import { Label } from "@/components/ui/label";
@@ -31,9 +37,11 @@ import { edge, effectiveListColor, isTintableColor, tint } from "@/lib/colors";
 import {
   activeDays,
   buildDayLog,
+  dayCompletions,
   dayTints,
   type DayLogEntry,
-  type ListTintResolver,
+  type ListCompletions,
+  type ListResolver,
 } from "@/lib/day-log";
 import { formatEventTime } from "@/lib/event-time";
 import { addDays, formatDay, formatShortDate } from "@/lib/scheduling";
@@ -165,6 +173,78 @@ const VIEWS: ReadonlyArray<{
   },
 ];
 
+/**
+ * The hover card behind each day with completions (EI-324). ONE card for the
+ * whole calendar — Year has up to 365 days — opened by whichever day is under
+ * the pointer: every trigger shares `handle` and passes its day as the
+ * payload.
+ *
+ * Read through context rather than a closure because the day picker takes its
+ * `DayButton` as a component: one defined inside the sheet would be a new
+ * component every render, and remounting every day button loses focus.
+ */
+const DayCardsContext = createContext<{
+  handle: ReturnType<typeof createHoverCardHandle<CivilDate>>;
+  completions: ReadonlyMap<CivilDate, readonly ListCompletions[]>;
+} | null>(null);
+
+function HistoryDayButton(props: ComponentProps<typeof CalendarDayButton>) {
+  const cards = useContext(DayCardsContext);
+  const day = localDateToCivilDate(props.day.date);
+  if (!cards?.completions.has(day)) return <CalendarDayButton {...props} />;
+  return (
+    // A plain span WRAPS the day button rather than `render`ing it: a Base
+    // UI trigger composed onto another component can drop its pointer
+    // handlers (see the checkbox tooltip in `todo-card.tsx`), and the day
+    // button keeps its own ref for the picker's keyboard focus.
+    <HoverCardTrigger
+      handle={cards.handle}
+      payload={day}
+      delay={300}
+      render={<span className="flex w-full" />}
+    >
+      <CalendarDayButton {...props} />
+    </HoverCardTrigger>
+  );
+}
+
+/**
+ * What a day's completions were, one row per list, most first — and why the
+ * day has the tint it has. Each row wears its list's tint at the calendar's
+ * one strength. Counts per list only: no day total, no comparison with other
+ * days (`docs/DESIGN.md` §7, 2026-09-11). Won't do is not here, as it never
+ * tints a day.
+ */
+function DayCompletionsCard({ day, rows }: { day: CivilDate; rows: readonly ListCompletions[] }) {
+  const { weekday, label } = formatDay(day);
+  return (
+    <HoverCardContent side="top" className="w-60 space-y-1.5 p-2">
+      <p className="type-eyebrow">
+        Completed <span className="num normal-case text-muted-foreground">· {formatShortDate(day)}</span>
+      </p>
+      <ul aria-label={`Completed on ${weekday}, ${label}`} className="space-y-px">
+        {rows.map((row) => (
+          <li
+            key={row.listId}
+            className="flex items-center gap-2 px-2 py-1"
+            style={row.color ? { backgroundColor: tint(row.color)! } : undefined}
+          >
+            <span className="num w-5 shrink-0 text-right">{row.count}</span>
+            {/* The board's checked checkbox, drawn: a done to-do, not a control. */}
+            <span
+              aria-hidden
+              className="flex size-4 shrink-0 items-center justify-center border border-primary bg-primary text-primary-foreground"
+            >
+              <Check className="size-3.5" />
+            </span>
+            <span className="min-w-0 truncate">{row.name}</span>
+          </li>
+        ))}
+      </ul>
+    </HoverCardContent>
+  );
+}
+
 interface HistorySheetProps {
   /** The day on screen; null closes the sheet. */
   day: CivilDate | null;
@@ -267,18 +347,24 @@ function HistorySheetContent({
     [monthEvents],
   );
   const legacyTodos = useTodosById(lookupIds);
-  const resolveList = useCallback<ListTintResolver>(
+  const resolveList = useCallback<ListResolver>(
     (listId) => {
       const list = (listId ? listsById.get(listId) : undefined) ?? backlog;
+      if (!list) return null;
       const color = effectiveListColor(list, tabsById);
-      return list && isTintableColor(color) ? { color, name: list.name } : null;
+      return { id: list.id, name: list.name, color: isTintableColor(color) ? color : null };
     },
     [listsById, backlog, tabsById],
   );
-  const tints = useMemo(
-    () => dayTints(monthEvents, legacyTodos, resolveList, timezone),
+  // Each day's completions per list — the hover card's rows (EI-324) — and
+  // the tint picked from them, so the card always explains the color.
+  const completions = useMemo(
+    () => dayCompletions(monthEvents, legacyTodos, resolveList, timezone),
     [monthEvents, legacyTodos, resolveList, timezone],
   );
+  const tints = useMemo(() => dayTints(completions), [completions]);
+  const [cardHandle] = useState(() => createHoverCardHandle<CivilDate>());
+  const dayCards = useMemo(() => ({ handle: cardHandle, completions }), [cardHandle, completions]);
   // One day-picker modifier per color, each with its own inline background
   // (`modifiersStyles` lands on the day cell). ONE strength for every tint —
   // 1 completion or 20 look the same, so this says which list a day was
@@ -308,8 +394,9 @@ function HistorySheetContent({
   const section = (title: string, entries: DayLogEntry[]) =>
     entries.length > 0 && (
       <section className="space-y-1.5">
-        {/* No count in the heading: a number of things done is a score,
-            and docs/DESIGN.md §4 rules those out. */}
+        {/* No count in the heading: a day's total is a score, and
+            docs/DESIGN.md §4 rules those out. The hover card's per-list
+            counts are the one exception (§7, 2026-09-11). */}
         <h3 className="type-eyebrow">{title}</h3>
         <TimelineList ariaLabel={`${title} on ${weekday}, ${label}`}>
           {entries.map((entry, index) => {
@@ -370,65 +457,79 @@ function HistorySheetContent({
             {/* One panel, for whichever tab is active: the calendar itself.
                 `@container` so the months lay out by the SHEET's width. */}
             <TabsContent value={view} className="@container">
-              <Calendar
-                mode="single"
-                required
-                className={cn("w-full bg-transparent p-0", cellSize)}
-                classNames={{
-                  root: "w-full",
-                  months: `relative ${monthsLayout}`,
-                  month: "flex w-full min-w-0 flex-col gap-2",
-                  week: "mt-1 flex w-full",
-                  // Replaces the shared cell class outright — `classNames`
-                  // is spread after the defaults, it does not merge. Same as
-                  // the default minus `aspect-square` and the range-mode
-                  // rounding this single-date picker never uses.
-                  day: "group/day relative w-full rounded-(--cell-radius) p-0 text-center select-none",
-                  day_button: `aspect-auto ${cellHeight}`,
-                  ...(compact
-                    ? {
-                        weekday: "flex-1 text-[0.6rem] font-normal text-muted-foreground select-none",
-                        caption_label: "text-xs font-medium select-none",
-                      }
-                    : {}),
+              <DayCardsContext.Provider value={dayCards}>
+                <Calendar
+                  mode="single"
+                  required
+                  // Square cells (EI-324): a tinted day is a solid block, and
+                  // same-color days side by side join into one bar. No gap on
+                  // purpose — the bar shows what a run of days was about.
+                  className={cn("w-full bg-transparent p-0 [--cell-radius:0px]", cellSize)}
+                  classNames={{
+                    root: "w-full",
+                    months: `relative ${monthsLayout}`,
+                    month: "flex w-full min-w-0 flex-col gap-2",
+                    week: "mt-1 flex w-full",
+                    // Replaces the shared cell class outright — `classNames`
+                    // is spread after the defaults, it does not merge. Same as
+                    // the default minus `aspect-square` and the range-mode
+                    // rounding this single-date picker never uses.
+                    day: "group/day relative w-full rounded-(--cell-radius) p-0 text-center select-none",
+                    // `rounded-none` beats `Button`'s own radius — `CalendarDayButton`
+                    // merges this class last.
+                    day_button: `aspect-auto rounded-none ${cellHeight}`,
+                    ...(compact
+                      ? {
+                          weekday: "flex-1 text-[0.6rem] font-normal text-muted-foreground select-none",
+                          caption_label: "text-xs font-medium select-none",
+                        }
+                      : {}),
+                  }}
+                  components={{ DayButton: HistoryDayButton }}
+                  showOutsideDays={false}
+                  numberOfMonths={span}
+                  pagedNavigation
+                  selected={civilDateToLocalDate(day)}
+                  onSelect={(date) => onSelectDay(localDateToCivilDate(date))}
+                  month={civilDateToLocalDate(firstMonth)}
+                  onMonthChange={(date) =>
+                    setAnchor(addMonths(monthOf(localDateToCivilDate(date)), span - 1))
+                  }
+                  // Not the log's first month: with several months on screen
+                  // that would push the window FORWARD past today (Aug–Oct in
+                  // place of Jul–Sep). Far enough back that the LAST month on
+                  // screen can still be the first month the log has.
+                  startMonth={civilDateToLocalDate(addMonths(monthOf(HISTORY_START_DAY), -(span - 1)))}
+                  endMonth={civilDateToLocalDate(today)}
+                  disabled={[
+                    { after: civilDateToLocalDate(today) },
+                    { before: civilDateToLocalDate(HISTORY_START_DAY) },
+                  ]}
+                  modifiers={{ active: dots, ...tintModifiers }}
+                  modifiersStyles={tintStyles}
+                  modifiersClassNames={{
+                    // A dot under the number, presence only (no count, no heat).
+                    // It stays on a tinted day too, so color is never the only
+                    // signal. `z-20` puts it above the day button (`z-10`).
+                    active:
+                      "after:pointer-events-none after:absolute after:bottom-0.5 after:left-1/2 after:z-20 after:size-1 after:-translate-x-1/2 after:rounded-full after:bg-foreground/60 data-[selected=true]:after:bg-primary-foreground",
+                  }}
+                  labels={{
+                    labelDayButton: (date, modifiers) => {
+                      const mostly = tints.get(localDateToCivilDate(date));
+                      return `${date.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}${
+                        modifiers.active ? ", something finished" : ""
+                      }${mostly ? `, mostly ${mostly.listName}` : ""}`;
+                    },
+                  }}
+                />
+              </DayCardsContext.Provider>
+              <HoverCard handle={cardHandle}>
+                {({ payload }) => {
+                  const rows = payload ? completions.get(payload) : undefined;
+                  return payload && rows ? <DayCompletionsCard day={payload} rows={rows} /> : null;
                 }}
-                showOutsideDays={false}
-                numberOfMonths={span}
-                pagedNavigation
-                selected={civilDateToLocalDate(day)}
-                onSelect={(date) => onSelectDay(localDateToCivilDate(date))}
-                month={civilDateToLocalDate(firstMonth)}
-                onMonthChange={(date) =>
-                  setAnchor(addMonths(monthOf(localDateToCivilDate(date)), span - 1))
-                }
-                // Not the log's first month: with several months on screen
-                // that would push the window FORWARD past today (Aug–Oct in
-                // place of Jul–Sep). Far enough back that the LAST month on
-                // screen can still be the first month the log has.
-                startMonth={civilDateToLocalDate(addMonths(monthOf(HISTORY_START_DAY), -(span - 1)))}
-                endMonth={civilDateToLocalDate(today)}
-                disabled={[
-                  { after: civilDateToLocalDate(today) },
-                  { before: civilDateToLocalDate(HISTORY_START_DAY) },
-                ]}
-                modifiers={{ active: dots, ...tintModifiers }}
-                modifiersStyles={tintStyles}
-                modifiersClassNames={{
-                  // A dot under the number, presence only (no count, no heat).
-                  // It stays on a tinted day too, so color is never the only
-                  // signal. `z-20` puts it above the day button (`z-10`).
-                  active:
-                    "after:pointer-events-none after:absolute after:bottom-0.5 after:left-1/2 after:z-20 after:size-1 after:-translate-x-1/2 after:rounded-full after:bg-foreground/60 data-[selected=true]:after:bg-primary-foreground",
-                }}
-                labels={{
-                  labelDayButton: (date, modifiers) => {
-                    const mostly = tints.get(localDateToCivilDate(date));
-                    return `${date.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}${
-                      modifiers.active ? ", something finished" : ""
-                    }${mostly ? `, mostly ${mostly.listName}` : ""}`;
-                  },
-                }}
-              />
+              </HoverCard>
             </TabsContent>
           </Tabs>
 

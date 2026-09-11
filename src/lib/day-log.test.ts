@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { activeDays, buildDayLog, dayTints, type DayLogTodo, type ListTintResolver } from "./day-log";
+import {
+  activeDays,
+  buildDayLog,
+  dayCompletions,
+  dayTints,
+  type DayLogTodo,
+  type ListResolver,
+} from "./day-log";
 import type { TodoEvent } from "./schema";
 
 const TZ = "America/New_York";
@@ -173,16 +180,89 @@ describe("activeDays", () => {
   });
 });
 
+const BLUE = "#0090ff";
+const RED = "#e5484d";
+const LISTS: Record<string, { id: string; color: string | null; name: string }> = {
+  work: { id: "work", color: BLUE, name: "Work" },
+  errands: { id: "errands", color: RED, name: "Errands" },
+  reading: { id: "reading", color: BLUE, name: "Reading" },
+  inbox: { id: "inbox", color: null, name: "Inbox" },
+};
+const resolve: ListResolver = (listId) => (listId ? (LISTS[listId] ?? null) : null);
+const current = new Map<string, Pick<DayLogTodo, "listId">>();
+
+describe("dayCompletions (EI-324)", () => {
+  const rows = (events: TodoEvent[], todosById = current) =>
+    dayCompletions(events, todosById, resolve, TZ).get(MON)?.map((r) => `${r.count} ${r.name}`);
+
+  it("counts each list's completions, most first", () => {
+    const events = [
+      event("a", "done", at(MON), { listId: "errands" }),
+      event("b", "done", at(MON, 1), { listId: "work" }),
+      event("c", "done", at(MON, 2), { listId: "work" }),
+      event("d", "done", at(MON, 3), { listId: "reading" }),
+      event("e", "done", at(MON, 4), { listId: "work" }),
+    ];
+    expect(rows(events)).toEqual(["3 Work", "1 Reading", "1 Errands"]);
+  });
+
+  it("keeps lists that share a color apart — the tint pools them, the card does not", () => {
+    const events = [
+      event("a", "done", at(MON), { listId: "work" }),
+      event("b", "done", at(MON, 1), { listId: "reading" }),
+    ];
+    expect(rows(events)).toEqual(["1 Reading", "1 Work"]);
+  });
+
+  it("breaks a tie with the most recent completion", () => {
+    const events = [
+      event("a", "done", at(MON), { listId: "errands" }),
+      event("b", "done", at(MON, 1), { listId: "work" }),
+    ];
+    expect(rows(events)).toEqual(["1 Work", "1 Errands"]);
+  });
+
+  it("keeps a list with no color, with no color", () => {
+    const events = [event("a", "done", at(MON), { listId: "inbox" })];
+    expect(dayCompletions(events, current, resolve, TZ).get(MON)).toEqual([
+      { listId: "inbox", name: "Inbox", color: null, count: 1, lastAt: at(MON) },
+    ]);
+  });
+
+  it("counts neither Won't do nor a completion reopened the same day", () => {
+    const events = [
+      event("a", "dropped", at(MON), { listId: "work" }),
+      event("b", "done", at(MON, 1), { listId: "work" }),
+      event("b", "reopened", at(MON, 2)),
+    ];
+    expect(dayCompletions(events, current, resolve, TZ).has(MON)).toBe(false);
+  });
+
+  it("uses the list recorded on the event, else the to-do's current list", () => {
+    const events = [
+      event("a", "done", at(MON), { listId: "errands" }),
+      event("b", "done", at(MON, 1)),
+    ];
+    const now = new Map([
+      ["a", { listId: "work" }],
+      ["b", { listId: "errands" }],
+    ]);
+    expect(rows(events, now)).toEqual(["2 Errands"]);
+  });
+
+  it("files each completion under its own day", () => {
+    const events = [
+      event("a", "done", at(MON), { listId: "work" }),
+      event("b", "done", at(WED), { listId: "errands" }),
+    ];
+    const byDay = dayCompletions(events, current, resolve, TZ);
+    expect([...byDay.keys()].sort()).toEqual([MON, WED]);
+  });
+});
+
 describe("dayTints (EI-323)", () => {
-  const BLUE = "#0090ff";
-  const RED = "#e5484d";
-  const LISTS: Record<string, { color: string; name: string }> = {
-    work: { color: BLUE, name: "Work" },
-    errands: { color: RED, name: "Errands" },
-    reading: { color: BLUE, name: "Reading" },
-  };
-  const resolve: ListTintResolver = (listId) => (listId ? (LISTS[listId] ?? null) : null);
-  const current = new Map<string, Pick<DayLogTodo, "listId">>();
+  const tints = (events: TodoEvent[], todosById = current) =>
+    dayTints(dayCompletions(events, todosById, resolve, TZ));
 
   it("tints a day by the color with the most completions", () => {
     const events = [
@@ -190,7 +270,7 @@ describe("dayTints (EI-323)", () => {
       event("b", "done", at(MON, 1), { listId: "work" }),
       event("c", "done", at(MON, 2), { listId: "errands" }),
     ];
-    expect(dayTints(events, current, resolve, TZ).get(MON)).toEqual({ color: BLUE, listName: "Work" });
+    expect(tints(events).get(MON)).toEqual({ color: BLUE, listName: "Work" });
   });
 
   it("pools two lists that share a color, and names the bigger one", () => {
@@ -202,7 +282,7 @@ describe("dayTints (EI-323)", () => {
       event("e", "done", at(MON, 4), { listId: "errands" }),
     ];
     // Blue 3 (Work 1 + Reading 2) beats red 2.
-    expect(dayTints(events, current, resolve, TZ).get(MON)).toEqual({ color: BLUE, listName: "Reading" });
+    expect(tints(events).get(MON)).toEqual({ color: BLUE, listName: "Reading" });
   });
 
   it("breaks a tie with the most recent completion", () => {
@@ -210,12 +290,12 @@ describe("dayTints (EI-323)", () => {
       event("a", "done", at(MON), { listId: "work" }),
       event("b", "done", at(MON, 5), { listId: "errands" }),
     ];
-    expect(dayTints(events, current, resolve, TZ).get(MON)?.color).toBe(RED);
+    expect(tints(events).get(MON)?.color).toBe(RED);
   });
 
   it("never tints for Won't do", () => {
     const events = [event("a", "dropped", at(MON), { listId: "errands" })];
-    expect(dayTints(events, current, resolve, TZ).size).toBe(0);
+    expect(tints(events).size).toBe(0);
   });
 
   it("skips a completion that was reopened the same day", () => {
@@ -224,30 +304,30 @@ describe("dayTints (EI-323)", () => {
       event("a", "reopened", at(MON, 5)),
       event("b", "done", at(MON, 6), { listId: "work" }),
     ];
-    expect(dayTints(events, current, resolve, TZ).get(MON)?.color).toBe(BLUE);
+    expect(tints(events).get(MON)?.color).toBe(BLUE);
   });
 
   it("uses the list recorded on the event, not where the to-do is now", () => {
     // Finished in Errands on Monday, moved to Work on Wednesday: Monday stays red.
     const movedSince = new Map([["a", { listId: "work" }]]);
     const events = [event("a", "done", at(MON), { listId: "errands" })];
-    expect(dayTints(events, movedSince, resolve, TZ).get(MON)?.color).toBe(RED);
+    expect(tints(events, movedSince).get(MON)?.color).toBe(RED);
   });
 
   it("falls back to the current list for an event written before lists were recorded", () => {
     const now = new Map([["a", { listId: "errands" }]]);
     const events = [event("a", "done", at(MON))];
-    expect(dayTints(events, now, resolve, TZ).get(MON)?.color).toBe(RED);
+    expect(tints(events, now).get(MON)?.color).toBe(RED);
   });
 
   it("leaves a day untinted when nothing it finished has a color", () => {
-    const events = [event("a", "done", at(MON), { listId: null })];
-    expect(dayTints(events, current, resolve, TZ).has(MON)).toBe(false);
+    const events = [event("a", "done", at(MON), { listId: "inbox" }), event("b", "done", at(MON, 1), { listId: null })];
+    expect(tints(events).has(MON)).toBe(false);
   });
 
   it("returns a color and a name, never a count", () => {
     const events = [event("a", "done", at(MON), { listId: "work" })];
-    expect(Object.keys(dayTints(events, current, resolve, TZ).get(MON)!).sort()).toEqual([
+    expect(Object.keys(tints(events).get(MON)!).sort()).toEqual([
       "color",
       "listName",
     ]);
