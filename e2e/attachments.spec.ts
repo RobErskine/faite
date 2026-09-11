@@ -1,5 +1,6 @@
 import { test, expect } from "./support/fixtures";
 import { switchToLists } from "./support/phone";
+import { openSheet } from "./support/sheet";
 
 /**
  * The Attachments section of the todo sheet (EI-242).
@@ -29,7 +30,7 @@ async function openSheetFor(page: Parameters<typeof switchToLists>[0], title: st
 
   // `exact: true` — the drag grip's aria-label also contains the title.
   await page.getByRole("button", { name: title, exact: true }).click();
-  const sheet = page.locator('[data-slot="sheet-content"]');
+  const sheet = openSheet(page);
   await expect(sheet).toBeVisible();
   return sheet;
 }

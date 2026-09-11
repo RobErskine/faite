@@ -208,7 +208,8 @@ Two rules with teeth:
   render-time `lastSeen` pattern; no `useEffect` for this.
 - The spectrum changes color, not position.
 - No streaks, counters, or progress gamification. `docs/RESEARCH.md` §2.9 and
-  §4 are binding.
+  §4 are binding. One narrow exception, per-list counts in History's hover
+  card, is §7's 2026-09-11 row.
 - Snappy and native: prefer a color or opacity change to a layout change.
   Prefer `transform` to anything that reflows.
 
@@ -292,3 +293,4 @@ streak, score, or percentage anywhere in it.
 | 2026-09-09 | **The hover wash is asymmetric**: in on `--dur-fast`, out on `--dur-base`. | Sweeping a pointer down a column fades every row it crosses both in and out, and at one speed that reads as a strobe. Leaving slower turns the rows behind the cursor into a wake. It is also the first thing to actually use `--dur-fast`, which had been defined and documented as "hover, fill, color" and referenced by nothing. |
 | 2026-09-10 | **An edge-anchored surface never overshoots.** Sheets take `--ease-out-soft`; only centred things (a dialog scaling in place) may spring. | A spring's eased progress passes 1, so a right-anchored panel travels past its resting place and visibly parts from the edge it is attached to. 4.9% is 7 px on a 145 px tab pill and 33 px of daylight on a 680 px sheet — overshoot has to be read as a fraction of what is moving, which is also why `--ease-spring-overlay` is gentler than `--ease-spring-travel`. |
 | 2026-09-10 | **An overlay is mounted for the whole of its close.** `useExitRetained` holds the outgoing value; `<Sheet open>` with a hardcoded `open` is a bug. | Five overlays returned `null` the moment their prop cleared, so closing was not a state they passed through — the subtree left the React tree in the same commit and Base UI never marked the popup `data-closed`. They did not animate away; they stopped existing. Entry working is not evidence that exit works. |
+| 2026-09-11 | **History's hover card may count, per list.** Hovering a day with completions (EI-324) lists each list's completions, most first (`7 ☑ Personal Project`), each row in its list's tint. Never a day's total, never on the calendar itself, never compared across days; no streak count and no "longest run". Won't do is not counted. | The one exception to §4's no-counters rule, and a narrow one. The cell's tint says which list a day was about at one fixed strength; the card says why, and a per-list breakdown the user asks for is a description of a day, not a score to beat — the same footing as Overdrive's end-of-session tally (RESEARCH.md §2.9). Days are square with no gap, so same-color days join into a bar: what a run of days was about, with no number on it. |

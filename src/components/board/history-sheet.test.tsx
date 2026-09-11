@@ -209,6 +209,53 @@ describe("HistorySheet", () => {
     expect(screen.queryByRole("button", { name: /mostly Groceries/ })).toBeNull();
   });
 
+  it("opens a card on a day with completions: each list's count, most first, in its tint (EI-324)", async () => {
+    const GARDEN = { id: "garden", name: "Garden", color: "#e5484d", tabId: null } as List;
+    const INBOX = { id: "inbox", name: "Inbox", color: null, tabId: null } as List;
+    eventsFixture = [
+      event("a", "done", "2026-09-03T10:00:00.000Z", { listId: "garden" }),
+      event("b", "done", "2026-09-03T11:00:00.000Z", { listId: "groceries" }),
+      event("c", "done", "2026-09-03T12:00:00.000Z", { listId: "groceries" }),
+      event("d", "done", "2026-09-03T13:00:00.000Z", { listId: "inbox" }),
+      // Won't do is not counted.
+      event("e", "dropped", "2026-09-03T14:00:00.000Z", { listId: "garden" }),
+    ];
+    render(
+      <Harness
+        listsById={
+          new Map([
+            ["groceries", GROCERIES],
+            ["garden", GARDEN],
+            ["inbox", INBOX],
+          ])
+        }
+      />,
+    );
+
+    const day = screen.getByRole("button", { name: /^Thursday, September 3,/ });
+    fireEvent.mouseEnter(day.parentElement!);
+    const card = await screen.findByRole("list", { name: "Completed on Thursday, Sep 3, 2026" });
+    const rows = within(card).getAllByRole("listitem");
+    expect(rows.map((row) => row.textContent)).toEqual(["2Groceries", "1Inbox", "1Garden"]);
+    // The row's tint is the calendar's: set for a colored list, absent without one.
+    expect(rows[0].style.backgroundColor).not.toBe("");
+    expect(rows[1].style.backgroundColor).toBe("");
+    // Counts per list, never the day's total.
+    expect(card.parentElement!.textContent).not.toMatch(/\b4\b/);
+  });
+
+  it("gives no card to a day with nothing completed", () => {
+    eventsFixture = [
+      event("a", "dropped", "2026-09-03T10:00:00.000Z", { listId: "groceries" }),
+      event("b", "done", "2026-09-04T10:00:00.000Z", { listId: "groceries" }),
+    ];
+    render(<Harness listsById={new Map([["groceries", GROCERIES]])} />);
+    const trigger = (name: RegExp) =>
+      screen.getByRole("button", { name }).closest("[data-slot=hover-card-trigger]");
+    expect(trigger(/^Thursday, September 3/)).toBeNull();
+    expect(trigger(/^Friday, September 4/)).not.toBeNull();
+  });
+
   it("shows one month, a rolling quarter, or a rolling year (EI-323)", () => {
     render(<Harness />);
     expect(screen.getAllByRole("grid")).toHaveLength(1);

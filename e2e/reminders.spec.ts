@@ -1,6 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 import { test, expect } from "./support/fixtures";
 import { switchToLists } from "./support/phone";
+import { openSheet } from "./support/sheet";
 
 /**
  * Reminder presets, end to end (EI-106 P5). Runs on every project —
@@ -65,7 +66,7 @@ test("picking a preset in the todo sheet writes the reminder and shows the card 
   await page.keyboard.press("Enter");
 
   await page.getByRole("button", { name: title, exact: true }).click();
-  const sheet = page.locator('[data-slot="sheet-content"]');
+  const sheet = openSheet(page);
   await expect(sheet).toBeVisible();
 
   // Thursday — inside the frozen fixture's visible 7-day window (Tue Aug 11
@@ -86,7 +87,9 @@ test("picking a preset in the todo sheet writes the reminder and shows the card 
   await expect(scheduleText(sheet)).toContainText(/8:00/);
 
   await page.keyboard.press("Escape");
-  await expect(sheet).toHaveCount(0);
+  // Gone, not just closing: every sheet node, including one still animating
+  // out, which `openSheet()` deliberately skips.
+  await expect(page.locator('[data-slot="sheet-content"]')).toHaveCount(0);
 
   // Reopen through search rather than hunting for the card in its column —
   // works identically on desktop and phone.
@@ -115,7 +118,7 @@ test("quick-add resolves a preset name into a reminder", async ({ page }) => {
   await page.getByPlaceholder("Search to-dos or run a command…").fill(title);
   await page.getByRole("option", { name: new RegExp(`^${title}`) }).click();
 
-  const sheet = page.locator('[data-slot="sheet-content"]');
+  const sheet = openSheet(page);
   // Lunchtime is 12:30 — the trigger states the whole schedule now, so the
   // reminder is assertable without opening anything.
   await expect(scheduleText(sheet)).toContainText(/12:30/);
@@ -131,7 +134,7 @@ test("deleting a reminder from the sheet clears it and removes the card badge", 
   await page.keyboard.press("Enter");
   await page.getByRole("button", { name: title, exact: true }).click();
 
-  const sheet = page.locator('[data-slot="sheet-content"]');
+  const sheet = openSheet(page);
   await setSheetDate(page, sheet, /August 13(th)?, 2026/);
 
   const reminderInput = await openTimePanel(page, sheet);

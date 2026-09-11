@@ -46,5 +46,15 @@ describe("animated overlays hold their exit frame", () => {
       const holds = source.match(/data-closed:fill-mode-forwards/g) ?? [];
       expect(holds.length).toBeGreaterThanOrEqual(exits.length);
     });
+
+    it(`${path} — a closing surface takes no input (EI-325)`, () => {
+      const source = readFileSync(path, "utf8");
+      // The hold keeps a fading backdrop where it was for the whole exit, and
+      // a backdrop that is there catches the next tap meant for the board.
+      // Every hold needs its `pointer-events-none`.
+      const holds = source.match(/data-closed:fill-mode-forwards/g) ?? [];
+      const inert = source.match(/data-closed:pointer-events-none/g) ?? [];
+      expect(inert).toHaveLength(holds.length);
+    });
   }
 });

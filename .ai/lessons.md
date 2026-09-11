@@ -1620,6 +1620,10 @@ migration. Stashing the branch and running it on clean `main` gave
 flaky / pass / fail across three runs — pre-existing, masked most of the time
 by its own `toPass` retry.
 
+**Follow-up (EI-325):** "pre-existing" was right and "not our bug" was wrong.
+The swipe was being swallowed by a closing overlay — see "A backdrop held for
+its exit is still in the way" below.
+
 **Rule:** before debugging a red e2e leg on a feature branch, run that ONE
 spec on a stashed-clean tree several times. `git stash push -u -m "<tag>"`,
 capture the SHA from `git stash list --format='%H %gs'`, `git stash apply
@@ -1871,3 +1875,47 @@ rows written before that. The rule this is the second instance of:
 **Rule:** if a view claims to show what was true at a moment, every input it
 reads has to have been recorded at that moment. A field you read "now" is a
 field that can change after the fact, and a record that changes is not one.
+
+## `shadcn add` can install a package you did not ask for (EI-324)
+
+`npx shadcn add hover-card` (style `base-nova`, shadcn 4.16) wrote a
+`hover-card.tsx` that imported `cn` from **`"cn"`** — not `@/lib/utils` —
+and added `cn@^0.2.6`, an unrelated npm package, to `package.json`. It
+reported "Created 1 file" and nothing else. The typecheck would have passed,
+because the package exists and exports a `cn`, so the only sign was the
+`package.json` diff.
+
+The same generated file also left out two house rules every other overlay in
+`components/ui/` follows: `motion-reduce:animate-none` (docs/DESIGN.md §4)
+and the `--shadow-raised` token in place of `shadow-md`.
+
+**Rule:** after `shadcn add`, read `git diff package.json` and the new file
+before using it. Revert any dependency you did not ask for, point `cn` at
+`@/lib/utils`, and match the new component to its nearest sibling in
+`components/ui/` (for a floating panel, `popover.tsx`).
+
+## A backdrop held for its exit is still in the way (EI-325)
+
+`touch-smoke`'s swipe failed on every local run, on clean `main` too, and some
+of the time in CI. Two sessions filed it as "local-only, do not chase". The
+cause: dialog, sheet and alert-dialog hold their exit frame with
+`data-closed:fill-mode-forwards` for 200ms (on purpose, see
+`overlay-exit.test.ts`), and the backdrop kept `pointer-events: auto` the whole
+time. Right after "Continue without an account", `elementFromPoint` at the
+swipe start was the `dialog-overlay` at opacity 0.1. Users lose a tap the same
+way after closing any sheet.
+
+Why nothing else saw it: Playwright's actionability check WAITS while "another
+element intercepts pointer events", so every click-based test sat out the
+200ms without a word. Only raw CDP touch input went straight into the
+backdrop. A fast machine hit the window every time; CI hit it by luck.
+
+Making closing surfaces inert (`data-closed:pointer-events-none`) then
+surfaced the second half: a click now lands during a sheet's exit, so for a
+moment there are two `sheet-content` nodes. Find "the open sheet" with
+`openSheet(page)` (`e2e/support/sheet.ts`); check "the sheet is gone" against
+every node, or the check passes while the sheet is still leaving.
+
+**Rule:** a failure that repeats every time on one machine is a reproduction,
+not noise. Chase it there. And an element that stays on screen for an exit
+animation must stop taking input at the moment the exit starts.

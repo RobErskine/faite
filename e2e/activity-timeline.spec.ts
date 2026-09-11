@@ -1,5 +1,6 @@
 import { test, expect } from "./support/fixtures";
 import { switchToDays, switchToLists } from "./support/phone";
+import { openSheet } from "./support/sheet";
 
 /**
  * The global activity feed (todos-only v1) — `activity-sheet.tsx`, opened
@@ -24,7 +25,7 @@ test("logs a created and a done event, newest first under Today, and the filter 
   // "Days" pager on phone; quick-adding above required "Lists".
   await switchToDays(page);
   await page.getByRole("button", { name: "Open activity feed" }).click();
-  const sheet = page.locator('[data-slot="sheet-content"]');
+  const sheet = openSheet(page);
   await expect(sheet).toBeVisible();
 
   const activityList = sheet.getByRole("list", { name: "Activity" });
@@ -71,13 +72,13 @@ test("a deleted todo's row keeps its title and isn't clickable", async ({ page }
 
   const card = page.getByRole("button", { name: title, exact: true });
   await card.click();
-  const todoSheet = page.locator('[data-slot="sheet-content"]');
+  const todoSheet = openSheet(page);
   await todoSheet.getByRole("button", { name: "Delete" }).click();
   await expect(card).toHaveCount(0);
 
   await switchToDays(page);
   await page.getByRole("button", { name: "Open activity feed" }).click();
-  const activitySheet = page.locator('[data-slot="sheet-content"]');
+  const activitySheet = openSheet(page);
   await expect(activitySheet).toBeVisible();
   // Both the `created` and `deleted` rows show the same (now-tombstoned)
   // title, so `.first()` — the point here is that it renders at all, muted,
@@ -105,7 +106,7 @@ test("History lists today's completion under Done, and steps back to an empty da
 
   await switchToDays(page);
   await page.getByRole("button", { name: "Open history" }).click();
-  const sheet = page.locator('[data-slot="sheet-content"]');
+  const sheet = openSheet(page);
   await expect(sheet.getByRole("heading", { name: "History" })).toBeVisible();
   await expect(page).toHaveURL(/[?&]history=\d{4}-\d{2}-\d{2}/);
 

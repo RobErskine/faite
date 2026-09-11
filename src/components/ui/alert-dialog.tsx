@@ -56,7 +56,7 @@ function AlertDialogOverlay({
           between the two durations reopens the gap, and this holds regardless.
         */
         "data-closed:animate-out data-closed:fade-out-0",
-        "data-closed:duration-(--dur-overlay-exit) data-closed:fill-mode-forwards",
+        "data-closed:duration-(--dur-overlay-exit) data-closed:fill-mode-forwards data-closed:pointer-events-none",
         className
       )}
       {...props}
@@ -85,7 +85,7 @@ function AlertDialogContent({
           // the centering above is left alone.
           "duration-(--dur-overlay) ease-spring-overlay",
           "data-open:animate-in data-closed:animate-out",
-          "data-closed:duration-(--dur-overlay-exit) data-closed:ease-out-soft data-closed:fill-mode-forwards",
+          "data-closed:duration-(--dur-overlay-exit) data-closed:ease-out-soft data-closed:fill-mode-forwards data-closed:pointer-events-none",
           "motion-reduce:animate-none",
           "max-sm:data-open:slide-in-from-bottom-full max-sm:data-closed:slide-out-to-bottom-full",
           "sm:data-open:zoom-in-95 sm:data-open:fade-in-0",

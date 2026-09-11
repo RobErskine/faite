@@ -1,5 +1,6 @@
 import { test, expect } from "./support/fixtures";
 import { switchToLists } from "./support/phone";
+import { openSheet } from "./support/sheet";
 
 /**
  * The card/inline toggle in the Notes field (link preview cards).
@@ -35,7 +36,7 @@ async function openSheetFor(page: Parameters<typeof switchToLists>[0], title: st
 
   // `exact: true` — the drag grip's aria-label also contains the title.
   await page.getByRole("button", { name: title, exact: true }).click();
-  const sheet = page.locator('[data-slot="sheet-content"]');
+  const sheet = openSheet(page);
   await expect(sheet).toBeVisible();
   return sheet;
 }
@@ -120,7 +121,7 @@ test("a card survives closing and reopening the sheet", async ({ page }) => {
   await expect(sheet).not.toBeVisible();
 
   await page.getByRole("button", { name: title, exact: true }).click();
-  const reopened = page.locator('[data-slot="sheet-content"]');
+  const reopened = openSheet(page);
   await expect(reopened).toBeVisible();
 
   // This is the markdown round-trip proof that matters: the ```linkcard
@@ -150,7 +151,7 @@ test("converting a card back to inline persists as an ordinary link", async ({ p
   await commitNotes(sheet);
   await sheet.getByRole("button", { name: "Close" }).click();
   await page.getByRole("button", { name: title, exact: true }).click();
-  const reopened = page.locator('[data-slot="sheet-content"]');
+  const reopened = openSheet(page);
   await expect(reopened).toBeVisible();
 
   // Still an ordinary link after reopening — a converted-back link is a
