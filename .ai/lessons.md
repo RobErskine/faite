@@ -1780,3 +1780,59 @@ failing tests.
 local calendar day), never a disagreement that exists only in some. And run
 `TZ=UTC npx vitest run` before pushing anything date-related — CI is UTC and
 your machine probably is not.
+
+## A preference that lists what is SHOWN cannot learn a new value (EI-320)
+
+Three settings stored the event kinds to show: `visibleEventKinds`,
+`visibleActivityKinds`, `visibleHistoryKinds`. Every kind added afterwards was
+invisible on any device that had already saved one, silently — the array
+simply did not name it. The day sheet had been hiding rollover rows since
+EI-96 that way, and EI-318's `attached`/`detached` were hidden in the activity
+feed despite migration 21, whose server-side `UPDATE` allocates no `version`
+and so never reaches a device that already holds the row.
+
+The migration was not the mistake; the SHAPE was. A shown-set needs a backfill
+for every new value, and the only backfill that reaches devices is a client
+one through `mutate()` — which needs a ledger this repo has deliberately not
+built (`docs/SCHEMA-CHANGES.md`, "Not built yet").
+
+**Rule:** store what the user has turned OFF, never what is left on. Then "no
+opinion" means visible, and a new value needs no backfill, ever. Reach for
+this for any opt-out list.
+
+**Corollary — convert at READ time, not with a write.** `hidden* = null` means
+"not converted yet", and `resolveHiddenKinds` (`src/lib/kind-filter.ts`)
+derives the hidden set from the old array, measured against the newest
+*generation* of values that array names. A value the user never saw cannot
+count as one they rejected. No ledger, works signed out, idempotent by
+construction.
+
+## Sizing a pre-fetched queue with a literal outlives the code that counted (EI-321)
+
+`durableHlcQueue(stub, 2)` appeared at every `/api/v1` and MCP update site —
+correct when an update pushed at most a todo plus one `edited` event. Teaching
+`buildUpdateTodoEntry` to log status and date changes made it four, and the
+queue throws when it runs out, so the first patch touching three fields would
+have been a 500 in production rather than a type error at build time.
+
+**Rule:** when a builder's output size can grow, export the bound
+(`UPDATE_TODO_MAX_ENTRIES`) and have callers size from it. A literal at the
+call site records what was true the day it was written and nothing else. The
+route test that fails without it is one patch touching every logged field.
+
+## Reading history out of current state is not history (EI-322)
+
+`day-timeline.ts` answers "what happened on this day?" by re-deriving it from
+each to-do's current `completedAt`/`scheduledAt`. Its own header lists eight
+limits, and two are fatal for a look-back: reopening a to-do erases the day it
+was finished, and rescheduling rewrites which days it appears to have rolled
+through. A record that changes after the fact is not a record — so History
+reads `todoEvents` rows only, and derives nothing.
+
+Two rules in `lib/day-log.ts` keep a day honest without re-deriving anything:
+the LAST status change of the day decides (done then reopened that afternoon
+is not "done"), and several reschedules in one day collapse to first-from →
+last-to.
+
+**Rule:** before building a view of the past, ask whether its inputs can
+change after the fact. If they can, it is a picture of now wearing a date.
