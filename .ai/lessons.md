@@ -1919,3 +1919,21 @@ every node, or the check passes while the sheet is still leaving.
 **Rule:** a failure that repeats every time on one machine is a reproduction,
 not noise. Chase it there. And an element that stays on screen for an exit
 animation must stop taking input at the moment the exit starts.
+
+## `reuseExistingServer` will happily test another worktree (EI-336)
+
+A new e2e test failed: the menu item it clicked was not there, and the
+screenshot showed a menu without it. The code was fine. Port 3000 was a
+`next dev` from a Jean worktree (`~/jean/faite/rob_ei-322-…`), and locally
+`playwright.config.ts` reuses whatever answers on 3000 — so the run tested
+that checkout's code, not this one. `lsof -iTCP:3000 -sTCP:LISTEN` plus
+`lsof -p <pid> | grep cwd` named the culprit in one step.
+
+Second, smaller: a guard I added (`finalFocus`, to stop Base UI returning
+focus to the header) passed its test with the guard removed — on both the
+right-click and the Menu-key route. So the guard was not needed, and it went.
+
+**Rule:** before believing a local e2e result, check which directory the
+server on the port belongs to — or run on `E2E_PORT=3100`, which starts a
+server from this checkout. And run a new guard's test once with the guard
+taken out; if it still passes, delete the guard, not the test.
