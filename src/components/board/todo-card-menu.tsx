@@ -1,20 +1,17 @@
 "use client";
 
-import { Ban, CalendarClock, Check, SquarePen, Trash2, Undo2 } from "lucide-react";
+import { Ban, Check, SquarePen, Trash2, Undo2 } from "lucide-react";
 import {
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
   ContextMenuShortcut,
-  ContextMenuSub,
-  ContextMenuSubContent,
-  ContextMenuSubTrigger,
 } from "@/components/ui/context-menu";
 import { formatCombo } from "@/lib/keyboard";
 import { usePlatform } from "@/lib/use-platform";
-import { quickRescheduleOptions } from "@/lib/quick-reschedule";
-import { formatDay, formatShortDate, type PlacementContext } from "@/lib/scheduling";
+import type { PlacementContext } from "@/lib/scheduling";
 import type { CivilDate, Todo } from "@/lib/schema";
+import { RescheduleSubmenu } from "./reschedule-submenu";
 
 /**
  * What a to-do's right-click menu can do (EI-285).
@@ -65,11 +62,6 @@ interface TodoCardMenuProps {
   close: () => void;
 }
 
-/** "Sat, Aug 15" — the resolved date beside a reschedule row. */
-function resolvedLabel(date: CivilDate): string {
-  return `${formatDay(date).weekday.slice(0, 3)}, ${formatShortDate(date)}`;
-}
-
 export function TodoCardMenu({
   todo,
   ctx,
@@ -84,15 +76,6 @@ export function TodoCardMenu({
   /** Suffix rather than pluralized nouns: "Delete 3" beats "Delete 3 to-dos"
    * in a menu, and stays honest when the count is 1 by vanishing entirely. */
   const n = many ? ` ${selectionCount}` : "";
-
-  /*
-    Anchored on TODAY, never the card's own `scheduledDate` — a list-column
-    card has none, and a missed one still carries a date in the past, so
-    measuring from it would schedule into the past and roll straight back.
-    `quick-reschedule.ts` carries the full argument. Each row shows where it
-    lands, which is what keeps "In 2 days" from meaning something invisible.
-  */
-  const rescheduleOptions = quickRescheduleOptions(ctx.today);
 
   const toggleStatus: Todo["status"] = todo.status === "open" ? "done" : "open";
 
@@ -170,23 +153,11 @@ export function TodoCardMenu({
 
       <ContextMenuSeparator />
 
-      <ContextMenuSub>
-        <ContextMenuSubTrigger>
-          <CalendarClock />
-          {`Reschedule${n}`}
-        </ContextMenuSubTrigger>
-        <ContextMenuSubContent>
-          {rescheduleOptions.map((option) => (
-            <ContextMenuItem
-              key={option.kind}
-              onClick={() => actions.onReschedule(todo, option.date)}
-            >
-              {option.label}
-              <ContextMenuShortcut>{resolvedLabel(option.date)}</ContextMenuShortcut>
-            </ContextMenuItem>
-          ))}
-        </ContextMenuSubContent>
-      </ContextMenuSub>
+      <RescheduleSubmenu
+        today={ctx.today}
+        label={`Reschedule${n}`}
+        onPick={(date) => actions.onReschedule(todo, date)}
+      />
 
       {/* Only a card sitting in a day has somewhere to go back from. */}
       {todo.scheduledDate !== null && !inListColumn && (

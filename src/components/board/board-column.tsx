@@ -22,7 +22,7 @@ import { foldQuickAddDraft, parseQuickAdd, quickAddDraftToString, type QuickAddM
 import { isTextEntry } from "@/lib/undo";
 import { MentionMenu, useMention, type MentionSource } from "@/components/mention-menu";
 import { createLabel } from "@/lib/store/repositories";
-import type { Label as LabelRecord, ReminderPreset, Todo } from "@/lib/schema";
+import type { CivilDate, Label as LabelRecord, ReminderPreset, Todo } from "@/lib/schema";
 import type { PlacementContext } from "@/lib/scheduling";
 import {
   InputGroup,
@@ -35,6 +35,7 @@ import { QuickAddPreview, type QuickAddChip } from "./quick-add-preview";
 import { TodoCard } from "./todo-card";
 import type { TodoContextActions } from "./todo-card-menu";
 import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
+import { ListGroupMenu } from "./list-group-menu";
 
 /**
  * A grouped column's order is COMPUTED, so nothing shifts to preview an insertion.
@@ -223,6 +224,12 @@ interface BoardColumnProps {
    */
   headerMenu?: React.ReactNode;
   /**
+   * Reschedule ▸ for a list group's header (EI-337). Together with
+   * `onQuickAdd` it is what gives a group header its menu — so day columns get
+   * one and Overflow, which has neither, does not.
+   */
+  onRescheduleGroup?: (todos: readonly Todo[], date: CivilDate) => void;
+  /**
    * Dropping here will be refused (Overflow). Styled as a rejecting target so
    * the outcome is obvious before the pointer is released.
    */
@@ -372,6 +379,7 @@ export function BoardColumn({
   onSelect,
   contextActions,
   headerMenu,
+  onRescheduleGroup,
   rejectsDrop,
   reorderListId,
   reservesGripSlot,
@@ -1039,6 +1047,13 @@ export function BoardColumn({
                   droppable={!rejectsDrop}
                   onToggle={onToggleGroup}
                   onNavigate={onNavigate}
+                  today={ctx.today}
+                  onAdd={
+                    onQuickAdd && onRescheduleGroup
+                      ? (title) => onQuickAdd(title, group.key)
+                      : undefined
+                  }
+                  onReschedule={onQuickAdd ? onRescheduleGroup : undefined}
                 >
                   {renderCards(group.todos)}
                 </TodoGroupSection>
@@ -1251,6 +1266,11 @@ interface TodoGroupSectionProps {
   droppable: boolean;
   onToggle?: (key: string) => void;
   onNavigate?: (fromStopId: string, key: NavKey) => boolean;
+  today: CivilDate;
+  /** Create a to-do in this list on this day. With `onReschedule`, gives the
+   * header its right-click menu (EI-337). */
+  onAdd?: (title: string) => void;
+  onReschedule?: (todos: readonly Todo[], date: CivilDate) => void;
   children: ReactNode;
 }
 
@@ -1268,11 +1288,23 @@ function TodoGroupSection({
   droppable,
   onToggle,
   onNavigate,
+  today,
+  onAdd,
+  onReschedule,
   children,
 }: TodoGroupSectionProps) {
   const { setNodeRef } = useDroppable({ id: group.id, disabled: !droppable });
   const headerRef = useRef<HTMLButtonElement>(null);
   const cardsId = `${group.id}-cards`;
+  const hasMenu = !!(onAdd && onReschedule);
+  /** "New to-do here" opens a field under this group's cards (EI-337). */
+  const [adding, setAdding] = useState(false);
+
+  const startAdding = () => {
+    setAdding(true);
+    // The field lives with the cards, so a collapsed group has to open first.
+    if (collapsed) onToggle?.(group.key);
+  };
 
   return (
     <div
@@ -1288,75 +1320,86 @@ function TodoGroupSection({
         isOver && "bg-primary/5 outline outline-2 outline-offset-[-2px] outline-primary",
       )}
     >
-      <button
-        ref={headerRef}
-        type="button"
-        /*
-          A real `<button>`, so Enter and Space toggle natively — but
-          `tabIndex={-1}`, reached by the arrow keys only, exactly like a card
-          row. Tabbable headers were the obvious thing and they are wrong: a
-          seven-day week with four lists is 28 new Tab stops standing between the
-          user and the first quick-add.
+      <ContextMenu disabled={!hasMenu}>
+        <ContextMenuTrigger
+          // The ref rides the rendered element: the trigger's own `ref` is typed
+          // for the `<div>` it renders by default, and this one is a `<button>`.
+          render={<button type="button" ref={headerRef} />}
+          /*
+            A real `<button>`, so Enter and Space toggle natively — but
+            `tabIndex={-1}`, reached by the arrow keys only, exactly like a card
+            row. Tabbable headers were the obvious thing and they are wrong: a
+            seven-day week with four lists is 28 new Tab stops standing between the
+            user and the first quick-add.
 
-          Unlike a card row this CAN carry a role, because it contains only text,
-          a chevron and a count — there is no nested control to worry about.
-        */
-        tabIndex={-1}
-        data-nav-stop={groupStop(group.id)}
-        aria-expanded={!collapsed}
-        aria-controls={cardsId}
-        // The count is visible only when collapsed but always in the accessible
-        // name: a screen-reader user has no "glance".
-        aria-label={`${group.name}, ${group.todos.length} ${
-          group.todos.length === 1 ? "to-do" : "to-dos"
-        }`}
-        onClick={() => {
-          onToggle?.(group.key);
-          // Collapsing removes the cards from the DOM. If focus was inside them
-          // it lands on <body> and the arrow keys go dead, so pull it up to the
-          // header — which is where a keyboard user would expect to still be.
-          headerRef.current?.focus({ preventScroll: true });
-        }}
-        onKeyDown={(e) => {
-          const key = navKeyOf(e);
-          if (key && onNavigate?.(groupStop(group.id), key)) e.preventDefault();
-        }}
-        className={cn(
-          "flex w-full items-center gap-1 border-b px-3 py-1 text-left",
-          "type-eyebrow",
-          // Fast in, slower out — see the note on the row wash in todo-card.tsx.
-          "cursor-pointer transition-colors duration-(--dur-base) hover:duration-(--dur-fast)",
-          "hover:bg-foreground/5",
-          "focus-ring",
-          // An uncolored list keeps the ordinary rule rather than gaining a gray
-          // one — the same rule the column header's tab accent follows.
-          !group.color && "border-border/60",
-        )}
-        /*
-          Colour rides the border and a faint fill, never the text: a Radix step-9
-          hue at `text-2xs` fails contrast in one theme or the other, which is the
-          same reason `lib/priority.ts` keeps its palette to fills.
-        */
-        style={
-          group.color
-            ? { borderColor: edge(group.color), backgroundColor: tint(group.color) }
-            : undefined
-        }
-      >
-        <ChevronDown
+            Unlike a card row this CAN carry a role, because it contains only text,
+            a chevron and a count — there is no nested control to worry about.
+          */
+          tabIndex={-1}
+          data-nav-stop={groupStop(group.id)}
+          aria-expanded={!collapsed}
+          aria-controls={cardsId}
+          // The count is visible only when collapsed but always in the accessible
+          // name: a screen-reader user has no "glance".
+          aria-label={`${group.name}, ${group.todos.length} ${
+            group.todos.length === 1 ? "to-do" : "to-dos"
+          }`}
+          onClick={() => {
+            onToggle?.(group.key);
+            // Collapsing removes the cards from the DOM. If focus was inside them
+            // it lands on <body> and the arrow keys go dead, so pull it up to the
+            // header — which is where a keyboard user would expect to still be.
+            headerRef.current?.focus({ preventScroll: true });
+          }}
+          onKeyDown={(e) => {
+            const key = navKeyOf(e);
+            if (key && onNavigate?.(groupStop(group.id), key)) e.preventDefault();
+          }}
           className={cn(
-            "size-3 shrink-0 transition-transform",
-            collapsed && "-rotate-90",
+            "flex w-full items-center gap-1 border-b px-3 py-1 text-left",
+            "type-eyebrow",
+            // Fast in, slower out — see the note on the row wash in todo-card.tsx.
+            "cursor-pointer transition-colors duration-(--dur-base) hover:duration-(--dur-fast)",
+            "hover:bg-foreground/5",
+            "focus-ring",
+            // An uncolored list keeps the ordinary rule rather than gaining a gray
+            // one — the same rule the column header's tab accent follows.
+            !group.color && "border-border/60",
           )}
-          aria-hidden
-        />
-        <span className="truncate">{group.name}</span>
-        {collapsed && (
-          <span className="num ml-auto shrink-0" aria-hidden>
-            {group.todos.length}
-          </span>
+          /*
+            Color rides the border and a faint fill, never the text: a Radix step-9
+            hue at `text-2xs` fails contrast in one theme or the other, which is the
+            same reason `lib/priority.ts` keeps its palette to fills.
+          */
+          style={
+            group.color
+              ? { borderColor: edge(group.color), backgroundColor: tint(group.color) }
+              : undefined
+          }
+        >
+          <ChevronDown
+            className={cn(
+              "size-3 shrink-0 transition-transform",
+              collapsed && "-rotate-90",
+            )}
+            aria-hidden
+          />
+          <span className="truncate">{group.name}</span>
+          {collapsed && (
+            <span className="num ml-auto shrink-0" aria-hidden>
+              {group.todos.length}
+            </span>
+          )}
+        </ContextMenuTrigger>
+        {hasMenu && (
+          <ListGroupMenu
+            group={group}
+            today={today}
+            onAdd={startAdding}
+            onReschedule={(date) => onReschedule?.(group.todos, date)}
+          />
         )}
-      </button>
+      </ContextMenu>
 
       {/*
         THE WASH sits behind the run of cards, not on each card — which is also
@@ -1368,6 +1411,13 @@ function TodoGroupSection({
       */}
       <div id={cardsId} style={{ backgroundColor: wash(group.color) }}>
         {!collapsed && children}
+        {adding && !collapsed && onAdd && (
+          <GroupAddField
+            listName={group.name}
+            onAdd={onAdd}
+            onDone={() => setAdding(false)}
+          />
+        )}
       </div>
 
       {isOver && (
@@ -1380,5 +1430,63 @@ function TodoGroupSection({
         </span>
       )}
     </div>
+  );
+}
+
+/**
+ * The field "New to-do here" opens under a list group (EI-337).
+ *
+ * Deliberately plain next to the column's quick-add: the list and the day are
+ * already decided by where it sits, so there is no `@list` menu to offer. Typed
+ * tokens still parse — the title goes through `handleQuickAdd` like any other.
+ * Enter keeps it open for the next one, the column quick-add's own loop.
+ *
+ * It sits in the cards' container, never inside the header trigger:
+ * CONTEXT-MENU.md §2 — a text field inside a trigger loses the browser's menu.
+ */
+function GroupAddField({
+  listName,
+  onAdd,
+  onDone,
+}: {
+  listName: string;
+  onAdd: (title: string) => void;
+  onDone: () => void;
+}) {
+  const [title, setTitle] = useState("");
+  // Escape discards: a blur that follows the unmount must not commit the draft.
+  const canceledRef = useRef(false);
+  const commit = () => {
+    const trimmed = title.trim();
+    if (trimmed) onAdd(trimmed);
+    setTitle("");
+  };
+
+  return (
+    <input
+      // Mounts as the menu closes and takes focus from it — from a right-click
+      // and from the Menu key alike, which `context-menu.spec.ts` checks.
+      autoFocus
+      value={title}
+      onChange={(e) => setTitle(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          commit();
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          canceledRef.current = true;
+          onDone();
+        }
+      }}
+      onBlur={() => {
+        if (!canceledRef.current) commit();
+        onDone();
+      }}
+      placeholder="New to-do"
+      autoComplete="off"
+      aria-label={`New to-do in ${listName}`}
+      className="w-full bg-transparent px-3 py-2 text-sm outline-none placeholder:text-muted-foreground"
+    />
   );
 }

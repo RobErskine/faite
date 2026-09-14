@@ -16,9 +16,10 @@ constraints particular to menus.
 | --- | --- |
 | To-do card (`todo-card-menu.tsx`) | Edit · Mark done / not done · Won't do · Reschedule ▸ · Move back to {list} · Delete |
 | List column header (`list-column-menu.tsx`) | List settings… · Color ▸ · Archive · Delete |
+| List group header in a day (`list-group-menu.tsx`) | New to-do here · Reschedule ▸ |
 | Tab pill (`tab-pill-menu.tsx`) | Tab settings… · Color ▸ · Archive · Delete |
 
-Nothing else, yet. Day/Overflow/Backlog headers, archived-list rows,
+Nothing else, yet. Day/Backlog column headers, Overflow's group headers, archived-list rows,
 attachment rows and sheet subtask rows are all plausible and all unbuilt.
 
 "Move back to {list}" (EI-336) shows only on a card that sits in a day. It is
@@ -27,8 +28,16 @@ the drag onto the list column and Overdrive's `↓`: scheduling never clears
 list, and an away card — dated, but already drawn in its list column — gets no
 such item.
 
-The Color ▸ submenu is shared (`color-submenu.tsx`) — two call sites is what
-earns the extraction; the item lists are not.
+The group header menu (EI-337) is on day columns only — `BoardColumn` gives a
+group a menu when it has both `onQuickAdd` and `onRescheduleGroup`, and
+Overflow has neither. "New to-do here" opens a field under that group's cards
+and sends each title through `handleQuickAdd` with the day and the list, so it
+is the column quick-add with `@list` already filled in. Reschedule ▸ moves the
+group's **open** to-dos only; a done row stays on the day it was done.
+
+The Color ▸ and Reschedule ▸ submenus are shared (`color-submenu.tsx`,
+`reschedule-submenu.tsx`) — two call sites is what earns the extraction; the
+item lists are not.
 
 Two targets were considered and **declined**, which is worth writing down so
 they are not "fixed" later:

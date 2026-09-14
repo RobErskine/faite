@@ -98,6 +98,7 @@ interface HarnessProps {
   isColumnDragActive?: boolean;
   isColumnDropTarget?: boolean;
   headerMenu?: React.ReactNode;
+  onRescheduleGroup?: (todos: readonly Todo[], date: string) => void;
 }
 
 function Harness({ groups, todos, ...rest }: HarnessProps) {
@@ -161,6 +162,60 @@ describe("grouped rendering", () => {
     // with four lists would all sit ahead of the first quick-add.
     expect(header("Admin").getAttribute("tabindex")).toBe("-1");
     expect(header("Admin").getAttribute("data-nav-stop")).toBe(groupStop(ADMIN.id));
+  });
+});
+
+/** The list group header's right-click menu (EI-337). */
+describe("group header menu", () => {
+  it("is the header button itself, not a wrapper around it", () => {
+    render(<Harness groups={[ADMIN]} onRescheduleGroup={vi.fn()} />);
+    const el = header("Admin");
+    expect(el.tagName).toBe("BUTTON");
+    expect(el.getAttribute("data-slot")).toBe("context-menu-trigger");
+    expect(el.getAttribute("data-nav-stop")).toBe(groupStop(ADMIN.id));
+  });
+
+  it("opens only where a column can both add and reschedule", async () => {
+    const { unmount } = render(<Harness groups={[ADMIN]} onRescheduleGroup={vi.fn()} />);
+    fireEvent.contextMenu(header("Admin"));
+    expect(await screen.findByRole("menuitem", { name: "New to-do here" })).toBeTruthy();
+    unmount();
+
+    // Overflow: no quick-add, so no menu.
+    render(<Harness groups={[ADMIN]} onRescheduleGroup={vi.fn()} onQuickAdd={undefined} />);
+    fireEvent.contextMenu(header("Admin"));
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("counts only the open to-dos Reschedule will move", async () => {
+    const done = { ...todo("a3"), status: "done" as const };
+    render(
+      <Harness
+        groups={[group("admin", "Admin", [todo("a1"), todo("a2"), done])]}
+        onRescheduleGroup={vi.fn()}
+      />,
+    );
+    fireEvent.contextMenu(header("Admin"));
+    expect(await screen.findByRole("menuitem", { name: "Reschedule 2" })).toBeTruthy();
+  });
+
+  it("New to-do here files the title into that list, and Escape discards", async () => {
+    const onQuickAdd = vi.fn();
+    render(
+      <Harness groups={[ADMIN]} onRescheduleGroup={vi.fn()} onQuickAdd={onQuickAdd} />,
+    );
+    fireEvent.contextMenu(header("Admin"));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "New to-do here" }));
+
+    const field = await screen.findByRole("textbox", { name: "New to-do in Admin" });
+    fireEvent.change(field, { target: { value: "Call the bank" } });
+    fireEvent.keyDown(field, { key: "Enter" });
+    expect(onQuickAdd).toHaveBeenCalledWith("Call the bank", "admin");
+
+    fireEvent.change(field, { target: { value: "never mind" } });
+    fireEvent.keyDown(field, { key: "Escape" });
+    expect(screen.queryByRole("textbox", { name: "New to-do in Admin" })).toBeNull();
+    expect(onQuickAdd).toHaveBeenCalledTimes(1);
   });
 });
 

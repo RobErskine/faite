@@ -276,6 +276,92 @@ test.describe("list column menu", () => {
 });
 
 /**
+ * The list group header inside a day column (EI-337). Each test files cards
+ * into Brain Dump and schedules them for tomorrow, so Wednesday has a "Brain
+ * Dump" group to right-click.
+ */
+test.describe("list group header menu", () => {
+  const wednesday = (page: Page) => page.getByRole("region", { name: "Wednesday" });
+  const groupHeader = (page: Page) =>
+    wednesday(page).getByRole("button", { name: /^Brain Dump, \d+ to-dos?$/ });
+
+  async function scheduleIntoWednesday(page: Page, titles: string[]) {
+    const brainDump = page.getByRole("region", { name: "Brain Dump" });
+    for (const title of titles) {
+      await brainDump.getByPlaceholder("Add a to-do").fill(title);
+      await page.keyboard.press("Enter");
+      await row(page, title).click({ button: "right" });
+      await page.getByRole("menuitem", { name: "Reschedule" }).click();
+      await page.getByRole("menuitem", { name: /^Tomorrow/ }).click();
+      await expect(
+        wednesday(page).getByRole("button", { name: title, exact: true }),
+      ).toBeVisible();
+    }
+  }
+
+  test("New to-do here opens a focused field that files into that list and day", async ({
+    page,
+  }) => {
+    await scheduleIntoWednesday(page, ["Water the plants"]);
+
+    await groupHeader(page).click({ button: "right" });
+    await page.getByRole("menuitem", { name: "New to-do here" }).click();
+
+    // Focus is the point: the menu closing must not hand it back to the header.
+    const field = page.getByRole("textbox", { name: "New to-do in Brain Dump" });
+    await expect(field).toBeFocused();
+
+    await field.fill("Buy stamps");
+    await page.keyboard.press("Enter");
+    await expect(
+      wednesday(page).getByRole("button", { name: "Buy stamps", exact: true }),
+    ).toBeVisible();
+    await expect(
+      wednesday(page).getByRole("button", { name: "Brain Dump, 2 to-dos" }),
+    ).toBeVisible();
+    // Enter keeps the field for the next one; Escape puts it away.
+    await expect(field).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(field).toHaveCount(0);
+  });
+
+  /**
+   * The keyboard route. A header reached by the arrow keys HOLDS focus, so
+   * this is the case where closing the menu could hand focus back to the
+   * header instead of the new field — a right-click never focuses it.
+   */
+  test("New to-do here from the Menu key still lands focus in the field", async ({
+    page,
+  }) => {
+    await scheduleIntoWednesday(page, ["Water the plants"]);
+
+    await groupHeader(page).focus();
+    await page.keyboard.press("ContextMenu");
+    await page.getByRole("menuitem", { name: "New to-do here" }).press("Enter");
+
+    await expect(
+      page.getByRole("textbox", { name: "New to-do in Brain Dump" }),
+    ).toBeFocused();
+  });
+
+  test("Reschedule moves every open to-do in the group", async ({ page }) => {
+    await scheduleIntoWednesday(page, ["One", "Two"]);
+
+    await groupHeader(page).click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Reschedule 2" }).click();
+    await page.getByRole("menuitem", { name: /^In 3 days/ }).click();
+
+    // Frozen clock: Tuesday + 3 is Friday.
+    const friday = page.getByRole("region", { name: "Friday" });
+    for (const title of ["One", "Two"]) {
+      await expect(friday.getByRole("button", { name: title, exact: true })).toBeVisible();
+    }
+    await expect(groupHeader(page)).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Undo" }).first()).toBeVisible();
+  });
+});
+
+/**
  * The tab pill composes TWO Base UI `useRender` components —
  * `TooltipTrigger render={<ContextMenuTrigger/>}` — which is the exact shape
  * of `.ai/lessons.md` L747, where the outer one silently swallowed the

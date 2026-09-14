@@ -1690,9 +1690,8 @@ export function useBoardActions(
    * and it cannot batch. A menu reschedule MUST toast: the card leaves its
    * column, so nothing on screen would otherwise confirm what happened.
    */
-  const handleReschedule = useCallback(
-    (todo: Todo, date: CivilDate) => {
-      const targets = targetsFor(todo);
+  const rescheduleTodos = useCallback(
+    (targets: readonly Todo[], date: CivilDate) => {
       if (targets.length === 0) return;
       const label =
         targets.length === 1
@@ -1721,7 +1720,26 @@ export function useBoardActions(
         action: { label: "Undo", onClick: () => void undoById(entryId) },
       });
     },
-    [targetsFor, materializeIfNeeded, clearSelection],
+    [materializeIfNeeded, clearSelection],
+  );
+
+  const handleReschedule = useCallback(
+    (todo: Todo, date: CivilDate) => rescheduleTodos(targetsFor(todo), date),
+    [rescheduleTodos, targetsFor],
+  );
+
+  /**
+   * A list group header's Reschedule ▸ (EI-337): every OPEN to-do in that
+   * list on that day. Done and won't-do rows stay put — they are a record of
+   * the day they happened on, not work to carry forward.
+   */
+  const handleRescheduleGroup = useCallback(
+    (todos: readonly Todo[], date: CivilDate) =>
+      rescheduleTodos(
+        todos.filter((t) => t.status === "open"),
+        date,
+      ),
+    [rescheduleTodos],
   );
 
   /** Where "Move back" sends a to-do: its own list, or Backlog when it has none
@@ -2058,6 +2076,7 @@ export function useBoardActions(
     handleContextStatus,
     handleContextDelete,
     handleReschedule,
+    handleRescheduleGroup,
     todoContextActions,
     handleAddSubtask,
     handleSaveList,

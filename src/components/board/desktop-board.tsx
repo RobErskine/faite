@@ -494,6 +494,7 @@ export function DesktopBoard({
                   movingIds={movingIds}
                   onSelect={actions.handleSelect}
                   contextActions={actions.todoContextActions}
+                  onRescheduleGroup={actions.handleRescheduleGroup}
                 />
               );
             })}
