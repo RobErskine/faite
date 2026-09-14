@@ -14,12 +14,18 @@ constraints particular to menus.
 
 | Target | Items |
 | --- | --- |
-| To-do card (`todo-card-menu.tsx`) | Edit · Mark done / not done · Won't do · Reschedule ▸ · Delete |
+| To-do card (`todo-card-menu.tsx`) | Edit · Mark done / not done · Won't do · Reschedule ▸ · Move back to {list} · Delete |
 | List column header (`list-column-menu.tsx`) | List settings… · Color ▸ · Archive · Delete |
 | Tab pill (`tab-pill-menu.tsx`) | Tab settings… · Color ▸ · Archive · Delete |
 
 Nothing else, yet. Day/Overflow/Backlog headers, archived-list rows,
 attachment rows and sheet subtask rows are all plausible and all unbuilt.
+
+"Move back to {list}" (EI-336) shows only on a card that sits in a day. It is
+the drag onto the list column and Overdrive's `↓`: scheduling never clears
+`listId`, so there is no origin to record. A batch sends each card to its own
+list, and an away card — dated, but already drawn in its list column — gets no
+such item.
 
 The Color ▸ submenu is shared (`color-submenu.tsx`) — two call sites is what
 earns the extraction; the item lists are not.

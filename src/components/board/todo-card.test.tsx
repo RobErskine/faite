@@ -88,6 +88,7 @@ interface HarnessProps {
   onSelect?: (id: string, m: { additive: boolean; range: boolean }) => void;
   contextActions?: TodoContextActions;
   selectionCount?: number;
+  isAway?: boolean;
 }
 
 function Harness({
@@ -107,6 +108,7 @@ function Harness({
   onSelect,
   contextActions,
   selectionCount,
+  isAway,
 }: HarnessProps) {
   return (
     <TooltipProvider>
@@ -123,6 +125,7 @@ function Harness({
             onSelect={onSelect}
             contextActions={contextActions}
             selectionCount={selectionCount}
+            isAway={isAway}
             onToggle={onToggle}
             onOpen={onOpen}
             onNavigate={onNavigate}
@@ -783,6 +786,8 @@ describe("context menu", () => {
     onStatus: vi.fn(),
     onDelete: vi.fn(),
     onReschedule: vi.fn(),
+    onMoveBackToList: vi.fn(),
+    homeListName: () => "Brain Dump",
   });
 
   const row = () => document.querySelector("[data-todo-row]") as HTMLElement;
@@ -841,6 +846,44 @@ describe("context menu", () => {
     expect(screen.getByRole("menuitem", { name: /^Delete 3/ })).toBeTruthy();
     // Opening one to-do is meaningless for a batch, so it steps aside.
     expect(screen.queryByRole("menuitem", { name: "Edit" })).toBeNull();
+  });
+
+  it("offers Move back to its list only for a card sitting in a day (EI-336)", async () => {
+    const a = actions();
+    const dated = todo({ scheduledDate: "2026-08-12" });
+    render(<Harness todo={dated} contextActions={a} />);
+    fireEvent.contextMenu(row());
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Move back to Brain Dump" }));
+    expect(a.onMoveBackToList).toHaveBeenCalledWith(dated);
+  });
+
+  it("has no Move back for an undated card or an away card in its list column", async () => {
+    const { unmount } = render(<Harness contextActions={actions()} />);
+    fireEvent.contextMenu(row());
+    await screen.findByRole("menuitem", { name: /^Mark done/ });
+    expect(screen.queryByRole("menuitem", { name: /^Move/ })).toBeNull();
+    unmount();
+
+    render(
+      <Harness todo={todo({ scheduledDate: "2026-09-30" })} isAway contextActions={actions()} />,
+    );
+    fireEvent.contextMenu(row());
+    await screen.findByRole("menuitem", { name: /^Mark done/ });
+    expect(screen.queryByRole("menuitem", { name: /^Move/ })).toBeNull();
+  });
+
+  it("sends a batch back to each card's own list", async () => {
+    render(
+      <Harness
+        todo={todo({ scheduledDate: "2026-08-12" })}
+        selectionCount={3}
+        contextActions={actions()}
+      />,
+    );
+    fireEvent.contextMenu(row());
+    expect(
+      await screen.findByRole("menuitem", { name: "Move 3 back to their lists" }),
+    ).toBeTruthy();
   });
 
   it("keeps Edit for a single card", async () => {

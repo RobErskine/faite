@@ -116,6 +116,38 @@ test.describe("to-do card menu", () => {
     await expect(page.getByRole("button", { name: "Undo" })).toBeVisible();
   });
 
+  test("Move back returns a scheduled card to the list it came from (EI-336)", async ({
+    page,
+  }) => {
+    const brainDump = page.getByRole("region", { name: "Brain Dump" });
+    await brainDump.getByPlaceholder("Add a to-do").fill("Water the plants");
+    await page.keyboard.press("Enter");
+    await expect(card(page, "Water the plants")).toBeVisible();
+
+    // An undated card is already home, so it gets no such item.
+    await row(page, "Water the plants").click({ button: "right" });
+    await expect(page.getByRole("menuitem", { name: "Mark done" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: /^Move back/ })).toHaveCount(0);
+
+    await page.getByRole("menuitem", { name: "Reschedule" }).click();
+    await page.getByRole("menuitem", { name: /^Tomorrow/ }).click();
+    const wednesday = page.getByRole("region", { name: "Wednesday" });
+    await expect(
+      wednesday.getByRole("button", { name: "Water the plants", exact: true }),
+    ).toBeVisible();
+
+    await row(page, "Water the plants").click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Move back to Brain Dump" }).click();
+
+    await expect(
+      brainDump.getByRole("button", { name: "Water the plants", exact: true }),
+    ).toBeVisible();
+    await expect(
+      wednesday.getByRole("button", { name: "Water the plants", exact: true }),
+    ).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Undo" }).first()).toBeVisible();
+  });
+
   /**
    * The keyboard route, which is what keeps this from being a mouse-only
    * feature. The title button is in the tab order, so Tab reaches it and the

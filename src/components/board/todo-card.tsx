@@ -722,6 +722,7 @@ export function TodoCard({
         onOpen={onOpen}
         actions={contextActions}
         selectionCount={selectionCount}
+        inListColumn={isAway}
         close={() => menuActionsRef.current?.close()}
       />
     )}

@@ -1724,10 +1724,64 @@ export function useBoardActions(
     [targetsFor, materializeIfNeeded, clearSelection],
   );
 
+  /** Where "Move back" sends a to-do: its own list, or Backlog when it has none
+   * — the same fallback `groupTodosByList` renders it under. */
+  const backlogListId = useMemo(() => lists.find((l) => l.isBacklog)?.id ?? null, [lists]);
+  const homeListName = useCallback(
+    (todo: Todo) => (todo.listId ? listsById.get(todo.listId)?.name : undefined) ?? "Backlog",
+    [listsById],
+  );
+
   /**
-   * The four handlers a card's menu needs, as one stable object — a card takes
-   * `contextActions` or nothing, rather than four optional callbacks that
-   * could be wired up half-way.
+   * The context menu's "Move back to {list}" (EI-336), over one card or a
+   * whole selection.
+   *
+   * The write a drag onto the list column does, and what Overdrive's `↓` does:
+   * scheduling never clears `listId`, so "back" is already recorded. Each card
+   * goes to its OWN list, so a mixed selection fans out rather than piling
+   * into whichever list the right-clicked card came from. Unscheduled cards in
+   * the selection are skipped — they are already home. It toasts for the same
+   * reason `handleReschedule` does: the card leaves its column.
+   */
+  const handleMoveBackToList = useCallback(
+    (todo: Todo) => {
+      const targets = targetsFor(todo).filter((t) => t.scheduledDate !== null);
+      if (targets.length === 0) return;
+      const home = (t: Todo) => t.listId ?? backlogListId;
+      const label =
+        targets.length === 1
+          ? `Moved “${short(targets[0].title)}” to ${homeListName(targets[0])}`
+          : `Moved ${targets.length} to-dos back to their lists`;
+      const entryId = pushUndo(
+        label,
+        targets.map((t) => ({
+          kind: "todo" as const,
+          entityId: t.id,
+          patch: inversePatch(t, listPatch(home(t))),
+        })),
+      );
+      void (async () => {
+        try {
+          for (const t of targets) {
+            await materializeIfNeeded(t);
+            await moveTodoToList(t.id, home(t));
+          }
+        } finally {
+          clearSelection();
+        }
+      })();
+      toast.success(label, {
+        duration: 6000,
+        action: { label: "Undo", onClick: () => void undoById(entryId) },
+      });
+    },
+    [targetsFor, backlogListId, homeListName, materializeIfNeeded, clearSelection],
+  );
+
+  /**
+   * The handlers a card's menu needs, as one stable object — a card takes
+   * `contextActions` or nothing, rather than optional callbacks that could be
+   * wired up half-way.
    */
   const todoContextActions = useMemo<TodoContextActions>(
     () => ({
@@ -1735,8 +1789,17 @@ export function useBoardActions(
       onStatus: handleContextStatus,
       onDelete: handleContextDelete,
       onReschedule: handleReschedule,
+      onMoveBackToList: handleMoveBackToList,
+      homeListName,
     }),
-    [handleContextTarget, handleContextStatus, handleContextDelete, handleReschedule],
+    [
+      handleContextTarget,
+      handleContextStatus,
+      handleContextDelete,
+      handleReschedule,
+      handleMoveBackToList,
+      homeListName,
+    ],
   );
 
   const handleToggleLabel = useCallback(

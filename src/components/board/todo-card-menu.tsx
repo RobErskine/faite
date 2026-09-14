@@ -1,6 +1,6 @@
 "use client";
 
-import { Ban, CalendarClock, Check, SquarePen, Trash2 } from "lucide-react";
+import { Ban, CalendarClock, Check, SquarePen, Trash2, Undo2 } from "lucide-react";
 import {
   ContextMenuContent,
   ContextMenuItem,
@@ -40,6 +40,10 @@ export interface TodoContextActions {
   onStatus: (todo: Todo, status: Todo["status"]) => void;
   onDelete: (todo: Todo) => void;
   onReschedule: (todo: Todo, date: CivilDate) => void;
+  /** Unschedule back into the list the to-do belongs to (EI-336). */
+  onMoveBackToList: (todo: Todo) => void;
+  /** The name "Move back to …" shows — the card itself holds no list data. */
+  homeListName: (todo: Todo) => string;
 }
 
 interface TodoCardMenuProps {
@@ -53,6 +57,9 @@ interface TodoCardMenuProps {
    * to infer it from the highlight.
    */
   selectionCount?: number;
+  /** An away card — dated, but rendered in its own list column, so "Move back"
+   * has nowhere to move it. */
+  inListColumn?: boolean;
   /** Dismiss the menu after a chord fires — clicking an item closes it on its
    * own, but a keyboard shortcut has to say so. */
   close: () => void;
@@ -69,6 +76,7 @@ export function TodoCardMenu({
   onOpen,
   actions,
   selectionCount = 1,
+  inListColumn = false,
   close,
 }: TodoCardMenuProps) {
   const platform = usePlatform();
@@ -179,6 +187,16 @@ export function TodoCardMenu({
           ))}
         </ContextMenuSubContent>
       </ContextMenuSub>
+
+      {/* Only a card sitting in a day has somewhere to go back from. */}
+      {todo.scheduledDate !== null && !inListColumn && (
+        <ContextMenuItem onClick={() => actions.onMoveBackToList(todo)}>
+          <Undo2 />
+          {many
+            ? `Move${n} back to their lists`
+            : `Move back to ${actions.homeListName(todo)}`}
+        </ContextMenuItem>
+      )}
 
       <ContextMenuSeparator />
 
