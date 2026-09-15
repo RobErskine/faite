@@ -127,7 +127,7 @@ function TabInfoDialogContent({
             />
           </div>
           <p className="text-xs text-muted-foreground">
-            Used to differentiate this list as an accent.
+            Tints this tab, and every list in it that has no color of its own.
           </p>
         </div>
 
