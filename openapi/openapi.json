@@ -1863,31 +1863,46 @@
                       {
                         "type": "null"
                       }
-                    ]
+                    ],
+                    "description": "1 to 4: 1 is the highest priority, 4 the lowest. null means no priority."
                   },
                   "scheduledDate": {
                     "default": null,
                     "anyOf": [
                       {
                         "type": "string",
-                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                        "format": "date",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                      },
+                      {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
                       },
                       {
                         "type": "null"
                       }
-                    ]
+                    ],
+                    "description": "The day the user plans to do it. Either a date (\"2026-09-15\") or an ISO 8601 date-time with an offset (\"2026-09-15T14:00:00-04:00\"); a date-time is saved as its date in the user's timezone. null clears it."
                   },
                   "deadline": {
                     "default": null,
                     "anyOf": [
                       {
                         "type": "string",
-                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                        "format": "date",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                      },
+                      {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
                       },
                       {
                         "type": "null"
                       }
-                    ]
+                    ],
+                    "description": "The date it must be done by. Either a date (\"2026-09-15\") or an ISO 8601 date-time with an offset (\"2026-09-15T14:00:00-04:00\"); a date-time is saved as its date in the user's timezone. null clears it."
                   },
                   "listId": {
                     "default": null,
@@ -2089,9 +2104,33 @@
         "summary": "List the caller's lists.",
         "description": "Requires the `read` scope — every cookie session and every API key has it by default. Soft-deleted rows are never included.",
         "operationId": "listV1Lists",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "fields",
+            "schema": {
+              "description": "Which fields to return for each list. Empty or omitted returns the default set. Comma-separated, e.g. `id,name,description`. Default: every field.",
+              "type": "string"
+            },
+            "description": "Which fields to return for each list. Empty or omitted returns the default set. Comma-separated, e.g. `id,name,description`. Default: every field."
+          },
+          {
+            "in": "query",
+            "name": "includeArchived",
+            "schema": {
+              "description": "Include archived lists. Default false.",
+              "type": "string",
+              "enum": [
+                "true",
+                "false"
+              ]
+            },
+            "description": "Include archived lists. Default false."
+          }
+        ],
         "responses": {
           "200": {
-            "description": "lists, in board order.",
+            "description": "lists, in board order. Archived lists only with `includeArchived=true`; every field unless `fields` names some.",
             "content": {
               "application/json": {
                 "schema": {
@@ -3198,31 +3237,46 @@
                       {
                         "type": "null"
                       }
-                    ]
+                    ],
+                    "description": "1 to 4: 1 is the highest priority, 4 the lowest. null means no priority."
                   },
                   "scheduledDate": {
                     "default": null,
                     "anyOf": [
                       {
                         "type": "string",
-                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                        "format": "date",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                      },
+                      {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
                       },
                       {
                         "type": "null"
                       }
-                    ]
+                    ],
+                    "description": "The day the user plans to do it. Either a date (\"2026-09-15\") or an ISO 8601 date-time with an offset (\"2026-09-15T14:00:00-04:00\"); a date-time is saved as its date in the user's timezone. null clears it."
                   },
                   "deadline": {
                     "default": null,
                     "anyOf": [
                       {
                         "type": "string",
-                        "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+                        "format": "date",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+                      },
+                      {
+                        "type": "string",
+                        "format": "date-time",
+                        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
                       },
                       {
                         "type": "null"
                       }
-                    ]
+                    ],
+                    "description": "The date it must be done by. Either a date (\"2026-09-15\") or an ISO 8601 date-time with an offset (\"2026-09-15T14:00:00-04:00\"); a date-time is saved as its date in the user's timezone. null clears it."
                   },
                   "listId": {
                     "default": null,

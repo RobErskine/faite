@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { deadlineInputSchema, priorityInputSchema, scheduledDateInputSchema } from "@/lib/date-input";
 import { civilDateSchema, dayNoteSchema, labelSchema, listSchema, tabSchema, todoSchema } from "@/lib/schema";
 
 /**
@@ -32,7 +33,19 @@ const OPTIONAL_ON_CREATE = {
 
 const CREATE_FIELDS = { title: true, ...OPTIONAL_ON_CREATE } as const;
 
-export const createTodoRequestSchema = todoSchema.pick(CREATE_FIELDS).partial(OPTIONAL_ON_CREATE);
+/**
+ * `todoSchema` with the INPUT forms of the two dates (EI-338): a date or an
+ * offset date-time, which the route turns into a civil date with
+ * `resolveDateInputs` before the service layer's own `todoSchema` check.
+ * Priority only gains a description, for the OpenAPI doc.
+ */
+const todoInputSchema = todoSchema.extend({
+  scheduledDate: scheduledDateInputSchema.default(null),
+  deadline: deadlineInputSchema.default(null),
+  priority: priorityInputSchema.default(null),
+});
+
+export const createTodoRequestSchema = todoInputSchema.pick(CREATE_FIELDS).partial(OPTIONAL_ON_CREATE);
 
 export type CreateTodoRequest = z.infer<typeof createTodoRequestSchema>;
 
@@ -49,7 +62,7 @@ const UPDATABLE_FIELDS = new Set([...Object.keys(CREATE_FIELDS), "status", "comp
 /** For `openapi/routes.ts` — a STATIC, illustrative shape for docs. NEVER
  * used for real request parsing: see `parseUpdateTodoRequest`'s own doc
  * comment for why a static `.partial()` schema is actively unsafe here. */
-export const updateTodoRequestSchema = todoSchema
+export const updateTodoRequestSchema = todoInputSchema
   .pick({ ...CREATE_FIELDS, status: true, completedAt: true })
   .partial();
 
@@ -120,7 +133,7 @@ export function parsePatchRequest<S extends z.ZodObject<z.ZodRawShape>>(
 /** `PATCH /api/v1/todos/{id}`. See `parsePatchRequest` for why the mask is
  * dynamic — this is a three-line wrapper over it, not its own algorithm. */
 export function parseUpdateTodoRequest(body: unknown): UpdateTodoRequest | null {
-  return parsePatchRequest(todoSchema, UPDATABLE_FIELDS, body) as UpdateTodoRequest | null;
+  return parsePatchRequest(todoInputSchema, UPDATABLE_FIELDS, body) as UpdateTodoRequest | null;
 }
 
 // ---------------------------------------------------------------- lists (A14)

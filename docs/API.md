@@ -242,16 +242,31 @@ that have no REST equivalent:
 | Tool | Scope | Notes |
 |---|---|---|
 | `list_todos` | read | |
-| `create_todo` | write | |
-| `update_todo` | write | General patch — only the fields provided are touched, same rule as `PATCH /api/v1/todos/{id}`. |
+| `create_todo` | write | `scheduledDate`/`deadline` take a date or an offset date-time — see "Date inputs" below. |
+| `update_todo` | write | General patch — only the fields provided are touched, same rule as `PATCH /api/v1/todos/{id}`. Same date inputs. |
 | `complete_todo` | write | Kept as its own tool rather than folded into `update_todo` — "mark done" is common enough to deserve a one-field call. |
-| `list_lists` | read | Includes each list's `description`, so a client can decide where a to-do belongs. |
+| `list_lists` | read | Defaults to `id`, `name`, `description`, `isBacklog` only, null fields and archived lists left out, compact JSON — Pointer pastes it into a model prompt (EI-338). Optional `fields` (array of list field names) and `includeArchived` (boolean). |
 | `list_labels` | read | |
 | `list_attachments` | read | Metadata only, across every to-do; fetch bytes from `GET /api/attachments/{id}` with the same credentials. No REST equivalent — attaching a file still needs the app UI. |
 | `list_tabs` | read | |
 | `get_backlog` | read | To-dos whose list has `isBacklog: true`. No REST equivalent. |
 | `get_overflow` | read | Runs `@/lib/scheduling`'s `deriveColumn()` — the SAME pure function the board renders with — against this account's own Settings (`UserDurableObject.getSettings()`) instead of a client's in-memory copy. No REST equivalent. |
-| `get_profile` | read | `displayName`/avatar fields/`timezone` only — never the device-local board-layout prefs (`backlogWidth`, `splitRatio`, etc.) that live in the same `settings` row but describe one device's screen, not the account. |
+| `get_profile` | read | `timezone` is an IANA name (`"America/New_York"`), or `"UTC"` if never set. `displayName`/avatar fields/`timezone` only — never the device-local board-layout prefs (`backlogWidth`, `splitRatio`, etc.) that live in the same `settings` row but describe one device's screen, not the account. |
+
+**Date inputs (EI-338).** `scheduledDate` and `deadline` — on `create_todo`,
+`update_todo`, `POST /api/v1/todos` and `PATCH /api/v1/todos/{id}` — accept
+`"2026-09-15"` or an ISO 8601 date-time with an offset,
+`"2026-09-15T14:00:00-04:00"`. A date-time is stored as the day it falls on in
+the account's `timezone`, so `2026-09-15T23:30:00-04:00` is the 16th for a UTC
+account. A date-time with no offset is rejected (400 / tool error): it names no
+day. Storage and every response stay `YYYY-MM-DD`. The shared schema is
+`src/lib/date-input.ts`.
+
+**`GET /api/v1/lists` query (EI-338).** `includeArchived=true` to include
+archived lists (default: left out); `fields=id,name,description` to return
+only those fields (default: every field, nulls kept — unlike `list_lists`).
+An unknown field is a 400. Shared with `list_lists` via
+`src/server/v1/list-query.ts`.
 
 Plus a `summarize_backlog` prompt (a resource-only server without at least
 one prompt fails to connect for clients that require the `prompts`

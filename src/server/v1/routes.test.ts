@@ -947,3 +947,86 @@ describe("derived reads", () => {
     expect(write.status).toBe(404);
   });
 });
+
+describe("EI-338: list projection and date-time inputs", () => {
+  it("GET /lists hides archived lists by default, keeps the full row", async () => {
+    stub.listEntities.mockResolvedValue([
+      rawListRow(),
+      rawListRow({ id: "list-2", archivedAt: "2026-09-02T00:00:00.000Z" }),
+    ]);
+
+    const res = await handleV1Request(v1Request("GET", "/api/v1/lists"), env);
+    const lists = (await res.json()) as Record<string, unknown>[];
+
+    expect(lists.map((l) => l.id)).toEqual(["list-1"]);
+    expect(lists[0]).toHaveProperty("color", null);
+  });
+
+  it("GET /lists?fields=…&includeArchived=true projects and includes archived", async () => {
+    stub.listEntities.mockResolvedValue([
+      rawListRow(),
+      rawListRow({ id: "list-2", archivedAt: "2026-09-02T00:00:00.000Z" }),
+    ]);
+
+    const res = await handleV1Request(
+      v1Request("GET", "/api/v1/lists?fields=id,name&includeArchived=true"),
+      env,
+    );
+
+    await expect(res.json()).resolves.toEqual([
+      { id: "list-1", name: "Errands" },
+      { id: "list-2", name: "Errands" },
+    ]);
+  });
+
+  it("GET /lists 400s on an unknown field", async () => {
+    const res = await handleV1Request(v1Request("GET", "/api/v1/lists?fields=version"), env);
+    expect(res.status).toBe(400);
+  });
+
+  it("POST /todos saves a date-time as its date in the user's timezone", async () => {
+    stub.getSettings.mockResolvedValue({ ownerId: "user-1", updatedAt: "2026-09-08T00:00:00.000Z", timezone: "UTC" });
+    stub.getTodo.mockResolvedValue(rawTodoRow());
+
+    const res = await handleV1Request(
+      v1Request("POST", "/api/v1/todos", {
+        title: "New",
+        scheduledDate: "2026-09-15T23:30:00-04:00",
+        deadline: "2026-09-20",
+      }),
+      env,
+    );
+
+    expect(res.status).toBe(201);
+    expect(pushedEntries(stub)[0].patch).toMatchObject({ scheduledDate: "2026-09-16", deadline: "2026-09-20" });
+  });
+
+  it("PATCH /todos converts a date-time deadline and loads settings once", async () => {
+    stub.getSettings.mockResolvedValue({
+      ownerId: "user-1",
+      updatedAt: "2026-09-08T00:00:00.000Z",
+      timezone: "America/Los_Angeles",
+    });
+    stub.getTodo.mockResolvedValue(rawTodoRow());
+
+    const res = await handleV1Request(
+      v1Request("PATCH", "/api/v1/todos/todo-1", { deadline: "2026-09-15T02:00:00Z" }),
+      env,
+    );
+
+    expect(res.status).toBe(200);
+    expect(pushedEntries(stub)[0].patch).toMatchObject({ deadline: "2026-09-14" });
+    expect(stub.getSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it("POST /todos 400s on a date-time with no offset", async () => {
+    const res = await handleV1Request(
+      v1Request("POST", "/api/v1/todos", { title: "New", scheduledDate: "2026-09-15T14:00:00" }),
+      env,
+    );
+
+    expect(res.status).toBe(400);
+    expect(stub.push).not.toHaveBeenCalled();
+    expect(stub.getSettings).not.toHaveBeenCalled();
+  });
+});

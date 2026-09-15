@@ -7,11 +7,11 @@ import {
   idSchema,
   labelSchema,
   listSchema,
-  prioritySchema,
   tabSchema,
   todoSchema,
   todoStatusSchema,
 } from "@/lib/schema";
+import { deadlineInputSchema, priorityInputSchema, resolveDateInputs, scheduledDateInputSchema } from "@/lib/date-input";
 import { contextFromSettings, deriveColumn, OVERFLOW } from "@/lib/scheduling";
 import type { ServiceContext } from "@/lib/service/context";
 import { UPDATE_TODO_MAX_ENTRIES } from "@/lib/service/todos";
@@ -24,6 +24,7 @@ import { createTodo, pushTransportFor, updateTodo } from "../service/todos";
 import type { UserDurableObject } from "../user-do";
 import { withEventStreamAccept } from "./accept";
 import { profileFromSettings } from "../v1/derived";
+import { listListsToolInput, MCP_DEFAULT_LIST_FIELDS, projectLists } from "../v1/list-query";
 import { settingsOrDefault } from "./settings-defaults";
 
 export { withEventStreamAccept } from "./accept";
@@ -187,6 +188,11 @@ function listAttachments(stub: DurableObjectStub<UserDurableObject>): ReturnType
   return stub.listEntities("attachment");
 }
 
+/** For `resolveDateInputs` — only called when a date-time needs a zone. */
+async function loadTimezone(identity: McpIdentity, stub: DurableObjectStub<UserDurableObject>) {
+  return (await loadSettings(identity, stub)).timezone;
+}
+
 /** Fetches, then applies `settingsOrDefault`'s (`./settings-defaults`)
  * fallback for a row that was never written. */
 async function loadSettings(identity: McpIdentity, stub: DurableObjectStub<UserDurableObject>) {
@@ -221,15 +227,16 @@ function buildServer(
       inputSchema: {
         title: z.string().min(1),
         listId: z.string().nullable().optional(),
-        scheduledDate: z.string().nullable().optional(),
-        deadline: z.string().nullable().optional(),
-        priority: prioritySchema.nullable().optional(),
+        scheduledDate: scheduledDateInputSchema.optional(),
+        deadline: deadlineInputSchema.optional(),
+        priority: priorityInputSchema.optional(),
         description: z.string().nullable().optional(),
       },
     },
-    async (input) => {
+    async (rawInput) => {
       requireScope(identity, "write");
 
+      const input = await resolveDateInputs(rawInput, () => loadTimezone(identity, stub));
       const position = await stub.nextTodoPosition();
       const reminderTime = await stub.defaultReminderTimeForList(input.listId ?? null);
       // Two stamps: the todo entry and its "created" todoEvent always both
@@ -297,9 +304,9 @@ function buildServer(
         title: z.string().min(1).optional(),
         description: z.string().nullable().optional(),
         status: todoStatusSchema.optional(),
-        priority: prioritySchema.nullable().optional(),
-        scheduledDate: z.string().nullable().optional(),
-        deadline: z.string().nullable().optional(),
+        priority: priorityInputSchema.optional(),
+        scheduledDate: scheduledDateInputSchema.optional(),
+        deadline: deadlineInputSchema.optional(),
         listId: idSchema.nullable().optional(),
         projectId: idSchema.nullable().optional(),
         labelIds: z.array(idSchema).optional(),
@@ -308,8 +315,10 @@ function buildServer(
         completedAt: z.string().nullable().optional(),
       },
     },
-    async ({ id, ...input }) => {
+    async ({ id, ...rawInput }) => {
       requireScope(identity, "write");
+
+      const input = await resolveDateInputs(rawInput, () => loadTimezone(identity, stub));
 
       // None of these fields carry a Zod `.default()` — deliberately, so an
       // absent key stays absent here rather than resolving to a schema
@@ -354,13 +363,25 @@ function buildServer(
       description:
         "List the caller's lists (board columns), in board order. Each " +
         "list's `description`, when set, explains what belongs there — " +
-        "useful context for deciding where a new to-do should go.",
-      inputSchema: {},
+        "useful context for deciding where a new to-do should go. By default " +
+        "returns id, name, description and isBacklog, leaves out null fields " +
+        "and archived lists.",
+      inputSchema: listListsToolInput,
     },
-    async () => {
+    async ({ fields, includeArchived }) => {
       requireScope(identity, "read");
       const rows = await listLists(stub);
-      return textResult(rows.map((row) => listSchema.parse(row)));
+      const lists = projectLists(
+        rows.map((row) => listSchema.parse(row)),
+        {
+          fields: fields?.length ? fields : MCP_DEFAULT_LIST_FIELDS,
+          includeArchived: includeArchived ?? false,
+          omitNull: true,
+        },
+      );
+      // Compact, not `textResult`'s pretty-print: this one goes into a
+      // model prompt on every to-do Pointer routes (EI-338).
+      return { content: [{ type: "text" as const, text: JSON.stringify(lists) }] };
     },
   );
 
@@ -454,7 +475,8 @@ function buildServer(
     {
       description:
         "The caller's display name, avatar, timezone, and Faite Loop settings " +
-        "(overflowAfterDays, visibleDays, workdays).",
+        "(overflowAfterDays, visibleDays, workdays). `timezone` is an IANA " +
+        'name such as "America/New_York" — "UTC" if the account never set one.',
       inputSchema: {},
     },
     async () => {
