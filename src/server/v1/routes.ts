@@ -1,4 +1,5 @@
-import { dayNoteSchema, labelSchema, listSchema, tabSchema, todoSchema, type Todo } from "@/lib/schema";
+import { dayNoteSchema, labelSchema, listSchema, tabSchema, todoSchema, type List, type Todo } from "@/lib/schema";
+import { resolveDateInputs } from "@/lib/date-input";
 import type { ServiceContext } from "@/lib/service/context";
 import { createAuth } from "../auth";
 import { authorizeScope } from "../auth-scopes";
@@ -24,6 +25,7 @@ import {
   parseTodos,
   profileFromSettings,
 } from "./derived";
+import { parseListQuery, projectLists } from "./list-query";
 import { filterTodos, parseTodoQuery } from "./query";
 import { settingsOrDefault } from "../mcp/settings-defaults";
 import { V1_RESOURCES, type V1Kind } from "./resources";
@@ -149,6 +151,11 @@ function listListRows(
   return stub.listEntities("list");
 }
 
+/** For `resolveDateInputs` — only called when a date-time needs a zone. */
+async function loadTimezone(stub: DurableObjectStub<UserDurableObject>, userId: string): Promise<string> {
+  return settingsOrDefault(await getSettingsRow(stub), userId).timezone;
+}
+
 function getSettingsRow(
   stub: DurableObjectStub<UserDurableObject>,
 ): ReturnType<UserDurableObject["getSettings"]> {
@@ -235,8 +242,9 @@ async function handleCreateTodo(
   headers: HeadersInit,
 ): Promise<Response> {
   const body = await request.json().catch(() => null);
-  const parsed = parseCreateTodoRequest(body);
-  if (!parsed) return json({ error: "invalid-request" }, 400, headers);
+  const raw = parseCreateTodoRequest(body);
+  if (!raw) return json({ error: "invalid-request" }, 400, headers);
+  const parsed = await resolveDateInputs(raw, () => loadTimezone(stub, userId));
 
   // Key PRESENCE on the raw body, not a check on the parsed value (EI-308).
   // `todoSchema.reminderTime` carries `.nullable().default(null)`, and
@@ -299,8 +307,9 @@ async function handleUpdateTodo(
   const existing = await stub.getTodo(id);
   if (!existing) return json({ error: "not-found" }, 404, headers);
 
-  const parsed = parseUpdateTodoRequest(await request.json().catch(() => null));
-  if (!parsed) return json({ error: "invalid-request" }, 400, headers);
+  const raw = parseUpdateTodoRequest(await request.json().catch(() => null));
+  if (!raw) return json({ error: "invalid-request" }, 400, headers);
+  const parsed = await resolveDateInputs(raw, () => loadTimezone(stub, userId));
 
   // Sized for the most entries an update can push, though most need fewer —
   // see `durableHlcQueue`'s doc comment for why over-requesting is harmless.
@@ -741,13 +750,20 @@ export async function handleV1Request(request: Request, env: CloudflareEnv): Pro
       const rows = await listEntities(stub, resource.kind);
       const parsed = rows.map((row) => resource.schema.parse(row));
 
-      // Filters are todo-only (A13, EI-293). The other four resources are
-      // small enough that a filter would be answering a question nobody
-      // asked — and every one of them a client could ask locally.
+      // Filters (A13, EI-293) for todos, and a field/archived projection
+      // (EI-338) for lists. The other resources are small enough that a
+      // filter would be answering a question nobody asked.
       if (resource.kind === "todo") {
         const query = parseTodoQuery(url.searchParams);
         if (!query) return json({ error: "invalid-request" }, 400, headers);
         return json(filterTodos(parsed as Todo[], query), 200, headers);
+      }
+
+      // `fields`/`includeArchived` (EI-338), shared with MCP `list_lists`.
+      if (resource.kind === "list") {
+        const query = parseListQuery(url.searchParams);
+        if (!query) return json({ error: "invalid-request" }, 400, headers);
+        return json(projectLists(parsed as List[], { ...query, omitNull: false }), 200, headers);
       }
 
       return json(parsed, 200, headers);

@@ -6,6 +6,7 @@ import { pushRequestSchema } from "@/server/sync/validate";
 import { contactRequestSchema } from "@/server/contact/validate";
 import { V1_RESOURCES } from "@/server/v1/resources";
 import { todoQuerySchema } from "@/server/v1/query";
+import { listQuerySchema } from "@/server/v1/list-query";
 import { profileSchema } from "@/server/v1/derived";
 import {
   createLabelRequestSchema,
@@ -632,6 +633,7 @@ export const v1Paths: ZodOpenApiPathsObject = Object.fromEntries(
         // is this file's own rule, and the reason `V1_RESOURCES` is imported
         // rather than restated.
         ...(kind === "todo" ? { requestParams: { query: todoQuerySchema } } : {}),
+        ...(kind === "list" ? { requestParams: { query: listQuerySchema } } : {}),
         responses: {
           "200": {
             // Not every resource has a `position` — attachments sort by
@@ -642,7 +644,9 @@ export const v1Paths: ZodOpenApiPathsObject = Object.fromEntries(
                 ? "attachments, oldest first."
                 : kind === "todo"
                   ? "todos, in board order, after any filters. Omitting `limit` returns every match — there is no implicit page size."
-                  : `${path}, in board order.`,
+                  : kind === "list"
+                    ? "lists, in board order. Archived lists only with `includeArchived=true`; every field unless `fields` names some."
+                    : `${path}, in board order.`,
             content: { "application/json": { schema: z.array(schema) } },
           },
           "401": unauthenticated,
