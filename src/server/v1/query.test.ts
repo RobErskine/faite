@@ -114,3 +114,23 @@ describe("filterTodos", () => {
     expect(ids(filterTodos(todos, { status: "open", offset: 2 }))).toEqual([]);
   });
 });
+
+describe("q and fields (EI-340)", () => {
+  it("parses both as strings and validates field names separately", async () => {
+    const { parseTodoFields } = await import("./query");
+    expect(query("q=couch,sofa&fields=id,title")).toEqual({ q: "couch,sofa", fields: "id,title" });
+    expect(parseTodoFields("id, title")).toEqual(["id", "title"]);
+    expect(parseTodoFields(undefined)).toEqual([]);
+    expect(parseTodoFields("id,version")).toBeNull();
+  });
+
+  it("q re-orders by relevance and the window pages the ranked set", () => {
+    const todos = [
+      todo({ id: "1", title: "Sofas to move" }),
+      todo({ id: "2", title: "Buy milk" }),
+      todo({ id: "3", title: "Sofa" }),
+    ];
+    expect(filterTodos(todos, { q: "sofa" }).map((t) => t.id)).toEqual(["3", "1"]);
+    expect(filterTodos(todos, { q: "sofa", offset: 1 }).map((t) => t.id)).toEqual(["1"]);
+  });
+});

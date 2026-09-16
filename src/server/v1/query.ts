@@ -1,5 +1,7 @@
 import { z } from "zod";
-import { civilDateSchema, idSchema, todoStatusSchema, type Todo } from "@/lib/schema";
+import { civilDateSchema, idSchema, todoSchema, todoStatusSchema, type Todo } from "@/lib/schema";
+import { projectRow, splitCsv } from "./fields";
+import { rankTodoMatches } from "./todo-search";
 
 /**
  * Query filtering for `GET /api/v1/todos` (A13, EI-293).
@@ -48,9 +50,50 @@ export const todoQuerySchema = z.object({
   updatedSince: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(1000).optional(),
   offset: z.coerce.number().int().min(0).optional(),
+  /** EI-340. Search terms, comma-separated — synonyms welcome. */
+  q: z
+    .string()
+    .min(1)
+    .optional()
+    .describe(
+      "Search terms, comma-separated (e.g. `couch,sofa,loveseat`). A to-do matches if any word " +
+        "matches its title or description — exactly, by prefix, or with one typo in words of 5+ " +
+        "letters. When present, results are ordered by relevance instead of board order.",
+    ),
+  /** EI-340. Comma-separated field names; empty keeps every field. */
+  fields: z
+    .string()
+    .min(1)
+    .optional()
+    .describe("Comma-separated field names to return, e.g. `id,title,status`. Default: every field."),
 });
 
 export type TodoQuery = z.infer<typeof todoQuerySchema>;
+
+const TODO_FIELDS = Object.keys(todoSchema.shape) as [keyof Todo, ...(keyof Todo)[]];
+export const todoFieldSchema = z.enum(TODO_FIELDS);
+export type TodoField = z.infer<typeof todoFieldSchema>;
+
+/** What MCP `list_todos` and `search_todos` return unless `fields` says
+ * otherwise — enough for a model to tell two to-dos apart and act on one. */
+export const SLIM_TODO_FIELDS: TodoField[] = [
+  "id",
+  "title",
+  "status",
+  "scheduledDate",
+  "deadline",
+  "listId",
+  "priority",
+];
+
+/** `?fields=` → validated names, or `null` for an unknown field. */
+export function parseTodoFields(fields: string | undefined): TodoField[] | null {
+  const parsed = z.array(todoFieldSchema).safeParse(splitCsv(fields));
+  return parsed.success ? parsed.data : null;
+}
+
+export const projectTodos = (todos: Todo[], fields: TodoField[], omitNull: boolean) =>
+  todos.map((todo) => projectRow(todo, fields, omitNull));
 
 /**
  * Parses a URL's query string. Returns `null` for a malformed value so the
@@ -73,12 +116,13 @@ export function parseTodoQuery(params: URLSearchParams): TodoQuery | null {
 }
 
 /**
- * Applies the filters, then the window. Order matters: `offset`/`limit`
- * page through the FILTERED set, which is the only interpretation that lets
- * a caller page consistently.
+ * Applies the filters, then the search ranking, then the window. Order
+ * matters: `offset`/`limit` page through the FILTERED set, which is the only
+ * interpretation that lets a caller page consistently.
  *
- * Input order is preserved — `listEntities` already returns board order, and
- * re-sorting here would be a second answer to "what order are todos in".
+ * Without `q`, input order is preserved — `listEntities` already returns board
+ * order, and re-sorting here would be a second answer to "what order are todos
+ * in". With `q`, relevance is the order (`rankTodoMatches`).
  */
 export function filterTodos(todos: Todo[], query: TodoQuery): Todo[] {
   const matched = todos.filter((todo) => {
@@ -92,8 +136,10 @@ export function filterTodos(todos: Todo[], query: TodoQuery): Todo[] {
     return true;
   });
 
-  const offset = query.offset ?? 0;
-  if (offset === 0 && query.limit === undefined) return matched;
+  const ranked = query.q === undefined ? matched : rankTodoMatches(matched, splitCsv(query.q));
 
-  return matched.slice(offset, query.limit === undefined ? undefined : offset + query.limit);
+  const offset = query.offset ?? 0;
+  if (offset === 0 && query.limit === undefined) return ranked;
+
+  return ranked.slice(offset, query.limit === undefined ? undefined : offset + query.limit);
 }

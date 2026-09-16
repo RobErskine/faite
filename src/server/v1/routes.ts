@@ -26,7 +26,7 @@ import {
   profileFromSettings,
 } from "./derived";
 import { parseListQuery, projectLists } from "./list-query";
-import { filterTodos, parseTodoQuery } from "./query";
+import { filterTodos, parseTodoFields, parseTodoQuery, projectTodos } from "./query";
 import { settingsOrDefault } from "../mcp/settings-defaults";
 import { V1_RESOURCES, type V1Kind } from "./resources";
 import {
@@ -755,8 +755,9 @@ export async function handleV1Request(request: Request, env: CloudflareEnv): Pro
       // filter would be answering a question nobody asked.
       if (resource.kind === "todo") {
         const query = parseTodoQuery(url.searchParams);
-        if (!query) return json({ error: "invalid-request" }, 400, headers);
-        return json(filterTodos(parsed as Todo[], query), 200, headers);
+        const fields = parseTodoFields(query?.fields);
+        if (!query || !fields) return json({ error: "invalid-request" }, 400, headers);
+        return json(projectTodos(filterTodos(parsed as Todo[], query), fields, false), 200, headers);
       }
 
       // `fields`/`includeArchived` (EI-338), shared with MCP `list_lists`.
