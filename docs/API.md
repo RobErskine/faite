@@ -241,7 +241,8 @@ that have no REST equivalent:
 
 | Tool | Scope | Notes |
 |---|---|---|
-| `list_todos` | read | |
+| `list_todos` | read | Same filters as `GET /api/v1/todos` (`status`, `listId`, `scheduledDate`, `labelId`, `updatedSince`, `limit`, `offset`). Slim by default — `id`, `title`, `status`, `scheduledDate`, `deadline`, `listId`, `priority`, nulls left out, compact JSON; `fields` widens it (EI-340). |
+| `search_todos` | read | Find a to-do by what it says, best match first (EI-340). `query` is a term or an array of terms — the CLIENT sends synonyms (`["couch","sofa","loveseat"]`); Faite has no synonym list. Any word matches the title or description exactly, by prefix (3+ letters), or with one typo (5+ letters); title hits outrank description hits. `status` defaults to `open`, `limit` to 8. Same slim rows as `list_todos`. |
 | `create_todo` | write | `scheduledDate`/`deadline` take a date or an offset date-time — see "Date inputs" below. |
 | `update_todo` | write | General patch — only the fields provided are touched, same rule as `PATCH /api/v1/todos/{id}`. Same date inputs. |
 | `complete_todo` | write | Kept as its own tool rather than folded into `update_todo` — "mark done" is common enough to deserve a one-field call. |
@@ -261,6 +262,13 @@ the account's `timezone`, so `2026-09-15T23:30:00-04:00` is the 16th for a UTC
 account. A date-time with no offset is rejected (400 / tool error): it names no
 day. Storage and every response stay `YYYY-MM-DD`. The shared schema is
 `src/lib/date-input.ts`.
+
+**`GET /api/v1/todos` search and fields (EI-340).** `q=couch,sofa` ranks by
+the same matcher as `search_todos`, after the other filters and before
+`limit`/`offset`; results are then in relevance order, not board order.
+`fields=id,title` projects each row (nulls kept). An unknown field is a 400.
+Matcher: `src/server/v1/todo-search.ts`. Semantic search (embeddings) is a
+deliberate non-goal for now: it needs an index write on every push.
 
 **`GET /api/v1/lists` query (EI-338).** `includeArchived=true` to include
 archived lists (default: left out); `fields=id,name,description` to return

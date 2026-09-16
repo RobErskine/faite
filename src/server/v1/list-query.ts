@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { listSchema, type List } from "@/lib/schema";
+import { projectRow, splitCsv } from "./fields";
 
 /**
  * `fields` + `includeArchived` for `GET /api/v1/lists` and the MCP
@@ -50,27 +51,17 @@ export function parseListQuery(params: URLSearchParams): ListQuery | null {
   });
   if (!raw.success) return null;
 
-  const names = raw.data.fields ? raw.data.fields.split(",").map((f) => f.trim()).filter(Boolean) : [];
-  const fields = z.array(listFieldSchema).safeParse(names);
+  const fields = z.array(listFieldSchema).safeParse(splitCsv(raw.data.fields));
   if (!fields.success) return null;
 
   return { fields: fields.data, includeArchived: raw.data.includeArchived === "true" };
 }
 
-/**
- * Filters archived lists, then keeps only `fields` (all of them when empty).
- * `omitNull` drops null-valued fields — right for a prompt, wrong for REST,
- * whose published schema says those fields are nullable, not optional.
- */
+/** Filters archived lists, then `projectRow` (see `./fields`). */
 export function projectLists(
   lists: List[],
   { fields, includeArchived, omitNull }: ListQuery & { omitNull: boolean },
 ): Partial<List>[] {
   const visible = includeArchived ? lists : lists.filter((list) => list.archivedAt === null);
-  return visible.map((list) => {
-    const keys = fields.length > 0 ? fields : (Object.keys(list) as ListField[]);
-    return Object.fromEntries(
-      keys.filter((key) => !(omitNull && list[key] === null)).map((key) => [key, list[key]]),
-    ) as Partial<List>;
-  });
+  return visible.map((list) => projectRow(list, fields, omitNull));
 }

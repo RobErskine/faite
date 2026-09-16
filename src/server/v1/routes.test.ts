@@ -1030,3 +1030,29 @@ describe("EI-338: list projection and date-time inputs", () => {
     expect(stub.getSettings).not.toHaveBeenCalled();
   });
 });
+
+describe("EI-340: GET /todos search and field projection", () => {
+  beforeEach(() => {
+    stub.listEntities.mockResolvedValue([
+      rawTodoRow({ id: "a", title: "Buy milk", position: "a0" }),
+      rawTodoRow({ id: "b", title: "Clean the sofa", position: "a1" }),
+      rawTodoRow({ id: "c", title: "Sofa cushions", position: "a2", status: "done" }),
+    ]);
+  });
+
+  it("q ranks by relevance across comma-separated terms, after the other filters", async () => {
+    const res = await handleV1Request(v1Request("GET", "/api/v1/todos?q=couch,sofa&status=open"), env);
+    const todos = (await res.json()) as { id: string }[];
+    expect(todos.map((t) => t.id)).toEqual(["b"]);
+  });
+
+  it("fields projects each row and keeps nulls", async () => {
+    const res = await handleV1Request(v1Request("GET", "/api/v1/todos?fields=id,title,deadline&limit=1"), env);
+    await expect(res.json()).resolves.toEqual([{ id: "a", title: "Buy milk", deadline: null }]);
+  });
+
+  it("400s on an unknown field", async () => {
+    const res = await handleV1Request(v1Request("GET", "/api/v1/todos?fields=version"), env);
+    expect(res.status).toBe(400);
+  });
+});

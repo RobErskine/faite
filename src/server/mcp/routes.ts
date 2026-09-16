@@ -25,6 +25,8 @@ import type { UserDurableObject } from "../user-do";
 import { withEventStreamAccept } from "./accept";
 import { profileFromSettings } from "../v1/derived";
 import { listListsToolInput, MCP_DEFAULT_LIST_FIELDS, projectLists } from "../v1/list-query";
+import { filterTodos, projectTodos, SLIM_TODO_FIELDS, todoFieldSchema, todoQuerySchema } from "../v1/query";
+import { rankTodoMatches } from "../v1/todo-search";
 import { settingsOrDefault } from "./settings-defaults";
 
 export { withEventStreamAccept } from "./accept";
@@ -145,6 +147,19 @@ function textResult(value: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }] };
 }
 
+/** Compact, for results a client pastes into a model prompt (EI-338/EI-340). */
+function compactResult(value: unknown) {
+  return { content: [{ type: "text" as const, text: JSON.stringify(value) }] };
+}
+
+const todoFieldsInput = z
+  .array(todoFieldSchema)
+  .optional()
+  .describe(
+    "Which fields to return for each to-do. Empty or omitted: id, title, status, " +
+      "scheduledDate, deadline, listId, priority. Null fields are left out.",
+  );
+
 /**
  * REGRESSION (caught live while testing `create_todo`, before this shipped):
  * `stub.getTodo()` returns the RAW row, `version` column included.
@@ -210,13 +225,48 @@ function buildServer(
   server.registerTool(
     "list_todos",
     {
-      description: "List the caller's non-deleted to-dos, in board order.",
-      inputSchema: {},
+      description:
+        "List the caller's non-deleted to-dos, in board order, after any filters. " +
+        "To find a to-do by what it says, use search_todos instead.",
+      inputSchema: {
+        ...todoQuerySchema.omit({ q: true, fields: true }).shape,
+        fields: todoFieldsInput,
+      },
     },
-    async () => {
+    async ({ fields, ...query }) => {
       requireScope(identity, "read");
       const rows = await listTodos(stub);
-      return textResult(rows.map((row) => todoSchema.parse(row)));
+      const todos = filterTodos(rows.map((row) => todoSchema.parse(row)), query);
+      return compactResult(projectTodos(todos, fields?.length ? fields : SLIM_TODO_FIELDS, true));
+    },
+  );
+
+  server.registerTool(
+    "search_todos",
+    {
+      description:
+        "Find to-dos by what they say, best match first — e.g. to get the id for " +
+        "complete_todo or update_todo. Matches any word of any term against the title " +
+        "and description: exactly, by prefix, or with one typo in words of 5+ letters. " +
+        "Send the content words plus synonyms and alternate phrasings as separate terms " +
+        '(for "the couch thing": ["couch", "sofa", "loveseat"]). No match does not ' +
+        "prove the to-do is missing; widen with list_todos.",
+      inputSchema: {
+        query: z
+          .union([z.string().min(1), z.array(z.string().min(1)).min(1)])
+          .describe("A search term, or several (synonyms, alternate phrasings)."),
+        status: todoStatusSchema.optional().describe('Default "open".'),
+        limit: z.number().int().min(1).max(25).optional().describe("Default 8."),
+        fields: todoFieldsInput,
+      },
+    },
+    async ({ query, status, limit, fields }) => {
+      requireScope(identity, "read");
+      const rows = await listTodos(stub);
+      const wanted = status ?? "open";
+      const todos = rows.map((row) => todoSchema.parse(row)).filter((todo) => todo.status === wanted);
+      const hits = rankTodoMatches(todos, query).slice(0, limit ?? 8);
+      return compactResult(projectTodos(hits, fields?.length ? fields : SLIM_TODO_FIELDS, true));
     },
   );
 
@@ -379,9 +429,7 @@ function buildServer(
           omitNull: true,
         },
       );
-      // Compact, not `textResult`'s pretty-print: this one goes into a
-      // model prompt on every to-do Pointer routes (EI-338).
-      return { content: [{ type: "text" as const, text: JSON.stringify(lists) }] };
+      return compactResult(lists);
     },
   );
 
