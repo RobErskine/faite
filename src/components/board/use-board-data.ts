@@ -28,6 +28,7 @@ import { OVERFLOW, daysBetween, todayIn } from "@/lib/scheduling";
 import { isRecurrenceTemplate } from "@/lib/recurrence-expand";
 import { expandRecurrences } from "@/lib/recurrence-expand";
 import { parseRule, summarizeRule } from "@/lib/recurrence";
+import { collapseRecurringSeries } from "@/lib/search";
 import {
   calendarSpanFor,
   groupWeekendRuns,
@@ -392,6 +393,38 @@ export function useBoardData(params: UseBoardDataParams) {
     () => (ctx ? expandRecurrences(templates, realTodosForExpansion, ctx) : null),
     [templates, realTodosForExpansion, ctx],
   );
+
+  /**
+   * What ⌘K search reads (EI-341) — the BOARD's view of the world, collapsed
+   * to one row per recurring series.
+   *
+   * The palette used to take `nonTemplateTodos` straight off the table, which
+   * for a repeating to-do is exactly its history: every settled occurrence is
+   * a real row, and the one coming up is a virtual card that only
+   * `recurrenceExpansion` knows about. Searching a weekly chore returned a
+   * column of finished Wednesdays and never the Wednesday to come. Reading
+   * the expansion instead — plus `forceOverflow`, which is where an overdue
+   * live occurrence gets pulled out to — means search and the board agree on
+   * which card is "next", and `collapseRecurringSeries` drops the rest.
+   *
+   * Filtered by the same predicate as `visibleTodos`, not reusing it: the
+   * expansion is fed `realTodosForExpansion`, which deliberately carries
+   * tombstoned and settled children that `nonTemplateTodos` filters out, so
+   * an archived list's settled occurrence would otherwise ride back in
+   * through this door alone.
+   *
+   * Before `ctx` resolves there is no expansion, so this falls back to
+   * `nonTemplateTodos` — already filtered, and collapsing it still beats
+   * showing the raw history for the one render that reaches here first.
+   */
+  const searchableTodos = useMemo(() => {
+    const source = recurrenceExpansion
+      ? [...recurrenceExpansion.todos, ...recurrenceExpansion.forceOverflow].filter(
+          (t) => !t.parentId && !(t.listId && archivedListIds.has(t.listId)),
+        )
+      : nonTemplateTodos;
+    return collapseRecurringSeries(source);
+  }, [recurrenceExpansion, nonTemplateTodos, archivedListIds]);
 
   /**
    * Every tab, keyed by id — including ARCHIVED ones, mirroring `listsById`
@@ -891,6 +924,7 @@ export function useBoardData(params: UseBoardDataParams) {
     attachmentCounts,
     templates,
     nonTemplateTodos,
+    searchableTodos,
     recurrenceSummaries,
     todayCivil,
     weekendDays,

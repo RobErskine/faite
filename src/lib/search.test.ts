@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { SEARCH_LIMIT, matchesQuery, normalizeQuery, searchTodos } from "./search";
+import {
+  SEARCH_LIMIT,
+  collapseRecurringSeries,
+  matchesQuery,
+  normalizeQuery,
+  searchTodos,
+} from "./search";
 import type { Todo } from "./schema";
 
 function todo(overrides: Partial<Todo> & { id: string }): Todo {
@@ -159,5 +165,160 @@ describe("matchesQuery", () => {
     for (const t of todos) {
       expect(matchesQuery(t, q)).toBe(ranked.has(t.id));
     }
+  });
+});
+
+describe("collapseRecurringSeries", () => {
+  /** One settled occurrence of `series`, as `expandRecurrences` hands it over. */
+  const settled = (series: string, date: string, updatedAt: string): Todo =>
+    todo({
+      id: `${series}@${date}`,
+      title: "Take down trash",
+      status: "done",
+      scheduledDate: date,
+      recurrenceParentId: series,
+      updatedAt,
+    });
+
+  /** The live occurrence — virtual or materialized, both look like this. */
+  const live = (series: string, date: string): Todo =>
+    todo({
+      id: `${series}@${date}`,
+      title: "Take down trash",
+      scheduledDate: date,
+      recurrenceParentId: series,
+    });
+
+  it("keeps only the next occurrence when the rest of the series is done", () => {
+    const rows = [
+      settled("s1", "2026-09-02", "2026-09-02T18:00:00.000Z"),
+      settled("s1", "2026-09-09", "2026-09-09T18:00:00.000Z"),
+      settled("s1", "2026-09-16", "2026-09-16T18:00:00.000Z"),
+      live("s1", "2026-09-23"),
+    ];
+
+    expect(collapseRecurringSeries(rows).map((t) => t.id)).toEqual(["s1@2026-09-23"]);
+  });
+
+  it("prefers the EARLIEST open occurrence, so an overdue one wins over a future one", () => {
+    const rows = [
+      live("s1", "2026-10-07"),
+      live("s1", "2026-09-16"),
+      live("s1", "2026-09-30"),
+    ];
+
+    expect(collapseRecurringSeries(rows).map((t) => t.id)).toEqual(["s1@2026-09-16"]);
+  });
+
+  it("prefers an open occurrence over a more recently updated settled one", () => {
+    const rows = [
+      live("s1", "2026-09-30"),
+      settled("s1", "2026-09-16", "2099-01-01T00:00:00.000Z"),
+    ];
+
+    expect(collapseRecurringSeries(rows).map((t) => t.id)).toEqual(["s1@2026-09-30"]);
+  });
+
+  it("falls back to ONE settled row when nothing in the series is open", () => {
+    // A yearly series whose next occurrence is past the rendered window: one
+    // row of history beats a to-do that cannot be found at all.
+    const rows = [
+      settled("s1", "2024-09-16", "2024-09-16T18:00:00.000Z"),
+      settled("s1", "2025-09-16", "2025-09-16T18:00:00.000Z"),
+      settled("s1", "2026-09-16", "2026-09-16T18:00:00.000Z"),
+    ];
+
+    expect(collapseRecurringSeries(rows).map((t) => t.id)).toEqual(["s1@2026-09-16"]);
+  });
+
+  it("never lets a skipped (tombstoned) occurrence win its series", () => {
+    const rows = [
+      todo({
+        ...live("s1", "2026-09-23"),
+        id: "s1@2026-09-23",
+        deletedAt: "2026-09-20T00:00:00.000Z",
+      }),
+      live("s1", "2026-09-30"),
+    ];
+
+    expect(collapseRecurringSeries(rows).map((t) => t.id)).toEqual(["s1@2026-09-30"]);
+  });
+
+  it("sorts an undated occurrence last rather than treating it as earliest", () => {
+    // The ORIGIN row a series was grown from (`createSeriesFromTodo`) carries
+    // the parent id without being a dated slot.
+    const rows = [
+      todo({ id: "origin", title: "Take down trash", recurrenceParentId: "s1" }),
+      live("s1", "2026-09-30"),
+    ];
+
+    expect(collapseRecurringSeries(rows).map((t) => t.id)).toEqual(["s1@2026-09-30"]);
+  });
+
+  it("does not depend on the order the caller built its array in", () => {
+    const rows = [
+      settled("s1", "2026-09-09", "2026-09-09T18:00:00.000Z"),
+      live("s1", "2026-09-23"),
+      settled("s1", "2026-09-16", "2026-09-16T18:00:00.000Z"),
+      live("s1", "2026-09-30"),
+    ];
+
+    const forward = collapseRecurringSeries(rows).map((t) => t.id);
+    const backward = collapseRecurringSeries([...rows].reverse()).map((t) => t.id);
+
+    expect(forward).toEqual(["s1@2026-09-23"]);
+    expect(backward).toEqual(forward);
+  });
+
+  it("collapses each series independently", () => {
+    const rows = [
+      settled("trash", "2026-09-16", "2026-09-16T18:00:00.000Z"),
+      live("trash", "2026-09-23"),
+      settled("bins", "2026-09-17", "2026-09-17T18:00:00.000Z"),
+      live("bins", "2026-09-24"),
+    ];
+
+    expect(collapseRecurringSeries(rows).map((t) => t.id)).toEqual([
+      "trash@2026-09-23",
+      "bins@2026-09-24",
+    ]);
+  });
+
+  it("leaves non-recurring to-dos alone, completed ones included, in order", () => {
+    const rows = [
+      todo({ id: "a", title: "Buy milk" }),
+      todo({ id: "b", title: "File taxes", status: "done" }),
+      todo({ id: "c", title: "Call mom", status: "dropped" }),
+    ];
+
+    expect(collapseRecurringSeries(rows).map((t) => t.id)).toEqual(["a", "b", "c"]);
+  });
+
+  it("keeps a series in the position its first row held", () => {
+    const rows = [
+      todo({ id: "a", title: "Buy milk" }),
+      settled("s1", "2026-09-16", "2026-09-16T18:00:00.000Z"),
+      todo({ id: "b", title: "File taxes" }),
+      live("s1", "2026-09-23"),
+    ];
+
+    expect(collapseRecurringSeries(rows).map((t) => t.id)).toEqual([
+      "a",
+      "s1@2026-09-23",
+      "b",
+    ]);
+  });
+
+  it("feeds searchTodos a single hit for a long-running chore", () => {
+    const rows = [
+      todo({ id: "x", title: "Trash bags" }),
+      settled("s1", "2026-09-02", "2026-09-02T18:00:00.000Z"),
+      settled("s1", "2026-09-09", "2026-09-09T18:00:00.000Z"),
+      live("s1", "2026-09-23"),
+    ];
+
+    const hits = searchTodos("take down trash", collapseRecurringSeries(rows));
+
+    expect(hits.map((t) => t.id)).toEqual(["s1@2026-09-23"]);
   });
 });

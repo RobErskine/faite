@@ -50,12 +50,13 @@ Board
 | `src/components/board/command-palette.tsx` | the whole surface |
 | `src/lib/command-registry.ts` | `ROOT_COMMANDS` — the root menu's Create/Manage/View commands as data, plus `commandsByGroup` — see §7.1 |
 | `src/lib/command-registry.test.ts` | pure unit tests for the registry — visibility, disabled/label logic, status-toggle math |
-| `src/lib/search.ts` | `searchTodos` — the matcher, pure and testable |
+| `src/lib/search.ts` | `searchTodos` — the matcher, pure and testable. Also `collapseRecurringSeries`, which reduces a recurring series to its single next occurrence — see §6.4 |
 | `src/lib/search.test.ts` | matcher unit tests |
 | `src/components/board/command-palette.test.tsx` | DOM-level tests, incl. search and §5 |
 | `src/components/board/app-header.tsx` | the search-field trigger |
 | `src/components/ui/command.tsx` | shadcn `base-nova` wrapper over cmdk — `CommandInput` forwards its ref (§5) |
 | `src/components/board/board.tsx` | owns open state, hotkey, and the callbacks |
+| `src/components/board/use-board-data.ts` | `searchableTodos` — the expansion-aware, series-collapsed set the palette actually searches (§6.4) |
 | `src/lib/quick-add.ts` | §5's token grammar — shared with column quick-add, not palette-specific |
 | `src/lib/mention.ts` | §5's `@` trigger detection — shared, see `docs/AT-MENTION.md` |
 | `src/components/mention-menu.tsx` | §5's `useMention` hook + popover — shared |
@@ -239,6 +240,36 @@ at all — a dead end should still be one keystroke from being captured.
 appear as a static switcher group, and the rest have no navigation target. Rows
 that do nothing on Enter are worse than absent rows.
 
+**A repeating to-do is one row: the next occurrence** (EI-341). The palette is
+fed `data.searchableTodos`, not `data.nonTemplateTodos` — the board's own
+`recurrenceExpansion` (plus its `forceOverflow`, where an overdue live
+occurrence gets pulled out to) run through `collapseRecurringSeries`
+(`lib/search.ts`). The raw table is the wrong source for a series: every
+settled occurrence is a real row, and the one coming up is a *virtual* card
+that only the expansion knows about (`lib/recurrence-expand.ts`), so search
+used to show a weekly chore as a column of finished Wednesdays and never as
+the Wednesday to come.
+
+Per series, exactly one row survives: the earliest **open** occurrence —
+future, due today, or overdue in Overflow, the same card the board renders —
+or, when every occurrence is settled *and* the next one falls past the
+rendered day window, the most recently updated settled row. That fallback
+only bites a series whose interval outruns the window (a yearly one on a
+30-day board), and it is there so such a to-do stays findable at all.
+
+A virtual hit is safe to act on: `todosById` (`use-board-data.ts`) resolves
+virtual and force-overflowed ids, and `handleSheetStatus`/`handleDelete` call
+`materializeIfNeeded` before writing — so Enter opens its sheet and the §4 row
+actions work on it unchanged.
+
+The in-column filter is **not** affected. It uses `matchesQuery` on columns
+that already render one occurrence each, and §6.1's note about never
+re-ordering applies there instead.
+
+Ordinary completed to-dos are untouched by all of this — one-off finished
+work stays searchable, and `searchTodos` still ranks it below open work
+rather than hiding it.
+
 ---
 
 ## 7. Known limits
@@ -315,6 +346,11 @@ inverted index rebuilt on write, or SQLite FTS5 server-side after sync (P3).
   tomorrow" or other edits without leaving the palette.
 - Search is client-only and local-first; it must stay that way on the
   interaction path even after sync lands.
+- A recurring series whose next occurrence falls past the rendered day
+  window (a yearly one on a 30-day board) is found as its most recent
+  *settled* occurrence rather than its next one — §6.4's fallback. Fixing it
+  properly means computing "next" independently of the render window, which
+  `expandRecurrences` is deliberately not built to do.
 
 ---
 

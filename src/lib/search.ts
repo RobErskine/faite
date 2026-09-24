@@ -95,3 +95,90 @@ export function searchTodos(
 
   return hits.slice(0, limit).map((hit) => hit.todo);
 }
+
+/**
+ * At most one row per recurring series — the NEXT occurrence, not the history.
+ *
+ * A repeating to-do's settled occurrences are real rows (`recurrenceParentId`
+ * set, materialized the moment they were ticked), while the one that is
+ * actually coming up is usually a VIRTUAL card that `expandRecurrences()`
+ * synthesizes for the board and never writes down. Handed the raw table,
+ * search therefore showed a weekly chore as a column of its own completed
+ * Wednesdays and never as the Wednesday to come (EI-341). Feed this the
+ * expansion's output instead (see `searchableTodos` in `use-board-data.ts`)
+ * and each series collapses to the single card the board itself is showing.
+ *
+ * Which one survives, per series:
+ *
+ * 1. The earliest OPEN occurrence by `scheduledDate`. That is "next" whether
+ *    it is days away, due today, or overdue and sitting in Overflow — the
+ *    same card the board renders. Undated sorts last (a series occurrence
+ *    always has a date; the ORIGIN row a series was grown from, via
+ *    `createSeriesFromTodo`, need not) and `id` breaks the tie, so the result
+ *    does not depend on the order the caller happened to build its array in.
+ * 2. Failing that — every occurrence settled and the next one past the
+ *    rendered day window, which is what a yearly series looks like on a
+ *    30-day board — the most recently updated settled row. Strictly a
+ *    fallback: one row of history beats a to-do that cannot be found at all.
+ *
+ * To-dos with no `recurrenceParentId` pass through untouched, order
+ * preserved, which is what keeps an ordinary completed to-do searchable
+ * exactly as before. Soft-deleted rows are dropped outright: the expansion
+ * deliberately carries tombstoned children (it needs them to detect that a
+ * series moved past a slot) and a skipped occurrence must not win its group.
+ */
+export function collapseRecurringSeries(todos: Todo[]): Todo[] {
+  const winners = new Map<string, Todo>();
+  const out: Todo[] = [];
+  /** Group id -> its slot in `out`, so a later winner replaces in place. */
+  const slots = new Map<string, number>();
+
+  for (const todo of todos) {
+    if (todo.deletedAt) continue;
+
+    const seriesId = todo.recurrenceParentId;
+    if (!seriesId) {
+      out.push(todo);
+      continue;
+    }
+
+    const held = winners.get(seriesId);
+    if (!held) {
+      winners.set(seriesId, todo);
+      slots.set(seriesId, out.length);
+      out.push(todo);
+      continue;
+    }
+
+    if (beats(todo, held)) {
+      winners.set(seriesId, todo);
+      out[slots.get(seriesId)!] = todo;
+    }
+  }
+
+  return out;
+}
+
+/** Does `candidate` outrank `held` as the one row its series gets? */
+function beats(candidate: Todo, held: Todo): boolean {
+  const candidateOpen = candidate.status === "open";
+  const heldOpen = held.status === "open";
+  if (candidateOpen !== heldOpen) return candidateOpen;
+
+  if (candidateOpen) {
+    // Earliest first, undated last.
+    if (candidate.scheduledDate !== held.scheduledDate) {
+      if (!candidate.scheduledDate) return false;
+      if (!held.scheduledDate) return true;
+      return candidate.scheduledDate < held.scheduledDate;
+    }
+    return candidate.id < held.id;
+  }
+
+  // Both settled: most recently touched, `id` breaking the tie for the same
+  // reason as above — a stable answer regardless of input order.
+  if (candidate.updatedAt !== held.updatedAt) {
+    return candidate.updatedAt > held.updatedAt;
+  }
+  return candidate.id < held.id;
+}
