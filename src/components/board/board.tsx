@@ -588,11 +588,13 @@ export function Board() {
         open={ui.paletteOpen}
         onOpenChange={ui.setPaletteOpen}
         lists={data.lists}
-        // Archived lists are off the board, and so are their to-dos — search
-        // must not be the one door left open to them. `nonTemplateTodos`, not
-        // `visibleTodos`: a virtual recurrence occurrence is not a distinct
-        // record to find, and a template renders nowhere for search to open.
-        todos={data.nonTemplateTodos}
+        // `searchableTodos`, not `nonTemplateTodos` (EI-341): the raw table
+        // holds a repeating to-do's finished occurrences and NOT the one
+        // coming up, which is virtual until something touches it — so search
+        // showed a weekly chore as its own history and never as the next
+        // Wednesday. This is the board's own expanded view, collapsed to one
+        // row per series, with archived lists and templates still excluded.
+        todos={data.searchableTodos}
         labels={data.labels}
         reminderPresets={data.reminderPresets}
         recurrenceSummaries={data.recurrenceSummaries}

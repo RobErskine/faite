@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { CommandPalette } from "./command-palette";
 import { formatShortDate } from "@/lib/scheduling";
+import { collapseRecurringSeries } from "@/lib/search";
 import { resetDbForTests, getDb } from "@/lib/store/db";
 import type { Label as LabelRecord, List, Settings, Tab, Todo } from "@/lib/schema";
 
@@ -527,5 +528,90 @@ describe("CommandPalette — folding a completed date/time word out of the input
     const input = screen.getByPlaceholderText("List name…");
     fireEvent.change(input, { target: { value: "Grocery tomorrow " } });
     expect(input).toHaveProperty("value", "Grocery tomorrow ");
+  });
+});
+
+/**
+ * EI-341. `board.tsx` hands the palette `data.searchableTodos` — the board's
+ * own expanded view run through `collapseRecurringSeries` — rather than the
+ * raw table, which for a repeating to-do holds only its finished occurrences.
+ * These compose the same pipeline so the palette's half of it is pinned:
+ * one row in, one row rendered, and the virtual id reaching `onSelectTodo`
+ * intact (`board.tsx` resolves it through `todosById` and materializes on
+ * write, which is why a virtual hit is safe to act on).
+ */
+describe("CommandPalette — a repeating to-do is one row, the next one", () => {
+  const SERIES = "series-trash";
+  const history = [
+    todo({
+      id: `${SERIES}@2026-09-09`,
+      title: "Take down trash",
+      status: "done",
+      scheduledDate: "2026-09-09",
+      recurrenceParentId: SERIES,
+      updatedAt: "2026-09-09T18:00:00.000Z",
+    }),
+    todo({
+      id: `${SERIES}@2026-09-16`,
+      title: "Take down trash",
+      status: "done",
+      scheduledDate: "2026-09-16",
+      recurrenceParentId: SERIES,
+      updatedAt: "2026-09-16T18:00:00.000Z",
+    }),
+  ];
+  /** Virtual — synthesized by `expandRecurrences`, no row behind it. */
+  const next = todo({
+    id: `${SERIES}@2099-09-23`,
+    title: "Take down trash",
+    scheduledDate: "2099-09-23",
+    recurrenceParentId: SERIES,
+  });
+
+  it("renders a single hit, the upcoming occurrence, not the completed ones", () => {
+    renderPalette({ todos: collapseRecurringSeries([...TODOS, ...history, next]) });
+
+    search("take down trash");
+
+    const rows = document.body.querySelectorAll("[data-todo-id]");
+    expect([...rows].map((r) => r.getAttribute("data-todo-id"))).toEqual([next.id]);
+  });
+
+  it("shows it as upcoming rather than struck through", () => {
+    renderPalette({ todos: collapseRecurringSeries([...TODOS, ...history, next]) });
+
+    search("take down trash");
+
+    expect(document.body.querySelector(".line-through")).toBeNull();
+    expect(document.body.querySelector("[data-recurrence-marker]")).toBeTruthy();
+    expect(document.body.textContent).toContain(formatShortDate("2099-09-23"));
+  });
+
+  it("hands the virtual occurrence's own id to onSelectTodo", () => {
+    const selected: string[] = [];
+    renderPalette({
+      todos: collapseRecurringSeries([...TODOS, ...history, next]),
+      onSelectTodo: (t: Todo) => selected.push(t.id),
+    });
+
+    search("take down trash");
+    fireEvent.click(document.body.querySelector(`[data-todo-id="${next.id}"]`)!);
+
+    expect(selected).toEqual([next.id]);
+  });
+
+  it("leaves an ordinary completed to-do searchable", () => {
+    const filed = todo({
+      id: "one-off",
+      title: "File taxes",
+      status: "done",
+      updatedAt: "2026-04-15T00:00:00.000Z",
+    });
+    renderPalette({ todos: collapseRecurringSeries([...TODOS, filed]) });
+
+    search("file taxes");
+
+    const rows = document.body.querySelectorAll("[data-todo-id]");
+    expect([...rows].map((r) => r.getAttribute("data-todo-id"))).toEqual(["one-off"]);
   });
 });

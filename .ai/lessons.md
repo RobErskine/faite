@@ -1937,3 +1937,29 @@ right-click and the Menu-key route. So the guard was not needed, and it went.
 server on the port belongs to — or run on `E2E_PORT=3100`, which starts a
 server from this checkout. And run a new guard's test once with the guard
 taken out; if it still passes, delete the guard, not the test.
+
+## Search read the table; the board read the expansion (EI-341)
+
+⌘K search for a weekly "Take down trash" returned one row per *finished*
+Wednesday and never the Wednesday coming up. Nothing about the matcher was
+wrong. The palette was handed `data.nonTemplateTodos` — the raw Dexie rows —
+and for a recurring series those rows *are* the history: an occurrence
+becomes real only when something settles it (`materializeOccurrence`). The
+one that matters is virtual, synthesized per render by `expandRecurrences()`
+and never written down.
+
+So the surface that showed the *past* was reading the durable thing, and the
+board showing the *future* was reading a derivation that existed only in a
+memo. Two views of one series, disagreeing, because they had different
+sources — and the comment above the prop ("a virtual recurrence occurrence is
+not a distinct record to find") had been true when it was written and quietly
+stopped being true once the sheet learned to resolve virtual ids.
+
+The fix was not in `search.ts`'s ranking. It was giving search the same
+source the board uses, then collapsing each series to one row.
+
+**Rule:** when a feature's real state is partly derived, a new consumer must
+read the derivation, not the table — the table is a record of what already
+happened. And a comment that justifies a data source is an assertion with a
+shelf life: when you extend what a surface can resolve, grep for the comments
+that said it couldn't.
