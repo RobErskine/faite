@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The auth seam. `handleV1Request` calls `createAuth(env, request)` — which
 // needs a live D1 — and hands the result to `authorizeScope`. Mocking both
@@ -856,14 +856,75 @@ describe("day notes", () => {
     });
   });
 
+  describe("append (EI-342)", () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date("2026-09-08T18:32:00.000Z"));
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    const append = (text: unknown, date = "2026-09-08") =>
+      handleV1Request(v1Request("POST", `/api/v1/day-notes/${date}/append`, { text }), env);
+
+    it("adds a stamped entry after the existing note, in the user's timezone", async () => {
+      stub.getSettings.mockResolvedValue({
+        ownerId: "user-1",
+        updatedAt: "2026-09-08T00:00:00.000Z",
+        timezone: "America/New_York",
+      });
+      stub.getEntity.mockResolvedValue(rawDayNoteRow());
+
+      const res = await append("called the vet");
+
+      expect(res.status).toBe(200);
+      const patch = pushedEntries(stub)[0].patch as Record<string, unknown>;
+      expect(patch.body).toBe("# Today\n\n**14:32** — called the vet");
+      expect(patch).not.toHaveProperty("date");
+    });
+
+    /** Same read-first rule as PUT: a day with no row gets a FULL record. */
+    it("creates the note when the day has none", async () => {
+      stub.getEntity.mockResolvedValueOnce(null).mockResolvedValue(rawDayNoteRow());
+
+      await append("first");
+
+      const patch = pushedEntries(stub)[0].patch as Record<string, unknown>;
+      expect(patch).toMatchObject({ date: "2026-09-08", body: "**18:32** — first" });
+      expect(patch).toHaveProperty("createdAt");
+    });
+
+    it.each([[""], ["   "], [42], ["x".repeat(10_001)]])("400s text %j without writing", async (text) => {
+      const res = await append(text);
+
+      expect(res.status).toBe(400);
+      expect(stub.push).not.toHaveBeenCalled();
+    });
+
+    it("400s a path segment that is not a date", async () => {
+      const res = await append("x", "tomorrow");
+
+      expect(res.status).toBe(400);
+      expect(stub.push).not.toHaveBeenCalled();
+    });
+
+    it("has no GET", async () => {
+      const res = await handleV1Request(v1Request("GET", "/api/v1/day-notes/2026-09-08/append"), env);
+      expect(res.status).toBe(404);
+    });
+  });
+
   it.each([
     ["GET", "/api/v1/day-notes", "read"],
     ["GET", "/api/v1/day-notes/2026-09-08", "read"],
     ["PUT", "/api/v1/day-notes/2026-09-08", "write"],
+    ["POST", "/api/v1/day-notes/2026-09-08/append", "write"],
   ])("%s %s demands %s", async (method, path, scope) => {
     stub.getEntity.mockResolvedValue(rawDayNoteRow());
 
-    await handleV1Request(v1Request(method, path, method === "PUT" ? { body: "x" } : undefined), env);
+    const body = method === "PUT" ? { body: "x" } : method === "POST" ? { text: "x" } : undefined;
+    await handleV1Request(v1Request(method, path, body), env);
 
     expect(authorize.mock.calls.map((c) => c[2])).toEqual([scope]);
   });

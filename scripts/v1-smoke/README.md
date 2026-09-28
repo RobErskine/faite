@@ -67,7 +67,7 @@ Override with `FAITE_SMOKE_PORT`, `FAITE_SMOKE_COOKIES` and `FAITE_SMOKE_KEY`.
 
 ```bash
 node scripts/v1-smoke/seed.mjs             # seeds a board -- run once, first
-node scripts/v1-smoke/smoke.mjs            # 40 assertions across A13-A17
+node scripts/v1-smoke/smoke.mjs            # 43 assertions across A13-A17 and EI-342
 node scripts/v1-smoke/sync-visibility.mjs  # 11 assertions -- the important ones
 ```
 

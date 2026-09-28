@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { zonedInstant } from "./zoned";
+import { wallClockTimeIn, zonedInstant } from "./zoned";
 
 describe("zonedInstant", () => {
   it("treats UTC as itself", () => {
@@ -51,5 +51,22 @@ describe("zonedInstant", () => {
     const result = zonedInstant("2026-03-08", "02:30", "America/New_York");
     expect(() => new Date(result)).not.toThrow();
     expect(Number.isNaN(new Date(result).getTime())).toBe(false);
+  });
+});
+
+describe("wallClockTimeIn", () => {
+  const instant = new Date("2026-09-08T03:07:00.000Z");
+
+  it("reads the time in the given zone, 24-hour", () => {
+    expect(wallClockTimeIn("UTC", instant)).toBe("03:07");
+    expect(wallClockTimeIn("America/New_York", instant)).toBe("23:07");
+  });
+
+  it("reads midnight as 00, not 24", () => {
+    expect(wallClockTimeIn("UTC", new Date("2026-09-08T00:15:00.000Z"))).toBe("00:15");
+  });
+
+  it("falls back to UTC on an unknown zone", () => {
+    expect(wallClockTimeIn("Not/AZone", instant)).toBe("03:07");
   });
 });

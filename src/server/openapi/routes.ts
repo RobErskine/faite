@@ -15,6 +15,7 @@ import {
   updateLabelRequestSchema,
   updateTabRequestSchema,
   upsertDayNoteRequestSchema,
+  appendDayNoteRequestSchema,
   dayNoteRangeSchema,
   createTodoRequestSchema,
   updateListRequestSchema,
@@ -1144,6 +1145,39 @@ export const dayNotePaths: ZodOpenApiPathsObject = {
         },
         "400": {
           description: "Malformed date or body.",
+          content: { "application/json": { schema: errorSchema("invalid-request") } },
+        },
+        "401": unauthenticated,
+        "403": insufficientScope,
+        "500": {
+          description: "Unhandled server error.",
+          content: { "application/json": { schema: errorSchema("internal-error") } },
+        },
+      },
+    },
+  },
+  "/api/v1/day-notes/{date}/append": {
+    post: {
+      tags: ["v1"],
+      summary: "Add an entry to the end of one day's note.",
+      description:
+        "Requires the `write` scope. Adds `**HH:MM** — text` after a blank " +
+        "line, where HH:MM is the current time in the account's timezone; " +
+        "existing text is kept. Creates the note if that day has none. " +
+        "Not atomic against a device's unsynced edit to the same note — see " +
+        "docs/API.md.",
+      operationId: "appendV1DayNote",
+      requestParams: { path: z.object({ date: civilDateSchema }) },
+      requestBody: {
+        content: { "application/json": { schema: appendDayNoteRequestSchema } },
+      },
+      responses: {
+        "200": {
+          description: "The stored note, with the new entry.",
+          content: { "application/json": { schema: dayNoteSchema } },
+        },
+        "400": {
+          description: "Malformed date, or text that is empty or too long.",
           content: { "application/json": { schema: errorSchema("invalid-request") } },
         },
         "401": unauthenticated,

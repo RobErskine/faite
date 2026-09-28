@@ -4,6 +4,8 @@ import { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
 import {
   attachmentSchema,
+  civilDateSchema,
+  dayNoteSchema,
   idSchema,
   labelSchema,
   listSchema,
@@ -12,15 +14,18 @@ import {
   todoStatusSchema,
 } from "@/lib/schema";
 import { deadlineInputSchema, priorityInputSchema, resolveDateInputs, scheduledDateInputSchema } from "@/lib/date-input";
-import { contextFromSettings, deriveColumn, OVERFLOW } from "@/lib/scheduling";
+import { contextFromSettings, deriveColumn, OVERFLOW, todayIn } from "@/lib/scheduling";
 import type { ServiceContext } from "@/lib/service/context";
 import { UPDATE_TODO_MAX_ENTRIES } from "@/lib/service/todos";
+import { APPEND_DAY_NOTE_MAX_LENGTH, appendDayNoteEntry, dayNoteIdFor } from "@/lib/service/entities";
+import { wallClockTimeIn } from "@/lib/zoned";
 import { createAuth } from "../auth";
 import { scopeGranted, type ApiScope } from "../auth-scopes";
 import { extractBearerCredential } from "../bearer";
 import { corsHeaders, handleOptions } from "../cors";
 import { durableHlcQueue } from "../service/hlc";
 import { createTodo, pushTransportFor, updateTodo } from "../service/todos";
+import { writeDayNote } from "../service/entities";
 import type { UserDurableObject } from "../user-do";
 import { withEventStreamAccept } from "./accept";
 import { profileFromSettings } from "../v1/derived";
@@ -202,6 +207,17 @@ function listTabs(stub: DurableObjectStub<UserDurableObject>): ReturnType<UserDu
 function listAttachments(stub: DurableObjectStub<UserDurableObject>): ReturnType<UserDurableObject["listEntities"]> {
   return stub.listEntities("attachment");
 }
+
+function getDayNote(
+  stub: DurableObjectStub<UserDurableObject>,
+  id: string,
+): ReturnType<UserDurableObject["getEntity"]> {
+  return stub.getEntity("dayNote", id);
+}
+
+const dayNoteDateInput = civilDateSchema
+  .optional()
+  .describe('The day, as "YYYY-MM-DD". Omitted: today in the user\'s timezone.');
 
 /** For `resolveDateInputs` — only called when a date-time needs a zone. */
 async function loadTimezone(identity: McpIdentity, stub: DurableObjectStub<UserDurableObject>) {
@@ -535,6 +551,57 @@ function buildServer(
       // expose device-local board prefs" rule lived in two places — exactly
       // the second copy that drifts. `profileSchema` is now the only one.
       return textResult(profileFromSettings(settings));
+    },
+  );
+
+  server.registerTool(
+    "get_day_note",
+    {
+      description:
+        "Read the caller's note for one day — the free-form Markdown journal " +
+        'attached to each day. A day with no note returns an empty body.',
+      inputSchema: { date: dayNoteDateInput },
+    },
+    async ({ date }) => {
+      requireScope(identity, "read");
+      const day = date ?? todayIn(await loadTimezone(identity, stub));
+      const row = await getDayNote(stub, dayNoteIdFor(day));
+      return textResult(row ? dayNoteSchema.parse(row) : { date: day, body: "" });
+    },
+  );
+
+  server.registerTool(
+    "append_day_note",
+    {
+      description:
+        "Add a note to the end of a day's journal note, time-stamped with the " +
+        'user\'s local time ("**14:32** — text"). Existing text is kept. ' +
+        "Send only the new words; do not repeat what the note already says.",
+      inputSchema: {
+        text: z.string().trim().min(1).max(APPEND_DAY_NOTE_MAX_LENGTH).describe("The note to add. Markdown."),
+        date: dayNoteDateInput,
+      },
+    },
+    async ({ text, date }) => {
+      requireScope(identity, "write");
+
+      // Same read-join-push as `POST /api/v1/day-notes/{date}/append`
+      // (EI-342) — see `handleAppendDayNote` for why it reads first.
+      const timezone = await loadTimezone(identity, stub);
+      const day = date ?? todayIn(timezone);
+      const existing = await getDayNote(stub, dayNoteIdFor(day));
+      const current = existing ? dayNoteSchema.parse(existing).body : "";
+      const body = appendDayNoteEntry(current, text, wallClockTimeIn(timezone));
+
+      const nextHlc = await durableHlcQueue(stub, 2);
+      const ctx: ServiceContext = { userId: identity.userId, nextHlc };
+      const { rejected } = await writeDayNote(ctx, day, body, existing, pushTransportFor(stub, identity.userId));
+      if (rejected.length > 0) {
+        throw new Error("The server refused this entry — please try again.");
+      }
+
+      const row = await getDayNote(stub, dayNoteIdFor(day));
+      return textResult(row ? dayNoteSchema.parse(row) : null);
     },
   );
 
