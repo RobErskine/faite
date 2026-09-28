@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { deadlineInputSchema, priorityInputSchema, scheduledDateInputSchema } from "@/lib/date-input";
 import { civilDateSchema, dayNoteSchema, labelSchema, listSchema, tabSchema, todoSchema } from "@/lib/schema";
+import { APPEND_DAY_NOTE_MAX_LENGTH } from "@/lib/service/entities";
 
 /**
  * Request validation for `/api/v1/todos` writes (A5, EI-230). Same
@@ -284,6 +285,22 @@ export type UpsertDayNoteRequest = z.infer<typeof upsertDayNoteRequestSchema>;
 
 export function parseUpsertDayNoteRequest(body: unknown): UpsertDayNoteRequest | null {
   const parsed = upsertDayNoteRequestSchema.safeParse(body);
+  return parsed.success ? parsed.data : null;
+}
+
+/**
+ * `POST /api/v1/day-notes/{date}/append` (EI-342): one entry of text. The
+ * server adds the time stamp, so this is the words only. Whitespace-only
+ * text is rejected rather than written as an empty stamped line.
+ */
+export const appendDayNoteRequestSchema = z.object({
+  text: z.string().trim().min(1).max(APPEND_DAY_NOTE_MAX_LENGTH),
+});
+
+export type AppendDayNoteRequest = z.infer<typeof appendDayNoteRequestSchema>;
+
+export function parseAppendDayNoteRequest(body: unknown): AppendDayNoteRequest | null {
+  const parsed = appendDayNoteRequestSchema.safeParse(body);
   return parsed.success ? parsed.data : null;
 }
 

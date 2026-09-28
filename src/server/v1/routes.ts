@@ -6,15 +6,15 @@ import { authorizeScope } from "../auth-scopes";
 import { corsHeaders, handleOptions } from "../cors";
 import { durableHlcQueue } from "../service/hlc";
 import {
-  buildCreateDayNoteEntry,
+  appendDayNoteEntry,
   buildDeleteEntry,
-  buildUpdateDayNoteEntry,
   dayNoteIdFor,
   buildUpdateLabelEntry,
   buildUpdateListEntry,
   buildUpdateTabEntry,
 } from "@/lib/service/entities";
-import { createLabel, createList, createTab } from "../service/entities";
+import { createLabel, createList, createTab, writeDayNote } from "../service/entities";
+import { wallClockTimeIn } from "@/lib/zoned";
 import { createTodo, deleteTodo, pushTransportFor, updateTodo } from "../service/todos";
 import { UPDATE_TODO_MAX_ENTRIES } from "@/lib/service/todos";
 import type { UserDurableObject } from "../user-do";
@@ -30,6 +30,7 @@ import { filterTodos, parseTodoFields, parseTodoQuery, projectTodos } from "./qu
 import { settingsOrDefault } from "../mcp/settings-defaults";
 import { V1_RESOURCES, type V1Kind } from "./resources";
 import {
+  parseAppendDayNoteRequest,
   parseCivilDate,
   parseCreateLabelRequest,
   parseCreateListRequest,
@@ -710,15 +711,50 @@ async function handleUpsertDayNote(
   const nextHlc = await durableHlcQueue(stub, 2);
   const ctx: ServiceContext = { userId, nextHlc };
 
-  const entries = existing
-    ? // `deletedAt: null` mirrors `setDayNote`: a note written to a day whose
-      // row was tombstoned by some older path has to come back.
-      buildUpdateDayNoteEntry(ctx, date, { body: parsed.body, deletedAt: null })
-    : buildCreateDayNoteEntry(ctx, date, parsed.body);
-
-  const { rejected } = await pushTransportFor(stub, userId)(entries);
+  const { rejected } = await writeDayNote(ctx, date, parsed.body, existing, pushTransportFor(stub, userId));
   if (rejected.length > 0) {
     console.error("v1 upsert-day-note push rejected", rejected);
+    return json({ error: "internal-error" }, 500, headers);
+  }
+
+  const row = await getDayNoteRow(stub, id);
+  return json(row ? dayNoteSchema.parse(row) : null, 200, headers);
+}
+
+/**
+ * `POST /api/v1/day-notes/{date}/append` (EI-342): add one time-stamped
+ * entry to the end of a day's note, creating the note if the day has none.
+ *
+ * The read-join-push happens here, not in the client, so a voice client
+ * (Pointer) sends only the new words. The stamp is the wall clock in the
+ * USER's timezone at the moment of the call — for a past or future date too;
+ * it records when the note was left, not when that day was.
+ *
+ * Not atomic against a device: `body` is one LWW field, so a device's
+ * unsynced edit to the same note and this append can overwrite each other.
+ * `docs/API.md` states the limit.
+ */
+async function handleAppendDayNote(
+  request: Request,
+  stub: DurableObjectStub<UserDurableObject>,
+  userId: string,
+  date: string,
+  headers: HeadersInit,
+): Promise<Response> {
+  const parsed = parseAppendDayNoteRequest(await request.json().catch(() => null));
+  if (!parsed) return json({ error: "invalid-request" }, 400, headers);
+
+  const id = dayNoteIdFor(date);
+  const [existing, timezone] = await Promise.all([getDayNoteRow(stub, id), loadTimezone(stub, userId)]);
+  const current = existing ? dayNoteSchema.parse(existing).body : "";
+  const body = appendDayNoteEntry(current, parsed.text, wallClockTimeIn(timezone));
+
+  const nextHlc = await durableHlcQueue(stub, 2);
+  const ctx: ServiceContext = { userId, nextHlc };
+
+  const { rejected } = await writeDayNote(ctx, date, body, existing, pushTransportFor(stub, userId));
+  if (rejected.length > 0) {
+    console.error("v1 append-day-note push rejected", rejected);
     return json({ error: "internal-error" }, 500, headers);
   }
 
@@ -828,6 +864,18 @@ export async function handleV1Request(request: Request, env: CloudflareEnv): Pro
       const [todoRows, settingsRow] = await Promise.all([listTodos(stub), getSettingsRow(stub)]);
       const settings = settingsOrDefault(settingsRow, auth.userId);
       return json(overflowTodos(parseTodos(todoRows), settings), 200, headers);
+    }
+
+    const dayNoteAppendMatch = /^day-notes\/([^/]+)\/append$/.exec(segment);
+    if (dayNoteAppendMatch && request.method === "POST") {
+      const date = parseCivilDate(decodeURIComponent(dayNoteAppendMatch[1]));
+      if (!date) return json({ error: "invalid-request" }, 400, headers);
+
+      const auth = await authorizeScope(auth0, request, "write");
+      if (!auth.ok) return json({ error: auth.error }, auth.status, headers);
+
+      const stub = env.USER_DO.get(env.USER_DO.idFromName(auth.userId));
+      return await handleAppendDayNote(request, stub, auth.userId, date, headers);
     }
 
     const dayNoteDateMatch = /^day-notes\/([^/]+)$/.exec(segment);

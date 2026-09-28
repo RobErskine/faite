@@ -381,3 +381,24 @@ export function buildUpdateDayNoteEntry(
 ): PushEntry[] {
   return buildUpdate(ctx, DAY_NOTE, dayNoteIdFor(date), patch);
 }
+
+/**
+ * The longest single append `POST /api/v1/day-notes/{date}/append` and
+ * `append_day_note` accept (EI-342). A quick note, not a document; the whole
+ * body has no cap, and a paste that big wants the day sheet anyway.
+ */
+export const APPEND_DAY_NOTE_MAX_LENGTH = 10_000;
+
+/**
+ * `body` with one timestamped entry added at the end (EI-342):
+ * `**HH:MM** — text`, separated from what came before by a blank line.
+ *
+ * `time` is the caller's job — the wall clock in the USER's timezone
+ * (`wallClockTimeIn`), not the Worker's UTC one. Trailing whitespace on the
+ * old body is dropped so repeated appends never pile up blank lines.
+ */
+export function appendDayNoteEntry(body: string, text: string, time: string): string {
+  const entry = `**${time}** — ${text.trim()}`;
+  const before = body.trimEnd();
+  return before === "" ? entry : `${before}\n\n${entry}`;
+}

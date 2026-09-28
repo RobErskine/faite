@@ -252,6 +252,8 @@ that have no REST equivalent:
 | `list_tabs` | read | |
 | `get_backlog` | read | To-dos whose list has `isBacklog: true`. No REST equivalent. |
 | `get_overflow` | read | Runs `@/lib/scheduling`'s `deriveColumn()` — the SAME pure function the board renders with — against this account's own Settings (`UserDurableObject.getSettings()`) instead of a client's in-memory copy. No REST equivalent. |
+| `get_day_note` | read | One day's Markdown journal note (EI-342). `date` (`YYYY-MM-DD`) defaults to today in the account's `timezone`. A day with no note returns `{ date, body: "" }`, same as `GET /api/v1/day-notes/{date}`. |
+| `append_day_note` | write | Adds `**HH:MM** — text` to the end of a day's note (EI-342) — see "Day notes" below. Same `date` default. Pointer's voice capture uses it. |
 | `get_profile` | read | `timezone` is an IANA name (`"America/New_York"`), or `"UTC"` if never set. `displayName`/avatar fields/`timezone` only — never the device-local board-layout prefs (`backlogWidth`, `splitRatio`, etc.) that live in the same `settings` row but describe one device's screen, not the account. |
 
 **Date inputs (EI-338).** `scheduledDate` and `deadline` — on `create_todo`,
@@ -269,6 +271,25 @@ the same matcher as `search_todos`, after the other filters and before
 `fields=id,title` projects each row (nulls kept). An unknown field is a 400.
 Matcher: `src/server/v1/todo-search.ts`. Semantic search (embeddings) is a
 deliberate non-goal for now: it needs an index write on every push.
+
+**Day notes (A16/EI-296, EI-342).** Each day has one Markdown note, addressed
+by date (id `daynote:YYYY-MM-DD`), so the routes take a date, not an id:
+
+| Route | Scope | Behavior |
+|---|---|---|
+| `GET /api/v1/day-notes?from=&to=` | read | Notes with content, both bounds optional and inclusive. An empty body is how a cleared note is stored, so it is left out. |
+| `GET /api/v1/day-notes/{date}` | read | 200 with `body: ""` for a day with no note — never 404. |
+| `PUT /api/v1/day-notes/{date}` | write | Replace the body (`{ body }`). Creates the note if needed; `""` clears it, and on a day with no note does nothing. No DELETE. |
+| `POST /api/v1/day-notes/{date}/append` | write | `{ text }` (1–10,000 chars after trim). Adds `**HH:MM** — text` after a blank line; HH:MM is the current time in the account's `timezone`, even for another day's note. Creates the note if needed. |
+
+The append reads, joins and pushes on the server so a voice client sends only
+the new words. Every write goes through `writeDayNote`
+(`src/server/service/entities.ts`), which must be given the row it read:
+`date` has no SQL default, so an update-shaped patch at a missing id would
+write a dateless row. **Known limit:** `body` is one last-write-wins field.
+If a device holds an unsynced edit to the same day's note, that edit and an
+append can overwrite each other — whichever HLC is later wins the whole body.
+Rare for a journal, and not worth a CRDT.
 
 **`GET /api/v1/lists` query (EI-338).** `includeArchived=true` to include
 archived lists (default: left out); `fields=id,name,description` to return
