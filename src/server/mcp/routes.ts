@@ -573,6 +573,18 @@ function buildServer(
 export async function handleMcpRequest(request: Request, env: CloudflareEnv): Promise<Response> {
   if (request.method === "OPTIONS") return handleOptions(request);
 
+  // EI-347: the SDK defaults to localhost-only browser Origins on custom
+  // domains. Allow this endpoint's own origin, but compare the FULL origin
+  // first: the SDK's hostname-only gate ignores scheme and port.
+  const endpoint = new URL(request.url);
+  const origin = request.headers.get("Origin");
+  if (origin !== null && origin !== endpoint.origin) {
+    return Response.json(
+      { jsonrpc: "2.0", error: { code: -32000, message: "Invalid Origin" }, id: null },
+      { status: 403 },
+    );
+  }
+
   const identity = await resolveIdentity(request, env);
   if (!identity) {
     return Response.json(
@@ -590,7 +602,7 @@ export async function handleMcpRequest(request: Request, env: CloudflareEnv): Pr
   // extra and keeps every closure obviously request-scoped.
   const handler = createMcpHandler(
     () => buildServer(env, identity, stub),
-    { route: "/mcp" },
+    { route: "/mcp", allowedOriginHostnames: [endpoint.hostname] },
   );
 
   const authInfo: AuthInfo = {
