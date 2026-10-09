@@ -221,6 +221,8 @@ export function DesktopBoard({
         onOpenSettings={() => ui.setSettingsOpen(true)}
         onOpenHelp={() => ui.setHelpSheetOpen(true)}
         settings={settings}
+        duplicateCount={data.duplicates?.length ?? 0}
+        onOpenDuplicates={() => ui.setDuplicatesOpen(true)}
       />
 
       <DateNav

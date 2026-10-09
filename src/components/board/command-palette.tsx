@@ -87,6 +87,9 @@ interface CommandPaletteProps {
   onOpenActivity: () => void;
   /** Opens the History sheet on today — see history-sheet.tsx. */
   onOpenHistory: () => void;
+  /** Probable duplicates waiting for review (EI-346). */
+  duplicateCount: number;
+  onOpenDuplicates: () => void;
 }
 
 /** `PaletteEntryMode` (command-registry.ts) plus the always-present root. */
@@ -119,6 +122,8 @@ export function CommandPalette({
   onOpenHelp,
   onOpenActivity,
   onOpenHistory,
+  duplicateCount,
+  onOpenDuplicates,
 }: CommandPaletteProps) {
   const platform = usePlatform();
   const [mode, setMode] = useState<Mode>({ kind: "root" });
@@ -425,6 +430,7 @@ export function CommandPalette({
     quickAddTitle: quickAdd.title,
     settings,
     overflowCount,
+    duplicateCount,
     platform,
     enterMode,
     createFromQuery,
@@ -432,6 +438,7 @@ export function CommandPalette({
     openOverdrive: onOpenOverdrive,
     openActivity: onOpenActivity,
     openHistory: onOpenHistory,
+    openDuplicates: onOpenDuplicates,
     close,
     setVisibleDays: async (days) => {
       await mutateSettings(LOCAL_OWNER_ID, { visibleDays: days });

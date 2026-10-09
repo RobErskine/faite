@@ -397,6 +397,25 @@ export const USER_DB_MIGRATIONS: readonly UserDbMigration[] = [
       "ALTER TABLE settings ADD COLUMN hidden_history_kinds text",
     ],
   },
+  {
+    id: 24,
+    name: "todos-add-duplicate-flag",
+    statements: [
+      // EI-346: duplicate detection. Both nullable with no default — NULL is
+      // "not flagged", which is true of every existing row.
+      "ALTER TABLE todos ADD COLUMN duplicate_of text",
+      "ALTER TABLE todos ADD COLUMN duplicate_held integer",
+    ],
+  },
+  {
+    id: 25,
+    name: "settings-add-hold-all-duplicates",
+    statements: [
+      // NOT NULL with a DEFAULT matching the Zod default, same reasoning as
+      // migration 20: every existing row keeps today's behavior — off.
+      "ALTER TABLE settings ADD COLUMN hold_all_duplicates integer NOT NULL DEFAULT 0",
+    ],
+  },
   // Add new migrations here. Never edit one above this line.
   //
   // Example — adding a nullable column (the safe, ordinary case):

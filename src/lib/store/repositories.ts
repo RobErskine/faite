@@ -111,6 +111,8 @@ export async function createTodo(input: CreateTodoInput): Promise<string> {
     completedAt: null,
     reminderTime: input.reminderTime ?? (await defaultReminderTimeForList(listId)),
     source: input.source ?? null,
+    duplicateOf: null,
+    duplicateHeld: null,
   };
   return create("todo", todo, { events: [logTodoEvent(todo.id, "created")] });
 }

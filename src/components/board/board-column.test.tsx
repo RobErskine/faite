@@ -57,6 +57,8 @@ const todo = (id: string): Todo => ({
   reminderTime: null,
   placeId: null,
   source: null,
+  duplicateOf: null,
+  duplicateHeld: null,
 });
 
 const group = (

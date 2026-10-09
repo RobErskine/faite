@@ -1,0 +1,1 @@
+ALTER TABLE `settings` ADD `hold_all_duplicates` integer DEFAULT false NOT NULL;

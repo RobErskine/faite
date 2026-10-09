@@ -226,6 +226,8 @@ export function buildCreateTodoEntry(ctx: ServiceContext, input: CreateTodoInput
     completedAt: null,
     reminderTime: input.reminderTime ?? null,
     source: input.source ?? null,
+    duplicateOf: null,
+    duplicateHeld: null,
   };
 
   // The one safety net a hand-mirrored builder actually needs: fail loudly

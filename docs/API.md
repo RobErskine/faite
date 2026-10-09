@@ -221,6 +221,12 @@ client writes. One update can therefore push up to
 it runs out. A `listId` change still logs as `edited`, because a `moved`
 row carries both list names and the builder has no store to read them from.
 
+**A create can be flagged a second later (EI-346).** With a Jev key saved,
+a new open to-do may gain `duplicateOf` and `duplicateHeld: true` shortly
+after `POST /api/v1/todos` or MCP `create_todo` returns. A held duplicate is
+off the board until the user reviews it, though it still appears in
+`GET /api/v1/todos`. See `docs/DUPLICATES.md`.
+
 ## MCP server (A6, EI-52)
 
 A remote MCP server at `/mcp` — deliberately not under `/api`, matching the

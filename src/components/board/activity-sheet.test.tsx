@@ -92,6 +92,8 @@ function todo(id: string, overrides: Partial<Todo> = {}): Todo {
     reminderTime: null,
     placeId: null,
     source: null,
+    duplicateOf: null,
+    duplicateHeld: null,
     ...overrides,
   };
 }
@@ -155,6 +157,7 @@ const settings = (over: Partial<Settings> = {}): Settings => ({
   splitCollapsed: "none",
   reminderPresetsSeeded: false,
   goodJobMode: false,
+  holdAllDuplicates: false,
   overdriveMinTodos: 5,
   overdriveAutoConfirmMs: 0,
   updatedAt: "2026-08-03T00:00:00.000Z",

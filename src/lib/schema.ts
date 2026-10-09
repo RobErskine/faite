@@ -344,6 +344,24 @@ export const todoSchema = z.object({
    * Groundwork for D5 (context capture) — nothing writes or reads this yet.
    */
   source: z.string().nullable().default(null),
+
+  /**
+   * The id of the open to-do this one probably duplicates (EI-346). Only the
+   * server writes it — `src/server/duplicates/check.ts`, after a create, and
+   * only for a user who has saved a Jev key. Null means "not flagged", which
+   * is also what "Add to board" in the Duplicates sheet writes back.
+   */
+  duplicateOf: idSchema.nullable().default(null),
+
+  /**
+   * True when a flagged duplicate is held OFF the board until reviewed.
+   *
+   * Set for creates that came from outside the board (REST, Raycast, MCP,
+   * email); a to-do typed into the board itself stays visible and is only
+   * flagged, because hiding it would make it vanish a second after typing.
+   * Meaningless while `duplicateOf` is null.
+   */
+  duplicateHeld: z.boolean().nullable().default(null),
 });
 export type Todo = z.infer<typeof todoSchema>;
 
@@ -756,6 +774,14 @@ export const settingsSchema = z.object({
    * handlers share.
    */
   goodJobMode: z.boolean().default(false),
+  /**
+   * Hold EVERY flagged duplicate off the board until reviewed (EI-346), not
+   * only the ones from outside it. Off keeps the default split: a match from
+   * REST, MCP or email is held, one typed on the board stays visible with a
+   * flag. Read on the client (`lib/duplicates.ts`), so turning it on or off
+   * also applies to flags that already exist.
+   */
+  holdAllDuplicates: z.boolean().default(false),
   updatedAt: z.string(),
 });
 export type Settings = z.infer<typeof settingsSchema>;

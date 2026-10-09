@@ -25,6 +25,22 @@ import {
   shouldScheduleSweep,
   sweepCutoff,
 } from "./attachments/sweep";
+import {
+  type Candidate,
+  checkJevKey,
+  findDuplicate,
+  type InsertedTodo,
+  type KeyCheck,
+  MAX_CANDIDATES,
+  type NewTodoToCheck,
+  selectNewTodosToCheck,
+} from "./duplicates/check";
+import {
+  decryptJevKey,
+  encryptJevKey,
+  JEV_KEY_STORAGE_KEY,
+  type StoredJevKey,
+} from "./duplicates/jev-key";
 import { chunkForInClause } from "./sync/sql-limits";
 import { buildInsertColumns } from "./sync/upsert";
 import { clampPullArgs, parsePushRequest } from "./sync/validate";
@@ -858,6 +874,7 @@ export class UserDurableObject extends DurableObject {
     const conflicts: PushResponse["conflicts"] = [];
     let highestVersion = 0;
     let tombstonedAttachment = false;
+    const insertedTodos: InsertedTodo[] = [];
     const nowIso = new Date().toISOString();
 
     this.ctx.storage.transactionSync(() => {
@@ -880,6 +897,13 @@ export class UserDurableObject extends DurableObject {
         } else {
           const row = buildInsertColumns(group.kind, group.entityId, userId, resolution.apply, nowIso, version);
           this.insertRow(group.kind, tableName, row);
+          if (group.kind === "todo") {
+            insertedTodos.push({
+              entityId: group.entityId,
+              apply: resolution.apply,
+              hlcs: group.fieldsByHlc.map((f) => f.hlc),
+            });
+          }
         }
         // An attachment gaining a `deletedAt` is the one write that creates
         // collectable bytes (EI-245). Noted here rather than swept here: the
@@ -904,12 +928,114 @@ export class UserDurableObject extends DurableObject {
     // account that has never attached anything.
     if (tombstonedAttachment) await this.scheduleSweep();
 
+    // Deliberately not awaited: the push acks now and the check finishes on
+    // its own (EI-346). `ctx.waitUntil` is a no-op in a Durable Object — the
+    // object stays alive while it has pending I/O, and a Jev call is a
+    // second or two, far inside the idle window.
+    const toCheck = selectNewTodosToCheck(insertedTodos);
+    if (toCheck.length > 0) void this.checkDuplicates(userId, toCheck);
+
     return {
       acked: accepted.map((entry) => entry.id),
       rejected,
       highestVersion,
       conflicts,
     };
+  }
+
+  /** Saves the user's Jev key after checking it with Jev (EI-346). An
+   * `invalid` key is not saved. */
+  async setJevKey(apiKey: string): Promise<KeyCheck> {
+    const check = await checkJevKey(apiKey);
+    if (check === "invalid") return check;
+    const stored = await encryptJevKey(apiKey, this.env.BETTER_AUTH_SECRET);
+    await this.ctx.storage.put(JEV_KEY_STORAGE_KEY, stored);
+    return check;
+  }
+
+  async clearJevKey(): Promise<void> {
+    await this.ctx.storage.delete(JEV_KEY_STORAGE_KEY);
+  }
+
+  /** What Settings may show. Never the key itself. */
+  async jevKeyStatus(): Promise<{ connected: boolean; last4: string | null }> {
+    const stored = await this.ctx.storage.get<StoredJevKey>(JEV_KEY_STORAGE_KEY);
+    return { connected: !!stored, last4: stored?.last4 ?? null };
+  }
+
+  private async loadJevKey(): Promise<string | null> {
+    const stored = await this.ctx.storage.get<StoredJevKey>(JEV_KEY_STORAGE_KEY);
+    return stored ? decryptJevKey(stored, this.env.BETTER_AUTH_SECRET) : null;
+  }
+
+  /**
+   * Asks Jev whether each new to-do repeats an open one, and flags it through
+   * `push()` if so (EI-346). A direct SQL write would never reach a device.
+   *
+   * Best effort and total: a missing key, a Jev failure or a to-do that
+   * changed meanwhile all end in "no flag", never in an error. Logs carry no
+   * titles — they are the user's content.
+   */
+  private async checkDuplicates(userId: string, items: NewTodoToCheck[]): Promise<void> {
+    try {
+      const apiKey = await this.loadJevKey();
+      if (!apiKey) return;
+      const batchIds = new Set(items.map((item) => item.id));
+
+      for (const item of items) {
+        const [todo] = this.ctx.storage.sql
+          .exec<{ title: string; description: string | null }>(
+            `SELECT title, description FROM todos
+              WHERE id = ? AND status = 'open' AND deleted_at IS NULL AND duplicate_of IS NULL`,
+            item.id,
+          )
+          .toArray();
+        if (!todo) continue;
+
+        const candidates = this.duplicateCandidates(batchIds);
+        if (candidates.length === 0) continue;
+        const match = await findDuplicate(apiKey, todo, candidates);
+        if (!match) continue;
+
+        await this.push(userId, {
+          protocol: SYNC_PROTOCOL_VERSION,
+          entries: [
+            {
+              id: crypto.randomUUID(),
+              kind: "todo",
+              entityId: item.id,
+              patch: { duplicateOf: match.id, duplicateHeld: item.held },
+              hlc: await this.nextServerHlc(),
+            },
+          ],
+        });
+      }
+    } catch (error) {
+      console.warn("[faite] duplicate check failed", error instanceof Error ? error.message : "unknown");
+    }
+  }
+
+  /** Open, top-level, non-occurrence to-dos on the board (an archived list's
+   * to-dos are off it), most recently touched first. Excludes the push's own
+   * new to-dos so two arriving together are not flagged against each other. */
+  private duplicateCandidates(exclude: ReadonlySet<string>): Candidate[] {
+    return this.ctx.storage.sql
+      .exec<{ id: string; title: string; description: string | null }>(
+        `SELECT t.id, t.title, t.description FROM todos t
+           LEFT JOIN lists l ON l.id = t.list_id
+          WHERE t.status = 'open'
+            AND t.deleted_at IS NULL
+            AND t.parent_id IS NULL
+            AND t.recurrence_parent_id IS NULL
+            AND t.duplicate_of IS NULL
+            AND l.archived_at IS NULL
+          ORDER BY t.updated_at DESC
+          LIMIT ?`,
+        MAX_CANDIDATES + exclude.size,
+      )
+      .toArray()
+      .filter((row) => !exclude.has(row.id))
+      .slice(0, MAX_CANDIDATES);
   }
 
   /**

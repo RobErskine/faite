@@ -3906,6 +3906,29 @@
                 "type": "null"
               }
             ]
+          },
+          "duplicateOf": {
+            "default": null,
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "duplicateHeld": {
+            "default": null,
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -3932,7 +3955,9 @@
           "recurrenceParentId",
           "completedAt",
           "reminderTime",
-          "source"
+          "source",
+          "duplicateOf",
+          "duplicateHeld"
         ],
         "additionalProperties": false
       },
@@ -4976,6 +5001,10 @@
             "default": false,
             "type": "boolean"
           },
+          "holdAllDuplicates": {
+            "default": false,
+            "type": "boolean"
+          },
           "updatedAt": {
             "type": "string"
           }
@@ -5013,6 +5042,7 @@
           "overdriveMinTodos",
           "overdriveAutoConfirmMs",
           "goodJobMode",
+          "holdAllDuplicates",
           "updatedAt"
         ],
         "additionalProperties": false

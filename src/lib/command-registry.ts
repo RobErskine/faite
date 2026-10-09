@@ -51,6 +51,8 @@ export interface PaletteCommandCtx {
   quickAddTitle: string;
   settings: Settings | undefined;
   overflowCount: number;
+  /** Probable duplicates waiting for review (EI-346). */
+  duplicateCount: number;
   platform: Platform;
   enterMode: (kind: PaletteEntryMode) => void;
   createFromQuery: () => void | Promise<void>;
@@ -58,6 +60,7 @@ export interface PaletteCommandCtx {
   openOverdrive: () => void;
   openActivity: () => void;
   openHistory: () => void;
+  openDuplicates: () => void;
   close: () => void;
   setVisibleDays: (days: number) => void | Promise<void>;
   setVisibleStatuses: (next: TodoStatus[]) => void | Promise<void>;
@@ -151,6 +154,18 @@ const MANAGE_COMMANDS: PaletteCommand[] = [
     label: () => "History",
     run: (ctx) => {
       ctx.openHistory();
+      ctx.close();
+    },
+  },
+  {
+    // Only while there is something to review, like the account menu item
+    // (EI-346). No shortcut.
+    id: "manage-duplicates",
+    group: "Manage",
+    when: (ctx) => ctx.duplicateCount > 0,
+    label: (ctx) => `Review duplicates (${ctx.duplicateCount})`,
+    run: (ctx) => {
+      ctx.openDuplicates();
       ctx.close();
     },
   },

@@ -58,7 +58,7 @@ interface HandoffPayload {
   exp: number;
 }
 
-async function deriveKey(secret: string, info: string): Promise<CryptoKey> {
+export async function deriveKey(secret: string, info: string): Promise<CryptoKey> {
   const material = await crypto.subtle.importKey(
     "raw",
     new TextEncoder().encode(secret),

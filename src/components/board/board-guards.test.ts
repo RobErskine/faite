@@ -28,6 +28,7 @@ const CLOSED: BoardOverlayState = {
   helpSheetOpen: false,
   activityOpen: false,
   historyOpen: false,
+  duplicatesOpen: false,
   contextMenuOpen: false,
 };
 
@@ -44,6 +45,7 @@ const OPEN_VALUE: { [K in keyof BoardOverlayState]: BoardOverlayState[K] } = {
   helpSheetOpen: true,
   activityOpen: true,
   historyOpen: true,
+  duplicatesOpen: true,
   contextMenuOpen: true,
 };
 
