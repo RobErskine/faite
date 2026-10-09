@@ -116,6 +116,10 @@ Never report an empty result you did not actually get.
 
 - **`docs/README.md`** — index of every doc. Start there, not with a grep.
 - **`docs/ARCHITECTURE.md`** — the *why* behind the data model and sync.
+- **`PRODUCT.md`**, **`DESIGN.md`**, **`.impeccable/`** — the context the
+  Impeccable design skill reads (`/impeccable critique`, `audit`, `polish`…).
+  `docs/DESIGN.md` stays the spec of record; root `DESIGN.md` mirrors its
+  tokens, so change `docs/DESIGN.md` first and the mirror the same day.
 - **`docs/WORKFLOW.md`** — how a ticket becomes a merged PR, and how to hand a
   session off to a worktree.
 - **`.ai/lessons.md`** — mistakes already made here, with the rule each one

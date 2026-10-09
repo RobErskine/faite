@@ -1,0 +1,1081 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-09T03:54:17.235Z",
+  "title": "Design System: Faite",
+  "extensions": {
+    "colorMeta": {
+      "background": {
+        "role": "neutral",
+        "displayName": "Paper",
+        "canonical": "oklch(1 0 0)",
+        "tonalRamp": [
+          "oklch(0.15 0 0)",
+          "oklch(0.264 0 0)",
+          "oklch(0.379 0 0)",
+          "oklch(0.493 0 0)",
+          "oklch(0.607 0 0)",
+          "oklch(0.721 0 0)",
+          "oklch(0.836 0 0)",
+          "oklch(0.95 0 0)"
+        ]
+      },
+      "background-dark": {
+        "role": "neutral",
+        "displayName": "Paper (dark)",
+        "canonical": "oklch(0.145 0 0)",
+        "tonalRamp": [
+          "oklch(0.15 0 0)",
+          "oklch(0.264 0 0)",
+          "oklch(0.379 0 0)",
+          "oklch(0.493 0 0)",
+          "oklch(0.607 0 0)",
+          "oklch(0.721 0 0)",
+          "oklch(0.836 0 0)",
+          "oklch(0.95 0 0)"
+        ]
+      },
+      "foreground": {
+        "role": "primary",
+        "displayName": "Ink",
+        "canonical": "oklch(0.145 0 0)",
+        "tonalRamp": [
+          "oklch(0.15 0 0)",
+          "oklch(0.264 0 0)",
+          "oklch(0.379 0 0)",
+          "oklch(0.493 0 0)",
+          "oklch(0.607 0 0)",
+          "oklch(0.721 0 0)",
+          "oklch(0.836 0 0)",
+          "oklch(0.95 0 0)"
+        ]
+      },
+      "foreground-dark": {
+        "role": "primary",
+        "displayName": "Ink (dark)",
+        "canonical": "oklch(0.985 0 0)",
+        "tonalRamp": [
+          "oklch(0.15 0 0)",
+          "oklch(0.264 0 0)",
+          "oklch(0.379 0 0)",
+          "oklch(0.493 0 0)",
+          "oklch(0.607 0 0)",
+          "oklch(0.721 0 0)",
+          "oklch(0.836 0 0)",
+          "oklch(0.95 0 0)"
+        ]
+      },
+      "primary": {
+        "role": "primary",
+        "displayName": "Ink (primary)",
+        "canonical": "oklch(0.205 0 0)",
+        "tonalRamp": [
+          "oklch(0.15 0 0)",
+          "oklch(0.264 0 0)",
+          "oklch(0.379 0 0)",
+          "oklch(0.493 0 0)",
+          "oklch(0.607 0 0)",
+          "oklch(0.721 0 0)",
+          "oklch(0.836 0 0)",
+          "oklch(0.95 0 0)"
+        ]
+      },
+      "primary-dark": {
+        "role": "primary",
+        "displayName": "Ink (primary) (dark)",
+        "canonical": "oklch(0.922 0 0)",
+        "tonalRamp": [
+          "oklch(0.15 0 0)",
+          "oklch(0.264 0 0)",
+          "oklch(0.379 0 0)",
+          "oklch(0.493 0 0)",
+          "oklch(0.607 0 0)",
+          "oklch(0.721 0 0)",
+          "oklch(0.836 0 0)",
+          "oklch(0.95 0 0)"
+        ]
+      },
+      "primary-foreground": {
+        "role": "neutral",
+        "displayName": "Paper on Ink",
+        "canonical": "oklch(0.985 0 0)",
+        "tonalRamp": [
+          "oklch(0.15 0 0)",
+          "oklch(0.264 0 0)",
+          "oklch(0.379 0 0)",
+          "oklch(0.493 0 0)",
+          "oklch(0.607 0 0)",
+          "oklch(0.721 0 0)",
+          "oklch(0.836 0 0)",
+          "oklch(0.95 0 0)"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Muted Fill",
+        "canonical": "oklch(0.97 0 0)",
+        "tonalRamp": [
+          "oklch(0.15 0 0)",
+          "oklch(0.264 0 0)",
+          "oklch(0.379 0 0)",
+          "oklch(0.493 0 0)",
+          "oklch(0.607 0 0)",
+          "oklch(0.721 0 0)",
+          "oklch(0.836 0 0)",
+          "oklch(0.95 0 0)"
+        ]
+      },
+      "muted-dark": {
+        "role": "neutral",
+        "displayName": "Muted Fill (dark)",
+        "canonical": "oklch(0.269 0 0)",
+        "tonalRamp": [
+          "oklch(0.15 0 0)",
+          "oklch(0.264 0 0)",
+          "oklch(0.379 0 0)",
+          "oklch(0.493 0 0)",
+          "oklch(0.607 0 0)",
+          "oklch(0.721 0 0)",
+          "oklch(0.836 0 0)",
+          "oklch(0.95 0 0)"
+        ]
+      },
+      "muted-foreground": {
+        "role": "neutral",
+        "displayName": "Muted Ink",
+        "canonical": "oklch(0.556 0 0)",
+        "tonalRamp": [
+          "oklch(0.15 0 0)",
+          "oklch(0.264 0 0)",
+          "oklch(0.379 0 0)",
+          "oklch(0.493 0 0)",
+          "oklch(0.607 0 0)",
+          "oklch(0.721 0 0)",
+          "oklch(0.836 0 0)",
+          "oklch(0.95 0 0)"
+        ]
+      },
+      "muted-foreground-dark": {
+        "role": "neutral",
+        "displayName": "Muted Ink (dark)",
+        "canonical": "oklch(0.708 0 0)",
+        "tonalRamp": [
+          "oklch(0.15 0 0)",
+          "oklch(0.264 0 0)",
+          "oklch(0.379 0 0)",
+          "oklch(0.493 0 0)",
+          "oklch(0.607 0 0)",
+          "oklch(0.721 0 0)",
+          "oklch(0.836 0 0)",
+          "oklch(0.95 0 0)"
+        ]
+      },
+      "popover": {
+        "role": "neutral",
+        "displayName": "Popover",
+        "canonical": "oklch(1 0 0)",
+        "tonalRamp": [
+          "oklch(0.15 0 0)",
+          "oklch(0.264 0 0)",
+          "oklch(0.379 0 0)",
+          "oklch(0.493 0 0)",
+          "oklch(0.607 0 0)",
+          "oklch(0.721 0 0)",
+          "oklch(0.836 0 0)",
+          "oklch(0.95 0 0)"
+        ]
+      },
+      "popover-dark": {
+        "role": "neutral",
+        "displayName": "Popover (dark)",
+        "canonical": "oklch(0.205 0 0)",
+        "tonalRamp": [
+          "oklch(0.15 0 0)",
+          "oklch(0.264 0 0)",
+          "oklch(0.379 0 0)",
+          "oklch(0.493 0 0)",
+          "oklch(0.607 0 0)",
+          "oklch(0.721 0 0)",
+          "oklch(0.836 0 0)",
+          "oklch(0.95 0 0)"
+        ]
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Line",
+        "canonical": "oklch(0.922 0 0)",
+        "tonalRamp": [
+          "oklch(0.15 0 0)",
+          "oklch(0.264 0 0)",
+          "oklch(0.379 0 0)",
+          "oklch(0.493 0 0)",
+          "oklch(0.607 0 0)",
+          "oklch(0.721 0 0)",
+          "oklch(0.836 0 0)",
+          "oklch(0.95 0 0)"
+        ]
+      },
+      "border-dark": {
+        "role": "neutral",
+        "displayName": "Line (dark)",
+        "canonical": "oklch(1 0 0 / 10%)",
+        "tonalRamp": [
+          "oklch(0.15 0 0)",
+          "oklch(0.264 0 0)",
+          "oklch(0.379 0 0)",
+          "oklch(0.493 0 0)",
+          "oklch(0.607 0 0)",
+          "oklch(0.721 0 0)",
+          "oklch(0.836 0 0)",
+          "oklch(0.95 0 0)"
+        ]
+      },
+      "surface-sunken": {
+        "role": "neutral",
+        "displayName": "Surface Sunken",
+        "canonical": "oklch(0.955 0 0)",
+        "tonalRamp": [
+          "oklch(0.15 0 0)",
+          "oklch(0.264 0 0)",
+          "oklch(0.379 0 0)",
+          "oklch(0.493 0 0)",
+          "oklch(0.607 0 0)",
+          "oklch(0.721 0 0)",
+          "oklch(0.836 0 0)",
+          "oklch(0.95 0 0)"
+        ]
+      },
+      "surface-sunken-dark": {
+        "role": "neutral",
+        "displayName": "Surface Sunken (dark)",
+        "canonical": "oklch(0.165 0 0)",
+        "tonalRamp": [
+          "oklch(0.15 0 0)",
+          "oklch(0.264 0 0)",
+          "oklch(0.379 0 0)",
+          "oklch(0.493 0 0)",
+          "oklch(0.607 0 0)",
+          "oklch(0.721 0 0)",
+          "oklch(0.836 0 0)",
+          "oklch(0.95 0 0)"
+        ]
+      },
+      "surface-0": {
+        "role": "neutral",
+        "displayName": "Surface 0",
+        "canonical": "oklch(0.985 0 0)",
+        "tonalRamp": [
+          "oklch(0.15 0 0)",
+          "oklch(0.264 0 0)",
+          "oklch(0.379 0 0)",
+          "oklch(0.493 0 0)",
+          "oklch(0.607 0 0)",
+          "oklch(0.721 0 0)",
+          "oklch(0.836 0 0)",
+          "oklch(0.95 0 0)"
+        ]
+      },
+      "surface-0-dark": {
+        "role": "neutral",
+        "displayName": "Surface 0 (dark)",
+        "canonical": "oklch(0.19 0 0)",
+        "tonalRamp": [
+          "oklch(0.15 0 0)",
+          "oklch(0.264 0 0)",
+          "oklch(0.379 0 0)",
+          "oklch(0.493 0 0)",
+          "oklch(0.607 0 0)",
+          "oklch(0.721 0 0)",
+          "oklch(0.836 0 0)",
+          "oklch(0.95 0 0)"
+        ]
+      },
+      "surface-1": {
+        "role": "neutral",
+        "displayName": "Surface 1",
+        "canonical": "oklch(1 0 0)",
+        "tonalRamp": [
+          "oklch(0.15 0 0)",
+          "oklch(0.264 0 0)",
+          "oklch(0.379 0 0)",
+          "oklch(0.493 0 0)",
+          "oklch(0.607 0 0)",
+          "oklch(0.721 0 0)",
+          "oklch(0.836 0 0)",
+          "oklch(0.95 0 0)"
+        ]
+      },
+      "surface-1-dark": {
+        "role": "neutral",
+        "displayName": "Surface 1 (dark)",
+        "canonical": "oklch(0.225 0 0)",
+        "tonalRamp": [
+          "oklch(0.15 0 0)",
+          "oklch(0.264 0 0)",
+          "oklch(0.379 0 0)",
+          "oklch(0.493 0 0)",
+          "oklch(0.607 0 0)",
+          "oklch(0.721 0 0)",
+          "oklch(0.836 0 0)",
+          "oklch(0.95 0 0)"
+        ]
+      },
+      "surface-2": {
+        "role": "neutral",
+        "displayName": "Surface 2",
+        "canonical": "oklch(1 0 0)",
+        "tonalRamp": [
+          "oklch(0.15 0 0)",
+          "oklch(0.264 0 0)",
+          "oklch(0.379 0 0)",
+          "oklch(0.493 0 0)",
+          "oklch(0.607 0 0)",
+          "oklch(0.721 0 0)",
+          "oklch(0.836 0 0)",
+          "oklch(0.95 0 0)"
+        ]
+      },
+      "surface-2-dark": {
+        "role": "neutral",
+        "displayName": "Surface 2 (dark)",
+        "canonical": "oklch(0.27 0 0)",
+        "tonalRamp": [
+          "oklch(0.15 0 0)",
+          "oklch(0.264 0 0)",
+          "oklch(0.379 0 0)",
+          "oklch(0.493 0 0)",
+          "oklch(0.607 0 0)",
+          "oklch(0.721 0 0)",
+          "oklch(0.836 0 0)",
+          "oklch(0.95 0 0)"
+        ]
+      },
+      "line-faint": {
+        "role": "neutral",
+        "displayName": "Line Faint",
+        "canonical": "oklch(0.945 0 0)",
+        "tonalRamp": [
+          "oklch(0.15 0 0)",
+          "oklch(0.264 0 0)",
+          "oklch(0.379 0 0)",
+          "oklch(0.493 0 0)",
+          "oklch(0.607 0 0)",
+          "oklch(0.721 0 0)",
+          "oklch(0.836 0 0)",
+          "oklch(0.95 0 0)"
+        ]
+      },
+      "line-faint-dark": {
+        "role": "neutral",
+        "displayName": "Line Faint (dark)",
+        "canonical": "oklch(1 0 0 / 6%)",
+        "tonalRamp": [
+          "oklch(0.15 0 0)",
+          "oklch(0.264 0 0)",
+          "oklch(0.379 0 0)",
+          "oklch(0.493 0 0)",
+          "oklch(0.607 0 0)",
+          "oklch(0.721 0 0)",
+          "oklch(0.836 0 0)",
+          "oklch(0.95 0 0)"
+        ]
+      },
+      "line-strong": {
+        "role": "neutral",
+        "displayName": "Line Strong",
+        "canonical": "oklch(0.85 0 0)",
+        "tonalRamp": [
+          "oklch(0.15 0 0)",
+          "oklch(0.264 0 0)",
+          "oklch(0.379 0 0)",
+          "oklch(0.493 0 0)",
+          "oklch(0.607 0 0)",
+          "oklch(0.721 0 0)",
+          "oklch(0.836 0 0)",
+          "oklch(0.95 0 0)"
+        ]
+      },
+      "line-strong-dark": {
+        "role": "neutral",
+        "displayName": "Line Strong (dark)",
+        "canonical": "oklch(1 0 0 / 18%)",
+        "tonalRamp": [
+          "oklch(0.15 0 0)",
+          "oklch(0.264 0 0)",
+          "oklch(0.379 0 0)",
+          "oklch(0.493 0 0)",
+          "oklch(0.607 0 0)",
+          "oklch(0.721 0 0)",
+          "oklch(0.836 0 0)",
+          "oklch(0.95 0 0)"
+        ]
+      },
+      "spectrum-peach": {
+        "role": "secondary",
+        "displayName": "Spectrum Peach",
+        "canonical": "oklch(0.85 0.08 55)",
+        "tonalRamp": [
+          "oklch(0.15 0.08 55)",
+          "oklch(0.264 0.08 55)",
+          "oklch(0.379 0.08 55)",
+          "oklch(0.493 0.08 55)",
+          "oklch(0.607 0.08 55)",
+          "oklch(0.721 0.08 55)",
+          "oklch(0.836 0.08 55)",
+          "oklch(0.95 0.08 55)"
+        ]
+      },
+      "spectrum-peach-dark": {
+        "role": "secondary",
+        "displayName": "Spectrum Peach (dark)",
+        "canonical": "oklch(0.8 0.08 55)",
+        "tonalRamp": [
+          "oklch(0.15 0.08 55)",
+          "oklch(0.264 0.08 55)",
+          "oklch(0.379 0.08 55)",
+          "oklch(0.493 0.08 55)",
+          "oklch(0.607 0.08 55)",
+          "oklch(0.721 0.08 55)",
+          "oklch(0.836 0.08 55)",
+          "oklch(0.95 0.08 55)"
+        ]
+      },
+      "spectrum-rose": {
+        "role": "secondary",
+        "displayName": "Spectrum Rose",
+        "canonical": "oklch(0.82 0.09 10)",
+        "tonalRamp": [
+          "oklch(0.15 0.09 10)",
+          "oklch(0.264 0.09 10)",
+          "oklch(0.379 0.09 10)",
+          "oklch(0.493 0.09 10)",
+          "oklch(0.607 0.09 10)",
+          "oklch(0.721 0.09 10)",
+          "oklch(0.836 0.09 10)",
+          "oklch(0.95 0.09 10)"
+        ]
+      },
+      "spectrum-rose-dark": {
+        "role": "secondary",
+        "displayName": "Spectrum Rose (dark)",
+        "canonical": "oklch(0.78 0.09 10)",
+        "tonalRamp": [
+          "oklch(0.15 0.09 10)",
+          "oklch(0.264 0.09 10)",
+          "oklch(0.379 0.09 10)",
+          "oklch(0.493 0.09 10)",
+          "oklch(0.607 0.09 10)",
+          "oklch(0.721 0.09 10)",
+          "oklch(0.836 0.09 10)",
+          "oklch(0.95 0.09 10)"
+        ]
+      },
+      "spectrum-lavender": {
+        "role": "secondary",
+        "displayName": "Spectrum Lavender",
+        "canonical": "oklch(0.8 0.09 300)",
+        "tonalRamp": [
+          "oklch(0.15 0.09 300)",
+          "oklch(0.264 0.09 300)",
+          "oklch(0.379 0.09 300)",
+          "oklch(0.493 0.09 300)",
+          "oklch(0.607 0.09 300)",
+          "oklch(0.721 0.09 300)",
+          "oklch(0.836 0.09 300)",
+          "oklch(0.95 0.09 300)"
+        ]
+      },
+      "spectrum-lavender-dark": {
+        "role": "secondary",
+        "displayName": "Spectrum Lavender (dark)",
+        "canonical": "oklch(0.78 0.09 300)",
+        "tonalRamp": [
+          "oklch(0.15 0.09 300)",
+          "oklch(0.264 0.09 300)",
+          "oklch(0.379 0.09 300)",
+          "oklch(0.493 0.09 300)",
+          "oklch(0.607 0.09 300)",
+          "oklch(0.721 0.09 300)",
+          "oklch(0.836 0.09 300)",
+          "oklch(0.95 0.09 300)"
+        ]
+      },
+      "spectrum-sky": {
+        "role": "secondary",
+        "displayName": "Spectrum Sky",
+        "canonical": "oklch(0.82 0.08 230)",
+        "tonalRamp": [
+          "oklch(0.15 0.08 230)",
+          "oklch(0.264 0.08 230)",
+          "oklch(0.379 0.08 230)",
+          "oklch(0.493 0.08 230)",
+          "oklch(0.607 0.08 230)",
+          "oklch(0.721 0.08 230)",
+          "oklch(0.836 0.08 230)",
+          "oklch(0.95 0.08 230)"
+        ]
+      },
+      "spectrum-sky-dark": {
+        "role": "secondary",
+        "displayName": "Spectrum Sky (dark)",
+        "canonical": "oklch(0.8 0.08 230)",
+        "tonalRamp": [
+          "oklch(0.15 0.08 230)",
+          "oklch(0.264 0.08 230)",
+          "oklch(0.379 0.08 230)",
+          "oklch(0.493 0.08 230)",
+          "oklch(0.607 0.08 230)",
+          "oklch(0.721 0.08 230)",
+          "oklch(0.836 0.08 230)",
+          "oklch(0.95 0.08 230)"
+        ]
+      },
+      "spectrum-solid": {
+        "role": "secondary",
+        "displayName": "Spectrum Solid",
+        "canonical": "oklch(0.55 0.13 300)",
+        "tonalRamp": [
+          "oklch(0.15 0.13 300)",
+          "oklch(0.264 0.13 300)",
+          "oklch(0.379 0.13 300)",
+          "oklch(0.493 0.13 300)",
+          "oklch(0.607 0.13 300)",
+          "oklch(0.721 0.13 300)",
+          "oklch(0.836 0.13 300)",
+          "oklch(0.95 0.13 300)"
+        ]
+      },
+      "spectrum-solid-dark": {
+        "role": "secondary",
+        "displayName": "Spectrum Solid (dark)",
+        "canonical": "oklch(0.78 0.1 300)",
+        "tonalRamp": [
+          "oklch(0.15 0.1 300)",
+          "oklch(0.264 0.1 300)",
+          "oklch(0.379 0.1 300)",
+          "oklch(0.493 0.1 300)",
+          "oklch(0.607 0.1 300)",
+          "oklch(0.721 0.1 300)",
+          "oklch(0.836 0.1 300)",
+          "oklch(0.95 0.1 300)"
+        ]
+      },
+      "urgent": {
+        "role": "tertiary",
+        "displayName": "Urgent",
+        "canonical": "oklch(0.577 0.245 27.325)",
+        "tonalRamp": [
+          "oklch(0.15 0.245 27.325)",
+          "oklch(0.264 0.245 27.325)",
+          "oklch(0.379 0.245 27.325)",
+          "oklch(0.493 0.245 27.325)",
+          "oklch(0.607 0.245 27.325)",
+          "oklch(0.721 0.245 27.325)",
+          "oklch(0.836 0.245 27.325)",
+          "oklch(0.95 0.245 27.325)"
+        ]
+      },
+      "urgent-dark": {
+        "role": "tertiary",
+        "displayName": "Urgent (dark)",
+        "canonical": "oklch(0.704 0.191 22.216)",
+        "tonalRamp": [
+          "oklch(0.15 0.191 22.216)",
+          "oklch(0.264 0.191 22.216)",
+          "oklch(0.379 0.191 22.216)",
+          "oklch(0.493 0.191 22.216)",
+          "oklch(0.607 0.191 22.216)",
+          "oklch(0.721 0.191 22.216)",
+          "oklch(0.836 0.191 22.216)",
+          "oklch(0.95 0.191 22.216)"
+        ]
+      },
+      "urgent-foreground": {
+        "role": "tertiary",
+        "displayName": "Urgent Ink",
+        "canonical": "oklch(0.35 0.14 27)",
+        "tonalRamp": [
+          "oklch(0.15 0.14 27)",
+          "oklch(0.264 0.14 27)",
+          "oklch(0.379 0.14 27)",
+          "oklch(0.493 0.14 27)",
+          "oklch(0.607 0.14 27)",
+          "oklch(0.721 0.14 27)",
+          "oklch(0.836 0.14 27)",
+          "oklch(0.95 0.14 27)"
+        ]
+      },
+      "urgent-foreground-dark": {
+        "role": "tertiary",
+        "displayName": "Urgent Ink (dark)",
+        "canonical": "oklch(0.88 0.07 20)",
+        "tonalRamp": [
+          "oklch(0.15 0.07 20)",
+          "oklch(0.264 0.07 20)",
+          "oklch(0.379 0.07 20)",
+          "oklch(0.493 0.07 20)",
+          "oklch(0.607 0.07 20)",
+          "oklch(0.721 0.07 20)",
+          "oklch(0.836 0.07 20)",
+          "oklch(0.95 0.07 20)"
+        ]
+      },
+      "urgent-soft": {
+        "role": "tertiary",
+        "displayName": "Urgent Soft",
+        "canonical": "oklch(0.965 0.03 25)",
+        "tonalRamp": [
+          "oklch(0.15 0.03 25)",
+          "oklch(0.264 0.03 25)",
+          "oklch(0.379 0.03 25)",
+          "oklch(0.493 0.03 25)",
+          "oklch(0.607 0.03 25)",
+          "oklch(0.721 0.03 25)",
+          "oklch(0.836 0.03 25)",
+          "oklch(0.95 0.03 25)"
+        ]
+      },
+      "urgent-soft-dark": {
+        "role": "tertiary",
+        "displayName": "Urgent Soft (dark)",
+        "canonical": "oklch(0.27 0.07 25)",
+        "tonalRamp": [
+          "oklch(0.15 0.07 25)",
+          "oklch(0.264 0.07 25)",
+          "oklch(0.379 0.07 25)",
+          "oklch(0.493 0.07 25)",
+          "oklch(0.607 0.07 25)",
+          "oklch(0.721 0.07 25)",
+          "oklch(0.836 0.07 25)",
+          "oklch(0.95 0.07 25)"
+        ]
+      },
+      "warning": {
+        "role": "tertiary",
+        "displayName": "Warning",
+        "canonical": "oklch(0.55 0.13 75)",
+        "tonalRamp": [
+          "oklch(0.15 0.13 75)",
+          "oklch(0.264 0.13 75)",
+          "oklch(0.379 0.13 75)",
+          "oklch(0.493 0.13 75)",
+          "oklch(0.607 0.13 75)",
+          "oklch(0.721 0.13 75)",
+          "oklch(0.836 0.13 75)",
+          "oklch(0.95 0.13 75)"
+        ]
+      },
+      "warning-foreground": {
+        "role": "tertiary",
+        "displayName": "Warning Ink",
+        "canonical": "oklch(0.35 0.1 70)",
+        "tonalRamp": [
+          "oklch(0.15 0.1 70)",
+          "oklch(0.264 0.1 70)",
+          "oklch(0.379 0.1 70)",
+          "oklch(0.493 0.1 70)",
+          "oklch(0.607 0.1 70)",
+          "oklch(0.721 0.1 70)",
+          "oklch(0.836 0.1 70)",
+          "oklch(0.95 0.1 70)"
+        ]
+      },
+      "warning-soft": {
+        "role": "tertiary",
+        "displayName": "Warning Soft",
+        "canonical": "oklch(0.97 0.04 85)",
+        "tonalRamp": [
+          "oklch(0.15 0.04 85)",
+          "oklch(0.264 0.04 85)",
+          "oklch(0.379 0.04 85)",
+          "oklch(0.493 0.04 85)",
+          "oklch(0.607 0.04 85)",
+          "oklch(0.721 0.04 85)",
+          "oklch(0.836 0.04 85)",
+          "oklch(0.95 0.04 85)"
+        ]
+      },
+      "info": {
+        "role": "tertiary",
+        "displayName": "Info",
+        "canonical": "oklch(0.5 0.12 240)",
+        "tonalRamp": [
+          "oklch(0.15 0.12 240)",
+          "oklch(0.264 0.12 240)",
+          "oklch(0.379 0.12 240)",
+          "oklch(0.493 0.12 240)",
+          "oklch(0.607 0.12 240)",
+          "oklch(0.721 0.12 240)",
+          "oklch(0.836 0.12 240)",
+          "oklch(0.95 0.12 240)"
+        ]
+      },
+      "info-foreground": {
+        "role": "tertiary",
+        "displayName": "Info Ink",
+        "canonical": "oklch(0.33 0.09 245)",
+        "tonalRamp": [
+          "oklch(0.15 0.09 245)",
+          "oklch(0.264 0.09 245)",
+          "oklch(0.379 0.09 245)",
+          "oklch(0.493 0.09 245)",
+          "oklch(0.607 0.09 245)",
+          "oklch(0.721 0.09 245)",
+          "oklch(0.836 0.09 245)",
+          "oklch(0.95 0.09 245)"
+        ]
+      },
+      "info-soft": {
+        "role": "tertiary",
+        "displayName": "Info Soft",
+        "canonical": "oklch(0.965 0.025 230)",
+        "tonalRamp": [
+          "oklch(0.15 0.025 230)",
+          "oklch(0.264 0.025 230)",
+          "oklch(0.379 0.025 230)",
+          "oklch(0.493 0.025 230)",
+          "oklch(0.607 0.025 230)",
+          "oklch(0.721 0.025 230)",
+          "oklch(0.836 0.025 230)",
+          "oklch(0.95 0.025 230)"
+        ]
+      },
+      "success": {
+        "role": "tertiary",
+        "displayName": "Success",
+        "canonical": "oklch(0.5 0.13 150)",
+        "tonalRamp": [
+          "oklch(0.15 0.13 150)",
+          "oklch(0.264 0.13 150)",
+          "oklch(0.379 0.13 150)",
+          "oklch(0.493 0.13 150)",
+          "oklch(0.607 0.13 150)",
+          "oklch(0.721 0.13 150)",
+          "oklch(0.836 0.13 150)",
+          "oklch(0.95 0.13 150)"
+        ]
+      },
+      "success-foreground": {
+        "role": "tertiary",
+        "displayName": "Success Ink",
+        "canonical": "oklch(0.33 0.09 150)",
+        "tonalRamp": [
+          "oklch(0.15 0.09 150)",
+          "oklch(0.264 0.09 150)",
+          "oklch(0.379 0.09 150)",
+          "oklch(0.493 0.09 150)",
+          "oklch(0.607 0.09 150)",
+          "oklch(0.721 0.09 150)",
+          "oklch(0.836 0.09 150)",
+          "oklch(0.95 0.09 150)"
+        ]
+      },
+      "success-soft": {
+        "role": "tertiary",
+        "displayName": "Success Soft",
+        "canonical": "oklch(0.965 0.035 150)",
+        "tonalRamp": [
+          "oklch(0.15 0.035 150)",
+          "oklch(0.264 0.035 150)",
+          "oklch(0.379 0.035 150)",
+          "oklch(0.493 0.035 150)",
+          "oklch(0.607 0.035 150)",
+          "oklch(0.721 0.035 150)",
+          "oklch(0.836 0.035 150)",
+          "oklch(0.95 0.035 150)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Dialog, sheet and alert-dialog titles (font-heading, text-lg, semibold, tight)."
+      },
+      "title": {
+        "displayName": "Column Title",
+        "purpose": "type-column-title: column titles, strips, the create-list tile. Uppercase; size set at the call site (text-lg on a column, text-sm on a strip)."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "To-do titles and board text (text-sm, leading-snug)."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Buttons and tab triggers (text-sm, medium)."
+      },
+      "eyebrow": {
+        "displayName": "Eyebrow",
+        "purpose": "type-eyebrow: subtitles, group headers, timeline day labels. Uppercase, muted."
+      },
+      "numeric": {
+        "displayName": "Numeric",
+        "purpose": "num utility: a number that stands alone (a date, a count, a time). Tabular, slashed zero, lining."
+      }
+    },
+    "shadows": [
+      {
+        "name": "shadow-card",
+        "value": "0 1px 2px -1px oklch(0 0 0 / 10%), 0 1px 1px oklch(0 0 0 / 4%)",
+        "purpose": "Today's card, a raised tab pill."
+      },
+      {
+        "name": "shadow-card-dark",
+        "value": "0 1px 2px -1px oklch(0 0 0 / 45%), inset 0 1px 0 oklch(1 0 0 / 5%)",
+        "purpose": "Dark theme: same role; the inset hairline says the edge is nearer."
+      },
+      {
+        "name": "shadow-raised",
+        "value": "0 2px 8px -2px oklch(0 0 0 / 12%), 0 1px 2px oklch(0 0 0 / 6%)",
+        "purpose": "Popovers, menus."
+      },
+      {
+        "name": "shadow-raised-dark",
+        "value": "0 2px 8px -2px oklch(0 0 0 / 50%), inset 0 1px 0 oklch(1 0 0 / 6%)",
+        "purpose": "Dark theme popovers, menus."
+      },
+      {
+        "name": "shadow-overlay",
+        "value": "0 12px 32px -8px oklch(0 0 0 / 25%), 0 2px 6px oklch(0 0 0 / 8%)",
+        "purpose": "Dialogs, sheets."
+      },
+      {
+        "name": "shadow-overlay-dark",
+        "value": "0 12px 32px -8px oklch(0 0 0 / 60%), inset 0 1px 0 oklch(1 0 0 / 6%)",
+        "purpose": "Dark theme dialogs, sheets."
+      }
+    ],
+    "motion": [
+      {
+        "name": "dur-fast",
+        "value": "100ms",
+        "purpose": "Hover, fill, color. The hover wash arrives on this."
+      },
+      {
+        "name": "dur-base",
+        "value": "180ms",
+        "purpose": "The strike, the check flash, a card scaling in, every backdrop fade; the hover wash leaves on this."
+      },
+      {
+        "name": "dur-slow",
+        "value": "260ms",
+        "purpose": "A drop settling. The arrival budget: nothing arrives slower."
+      },
+      {
+        "name": "dur-travel",
+        "value": "350ms",
+        "purpose": "Paired only with ease-spring-travel; the curve is sampled across exactly this span. Arrival is still inside dur-slow."
+      },
+      {
+        "name": "dur-overlay",
+        "value": "340ms",
+        "purpose": "Paired only with ease-spring-overlay; ~95% arrived at 137ms."
+      },
+      {
+        "name": "dur-sheet",
+        "value": "490ms",
+        "purpose": "A sheet crossing its own width (globals.css; not yet in docs/DESIGN.md §4)."
+      },
+      {
+        "name": "dur-overlay-exit",
+        "value": "200ms",
+        "purpose": "Overlay exits: shorter than entry, unsprung, on ease-out-soft."
+      },
+      {
+        "name": "ease-out-soft",
+        "value": "cubic-bezier(0.22, 1, 0.36, 1)",
+        "purpose": "Anything that lands; every edge-anchored surface; the reduced-motion replacement for a spring."
+      },
+      {
+        "name": "ease-spring",
+        "value": "cubic-bezier(0.34, 1.56, 0.64, 1)",
+        "purpose": "The check flash only."
+      },
+      {
+        "name": "ease-spring-travel",
+        "value": "linear(0, 0.0456 4.17%, 0.1555 8.33%, 0.2971 12.5%, 0.4468 16.67%, 0.5889 20.83%, 0.7142 25%, 0.8182 29.17%, 0.8998 33.33%, 0.9602 37.5%, 1.002 41.67%, 1.0284 45.83%, 1.0428 50%, 1.0484 54.17%, 1.0478 58.33%, 1.0434 62.5%, 1.0369 66.67%, 1.0296 70.83%, 1.0225 75%, 1.0161 79.17%, 1.0106 83.33%, 1.0062 87.5%, 1.0029 91.67%, 1.0006 95.83%, 1)",
+        "purpose": "Something that travels between two places (the tab highlight). transform only; 4.9% overshoot."
+      },
+      {
+        "name": "ease-spring-overlay",
+        "value": "linear(0, 0.05 4.17%, 0.1658 8.33%, 0.3089 12.5%, 0.4545 16.67%, 0.5883 20.83%, 0.703 25%, 0.7962 29.17%, 0.8685 33.33%, 0.9222 37.5%, 0.9602 41.67%, 0.9857 45.83%, 1.0017 50%, 1.0108 54.17%, 1.015 58.33%, 1.016 62.5%, 1.0152 66.67%, 1.0133 70.83%, 1.011 75%, 1.0087 79.17%, 1.0065 83.33%, 1.0047 87.5%, 1.0032 91.67%, 1.0021 95.83%, 1)",
+        "purpose": "A centered dialog scaling in place. transform only; 1.6% overshoot. Never on a sheet."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "sm",
+        "value": "640px"
+      },
+      {
+        "name": "lg",
+        "value": "1024px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Ink fill, paper text. Used sparingly; the shared focus-ring outline in spectrum solid.",
+      "html": "<button class=\"ds-btn-primary\">Save</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; justify-content: center; height: 32px; padding: 0 10px; border: 1px solid transparent; border-radius: var(--radius-lg, 10px); background: var(--primary); color: var(--primary-foreground); font-family: var(--app-sans); font-size: 0.875rem; font-weight: 500; white-space: nowrap; cursor: pointer; transition: background-color var(--dur-fast, 100ms), transform var(--dur-fast, 100ms); } .ds-btn-primary:hover { background: color-mix(in oklch, var(--primary) 80%, transparent); } .ds-btn-primary:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; } .ds-btn-primary:active { transform: translateY(1px); }"
+    },
+    {
+      "name": "Outline Button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "Paper with a hairline border; muted on hover. The everyday secondary action (Close, Undo).",
+      "html": "<button class=\"ds-btn-outline\">Close</button>",
+      "css": ".ds-btn-outline { display: inline-flex; align-items: center; justify-content: center; height: 32px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--radius-lg, 10px); background: var(--background); color: var(--foreground); font-family: var(--app-sans); font-size: 0.875rem; font-weight: 500; white-space: nowrap; cursor: pointer; transition: background-color var(--dur-fast, 100ms), transform var(--dur-fast, 100ms); } .ds-btn-outline:hover { background: var(--muted); } .ds-btn-outline:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; } .ds-btn-outline:active { transform: translateY(1px); }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Transparent until hovered; the board's default for icon and toolbar controls.",
+      "html": "<button class=\"ds-btn-ghost\">Collapse</button>",
+      "css": ".ds-btn-ghost { display: inline-flex; align-items: center; justify-content: center; height: 32px; padding: 0 10px; border: 1px solid transparent; border-radius: var(--radius-lg, 10px); background: transparent; color: var(--foreground); font-family: var(--app-sans); font-size: 0.875rem; font-weight: 500; white-space: nowrap; cursor: pointer; transition: background-color var(--dur-fast, 100ms), transform var(--dur-fast, 100ms); } .ds-btn-ghost:hover { background: var(--muted); } .ds-btn-ghost:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; } .ds-btn-ghost:active { transform: translateY(1px); }"
+    },
+    {
+      "name": "Urgent Badge",
+      "kind": "chip",
+      "refersTo": "badge-urgent",
+      "description": "The In Overflow badge: urgent at 10% behind urgent text. The app's only red badge.",
+      "html": "<span class=\"ds-badge-urgent\">In Overflow</span>",
+      "css": ".ds-badge-urgent { display: inline-flex; align-items: center; height: 20px; padding: 2px 8px; border: 1px solid transparent; border-radius: var(--radius-4xl, 26px); background: color-mix(in oklch, var(--urgent) 10%, transparent); color: var(--urgent); font-family: var(--app-sans); font-size: 0.75rem; font-weight: 500; white-space: nowrap; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "32px field, transparent fill, input-colored border; focus moves the border to the spectrum-solid ring.",
+      "html": "<input class=\"ds-input\" placeholder=\"Add a to-do\" />",
+      "css": ".ds-input { height: 32px; width: 16rem; padding: 4px 10px; border: 1px solid var(--input); border-radius: var(--radius-lg, 10px); background: transparent; color: var(--foreground); font-family: var(--app-sans); font-size: 0.875rem; outline: none; transition: border-color var(--dur-fast, 100ms), box-shadow var(--dur-fast, 100ms); } .ds-input::placeholder { color: var(--muted-foreground); } .ds-input:focus-visible { border-color: var(--ring); box-shadow: 0 0 0 3px color-mix(in oklch, var(--ring) 50%, transparent); }"
+    },
+    {
+      "name": "To-do Row",
+      "kind": "card",
+      "refersTo": "todo-card",
+      "description": "Signature row: no border, no fill, a 12px gutter for the square checkbox, an achromatic priority rail (P1 double 5px shown), and an ink-at-5% hover wash in fast, out slower. Done is struck; Won't do only dims.",
+      "html": "<div class=\"ds-todo-list\"><div class=\"ds-todo\"><span class=\"ds-todo-rail ds-p1\"></span><span class=\"ds-todo-box\"></span><span class=\"ds-todo-title\">Call the landlord about the lease</span></div><div class=\"ds-todo\"><span class=\"ds-todo-rail ds-p3\"></span><span class=\"ds-todo-box\"></span><span class=\"ds-todo-title\">Draft the quarterly review</span></div><div class=\"ds-todo ds-done\"><span class=\"ds-todo-box ds-checked\"><svg width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"3\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M20 6 9 17l-5-5\"/></svg></span><span class=\"ds-todo-title\">Book flights</span></div><div class=\"ds-todo ds-dropped\"><span class=\"ds-todo-box\"></span><span class=\"ds-todo-title\">Learn the banjo</span></div></div>",
+      "css": ".ds-todo-list { width: 15rem; background: var(--background); } .ds-todo { position: relative; display: block; padding: 8px 8px 8px 12px; color: var(--foreground); font-family: var(--app-sans); font-size: 0.875rem; line-height: 1.375; transition: background-color var(--dur-base, 180ms) cubic-bezier(0.22, 1, 0.36, 1); } .ds-todo:hover, .ds-todo:focus-within { background: color-mix(in oklch, var(--foreground) 5%, transparent); transition-duration: var(--dur-fast, 100ms); } .ds-todo-rail { position: absolute; top: 4px; bottom: 4px; left: 0; pointer-events: none; } .ds-p1 { width: 5px; opacity: 1; background: linear-gradient(to right, var(--foreground) 0 2px, transparent 2px 3px, var(--foreground) 3px); } .ds-p3 { width: 2px; opacity: 0.75; background: repeating-linear-gradient(to bottom, var(--foreground) 0 6px, transparent 6px 9px); } .ds-todo-box { position: absolute; left: 12px; top: 10px; display: inline-grid; place-content: center; width: 16px; height: 16px; border: 1px solid var(--muted-foreground); border-radius: 0; color: var(--primary-foreground); } .ds-todo-box.ds-checked { background: var(--primary); border-color: var(--primary); } .ds-todo-title { display: block; text-indent: 24px; } .ds-done .ds-todo-title { color: var(--muted-foreground); text-decoration: line-through; } .ds-dropped .ds-todo-title { color: var(--muted-foreground); opacity: 0.7; }"
+    },
+    {
+      "name": "Today Column Header",
+      "kind": "custom",
+      "refersTo": "column-title",
+      "description": "a type-eyebrow date over type-column-title, on today's card: surface-1, shadow-card, the spectrum hairline, no border.",
+      "html": "<section class=\"ds-today\"><header class=\"ds-col-head\"><p class=\"ds-eyebrow\">Sep 5</p><h2 class=\"ds-col-title\">Tuesday</h2></header></section>",
+      "css": ".ds-today { width: 12rem; min-height: 6rem; border-radius: var(--radius-md, 8px); background: var(--surface-1); box-shadow: var(--shadow-card); } .ds-col-head { position: relative; padding: 12px 12px 8px; } .ds-col-head::before { content: \"\"; position: absolute; inset: 0 10px auto 10px; height: 2px; border-radius: 1px; background: var(--spectrum); pointer-events: none; } .ds-col-title { margin: 0; font-family: var(--app-heading); font-size: 1.125rem; font-weight: 700; text-transform: uppercase; letter-spacing: -0.025em; color: var(--foreground); } .ds-eyebrow { margin: 0; font-family: var(--app-sans); font-size: 0.625rem; line-height: 0.875rem; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted-foreground); }"
+    },
+    {
+      "name": "Dialog",
+      "kind": "card",
+      "refersTo": "dialog",
+      "description": "Overlay in the board's language: popover surface, rounded-3xl, p-5, shadow-overlay, a heading-weight serif title, and a hairline footer instead of a filled bar.",
+      "html": "<div class=\"ds-dialog\" role=\"dialog\" aria-labelledby=\"ds-dialog-t\"><h2 id=\"ds-dialog-t\" class=\"ds-dialog-title\">Archive this list?</h2><p class=\"ds-dialog-desc\">Its to-dos leave the board. You can restore it from Archived lists.</p><div class=\"ds-dialog-foot\"><button class=\"ds-dialog-btn\">Cancel</button><button class=\"ds-dialog-btn ds-dialog-btn-primary\">Archive</button></div></div>",
+      "css": ".ds-dialog { display: grid; gap: 16px; width: 24rem; max-width: calc(100% - 2rem); padding: 20px; border-radius: var(--radius-3xl, 22px); background: var(--popover); color: var(--popover-foreground); box-shadow: var(--shadow-overlay), 0 0 0 1px color-mix(in oklch, var(--foreground) 10%, transparent); font-family: var(--app-sans); font-size: 0.875rem; } .ds-dialog-title { margin: 0; font-family: var(--app-heading); font-size: 1.125rem; line-height: 1.25; font-weight: 600; letter-spacing: -0.025em; } .ds-dialog-desc { margin: 0; color: var(--muted-foreground); } .ds-dialog-foot { display: flex; justify-content: flex-end; gap: 8px; margin: 0 -20px -20px; padding: 16px 20px 20px; border-top: 1px solid var(--line-faint); } .ds-dialog-btn { height: 32px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--radius-lg, 10px); background: var(--background); color: var(--foreground); font: inherit; font-weight: 500; cursor: pointer; transition: background-color var(--dur-fast, 100ms); } .ds-dialog-btn:hover { background: var(--muted); } .ds-dialog-btn:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; } .ds-dialog-btn-primary { border-color: transparent; background: var(--primary); color: var(--primary-foreground); } .ds-dialog-btn-primary:hover { background: color-mix(in oklch, var(--primary) 80%, transparent); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Calm Instrument",
+    "overview": "The brief (docs/DESIGN.md, 2026-09-03): Notion's utility, MyMind's calm design and whimsy, the reliability of a Casio F-91W. Snappy and native. The board is an achromatic instrument: white paper, near-black ink, and color only where a color has a job. The hand-drawn cursive F stays black and white; the app's one pop of color is a low-chroma spectrum, used the way the Dia mark uses it. Nothing on the board reads as generic shadcn.\n\nDensity comes from structure, not decoration. Columns are air, today is the one card, priority is a mark rather than a chip, and every color answers \"what does this mean?\" with exactly one channel (docs/DESIGN.md §1). Motion is short and lands: a thing is where it belongs inside 260ms, and the state is correct with the motion removed (§4).",
+    "keyCharacteristics": [
+      "Achromatic base (`oklch(L 0 0)` everywhere except the named channels).",
+      "One color meaning per channel; a new element takes an existing channel or stays achromatic.",
+      "The spectrum as a hairline and a flash in four places, never area.",
+      "Serif headings over a humanist sans (Editorial pairing); tabular numerals in mono.",
+      "Whitespace separates columns; no borders, no dividers.",
+      "Springs on `transform` only; arrival under `--dur-slow`."
+    ],
+    "rules": [
+      {
+        "name": "The Arrival Budget Rule",
+        "body": "Arrival is under 260ms (`--dur-slow`). A spring's settle tail may run to ~400ms, on `transform` only. Confetti is the one exception, and opt-in. Scroll-driven motion on `/` is exempt because it has no duration (docs/DESIGN.md §4, §6).",
+        "section": "motion"
+      },
+      {
+        "name": "The Motion-Removed Rule",
+        "body": "Every animation carries `motion-reduce:animate-none`, and the state it announces must be correct without it. Reduced motion drops the overshoot, not just the animation: swap the spring for `--ease-out-soft` or `transition-none`. An animation keys on a transition, never on a state (docs/DESIGN.md §4).",
+        "section": "motion"
+      },
+      {
+        "name": "The One Channel Rule",
+        "body": "Every color on the board belongs to exactly one channel, and a channel means one thing. If a new element needs color, it takes the channel that already means that thing, or it stays achromatic (docs/DESIGN.md §1).",
+        "section": "colors"
+      },
+      {
+        "name": "The Four Places Rule",
+        "body": "The spectrum appears in four places only: the F mark on hover and focus, the today column's top hairline, the checked-box flash, and the focus ring. Never a fill, a text color, a badge, or a fifth place. It changes color, not position (docs/DESIGN.md §1, §7 decision B).",
+        "section": "colors"
+      },
+      {
+        "name": "The One Red Rule",
+        "body": "Red means urgent, only. Users may pick Tomato for a list; the app itself adds no second red anywhere (docs/DESIGN.md §1, §7 decision A).",
+        "section": "colors"
+      },
+      {
+        "name": "The Form Not Hue Rule",
+        "body": "Priority is carried by the rail's thickness, line style and opacity, never by hue: P1 double 5px, P2 solid 3px, P3 dashed 2px, P4 dotted 2px, all `--foreground` at falling opacity (`PRIORITY_RAILS` in `src/lib/priority.ts`; docs/DESIGN.md §1, §7 decision A and 2026-09-10).",
+        "section": "colors"
+      },
+      {
+        "name": "The Strike Means Done Rule",
+        "body": "`done` gets a strike-through; Won't do (`dropped`) only dims (`opacity-70`) and never gets the strike, because a strike says \"this got done\" (docs/DESIGN.md §1).",
+        "section": "colors"
+      },
+      {
+        "name": "The No New Brand Rule",
+        "body": "The marketing site reuses the app's tokens and invents nothing: no brand color beyond the spectrum (and the spectrum in one place per page at most), no hero gradient that covers area, no third font family (docs/DESIGN.md §6).",
+        "section": "colors"
+      },
+      {
+        "name": "The Hue Rides Edges Rule",
+        "body": "Identity hue goes on borders and fills, never on text, because a step-9 hue at `text-2xs` fails contrast in one theme or the other. Label chips are the one exception: hue text on a tint of the same hue. Never on a card body (docs/DESIGN.md §1).",
+        "section": "colors"
+      },
+      {
+        "name": "The Roles Not Families Rule",
+        "body": "Components reference type roles (`font-sans`, `font-heading`, `font-mono`, `num`, `nums`, `type-column-title`, `type-eyebrow`), never families, so a pairing switch reaches every component (docs/DESIGN.md §2).",
+        "section": "typography"
+      },
+      {
+        "name": "The Columns Are Air Rule",
+        "body": "No column borders or backgrounds. Whitespace (12px `gap-3`) is the only column separator, and rows have no dividers: separation is spacing (36px rhythm, `py-2`) and the hover wash. Overflow and Backlog are the two exceptions, carrying `bg-surface-0` so their resize edges register (docs/DESIGN.md §3, §7 2026-09-05).",
+        "section": "layout"
+      },
+      {
+        "name": "The Only Card Rule",
+        "body": "Today is the board's only card: `--surface-1` + `shadow-card` + the spectrum hairline, and no border; the shadow carries the edge (docs/DESIGN.md §3).",
+        "section": "elevation"
+      },
+      {
+        "name": "The Ink-at-5% Rule",
+        "body": "Hover and focus-within on a row or group header is `bg-foreground/5`: it darkens in light, lifts in dark, and still composites over a 5% identity wash (docs/DESIGN.md §3).",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** take the channel that already means the thing, or stay achromatic (docs/DESIGN.md §1).",
+      "**Do** use `bg-foreground/5` for row and group-header hover and focus-within (§3).",
+      "**Do** give every button the shared `focus-ring` utility (§3).",
+      "**Do** put springs on `transform` only; anything that tints, fades or reflows takes a fixed duration (§4).",
+      "**Do** prefer a color or opacity change to a layout change, and `transform` to anything that reflows (§4).",
+      "**Do** read docs/DRAG-AND-DROP.md §6 and TODO-ITEM-DESIGN.md §10 before touching a row (§5).",
+      "**Do** express every new decision as a token or a named rule, so the upcoming SwiftUI app can port it."
+    ],
+    "donts": [
+      "**Don't** add a second red anywhere in the app (§1).",
+      "**Don't** use the spectrum as a fill, a text color, a badge, or in a fifth place (§1).",
+      "**Don't** give priority a hue (§1, §7 decision A).",
+      "**Don't** strike through Won't do (§1).",
+      "**Don't** put identity hue on `text-2xs` text or a card body (§1).",
+      "**Don't** use status colors on board content (§1).",
+      "**Don't** give a column a border or background, or divide rows with rules; Overflow and Backlog's `surface-0` is the only exception (§3).",
+      "**Don't** fill an overlay footer with `bg-muted` (§3).",
+      "**Don't** let an edge-anchored surface overshoot (§4).",
+      "**Don't** add streaks, counters, or progress gamification (§4; docs/RESEARCH.md §2.9, §4).",
+      "**Don't** add a brand color beyond the spectrum, a hero gradient that covers area, or a third font family on the marketing site (§6)."
+    ]
+  }
+}

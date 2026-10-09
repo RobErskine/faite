@@ -74,6 +74,9 @@ reasoning — two copies drift, and the stale one always wins the argument.
 | Path | Covers |
 |---|---|
 | [`AGENTS.md`](../AGENTS.md) | The rules an agent must not break. `CLAUDE.md` is a one-line import of it. |
+| [`PRODUCT.md`](../PRODUCT.md) | The product record design tools read first (Impeccable's format): users, purpose, terminology, the six product principles, surfaces including the upcoming native iOS app, hard constraints. Points into `docs/`; `docs/` wins on conflict. |
+| [`DESIGN.md`](../DESIGN.md) | A machine-readable mirror of [`docs/DESIGN.md`](DESIGN.md): tokens in YAML frontmatter plus named rules. `docs/DESIGN.md` is the spec of record and wins on conflict. |
+| `.impeccable/` | Impeccable's shared config (`config.json`: build path, detector ignores), the design sidecar (`design.json`), live-mode wiring, and one brief per surface in `surfaces/` (`/board`, the marketing site). Ephemeral files are gitignored. |
 | `.ai/lessons.md` | Mistakes already made here, each with the rule it produced. `SYNC.md` calls reading it "not optional". |
 | `.ai/todo.md` | The append-only build log. History only — plans go in `.ai/<slug>-runbook.md`, never here. |
 | `.ai/*-runbook.md` | Per-batch execution plans, written for zero-context handoff. Point-in-time and disposable. |
