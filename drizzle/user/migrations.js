@@ -13,6 +13,8 @@ import m0010 from './0010_brown_skin.sql';
 import m0011 from './0011_lively_sister_grimm.sql';
 import m0012 from './0012_cultured_corsair.sql';
 import m0013 from './0013_pale_marvel_apes.sql';
+import m0014 from './0014_slim_unicorn.sql';
+import m0015 from './0015_uneven_jigsaw.sql';
 
   export default {
     journal,
@@ -30,7 +32,9 @@ m0009,
 m0010,
 m0011,
 m0012,
-m0013
+m0013,
+m0014,
+m0015
     }
   }
   

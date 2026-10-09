@@ -148,6 +148,8 @@ export function PhoneBoard({
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenHelp={() => setHelpSheetOpen(true)}
         settings={settings}
+        duplicateCount={data.duplicates?.length ?? 0}
+        onOpenDuplicates={() => ui.setDuplicatesOpen(true)}
       />
 
       {/*

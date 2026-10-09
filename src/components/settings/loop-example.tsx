@@ -32,6 +32,8 @@ const EXAMPLE_TODO: Todo = {
   completedAt: null,
   reminderTime: null,
   source: null,
+  duplicateOf: null,
+  duplicateHeld: null,
 };
 
 /**

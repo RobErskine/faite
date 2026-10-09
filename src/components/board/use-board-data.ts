@@ -41,6 +41,7 @@ import {
   useAttachmentCounts,
   useBootstrap,
   useDayNotes,
+  useDuplicateTodos,
   useLabels,
   useLists,
   usePlacementContext,
@@ -53,6 +54,7 @@ import {
   useTodos,
 } from "@/lib/store/hooks";
 import { DEFAULT_TAB_ID } from "@/lib/store/repositories";
+import { isHeldDuplicate } from "@/lib/duplicates";
 
 /** `settingsSchema.workdays`' default, for reads that land before Dexie does. */
 const DEFAULT_WORKDAYS = [1, 2, 3, 4, 5];
@@ -125,6 +127,7 @@ export function useBoardData(params: UseBoardDataParams) {
 
   const { ready, error } = useBootstrap();
   const todos = useTodos();
+  const duplicates = useDuplicateTodos();
   const recurrenceChildren = useRecurrenceChildren();
   const lists = useLists();
   const archivedLists = useArchivedLists();
@@ -195,9 +198,18 @@ export function useBoardData(params: UseBoardDataParams) {
    * a sub-task's own sheet — never reachable from this filtered set — still
    * works if some future surface needs it.
    */
+  const holdAllDuplicates = settings?.holdAllDuplicates ?? false;
   const visibleTodos = useMemo(
-    () => todos.filter((t) => !(t.listId && archivedListIds.has(t.listId)) && !t.parentId),
-    [todos, archivedListIds],
+    () =>
+      todos.filter(
+        (t) =>
+          !(t.listId && archivedListIds.has(t.listId)) &&
+          !t.parentId &&
+          // A held duplicate waits in the Duplicates sheet until someone
+          // says "Add to board" (EI-346).
+          !isHeldDuplicate(t, holdAllDuplicates),
+      ),
+    [todos, archivedListIds, holdAllDuplicates],
   );
 
   /**
@@ -904,6 +916,8 @@ export function useBoardData(params: UseBoardDataParams) {
     ready,
     error,
     todos,
+    duplicates,
+    holdAllDuplicates,
     recurrenceChildren,
     lists,
     archivedLists,

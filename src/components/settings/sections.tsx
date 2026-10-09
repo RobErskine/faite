@@ -1,4 +1,16 @@
-import { Bell, CornerDownRight, Info, KeyRound, Mail, MapPin, Palette, User, UserCog, Wrench } from "lucide-react";
+import {
+  Bell,
+  CopyX,
+  CornerDownRight,
+  Info,
+  KeyRound,
+  Mail,
+  MapPin,
+  Palette,
+  User,
+  UserCog,
+  Wrench,
+} from "lucide-react";
 import type { SettingsSection } from "./types";
 import { AboutSection } from "./about-section";
 import { AccountSection } from "./account-section";
@@ -9,6 +21,7 @@ import { LoopSection } from "./loop-section";
 import { RemindersSection } from "./reminders-section";
 import { PlacesSection } from "./places-section";
 import { EmailSection } from "./email-section";
+import { DuplicatesSection } from "./duplicates-section";
 import { DeveloperSection } from "./developer-section";
 
 /**
@@ -65,6 +78,13 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     description: "A private address that turns forwarded email into to-dos.",
     icon: Mail,
     Component: EmailSection,
+  },
+  {
+    id: "duplicates",
+    label: "Duplicates",
+    description: "Catch a to-do you already have, using your own TypeSafe key.",
+    icon: CopyX,
+    Component: DuplicatesSection,
   },
   {
     id: "api-keys",

@@ -28,6 +28,8 @@ function todo(overrides: Partial<Todo>): Todo {
     completedAt: null,
     reminderTime: null,
     source: null,
+    duplicateOf: null,
+    duplicateHeld: null,
     ...overrides,
   };
 }

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { CircleHelp, LogIn, LogOut, Search, Settings } from "lucide-react";
+import { CircleHelp, CopyX, LogIn, LogOut, Search, Settings } from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -53,6 +53,10 @@ interface AppHeaderProps {
    * with nothing to hint at on a device with no keyboard attached.
    */
   compact?: boolean;
+  /** Probable duplicates waiting for review (EI-346). Above zero, the avatar
+   * gets a dot and the menu gets a Duplicates item. */
+  duplicateCount?: number;
+  onOpenDuplicates?: () => void;
 }
 
 /**
@@ -70,6 +74,8 @@ export function AppHeader({
   onOpenHelp,
   settings,
   compact,
+  duplicateCount = 0,
+  onOpenDuplicates,
 }: AppHeaderProps) {
   const { data: session } = useSession();
   const identity = useIdentity();
@@ -245,10 +251,24 @@ export function AppHeader({
 
       <DropdownMenu>
         <DropdownMenuTrigger
-          aria-label="Account"
-          className="focus-ring rounded-full"
+          aria-label={
+            duplicateCount > 0
+              ? `Account, ${duplicateCount} possible duplicate${duplicateCount === 1 ? "" : "s"}`
+              : "Account"
+          }
+          className="focus-ring relative rounded-full"
         >
           <UserAvatar settings={settings} />
+          {/*
+            Status channel, not Urgent red (docs/DESIGN.md §1): a duplicate is
+            system state worth a look, not a verdict needed now.
+          */}
+          {duplicateCount > 0 ? (
+            <span
+              aria-hidden
+              className="absolute -top-0.5 -right-0.5 size-2.5 rounded-full bg-info ring-2 ring-background"
+            />
+          ) : null}
         </DropdownMenuTrigger>
         {/*
           The shared content sets `w-(--anchor-width)`, which would size the menu
@@ -277,6 +297,13 @@ export function AppHeader({
               ) : null}
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
+            {duplicateCount > 0 && onOpenDuplicates ? (
+              <DropdownMenuItem onClick={onOpenDuplicates}>
+                <CopyX aria-hidden />
+                Duplicates
+                <span className="ml-auto text-xs text-muted-foreground tabular-nums">{duplicateCount}</span>
+              </DropdownMenuItem>
+            ) : null}
             <DropdownMenuItem onClick={onOpenSettings}>
               <Settings aria-hidden />
               Settings

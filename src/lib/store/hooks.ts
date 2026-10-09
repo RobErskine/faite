@@ -100,6 +100,21 @@ export function useTodos(): Todo[] {
 }
 
 /**
+ * Open to-dos the server flagged as probable duplicates (EI-346), newest
+ * first. `undefined` until the first read, unlike `useTodos()`'s `[]` — the
+ * toast in `use-duplicate-toasts.ts` must tell "nothing flagged" apart from
+ * "not loaded yet", or every reload would announce old flags as new.
+ */
+export function useDuplicateTodos(): Todo[] | undefined {
+  return useLiveQuery(async () => {
+    const rows = await getDb()
+      .todos.filter((t) => !!t.duplicateOf && !t.deletedAt && t.status === "open" && !t.parentId)
+      .toArray();
+    return rows.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }, []);
+}
+
+/**
  * Every materialized recurrence occurrence — INCLUDING tombstoned and
  * settled ones. Settlement detection (`lib/recurrence-expand.ts`) needs to
  * see a deleted occurrence to know a series moved past it, so this

@@ -105,6 +105,9 @@ export const SETTINGS_SYNCED_FIELDS: ReadonlySet<string> = new Set([
   // account, not a fact about one screen, so it belongs with `theme` and
   // `fontPairing` rather than with the excluded rail widths.
   "goodJobMode",
+  // How flagged duplicates behave (EI-346) — an account preference, so it
+  // follows the user to every device.
+  "holdAllDuplicates",
 ]);
 
 export const SYNC_PROTOCOL_VERSION = 1 as const;

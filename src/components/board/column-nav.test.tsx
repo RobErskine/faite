@@ -58,6 +58,8 @@ const todo = (id: string, title: string): Todo => ({
   reminderTime: null,
   placeId: null,
   source: null,
+  duplicateOf: null,
+  duplicateHeld: null,
 });
 
 const OVERALL = [todo("t1", "Show Completed Items"), todo("t2", "Keyboard arrow keys")];

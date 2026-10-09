@@ -88,6 +88,9 @@ export const todos = sqliteTable("todos", {
   reminderTime: text("reminder_time"),
   /** Versioned JSON blob — see `todoSchema.source` in `lib/schema.ts`. */
   source: text("source"),
+  /** EI-346 — see `todoSchema.duplicateOf`. */
+  duplicateOf: text("duplicate_of"),
+  duplicateHeld: integer("duplicate_held", { mode: "boolean" }),
 });
 
 export const tabs = sqliteTable("tabs", {
@@ -250,6 +253,8 @@ export const settings = sqliteTable("settings", {
   overdriveAutoConfirmMs: integer("overdrive_auto_confirm_ms").notNull().default(0),
   /** Confetti on completion — see `settingsSchema.goodJobMode`. Off by default. */
   goodJobMode: integer("good_job_mode", { mode: "boolean" }).notNull().default(false),
+  /** EI-346 — see `settingsSchema.holdAllDuplicates`. Off by default. */
+  holdAllDuplicates: integer("hold_all_duplicates", { mode: "boolean" }).notNull().default(false),
   updatedAt: text("updated_at").notNull(),
   version: integer("version").notNull(),
 });

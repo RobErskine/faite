@@ -37,6 +37,8 @@ const todo = (overrides: Partial<Todo> = {}): Todo => ({
   reminderTime: null,
   placeId: null,
   source: null,
+  duplicateOf: null,
+  duplicateHeld: null,
   ...overrides,
 });
 

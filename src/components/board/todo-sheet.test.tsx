@@ -49,6 +49,8 @@ const TODO: Todo = {
   reminderTime: null,
   placeId: null,
   source: null,
+  duplicateOf: null,
+  duplicateHeld: null,
 };
 
 interface HarnessProps {

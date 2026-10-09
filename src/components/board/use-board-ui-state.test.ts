@@ -28,6 +28,7 @@ const CLOSED: BoardOverlayState = {
   helpSheetOpen: false,
   activityOpen: false,
   historyOpen: false,
+  duplicatesOpen: false,
   contextMenuOpen: false,
 };
 

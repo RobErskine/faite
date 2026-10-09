@@ -27,6 +27,7 @@ reasoning — two copies drift, and the stale one always wins the argument.
 | [API.md](API.md) | The public API and MCP adapter: token model, scopes, the two OpenAPI documents, `/api/v1` routes. |
 | [ATTACHMENTS.md](ATTACHMENTS.md) | Files on a to-do over R2 — the JSON/bytes two-plane split, the ordering invariant, and why the limits are not higher. |
 | [EMAIL-INGEST.md](EMAIL-INGEST.md) | Forwarding mail into Backlog: Email Routing → `worker.ts email()` → DO push, with the trust and privacy invariants. |
+| [DUPLICATES.md](DUPLICATES.md) | Duplicate to-do detection on the user's own Jev key: the one hook in `push()`, the held flag, the encrypted key. |
 
 ## The board
 

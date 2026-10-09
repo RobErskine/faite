@@ -28,6 +28,8 @@ function todo(overrides: Partial<Todo> = {}): Todo {
     placeId: null,
     reminderTime: "09:00",
     source: null,
+    duplicateOf: null,
+    duplicateHeld: null,
     ...overrides,
   };
 }

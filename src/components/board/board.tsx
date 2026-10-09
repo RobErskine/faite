@@ -29,6 +29,8 @@ import { ArchivedListsSheet } from "./archived-lists-sheet";
 import { HelpSheet } from "./help-sheet";
 import { ActivitySheet } from "./activity-sheet";
 import { HistorySheet } from "./history-sheet";
+import { DuplicatesSheet } from "./duplicates-sheet";
+import { useDuplicateToasts } from "./use-duplicate-toasts";
 import { SettingsSheet } from "@/components/settings/settings-sheet";
 import { CommandPalette } from "./command-palette";
 import { DaySheet } from "./day-sheet";
@@ -47,7 +49,7 @@ import { computeModalOpen, useBoardUiState } from "./use-board-ui-state";
 import { useBoardActions } from "./use-board-actions";
 import { DesktopBoard, type ReadyBoardData } from "./desktop-board";
 import { PhoneBoard } from "./phone-board";
-import { setDayNote } from "@/lib/store/repositories";
+import { setDayNote, updateTodo } from "@/lib/store/repositories";
 import { boardDragAnnouncements } from "@/lib/dnd-announcements";
 import { useAnyMenuOpen } from "@/lib/menu-open-store";
 import { ContextMenusEnabled } from "@/components/ui/context-menu";
@@ -112,6 +114,10 @@ export function Board() {
   // delivers each once. See `use-reminders.ts` for why this is a poll rather
   // than a per-todo timer.
   useReminders(data.nonTemplateTodos, settings?.timezone ?? "UTC");
+
+  const { setDuplicatesOpen } = ui;
+  const openDuplicates = useCallback(() => setDuplicatesOpen(true), [setDuplicatesOpen]);
+  useDuplicateToasts(data.duplicates, data.holdAllDuplicates, openDuplicates);
 
   /**
    * Push the stored font pairing onto <html>, and mirror it to localStorage.
@@ -274,6 +280,7 @@ export function Board() {
       helpSheetOpen: ui.helpSheetOpen,
       activityOpen: ui.activityOpen,
       historyOpen: !!ui.historyDay,
+      duplicatesOpen: ui.duplicatesOpen,
       contextMenuOpen,
     }),
   };
@@ -584,6 +591,23 @@ export function Board() {
         }}
       />
 
+      {/* Plain rows like `ActivitySheet`, so also safe inside the DndContext. */}
+      <DuplicatesSheet
+        open={ui.duplicatesOpen}
+        onOpenChange={ui.setDuplicatesOpen}
+        duplicates={data.duplicates ?? []}
+        todosById={data.todosById}
+        listsById={data.listsById}
+        backlogList={data.backlogList}
+        holdAll={data.holdAllDuplicates}
+        onRemove={actions.handleDelete}
+        onKeep={(id) => void updateTodo(id, { duplicateOf: null, duplicateHeld: null })}
+        onOpenTodo={(todoId) => {
+          ui.openTodoSheet(todoId);
+          ui.setDuplicatesOpen(false);
+        }}
+      />
+
       <CommandPalette
         open={ui.paletteOpen}
         onOpenChange={ui.setPaletteOpen}
@@ -610,6 +634,8 @@ export function Board() {
         onOpenHelp={() => ui.setHelpSheetOpen(true)}
         onOpenActivity={() => ui.setActivityOpen(true)}
         onOpenHistory={() => ui.setHistoryDay(today)}
+        duplicateCount={data.duplicates?.length ?? 0}
+        onOpenDuplicates={openDuplicates}
       />
 
       <SessionProvider />

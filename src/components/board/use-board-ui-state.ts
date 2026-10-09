@@ -51,6 +51,8 @@ export interface BoardOverlayState {
   /** The History sheet (EI-322). Holds a day note's rich-text editor, so
    * undo must stay off behind it for the same reason as the day sheet. */
   historyOpen: boolean;
+  /** The Duplicates sheet (EI-346). Plain rows, held off like the rest. */
+  duplicatesOpen: boolean;
   /** Any right-click context menu (EI-284). Base UI owns focus and Escape
    * inside its popup but not ⌘Z, which would otherwise bubble to `document`
    * and rewrite the board behind a menu whose items still describe the
@@ -83,6 +85,7 @@ export function computeModalOpen(state: BoardOverlayState): boolean {
     state.helpSheetOpen ||
     state.activityOpen ||
     state.historyOpen ||
+    state.duplicatesOpen ||
     state.contextMenuOpen
   );
 }
@@ -201,6 +204,8 @@ export function useBoardUiState() {
   const [helpSheetOpen, setHelpSheetOpen] = useState(false);
   /** The global activity feed, opened by `⌘⇧A`. */
   const [activityOpen, setActivityOpen] = useState(false);
+  /** The Duplicates sheet (EI-346), opened from the account menu or ⌘K. */
+  const [duplicatesOpen, setDuplicatesOpen] = useState(false);
   /** The day the History sheet (EI-322) shows; null when it is closed. Same
    * lazy-initializer reasoning as `openTodoId` — see `readDeepLinkParams`. */
   const [historyDay, setHistoryDay] = useState<CivilDate | null>(
@@ -578,6 +583,8 @@ export function useBoardUiState() {
     setHelpSheetOpen,
     activityOpen,
     setActivityOpen,
+    duplicatesOpen,
+    setDuplicatesOpen,
     historyDay,
     setHistoryDay,
     phoneView,

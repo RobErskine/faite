@@ -29,6 +29,7 @@ import { handleOptions, withCors } from "./cors";
 import { handleDesktopRequest } from "./desktop/routes";
 import { handleRaycastRequest } from "./raycast/routes";
 import { handleEmail } from "./email/ingest";
+import { handleDuplicatesRequest } from "./duplicates/routes";
 import { handleEmailRequest } from "./email/routes";
 import { handleLinkPreviewRequest } from "./link-preview/routes";
 import { handleMcpRequest } from "./mcp/routes";
@@ -99,6 +100,11 @@ export default {
       // Same seam again (EI-186): reveal/rotate the caller's own secret
       // ingest address. See ./email/routes.ts.
       return handleEmailRequest(request, env);
+    }
+    if (pathname.startsWith("/api/duplicates")) {
+      // Same seam again (EI-346): the user's own Jev key, which only the
+      // Durable Object ever reads back. See ./duplicates/routes.ts.
+      return handleDuplicatesRequest(request, env);
     }
     if (pathname.startsWith("/api/places")) {
       // Same reasoning again (EI-83), plus one of its own: this is the only
