@@ -27,11 +27,35 @@ export function corsHeaders(origin: string | null): HeadersInit {
   };
 }
 
-export function handleOptions(request: Request): Response {
+/**
+ * `/api/v1` only (EI-364): the allow-list above for Faite's own clients, and a
+ * bare `*` for every other origin — `null` included, which is what a
+ * sandboxed or `srcdoc` iframe sends (a DAKboard Custom HTML block, say).
+ *
+ * The wildcard carries no `Allow-Credentials`, and that is the whole safety
+ * argument: a browser never exposes a cookie-authenticated response under
+ * `*`, and fails a credentialed preflight outright. So a foreign origin can
+ * read `/api/v1` only with a bearer key it already holds — the same access
+ * `curl` has — and a logged-in user's cookie session stays same-origin.
+ * `authorizeScope` remains the gate either way.
+ *
+ * Not for any other seam: `/api/sync/*`, `/api/auth/*` and MCP keep the
+ * strict list, since cookies are their normal browser credential.
+ */
+export function publicCorsHeaders(origin: string | null): HeadersInit {
+  if (origin && TRUSTED_ORIGINS.includes(origin)) return corsHeaders(origin);
+  // `Vary` still applies: a trusted origin gets a different answer.
+  return { "Access-Control-Allow-Origin": "*", Vary: "Origin" };
+}
+
+export function handleOptions(
+  request: Request,
+  originHeaders: (origin: string | null) => HeadersInit = corsHeaders,
+): Response {
   return new Response(null, {
     status: 204,
     headers: {
-      ...corsHeaders(request.headers.get("Origin")),
+      ...originHeaders(request.headers.get("Origin")),
       // PATCH has been served since A5 (`PATCH /api/v1/todos/{id}`) and
       // DELETE since A13, but neither was ever advertised (EI-307) — so a
       // cross-origin browser client was blocked from every write method

@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // leaves the ENTIRE rest of the dispatch real: routing, status codes,
 // sequencing, and the push batch. `vi.mock` is hoisted above imports, which
 // is why this cannot live in `test-harness.ts`.
-vi.mock("../auth", () => ({ createAuth: vi.fn(() => ({})) }));
+vi.mock("../auth", () => ({ createAuth: vi.fn(() => ({})), TRUSTED_ORIGINS: ["https://myfaite.app"] }));
 vi.mock("../auth-scopes", () => ({ authorizeScope: vi.fn() }));
 
 import { authorizeScope } from "../auth-scopes";
@@ -390,6 +390,22 @@ describe("dispatch edges", () => {
     for (const method of ["GET", "POST", "PATCH", "DELETE", "OPTIONS"]) {
       expect(allowed).toContain(method);
     }
+  });
+
+  /**
+   * EI-364. A bearer-key client on a foreign origin — a DAKboard Custom HTML
+   * block — got a preflight with no Allow-Origin, so every fetch failed.
+   */
+  it("lets a foreign origin read with a bearer key, never with credentials", async () => {
+    const request = v1Request("GET", "/api/v1/todos");
+    request.headers.set("Origin", "https://dakboard.com");
+    stub.listEntities.mockResolvedValue([]);
+
+    const res = await handleV1Request(request, env);
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    expect(res.headers.get("Access-Control-Allow-Credentials")).toBeNull();
   });
 
   it("500s rather than leaking an exception when the store throws", async () => {
