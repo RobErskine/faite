@@ -328,25 +328,30 @@ needs no key — it is a binding.
 
 ## 6. Email verification
 
-**Done, and no longer a manual switch.** `src/server/auth.ts` derives it from
-the hostname the request arrived on:
+**Done.** `src/server/auth.ts` turns it off for a local worker:
 
 ```ts
-const isLocal = hostname === "localhost" || hostname === "127.0.0.1";
+const isLocal = isLocalRuntime(env, origin); // LOCAL_DEV === "1", or a localhost hostname
 const requireEmailVerification = !isLocal;
 ```
 
-On in production and on branch previews (they share production's D1), off on
-localhost. That asymmetry is a deadlock fix, not a convenience: the
+On in production and on branch previews (they share production's D1), off
+locally. **Locally means `LOCAL_DEV="1"` in `.dev.vars`** — `npm run
+dev:bootstrap` adds it. The hostname alone cannot tell (EI-215): `wrangler
+dev`, which `npm run preview` runs, simulates the production `routes`, so a
+request to `localhost:8787` reaches the worker as `https://myfaite.app` —
+the same trap `ATTACHMENTS_ORIGIN` exists for. `.dev.vars` is never uploaded,
+so the flag cannot reach a deploy; **never set `LOCAL_DEV` as a secret or in
+`vars`.** That asymmetry is a deadlock fix, not a convenience: the
 `send_email` binding does not deliver under local `wrangler dev` without
 `"remote": true`, so requiring verification locally strands every local signup
 with no way to reach the link. `sendEmail` also logs the whole message — reset
 and verify URLs included — to the worker console locally, so the flow stays
 inspectable without a mailbox.
 
-Keyed on the request hostname rather than `NEXTJS_ENV` deliberately: an env
-var can disagree with the origin a request actually came in on, and that
-disagreement is invisible until auth mysteriously 403s.
+Not keyed on `NEXTJS_ENV`: that is OpenNext's selector for which `.env*` file
+loads, a different job, and a switch that turns off verification should not
+change as a side effect of anyone editing it.
 
 **If you ever gate a *new* environment on verification, confirm mail actually
 delivers there first.** Turning it on somewhere that cannot send locks every

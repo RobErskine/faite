@@ -1963,3 +1963,23 @@ read the derivation, not the table — the table is a record of what already
 happened. And a comment that justifies a data source is an assertion with a
 shelf life: when you extend what a surface can resolve, grep for the comments
 that said it couldn't.
+
+---
+
+## Under `wrangler dev`, the request cannot tell you the worker is local (EI-215)
+
+`isLocal` in `auth.ts` checked `new URL(request.url).hostname` for
+`localhost`. It never matched under `npm run preview`: `wrangler dev`
+simulates the configured `routes`, so a request sent to `localhost:8787`
+reaches the worker as `https://myfaite.app`. Verification stayed on, and every
+local email/password signup stopped at "Check your email" — the bug was
+worked around with a hand-run `UPDATE … email_verified = 1` for weeks before
+anyone traced it. `ATTACHMENTS_ORIGIN` (EI-244) had already hit the same wall
+and its `wrangler.jsonc` comment said so; the auth check was written as if it
+had not.
+
+**Rule:** never derive "am I local" from `request.url`, the `Host` header or
+`request.cf` in this worker. Use an explicit flag in the git-ignored
+`.dev.vars` (`LOCAL_DEV="1"` — never uploaded, so it cannot reach a deploy),
+and give it a test in both directions, since one direction strands local
+users and the other lets anyone skip verification.

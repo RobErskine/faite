@@ -43,7 +43,7 @@
  * See `docs/SETUP.md` for what the manual version of this looks like.
  */
 import { execFileSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { hashPassword } from "better-auth/crypto";
@@ -65,7 +65,13 @@ const DEV_VARS_KEYS = [
   "GOOGLE_PLACES_API_KEY",
   "TURNSTILE_SECRET_KEY",
   "ATTACHMENTS_ORIGIN",
+  "LOCAL_DEV",
 ];
+
+// EI-215. `wrangler dev` reports the production hostname, so this flag is the
+// only way the worker learns it is local — without it, every local signup
+// needs a verification email that cannot be delivered.
+const LOCAL_DEV_LINE = 'LOCAL_DEV="1"';
 
 const argv = process.argv.slice(2);
 
@@ -125,11 +131,21 @@ if (existsSync(devVars)) {
     console.error(`\n  No .dev.vars here, and none to copy from (looked in ${from}).`);
     console.error("  Pass --from <path>, or create .dev.vars with these keys:\n");
     for (const key of DEV_VARS_KEYS) {
-      console.error(`    ${key}=${key === "ATTACHMENTS_ORIGIN" ? "        (must stay empty locally)" : ""}`);
+      const hint =
+        key === "ATTACHMENTS_ORIGIN" ? "        (must stay empty locally)"
+        : key === "LOCAL_DEV" ? '"1"' : "";
+      console.error(`    ${key}=${hint}`);
     }
     console.error("\n  Generate BETTER_AUTH_SECRET with: npx @better-auth/cli secret\n");
     process.exit(1);
   }
+}
+
+// A .dev.vars copied from a checkout older than EI-215 lacks the flag. Append
+// it here — this file is the worktree's own copy, never the source.
+if (!/^LOCAL_DEV=/m.test(readFileSync(devVars, "utf8"))) {
+  appendFileSync(devVars, `\n# EI-215: tells the worker it is local (wrangler dev reports the prod hostname).\n${LOCAL_DEV_LINE}\n`);
+  console.log(`  .dev.vars        added ${LOCAL_DEV_LINE}`);
 }
 
 // ----------------------------------------------------------------- migrate

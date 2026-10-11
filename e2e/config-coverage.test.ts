@@ -1,7 +1,9 @@
 import { readdirSync } from "node:fs";
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import config from "../playwright.config";
+import serverConfig from "../playwright.server.config";
 
 /**
  * A vitest test *about* the Playwright config, not a Playwright test — it
@@ -69,5 +71,27 @@ describe("playwright.config.ts spec coverage", () => {
       `${empty.join(", ")} has no testMatch, so it silently runs every spec — ` +
         `which is the 180-run behavior EI-187 removed.`,
     ).toEqual([]);
+  });
+});
+
+/**
+ * The server-backed suite (EI-355, docs/E2E.md §10) lives in `e2e/server/`
+ * under its own config. Two ways it can go quietly wrong: the main config
+ * starts matching those specs (they then run against :3000, where there is no
+ * worker), or the server config stops pointing at them (they run nowhere).
+ */
+describe("playwright.server.config.ts", () => {
+  const SERVER_DIR = fileURLToPath(new URL("./server/", import.meta.url));
+
+  it("has at least one spec in e2e/server/", () => {
+    expect(readdirSync(SERVER_DIR).filter((name) => name.endsWith(".spec.ts"))).not.toEqual([]);
+  });
+
+  it("is the config that runs e2e/server/", () => {
+    expect(resolve(serverConfig.testDir!)).toBe(resolve(SERVER_DIR));
+  });
+
+  it("is excluded from the main config", () => {
+    expect([config.testIgnore].flat()).toContain("**/server/**");
   });
 });

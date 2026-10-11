@@ -37,4 +37,6 @@ export const auth = createAuth({
   // Better Auth never reads it.
   OWNER_EMAILS: "" as unknown as CloudflareEnv["OWNER_EMAILS"],
   ATTACHMENTS_ORIGIN: "" as unknown as CloudflareEnv["ATTACHMENTS_ORIGIN"],
+  // Empty: schema generation must see the production config, not the local one.
+  LOCAL_DEV: "",
 });

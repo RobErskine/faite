@@ -68,6 +68,10 @@ const SPECS = {
 
 export default defineConfig({
   testDir: "./e2e",
+  // The server-backed specs need the Workers runtime on :8787 and have their
+  // own config, `playwright.server.config.ts` (docs/E2E.md §10). Ignored here
+  // so no `testMatch` glob here can ever pick one up against :3000.
+  testIgnore: "**/server/**",
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,

@@ -66,7 +66,7 @@ reasoning — two copies drift, and the stale one always wins the argument.
 
 | Doc | Covers |
 |---|---|
-| [E2E.md](E2E.md) | The Playwright suite. §8 is what runs where and the coverage traded for time; §9 is why CI serves a production build. |
+| [E2E.md](E2E.md) | The Playwright suite. §8 is what runs where and the coverage traded for time; §9 is why CI serves a production build; §10 is the server-backed suite on :8787 (`npm run e2e:server`). |
 | [APP-ICON.md](APP-ICON.md) | The icon pipeline. `assets/icons/icon.svg` is the single source — never hand-edit a derived asset. |
 | [GOOGLE-PLACES-SETUP.md](GOOGLE-PLACES-SETUP.md) | One-time Google Cloud/Places key runbook. Do **not** referrer-restrict the key. |
 
