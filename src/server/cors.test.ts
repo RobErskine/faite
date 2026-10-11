@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { corsHeaders, handleOptions, withCors } from "./cors";
+import { corsHeaders, handleOptions, publicCorsHeaders, withCors } from "./cors";
 
 const DEV = "http://localhost:3000";
 const PREVIEW = "http://localhost:8787";
@@ -37,6 +37,37 @@ describe("corsHeaders", () => {
     // Same-origin GETs and curl send none. Absent is not hostile — it just
     // means CORS has no part to play.
     expect(corsHeaders(null)).toEqual({});
+  });
+});
+
+describe("publicCorsHeaders — /api/v1 only (EI-364)", () => {
+  it("keeps the credentialed echo for Faite's own origins", () => {
+    expect(headersOf(publicCorsHeaders(DEV))).toEqual(headersOf(corsHeaders(DEV)));
+  });
+
+  it.each(["https://dakboard.com", "null", null])(
+    "gives %s a wildcard with no credentials",
+    (origin) => {
+      const headers = headersOf(publicCorsHeaders(origin));
+      expect(headers["access-control-allow-origin"]).toBe("*");
+      // The safety argument: a browser never exposes a cookie-authenticated
+      // response under `*`, so a foreign page can read only with a bearer key.
+      expect(headers["access-control-allow-credentials"]).toBeUndefined();
+    },
+  );
+
+  it("answers a foreign preflight when passed to handleOptions", () => {
+    const response = handleOptions(
+      new Request(`${PREVIEW}/api/v1/todos`, {
+        method: "OPTIONS",
+        headers: { Origin: "https://dakboard.com" },
+      }),
+      publicCorsHeaders,
+    );
+
+    expect(response.status).toBe(204);
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
+    expect(response.headers.get("Access-Control-Allow-Headers")).toContain("Authorization");
   });
 });
 

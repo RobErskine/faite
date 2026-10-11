@@ -3,7 +3,7 @@ import { resolveDateInputs } from "@/lib/date-input";
 import type { ServiceContext } from "@/lib/service/context";
 import { createAuth } from "../auth";
 import { authorizeScope } from "../auth-scopes";
-import { corsHeaders, handleOptions } from "../cors";
+import { handleOptions, publicCorsHeaders } from "../cors";
 import { durableHlcQueue } from "../service/hlc";
 import {
   buildCreateDayNoteEntry,
@@ -727,9 +727,9 @@ async function handleUpsertDayNote(
 }
 
 export async function handleV1Request(request: Request, env: CloudflareEnv): Promise<Response> {
-  if (request.method === "OPTIONS") return handleOptions(request);
+  if (request.method === "OPTIONS") return handleOptions(request, publicCorsHeaders);
 
-  const headers = corsHeaders(request.headers.get("Origin"));
+  const headers = publicCorsHeaders(request.headers.get("Origin"));
   const url = new URL(request.url);
   const auth0 = createAuth(env, request);
 

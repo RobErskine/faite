@@ -91,7 +91,7 @@ Two consequences worth deciding early:
 | Auth + routing seam | `src/server/worker.ts`, `sync/routes.ts`, `places/routes.ts` | `output: export` forbids Next Route Handlers that read `Request` — API routes must live here too (ARCHITECTURE §2.12) |
 | A route that already gates on a session and proxies a paid upstream | `src/server/places/routes.ts` | The closest existing shape to a public API route: 501/401/400/429/502 mapping, and validation split into a testable pure module beside it |
 | The service layer's first real consumer | `src/server/email/ingest.ts` (EI-186) | Non-HTTP transport (`email()`) going through `createTodo` → `push()`. Shows what a `ServiceContext` and a `PushTransport` actually look like at a call site |
-| CORS allow-list | `src/server/auth.ts`'s `TRUSTED_ORIGINS` | One list |
+| CORS allow-list | `src/server/auth.ts`'s `TRUSTED_ORIGINS` | One list — `/api/v1` adds a no-credentials `*` on top (below) |
 
 ## Key scopes (A2, EI-227)
 
@@ -172,6 +172,26 @@ pre-A2 keys the fallback was still covering. Removing it narrowed those two
 specific keys to read-only until their device re-signs-in, which mints a
 correctly-scoped replacement (now also named per-device — see EI-261's
 ticket for the desktop-key-naming half of that work).
+
+## CORS: any origin may call `/api/v1` with a key (EI-364)
+
+`/api/v1` answers CORS for every origin, `null` included, so a browser page
+that holds a `faite_…` key can call it from anywhere — a dashboard widget, a
+DAKboard Custom HTML block, a static page on someone's own domain.
+`publicCorsHeaders` (`src/server/cors.ts`) keeps the credentialed echo for
+`TRUSTED_ORIGINS` and sends a bare `Access-Control-Allow-Origin: *` to
+everyone else.
+
+The `*` carries no `Allow-Credentials`, and that is what makes it safe: a
+browser never exposes a cookie-authenticated response under `*` and fails a
+credentialed preflight outright. A foreign page therefore reads only with a
+bearer key it already holds — what `curl` could do anyway — and a signed-in
+user's cookie session stays same-origin. The other seams (`/api/sync/*`,
+`/api/auth/*`, MCP) keep the strict allow-list, because cookies are their
+normal browser credential.
+
+A key in client-side code is visible to anyone who can view the page. Point
+people at a read-only key (Write unchecked) for that use.
 
 ## Write endpoints and parity gaps (A5, EI-230)
 
