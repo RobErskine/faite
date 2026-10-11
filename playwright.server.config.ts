@@ -27,12 +27,14 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   // One wrangler process (one workerd, one local D1, the Durable Objects)
-  // serves every worker. Each test signs up its own account, so tests share
-  // no data — only that process. Measured on an M-series laptop, 6 repeats of
-  // the smoke spec: green at 2 and at 4 workers. CI is pinned to 2 until
-  // EI-360 measures the runner; locally Playwright's default (cpu count)
-  // applies, as in the main config.
-  workers: process.env.CI ? 2 : undefined,
+  // serves every worker, and the sync specs open two browser contexts per
+  // test. At Playwright's local default (5 workers on a 10-core laptop) the
+  // suite flaked — boards slow to boot, a sync push missing its 20s window.
+  // Not a clean measurement: some of those runs overlapped a preview rebuild
+  // (docs/E2E.md §10). 2 is the conservative value until EI-360 measures it
+  // on a quiet machine. Each test signs up its own account, so this is about
+  // CPU, not shared data.
+  workers: 2,
   reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : "list",
   // Higher than the main suite's 30s: a write has to leave one client, pass
   // the 2s outbox debounce (src/lib/sync/engine.ts), land in the Durable
