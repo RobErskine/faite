@@ -1,5 +1,5 @@
-import type { APIRequestContext, Page, PlaywrightWorkerArgs } from "@playwright/test";
-import { test, expect, addTodo, todoCard } from "../support/server";
+import type { APIRequestContext } from "@playwright/test";
+import { test, expect, addTodo, apiClient, closeSettings, createApiKey, todoCard } from "../support/server";
 
 /**
  * API keys and the public REST API, end to end (EI-358): a key minted in the
@@ -18,43 +18,6 @@ import { test, expect, addTodo, todoCard } from "../support/server";
  */
 
 const CONVERGE = { timeout: 20_000 };
-
-/** Mints a key through Settings → API Keys and returns the raw value, which
- * the reveal dialog shows exactly once. */
-async function createApiKey(page: Page, name: string, { write }: { write: boolean }) {
-  // The reveal dialog keeps "Done" disabled until the key is copied, so the
-  // copy has to really happen.
-  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
-
-  await page.getByRole("button", { name: /^Account/ }).click();
-  await page.getByRole("menuitem", { name: "Settings" }).click();
-  await page.getByRole("tab", { name: "API Keys" }).click();
-
-  await page.getByRole("textbox", { name: "Create a key" }).fill(name);
-  if (write) await page.getByRole("checkbox", { name: /^Write/ }).check();
-  await page.getByRole("button", { name: "Create", exact: true }).click();
-
-  const reveal = page.getByRole("dialog", { name: "Your new API key" });
-  const key = await reveal.getByRole("textbox").inputValue();
-  expect(key.length).toBeGreaterThan(20);
-  await reveal.getByRole("button", { name: "Copy key" }).click();
-  await reveal.getByRole("button", { name: "Done" }).click();
-  await expect(reveal).toHaveCount(0);
-  return key;
-}
-
-async function closeSettings(page: Page) {
-  await page.keyboard.press("Escape");
-  await expect(page.getByRole("heading", { name: "Settings" })).toHaveCount(0);
-}
-
-/** A request context with no cookies, optionally carrying a bearer key. */
-async function apiClient(playwright: PlaywrightWorkerArgs["playwright"], key?: string) {
-  return playwright.request.newContext({
-    baseURL: "http://localhost:8787",
-    extraHTTPHeaders: key ? { Authorization: `Bearer ${key}` } : {},
-  });
-}
 
 async function titles(api: APIRequestContext): Promise<string[]> {
   const response = await api.get("/api/v1/todos?status=open");

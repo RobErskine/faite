@@ -1,4 +1,4 @@
-import { test as base, expect, type Browser, type Page } from "@playwright/test";
+import { test as base, expect, type Browser, type Page, type PlaywrightWorkerArgs } from "@playwright/test";
 import { FROZEN_TIME } from "./fixtures";
 import { openSheet } from "./sheet";
 
@@ -12,6 +12,9 @@ import { openSheet } from "./sheet";
  * shared between tests, so specs can run in parallel against one local D1
  * that is never reset.
  */
+
+/** Must match `baseURL` in playwright.server.config.ts. */
+export const BASE_URL = "http://localhost:8787";
 
 export type Account = { name: string; email: string; password: string };
 
@@ -111,6 +114,43 @@ export async function expectOnServer(page: Page, text: string) {
   await expect
     .poll(async () => (await page.request.get("/api/sync/pull")).text(), { timeout: 20_000 })
     .toContain(text);
+}
+
+/** Mints a key through Settings → API Keys and returns the raw value, which
+ * the reveal dialog shows exactly once. */
+export async function createApiKey(page: Page, name: string, { write }: { write: boolean }) {
+  // The reveal dialog keeps "Done" disabled until the key is copied, so the
+  // copy has to really happen.
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+
+  await page.getByRole("button", { name: /^Account/ }).click();
+  await page.getByRole("menuitem", { name: "Settings" }).click();
+  await page.getByRole("tab", { name: "API Keys" }).click();
+
+  await page.getByRole("textbox", { name: "Create a key" }).fill(name);
+  if (write) await page.getByRole("checkbox", { name: /^Write/ }).check();
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+
+  const reveal = page.getByRole("dialog", { name: "Your new API key" });
+  const key = await reveal.getByRole("textbox").inputValue();
+  expect(key.length).toBeGreaterThan(20);
+  await reveal.getByRole("button", { name: "Copy key" }).click();
+  await reveal.getByRole("button", { name: "Done" }).click();
+  await expect(reveal).toHaveCount(0);
+  return key;
+}
+
+export async function closeSettings(page: Page) {
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("heading", { name: "Settings" })).toHaveCount(0);
+}
+
+/** A request context with no cookies, optionally carrying a bearer key. */
+export async function apiClient(playwright: PlaywrightWorkerArgs["playwright"], key?: string) {
+  return playwright.request.newContext({
+    baseURL: BASE_URL,
+    extraHTTPHeaders: key ? { Authorization: `Bearer ${key}` } : {},
+  });
 }
 
 export const test = base.extend<{ account: Account }>({

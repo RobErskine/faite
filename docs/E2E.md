@@ -608,6 +608,15 @@ restart it, or the suite tests the code you had before. Cold, the whole
 command measured **49s** (M-series laptop, `.next/cache` warm); a first-ever
 build is several times that, hence the 10-minute `webServer.timeout`.
 
+**Stopping a preview takes more than freeing the port.** `opennextjs-cloudflare
+preview` runs `wrangler dev`, which starts `workerd` again if `workerd` is
+killed. Kill `workerd` by port only, and a few seconds later :8787 is served
+again — by whatever bundle that `wrangler dev` loaded, which after a
+throwaway build may not be the code you think. Kill the `wrangler … dev`
+parent (`ps -axo pid,ppid,command | grep workerd` shows it), then confirm
+`lsof -tiTCP:8787 -sTCP:LISTEN` is empty before trusting a run. (`pkill -f`
+on a pattern that also appears in your own shell command kills the shell.)
+
 ### 10.4 D1 lifecycle and test data
 
 - Local D1 lives in `.wrangler/state/v3/d1` and is **never reset** by the
@@ -649,12 +658,13 @@ from the server. `smoke.spec.ts` does both.
 | `auth.spec.ts` | Signup logs in; session survives reload; sign-out wipes the device and lands on `/`; sign-in restores the account's to-dos; a signed-out `/board` still offers "Continue without an account" (EI-356) |
 | `sync.spec.ts` | Two clients on one account: create, rename and complete reach the other client without a refresh; edits made offline flush on reconnect with no duplicates; a conflicting title edit goes to the later HLC, not the later arrival (EI-357) |
 | `api.spec.ts` | A key made in Settings → API Keys, used as a bearer token: a read-write key's REST create, rename, complete and delete reach the open board live, and board writes appear in `GET /api/v1/todos`; a read-only key reads but gets 403 on write; no key gets 401; a revoked key gets 401 (EI-358) |
+| `mcp.spec.ts` | `/mcp` over raw JSON-RPC: `initialize` passes from the app's own origin and from no origin, and gets 403 "Invalid Origin" from another — the EI-347 regression guard, checked to fail against the pre-fix code; `tools/list` equals the tool set `docs/API.md` documents; `list_todos` and `list_lists` with a bearer key return the account's own data; no key gets 401 (EI-359) |
 
 **Name the `account` fixture in every test that needs a signed-in board**, even if the test never reads it: fixtures are lazy, so without it the sign-up never runs and `page` stays on `about:blank`.
 
 REST calls go through a fresh `playwright.request.newContext()`, never `page.request`: with no bearer, `/api/v1` falls back to the cookie session, so a shared-cookie context turns "no key" and "revoked key" into 200s.
 
-Shared helpers in `e2e/support/server.ts`: `account` fixture, `signIn`,
+Shared helpers in `e2e/support/server.ts`: `createApiKey`, `closeSettings`, `apiClient`, `account` fixture, `signIn`,
 `openSecondClient`, `addTodo`, `renameTodo`, `todoCard`, `expectOnServer`. "Signed in" is asserted against
 `/api/auth/get-session`, not only the UI — the board looks the same either way.
 
