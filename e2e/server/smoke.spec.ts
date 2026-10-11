@@ -1,5 +1,4 @@
-import { test, expect, addTodo, expectOnServer, signIn, todoCard } from "../support/server";
-import { FROZEN_TIME } from "../support/fixtures";
+import { test, expect, addTodo, expectOnServer, openSecondClient, todoCard } from "../support/server";
 
 /**
  * Proves the server harness end to end (EI-355): a real browser signs up on
@@ -18,17 +17,11 @@ test("a fresh account signs up, writes a to-do, and a second client receives it"
   // The write left this client and reached the server.
   await expectOnServer(page, title);
 
-  // A second, empty browser context — its own IndexedDB, no cookies — has
-  // only the server to learn about the to-do from.
-  const other = await browser.newContext();
+  // A second, empty browser context has only the server to learn from.
+  const other = await openSecondClient(browser, account);
   try {
-    const otherPage = await other.newPage();
-    await otherPage.clock.setFixedTime(new Date(FROZEN_TIME));
-    await signIn(otherPage, account);
-    await expect(todoCard(otherPage, title)).toBeVisible({
-      timeout: 20_000,
-    });
+    await expect(todoCard(other, title)).toBeVisible({ timeout: 20_000 });
   } finally {
-    await other.close();
+    await other.context().close();
   }
 });
