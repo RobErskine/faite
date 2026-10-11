@@ -146,7 +146,9 @@ jobs:
     #
     # ~2x each path's own p100, so a stall is caught in one coffee rather
     # than one afternoon.
-    timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && 20 || 10 }}
+    # +6 on both paths for the server suite (EI-360) — its build step and
+    # its run step carry their own 3- and 6-minute limits. See docs/E2E.md §8.6.
+    timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && 26 || 16 }}
 
     # NOT sharded any more, and the reasoning is worth keeping because it
     # reverses EI-187's.
@@ -230,7 +232,16 @@ jobs:
       # dev-mode failure was the fixture timing out on the board's boot while
       # workers hit an on-demand-compiling server at once. It also means CI
       # exercises the bundle that actually ships. docs/E2E.md §9.
+      #
+      # The two NEXT_PRIVATE_* variables are what `opennextjs-cloudflare
+      # build` sets before it runs `npm run build` itself (EI-360). They add
+      # `.next/standalone`, which the server suite's Worker bundle needs, and
+      # change nothing `next start` serves — so ONE `next build` feeds both
+      # suites instead of two.
       - name: Build (production, served to the e2e suite)
+        env:
+          NEXT_PRIVATE_STANDALONE: "true"
+          NEXT_PRIVATE_OUTPUT_TRACE_ROOT: ${{ github.workspace }}
         run: npm run build
 
       - name: E2E
@@ -260,14 +271,51 @@ jobs:
         # PR" and "doesn't run at all" different things.
         run: npm run ${{ (github.event_name == 'workflow_dispatch' && inputs.e2e != 'gate') && 'e2e' || 'e2e:ci' }}
 
+      # ---- The server-backed suite (EI-360, docs/E2E.md §10) -------------
+      #
+      # Steps in THIS job, not a job of its own: a second job would pay the
+      # container pull and `npm ci` again, and GitHub rounds every job up to
+      # the minute. Billed minutes are the currency here (§8.4), and the
+      # extra wall clock lands on a job nobody is waiting on more than
+      # `verify`. Cost and placement: docs/E2E.md §8.6.
+
+      # `.dev.vars` is git-ignored, so CI writes its own. LOCAL_DEV turns off
+      # email verification for this local worker (EI-215), and the secret is
+      # random per run: nothing here touches a real account or real D1.
+      - name: Server suite — local worker config
+        run: |
+          {
+            echo 'LOCAL_DEV="1"'
+            echo "BETTER_AUTH_SECRET=\"$(node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))')\""
+            echo 'ATTACHMENTS_ORIGIN=""'
+          } > .dev.vars
+
+      # Bundles the `.next` output of "Build (production …)" above (6s
+      # locally) instead of a second `next build`. The `preview` npm script's
+      # NEXT_PUBLIC_APP_ENV is left out on purpose: it changes only the favicon.
+      - name: Server suite — build the Worker bundle
+        run: npx opennextjs-cloudflare build --skipNextBuild
+        timeout-minutes: 3
+
+      - name: E2E (server suite, Workers runtime on :8787)
+        env:
+          # Overrides the config's build-then-preview command: the bundle was
+          # built by the step above.
+          E2E_SERVER: npx opennextjs-cloudflare preview
+          WRANGLER_SEND_METRICS: "false"
+        timeout-minutes: 6
+        run: npm run e2e:server
+
       # One job, so there are no per-shard blobs left to stitch together —
       # Playwright writes the browsable report directly and this uploads it.
       # Only on failure: a green report is 14 days of metered artifact
-      # storage nobody opens.
+      # storage nobody opens. Two folders, one per suite (EI-360).
       - name: Upload Playwright report
         if: ${{ failure() }}
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
-          path: playwright-report/
+          path: |
+            playwright-report/
+            playwright-report-server/
           retention-days: 14

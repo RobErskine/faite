@@ -35,7 +35,11 @@ export default defineConfig({
   // on a quiet machine. Each test signs up its own account, so this is about
   // CPU, not shared data.
   workers: 2,
-  reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : "list",
+  // Its own report folder: in CI this suite runs in the same job as the
+  // :3000 gate, after it, and would otherwise overwrite that run's report.
+  reporter: process.env.CI
+    ? [["github"], ["html", { open: "never", outputFolder: "playwright-report-server" }]]
+    : "list",
   // Higher than the main suite's 30s: a write has to leave one client, pass
   // the 2s outbox debounce (src/lib/sync/engine.ts), land in the Durable
   // Object, and reach a second client.
