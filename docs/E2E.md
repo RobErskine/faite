@@ -562,3 +562,92 @@ pays more on a full `workflow_dispatch` run.
 **Open follow-up:** `workers` was capped at 3 because the *dev* server needed
 a core. With production that constraint is weaker, so 4 may now be safe and
 would cut wall clock further. Not changed here — one variable at a time.
+
+---
+
+## 10. The server-backed suite (EI-354)
+
+Everything above is the **local-first** suite: every spec enters through
+"Continue without an account" on :3000, where `/api/auth/*`, `/api/sync/*`,
+`/api/v1/*` and `/mcp` do not exist. That leaves sign-up, sync between
+clients, the REST API and the MCP adapter with no browser coverage at all —
+and those are where account and data-loss bugs live (EI-68, EI-347). The
+server-backed suite covers them.
+
+```bash
+npm run dev:bootstrap   # once per checkout: .dev.vars (with LOCAL_DEV="1") + D1 migrations
+npm run e2e:server      # migrations, then build + preview on :8787, then e2e/server/
+```
+
+### 10.1 Server choice
+
+The real Workers runtime: `opennextjs-cloudflare preview` on **:8787**, which
+is `wrangler dev` over the OpenNext bundle with local D1, R2 and Durable
+Objects. Not `next dev` (no worker) and not a branch preview (those share
+**production's** D1 — every run would create real accounts — and require
+email verification).
+
+### 10.2 Its own config, not a project
+
+`playwright.server.config.ts`, `testDir: e2e/server/`, one `server` project
+(Desktop Chrome, 1440×900). Not a project in `playwright.config.ts`, because
+a config has one `webServer`: a `server` project there would be scheduled by
+every plain `playwright test` — the full local matrix, CI's `e2e: full`
+dispatch — against `next start`, and fail. The main config has
+`testIgnore: "**/server/**"` so it can never pick these specs up, and
+`e2e/config-coverage.test.ts` fails `npm test` if either side of that split
+drifts. **A spec in `e2e/server/` needs no `testMatch` entry**: the directory
+is the registration.
+
+### 10.3 Who starts the server
+
+Playwright's `webServer` does: it builds, then runs `preview`, and waits for
+`/login`. Locally `reuseExistingServer` is on, so a running `npm run preview`
+is used as it is — **and preview never hot-reloads**, so after editing `src/`
+restart it, or the suite tests the code you had before. Cold, the whole
+command measured **49s** (M-series laptop, `.next/cache` warm); a first-ever
+build is several times that, hence the 10-minute `webServer.timeout`.
+
+### 10.4 D1 lifecycle and test data
+
+- Local D1 lives in `.wrangler/state/v3/d1` and is **never reset** by the
+  suite. `npm run e2e:server` applies migrations first
+  (`auth:migrate:local`), so a stale schema cannot fail a run.
+- **Every test signs up its own account** through `/signup` (`account`
+  fixture, `e2e/support/server.ts`), on a unique `@example.com` address. No
+  shared fixture account, so tests run in parallel against a database that
+  only grows. Delete `.wrangler/state` to start clean.
+- **Seed through the app**, never raw D1 writes — a raw seed write caused
+  EI-68's data loss.
+- The clock is frozen at `FROZEN_TIME`, same as §2.
+
+### 10.5 Why signup logs straight in (EI-215)
+
+Email verification is off for a local worker, because `send_email` cannot
+deliver locally. "Local" was a hostname check — but `wrangler dev` simulates
+the production `routes`, so under preview every request reports
+`https://myfaite.app`, verification stayed on, and every local signup was
+stranded on "Check your email". The worker now reads `LOCAL_DEV="1"` from the
+git-ignored `.dev.vars` (`isLocalRuntime()`, `src/server/auth.ts`).
+`npm run dev:bootstrap` adds the line to an older `.dev.vars`. If it is
+missing, `signUp()` fails with that instruction rather than timing out.
+
+### 10.6 Observing sync
+
+Do not wait on a `/api/sync/push` response: the engine pushes over the
+WebSocket when one is open, so the HTTP route may never be hit. Either poll
+`GET /api/sync/pull` through `page.request` (it carries the page's cookies),
+or open a second `browser.newContext()`, sign in, and assert the change
+arrived — that context has its own IndexedDB and can only have learned it
+from the server. `smoke.spec.ts` does both.
+
+### 10.7 What runs where
+
+| Command | Where | Runs |
+|---|---|---|
+| `npm run e2e:server` | local | `e2e/server/` against :8787 |
+| `npm run e2e`, `e2e:ci` | local, CI | the local-first suite only — never `e2e/server/` |
+
+**Not in CI yet.** Gating the server suite is EI-360, and it has to be costed
+in billed runner-minutes first (§8.4): the OpenNext build is extra time on
+every run that includes it.

@@ -102,7 +102,9 @@ Three things that will bite, in the order they usually do:
   like a bug that won't go away.
 - **Local D1 is a different database from production.** Your production account
   does not exist locally — sign up fresh at http://localhost:3000/signup. Email
-  verification is off on localhost, so signup logs you straight in.
+  verification is off for a local worker, so signup logs you straight in —
+  provided `.dev.vars` has `LOCAL_DEV="1"` (`npm run dev:bootstrap` adds it;
+  EI-215).
 
 ### Which server do I want?
 

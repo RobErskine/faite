@@ -30,6 +30,14 @@ jobs each bill in full) — not in wall clock. The two are opposite: sharding
 this suite three ways made it faster and 27% more expensive. Every job needs
 a `timeout-minutes`.
 
+**Server-backed specs live in `e2e/server/` and run under their own config.**
+Auth, sync, the REST API and MCP need the Workers runtime on :8787, so they
+run with `npm run e2e:server` (`playwright.server.config.ts`), never in the
+:3000 suite — the main config ignores `e2e/server/`. A spec there needs no
+`testMatch` entry. Every test signs up its own account through `/signup`;
+that only logs straight in when `.dev.vars` has `LOCAL_DEV="1"`
+(`npm run dev:bootstrap` adds it). Not in CI yet (EI-360). `docs/E2E.md` §10.
+
 The reasoning behind all of the above, with the measurements, is
 `docs/E2E.md` §8 (what runs where, and the coverage traded for time) and §9
 (why CI serves a production build while local serves `next dev`). Read those

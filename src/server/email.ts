@@ -60,9 +60,9 @@ export async function sendEmail(
   env: CloudflareEnv,
   input: SendEmailInput,
   /**
-   * Whether this request arrived on localhost. Passed in from `createAuth`
-   * rather than read from `NEXTJS_ENV` here, so the "can this actually send"
-   * decision cannot disagree with the origin the request came in on.
+   * Whether this worker is running locally — `isLocalRuntime()` in auth.ts,
+   * passed in from `createAuth` so the "can this actually send" decision and
+   * the "require verification" decision cannot disagree.
    */
   isLocal = false,
 ): Promise<void> {

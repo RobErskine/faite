@@ -46,10 +46,27 @@ const FALLBACK_ORIGIN = "https://myfaite.app";
  * `baseURL` of this host, and is still rejected. `TRUSTED_ORIGINS` remains the
  * allow-list for redirect targets.
  */
+/**
+ * Whether this worker is running on a laptop rather than on Cloudflare.
+ *
+ * The hostname alone cannot answer that (EI-215). `wrangler dev` — which is
+ * what `npm run preview` runs — simulates the configured `routes`, so a
+ * request sent to `http://localhost:8787` arrives here as
+ * `https://myfaite.app` (the same trap `ATTACHMENTS_ORIGIN` in wrangler.jsonc
+ * documents). So the hostname check only fires for a runtime that does not
+ * simulate routes, and `LOCAL_DEV=1` in the git-ignored `.dev.vars` is the
+ * signal that actually reaches a local worker. `.dev.vars` is never uploaded,
+ * so the flag cannot leak into a deploy — **never set it as a secret or in
+ * `vars`**: it switches off email verification.
+ */
+export function isLocalRuntime(env: { LOCAL_DEV?: string }, origin: string): boolean {
+  const { hostname } = new URL(origin);
+  return env.LOCAL_DEV === "1" || hostname === "localhost" || hostname === "127.0.0.1";
+}
+
 export function createAuth(env: CloudflareEnv, request?: Request) {
   const origin = request ? new URL(request.url).origin : FALLBACK_ORIGIN;
-  const { hostname } = new URL(origin);
-  const isLocal = hostname === "localhost" || hostname === "127.0.0.1";
+  const isLocal = isLocalRuntime(env, origin);
 
   /**
    * Gates password sign-in on a clicked verification link. GitHub and Google
@@ -60,8 +77,9 @@ export function createAuth(env: CloudflareEnv, request?: Request) {
    * preference. The `send_email` binding does not deliver under local
    * `wrangler dev` (that needs `"remote": true`), so requiring verification
    * locally would strand every local signup with no way to reach the link.
-   * Keyed on the request's hostname rather than `NEXTJS_ENV` so it cannot
-   * disagree with the origin the request actually arrived on. Branch previews
+   * Keyed on `isLocalRuntime()` (an explicit `.dev.vars` flag, or a local
+   * hostname) rather than `NEXTJS_ENV` — OpenNext's `.env*` file selector, a
+   * different job that should not carry a security switch. Branch previews
    * are *not* local and stay strict — they share production's D1.
    */
   const requireEmailVerification = !isLocal;
