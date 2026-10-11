@@ -63,6 +63,31 @@ export async function signIn(page: Page, account: Account) {
   await expectBoard(page);
 }
 
+/** Adds a to-do to Backlog through quick-add and waits for its card.
+ * Desktop layout only — Backlog is not in the DOM on the phone's Days pager. */
+export async function addTodo(page: Page, title: string) {
+  await page.getByRole("region", { name: "Backlog" }).getByPlaceholder("Add a to-do").fill(title);
+  await page.keyboard.press("Enter");
+  await expect(todoCard(page, title)).toBeVisible();
+}
+
+/** A to-do's card. `exact`: the drag grip's label also contains the title. */
+export function todoCard(page: Page, title: string) {
+  return page.getByRole("button", { name: title, exact: true });
+}
+
+/**
+ * Waits until the server holds a change that contains `text`. Polls the sync
+ * API through `page.request` (it carries the page's cookies) rather than
+ * waiting on a `/api/sync/push` response: the engine pushes over the
+ * WebSocket when one is open, so the HTTP route may never be hit.
+ */
+export async function expectOnServer(page: Page, text: string) {
+  await expect
+    .poll(async () => (await page.request.get("/api/sync/pull")).text(), { timeout: 20_000 })
+    .toContain(text);
+}
+
 export const test = base.extend<{ account: Account }>({
   // Same frozen instant as the local-first suite: the board is date-relative,
   // so a spec that names a column ("Tuesday") needs a fixed today.

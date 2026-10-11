@@ -641,7 +641,18 @@ or open a second `browser.newContext()`, sign in, and assert the change
 arrived — that context has its own IndexedDB and can only have learned it
 from the server. `smoke.spec.ts` does both.
 
-### 10.7 What runs where
+### 10.7 The specs
+
+| Spec | Covers |
+|---|---|
+| `smoke.spec.ts` | The harness itself: signup → write → server → a second client (EI-355) |
+| `auth.spec.ts` | Signup logs in; session survives reload; sign-out wipes the device and lands on `/`; sign-in restores the account's to-dos; a signed-out `/board` still offers "Continue without an account" (EI-356) |
+
+Shared helpers in `e2e/support/server.ts`: `account` fixture, `signIn`,
+`addTodo`, `todoCard`, `expectOnServer`. "Signed in" is asserted against
+`/api/auth/get-session`, not only the UI — the board looks the same either way.
+
+### 10.8 What runs where
 
 | Command | Where | Runs |
 |---|---|---|
