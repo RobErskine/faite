@@ -486,12 +486,58 @@ If a third project ever earns its ~1.5 billed minutes, add
 | gate (now) | 7 | 5 | **12** | ~6m |
 | merge to `main` | 0 | 5 | **5** | ~4m30 |
 | `workflow_dispatch`, full | 9 | — | **9** | ~8m |
+| gate + server suite (EI-360, now) | 8 | 5 | **13** | ~7m30 |
 
 The gate is ~1m30 *slower* in wall clock than the 3-shard run it replaces.
 That is the deliberate trade: un-sharding costs latency and buys back ~8
 billed minutes per PR run, and with iteration counts of 5–8 pushes on a real
 feature branch, the per-run cost is what compounds. If wall clock ever
 matters more, sharding the gate 2× costs 3 more billed minutes.
+
+### 8.6 The server-backed suite in CI (EI-360)
+
+**Placement: on every PR, in the `e2e` job.** Measured on PR #129 against
+the two PR runs before it, same runner, same job:
+
+| run | `e2e` job | billed |
+| -- | -- | -- |
+| #127 (EI-358), no server suite | 365s | 7 |
+| #128 (EI-359), no server suite | 378s | 7 |
+| #129 (EI-360), with the server suite | 448s | **8** |
+
+The suite itself is 63s: 7s to bundle the Worker, 56s for the 11 tests
+(52.5s of Playwright). That is **+1 billed minute per PR run**. At the last
+30 days' rate (25 PR runs) it is about **+25 minutes a month, ~1.25% of the
+2,000**. That is cheap enough to gate every PR, which is where an auth, sync,
+API or MCP regression has to be caught — a `workflow_dispatch`-only suite is
+one nobody remembers to press.
+
+Why it is that cheap — the three choices that matter:
+
+- **Steps in the existing job, not a job of its own.** A second job pays
+  the container pull (27s) and `npm ci` (52s) again, and rounds up on its
+  own. In-job, the suite shares both and only its own 63s is new.
+- **One `next build` for both suites.** The build step sets
+  `NEXT_PRIVATE_STANDALONE=true` and `NEXT_PRIVATE_OUTPUT_TRACE_ROOT` —
+  exactly what `opennextjs-cloudflare build` sets before it runs
+  `npm run build` itself. That adds `.next/standalone`, which the Worker
+  bundle needs, and changes nothing `next start` serves. The Worker is then
+  bundled with `--skipNextBuild`. Without those variables `--skipNextBuild`
+  fails on a missing `.next/standalone/.next/server/pages-manifest.json`.
+- **CI writes its own `.dev.vars`** (`LOCAL_DEV="1"`, a random
+  `BETTER_AUTH_SECRET` per run, blank `ATTACHMENTS_ORIGIN`). No secret is
+  stored in GitHub: nothing the suite touches is real — local D1, local
+  Durable Objects, `@example.com` accounts.
+
+**Timeouts:** the job went from 10 to 16 minutes (20 → 26 on a dispatch);
+the bundle step has 3 and the server-suite step 6. Its report goes to
+`playwright-report-server/`, uploaded with the gate's only on failure.
+
+**Revisit if** the server suite grows past ~2 billed minutes, or the 30-day
+PR-run count roughly doubles. The next cheapest move is running it only
+when `src/server/**`, `src/lib/sync/**` or `e2e/server/**` changed — a
+`paths` filter on a separate job, which brings back the ~80s setup it now
+shares.
 
 ---
 
@@ -690,9 +736,8 @@ was stopped or rebuilt during the run (a second `npm run e2e:server`, a stray
 
 | Command | Where | Runs |
 |---|---|---|
-| `npm run e2e:server` | local | `e2e/server/` against :8787 |
+| `npm run e2e:server` | local, CI (every PR, in the `e2e` job) | `e2e/server/` against :8787 |
 | `npm run e2e`, `e2e:ci` | local, CI | the local-first suite only — never `e2e/server/` |
 
-**Not in CI yet.** Gating the server suite is EI-360, and it has to be costed
-in billed runner-minutes first (§8.4): the OpenNext build is extra time on
-every run that includes it.
+In CI the server suite runs after the :3000 gate, in the same job, from the
+same `next build` — cost and reasoning in §8.6.
