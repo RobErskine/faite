@@ -648,6 +648,11 @@ from the server. `smoke.spec.ts` does both.
 | `smoke.spec.ts` | The harness itself: signup → write → server → a second client (EI-355) |
 | `auth.spec.ts` | Signup logs in; session survives reload; sign-out wipes the device and lands on `/`; sign-in restores the account's to-dos; a signed-out `/board` still offers "Continue without an account" (EI-356) |
 | `sync.spec.ts` | Two clients on one account: create, rename and complete reach the other client without a refresh; edits made offline flush on reconnect with no duplicates; a conflicting title edit goes to the later HLC, not the later arrival (EI-357) |
+| `api.spec.ts` | A key made in Settings → API Keys, used as a bearer token: a read-write key's REST create, rename, complete and delete reach the open board live, and board writes appear in `GET /api/v1/todos`; a read-only key reads but gets 403 on write; no key gets 401; a revoked key gets 401 (EI-358) |
+
+**Name the `account` fixture in every test that needs a signed-in board**, even if the test never reads it: fixtures are lazy, so without it the sign-up never runs and `page` stays on `about:blank`.
+
+REST calls go through a fresh `playwright.request.newContext()`, never `page.request`: with no bearer, `/api/v1` falls back to the cookie session, so a shared-cookie context turns "no key" and "revoked key" into 200s.
 
 Shared helpers in `e2e/support/server.ts`: `account` fixture, `signIn`,
 `openSecondClient`, `addTodo`, `renameTodo`, `todoCard`, `expectOnServer`. "Signed in" is asserted against

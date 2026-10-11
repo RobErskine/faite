@@ -120,6 +120,10 @@ export const test = base.extend<{ account: Account }>({
     await page.clock.setFixedTime(new Date(FROZEN_TIME));
     await use(page);
   },
+  // Lazy, like every Playwright fixture: a test that needs a signed-in board
+  // must name `account`, even if it never reads it. Without it the sign-up
+  // never runs and `page` stays on about:blank — the failure then looks like
+  // a missing button, not a missing fixture.
   account: async ({ page }, use) => {
     const account = freshAccount();
     await signUp(page, account);
