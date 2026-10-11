@@ -238,7 +238,9 @@ rejected `bad-recipient`. That is the expected steady state, not a
 misconfiguration. Literal rules (which *are* per-domain) outrank the catch-all
 and are how specific apex addresses get carved back out.
 
-Testing without any of that: `scripts/email-smoke/README.md`.
+Testing without any of that: `scripts/email-smoke/README.md` by hand, and
+`e2e/server/email-ingest.spec.ts` automatically on every PR (EI-361,
+`docs/E2E.md` §10.7) — real D1 lookup, real `push()`, live board update.
 
 ### Diagnosing a message that did not arrive
 

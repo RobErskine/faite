@@ -43,8 +43,9 @@ const subject = option("subject", "Buy milk");
 const count = Number(option("count", "1"));
 
 function bodyFor(index) {
-  // NOT 11 MiB. `wrangler dev`'s handler endpoint refuses anything over
-  // **1 MiB** with its own 400 ("exceeds the lower 1Mib limit for testing
+  // Sized for wranglers before 4.149, whose local endpoint refused anything
+  // over **1 MiB** (4.149 allows 25 MiB — see README). Older wranglers said
+  // ("exceeds the lower 1Mib limit for testing
   // locally") — the request never reaches the Worker, so the production
   // 10 MiB guard in `ingest.ts` is NOT reachable from here. This size proves
   // a large message parses; the guard itself is production-only.
@@ -83,11 +84,10 @@ async function send(index) {
 
   const response = await fetch(url, { method: "POST", body: mime(index) });
   const text = await response.text();
-  // **200 here does NOT mean the message was accepted.** The local endpoint
-  // reports whether the HANDLER RAN, and `setReject()` is not an exception —
-  // a rejected message still returns "Worker successfully processed email".
-  // The real verdict is the `[faite] email-ingest {"decision":…}` line in the
-  // `wrangler dev` output.
+  // On wrangler 4.149+, 400 means the handler rejected the message and 200
+  // means it accepted it. Older wranglers returned 200 for both, so the
+  // `[faite] email-ingest {"decision":…}` line in the `wrangler dev` output
+  // is still printed below as the fallback verdict.
   console.log(`  ${String(index + 1).padStart(3)} HTTP ${response.status} ${text.trim().slice(0, 120)}`);
   return response.ok;
 }
