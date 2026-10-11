@@ -1,4 +1,4 @@
-import { test, expect, signIn } from "../support/server";
+import { test, expect, addTodo, expectOnServer, signIn, todoCard } from "../support/server";
 import { FROZEN_TIME } from "../support/fixtures";
 
 /**
@@ -13,18 +13,10 @@ test("a fresh account signs up, writes a to-do, and a second client receives it"
   browser,
 }) => {
   const title = "Harness smoke to-do";
-  const backlog = page.getByRole("region", { name: "Backlog" });
-  await backlog.getByPlaceholder("Add a to-do").fill(title);
-  await page.keyboard.press("Enter");
-  await expect(page.getByRole("button", { name: title, exact: true })).toBeVisible();
+  await addTodo(page, title);
 
-  // The write left this client. Polled through the sync API itself (the
-  // page's cookies ride along on `page.request`) rather than by waiting for a
-  // `/api/sync/push` response: the engine pushes over the WebSocket when one
-  // is open, so a network wait on the HTTP route can miss the write entirely.
-  await expect
-    .poll(async () => (await page.request.get("/api/sync/pull")).text(), { timeout: 20_000 })
-    .toContain(title);
+  // The write left this client and reached the server.
+  await expectOnServer(page, title);
 
   // A second, empty browser context — its own IndexedDB, no cookies — has
   // only the server to learn about the to-do from.
@@ -33,7 +25,7 @@ test("a fresh account signs up, writes a to-do, and a second client receives it"
     const otherPage = await other.newPage();
     await otherPage.clock.setFixedTime(new Date(FROZEN_TIME));
     await signIn(otherPage, account);
-    await expect(otherPage.getByRole("button", { name: title, exact: true })).toBeVisible({
+    await expect(todoCard(otherPage, title)).toBeVisible({
       timeout: 20_000,
     });
   } finally {
