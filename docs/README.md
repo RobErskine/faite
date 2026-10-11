@@ -52,6 +52,7 @@ reasoning — two copies drift, and the stale one always wins the argument.
 |---|---|
 | [CONTENT.md](CONTENT.md) | How Faite is written: American English, what counts as user-facing, the exceptions that are not ours to change, and the test that enforces it. |
 | [DESIGN.md](DESIGN.md) | The spec of record for how Faite looks and moves: color grammar (one meaning per channel), type roles and the two pairings, surface tiers, motion policy, what the marketing site may reuse, and the decisions log. |
+| [GAMIFY.md](GAMIFY.md) | **Parked.** Opt-in goals and soft streaks: what was proposed, the design decisions, the evidence for and against, and what to answer before reviving it (EI-363). |
 | [MOBILE.md](MOBILE.md) | Mobile responsiveness, phases M-1…M6. A separate axis from P0–P7. |
 | [GESTURES.md](GESTURES.md) | PhoneBoard's touch model, and why it is CSS scroll-snap rather than a JS carousel. |
 | [RESIZE-UI.md](RESIZE-UI.md) | The draggable seam between the calendar and planning halves. |
