@@ -1,5 +1,6 @@
-import { test as base, expect, type Page } from "@playwright/test";
+import { test as base, expect, type Browser, type Page } from "@playwright/test";
 import { FROZEN_TIME } from "./fixtures";
+import { openSheet } from "./sheet";
 
 /**
  * Fixtures for the server-backed suite (`playwright.server.config.ts`,
@@ -74,6 +75,30 @@ export async function addTodo(page: Page, title: string) {
 /** A to-do's card. `exact`: the drag grip's label also contains the title. */
 export function todoCard(page: Page, title: string) {
   return page.getByRole("button", { name: title, exact: true });
+}
+
+/** Renames a to-do through its sheet. The title commits on blur, and Enter
+ * blurs it (todo-sheet.tsx), so the write happens before the sheet closes. */
+export async function renameTodo(page: Page, from: string, to: string) {
+  await todoCard(page, from).click();
+  const title = openSheet(page).getByRole("textbox", { name: "Title" });
+  await title.fill(to);
+  await title.press("Enter");
+  await page.keyboard.press("Escape");
+  await expect(todoCard(page, to)).toBeVisible();
+}
+
+/**
+ * A second client on the same account: its own browser context (own cookies,
+ * own IndexedDB), signed in through `/login`. It can only learn about the
+ * first client's writes from the server. Close it with `.context().close()`.
+ */
+export async function openSecondClient(browser: Browser, account: Account): Promise<Page> {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  await page.clock.setFixedTime(new Date(FROZEN_TIME));
+  await signIn(page, account);
+  return page;
 }
 
 /**

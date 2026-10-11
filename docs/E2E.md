@@ -647,10 +647,29 @@ from the server. `smoke.spec.ts` does both.
 |---|---|
 | `smoke.spec.ts` | The harness itself: signup → write → server → a second client (EI-355) |
 | `auth.spec.ts` | Signup logs in; session survives reload; sign-out wipes the device and lands on `/`; sign-in restores the account's to-dos; a signed-out `/board` still offers "Continue without an account" (EI-356) |
+| `sync.spec.ts` | Two clients on one account: create, rename and complete reach the other client without a refresh; edits made offline flush on reconnect with no duplicates; a conflicting title edit goes to the later HLC, not the later arrival (EI-357) |
 
 Shared helpers in `e2e/support/server.ts`: `account` fixture, `signIn`,
-`addTodo`, `todoCard`, `expectOnServer`. "Signed in" is asserted against
+`openSecondClient`, `addTodo`, `renameTodo`, `todoCard`, `expectOnServer`. "Signed in" is asserted against
 `/api/auth/get-session`, not only the UI — the board looks the same either way.
+
+**Conflicts need distinct clocks.** The winner of a field conflict is the
+edit with the later HLC, and with both clients frozen at `FROZEN_TIME` the
+HLCs tie on time and fall back to a mutation counter and a *random* node id.
+`sync.spec.ts` gives each client its own `page.clock.setFixedTime()`, so the
+winner is set by design rather than by a coin toss.
+
+**Offline, open a sheet once first (EI-362).** The description editor is a
+`next/dynamic` chunk. Opened for the first time while offline, it throws
+`ChunkLoadError` and the whole board falls to its error page — a real bug,
+filed as EI-362. `sync.spec.ts` opens one sheet while online so it tests sync,
+not that bug. Remove `loadSheetChunks` when EI-362 lands.
+
+**A server that restarts mid-run fails everything at once.** If many tests
+fail together with `ERR_CONNECTION_REFUSED` or `socket hang up`, the preview
+was stopped or rebuilt during the run (a second `npm run e2e:server`, a stray
+`opennextjs-cloudflare build`) — not a sync bug. Check
+`lsof -nP -iTCP:8787 -sTCP:LISTEN` and run again against one stable server.
 
 ### 10.8 What runs where
 

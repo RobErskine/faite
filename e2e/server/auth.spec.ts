@@ -48,7 +48,9 @@ test("sign-out clears the device, and signing back in restores the account's to-
 
   await logOut(page);
   // `finishSignOut` (app-header.tsx) wipes IndexedDB, then leaves for `/`.
-  await page.waitForURL((url) => url.pathname === "/");
+  // "commit", not the default "load": `/` is the homepage with the WebGL
+  // room, and letting it render costs every parallel test CPU for nothing.
+  await page.waitForURL((url) => url.pathname === "/", { waitUntil: "commit" });
   expect(await sessionEmail(page)).toBeNull();
 
   // Signed out, /board is the local-first app again: the welcome dialog offers
