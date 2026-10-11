@@ -37,19 +37,23 @@ curl -X POST 'http://localhost:8787/cdn-cgi/handler/email' \
 **`Message-ID` is required** — without it the local handler rejects the
 message, and the error does not mention the missing header.
 
-## Two things the local endpoint will not tell you
+## What the local endpoint tells you (wrangler 4.149+)
 
-**HTTP 200 does not mean "accepted."** The endpoint reports whether the
-handler *ran*; `setReject()` is a normal return, not an exception, so a
-rejected message still answers `200 Worker successfully processed email`. The
-verdict is the `[faite] email-ingest {"decision":…}` line in the `wrangler dev`
-output — that is what the script tells you to grep for.
+**The HTTP status is the verdict.** Since the wrangler 4.149 upgrade (EI-358),
+a message the handler rejected with `setReject()` answers
+**`400 Worker rejected email with the following reason: …`**, and an accepted
+one answers `200 Worker successfully processed email`. Older wranglers
+answered 200 for both, which is why this script still prints the status and
+still points at the `[faite] email-ingest {"decision":…}` log line. The
+automated version of this smoke test is `e2e/server/email-ingest.spec.ts`
+(EI-361), which asserts on that status.
 
-**The 10 MiB size guard is not reachable locally.** `wrangler dev` refuses any
-body over **1 MiB** with its own 400 (`exceeds the lower 1Mib limit for testing
-locally`), so the request never reaches the Worker. `--huge` sends ~900 KB,
-which proves a large message parses and gets its description capped; the guard
-in `ingest.ts` can only be exercised against a real deploy.
+**The local size limit is 25 MiB now, not 1 MiB.** Older wranglers refused
+any body over 1 MiB before it reached the Worker; 4.149 allows up to the
+25 MiB production limit, so the 10 MiB guard in `ingest.ts` is reachable
+locally. `--huge` still sends ~900 KB (it was sized for the old limit), which
+proves a large message parses and gets its description capped. Exercising the
+guard itself needs a body over 10 MiB — not yet scripted.
 
 ## What to check afterwards
 
