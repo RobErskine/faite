@@ -49,6 +49,12 @@ test("a read-write key round-trips: REST writes reach the open board, board writ
     const { id } = (await created.json()) as { id: string };
     await expect(todoCard(page, "Made through the API")).toBeVisible(CONVERGE);
 
+    // It named no list, so the board files it in Backlog — and so must
+    // /api/v1/backlog, which once matched only the Backlog list's id (EI-366).
+    const backlog = await api.get("/api/v1/backlog");
+    expect(backlog.status()).toBe(200);
+    expect(((await backlog.json()) as { id: string }[]).map((todo) => todo.id)).toContain(id);
+
     const renamed = await api.patch(`/api/v1/todos/${id}`, { data: { title: "Renamed through the API" } });
     expect(renamed.status()).toBe(200);
     await expect(todoCard(page, "Renamed through the API")).toBeVisible(CONVERGE);

@@ -23,7 +23,7 @@ import { durableHlcQueue } from "../service/hlc";
 import { createTodo, pushTransportFor, updateTodo } from "../service/todos";
 import type { UserDurableObject } from "../user-do";
 import { withEventStreamAccept } from "./accept";
-import { profileFromSettings } from "../v1/derived";
+import { backlogTodos, profileFromSettings } from "../v1/derived";
 import { listListsToolInput, MCP_DEFAULT_LIST_FIELDS, projectLists } from "../v1/list-query";
 import { filterTodos, projectTodos, SLIM_TODO_FIELDS, todoFieldSchema, todoQuerySchema } from "../v1/query";
 import { rankTodoMatches } from "../v1/todo-search";
@@ -480,18 +480,17 @@ function buildServer(
     "get_backlog",
     {
       description:
-        "To-dos in the Backlog list — the always-present list a to-do lands " +
-        "in when it isn't filed anywhere else.",
+        "To-dos in Backlog — the always-present list a to-do lands in when " +
+        "it isn't filed anywhere else: unscheduled, with no list, the Backlog " +
+        "list, or a list that was deleted or archived.",
       inputSchema: {},
     },
     async () => {
       requireScope(identity, "read");
       const [todoRows, listRows] = await Promise.all([listTodos(stub), listLists(stub)]);
-      const backlog = listRows.map((row) => listSchema.parse(row)).find((list) => list.isBacklog);
-      if (!backlog) return textResult([]);
-
+      const lists = listRows.map((row) => listSchema.parse(row));
       const todos = todoRows.map((row) => todoSchema.parse(row));
-      return textResult(todos.filter((todo) => todo.listId === backlog.id));
+      return textResult(backlogTodos(todos, lists));
     },
   );
 

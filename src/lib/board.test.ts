@@ -32,6 +32,7 @@ import {
   type ListColumn,
   type TodoGroup,
 } from "./board";
+import { backlogMembership } from "./backlog";
 import { OVERFLOW, buildWindow } from "./scheduling";
 import type { List, Tab, Todo } from "./schema";
 import { positionsBetween } from "./ordering";
@@ -1566,5 +1567,28 @@ describe("rangeSelectionIds", () => {
 
   it("refuses when the anchor no longer renders", () => {
     expect(rangeSelectionIds(board, "ghost", "l1")).toBeNull();
+  });
+});
+
+describe("backlogMembership agrees with the board (EI-366)", () => {
+  it("files the same unscheduled to-dos in Backlog as buildBoard does", () => {
+    const archived = { ...list("old", "Old list"), archivedAt: "2026-08-01T00:00:00.000Z" };
+    const todos = [
+      todo({ id: "in-backlog", listId: "backlog" }),
+      todo({ id: "no-list" }),
+      todo({ id: "in-groceries", listId: "groceries" }),
+      todo({ id: "missing-list", listId: "nope" }),
+      todo({ id: "archived-list", listId: "old" }),
+      todo({ id: "scheduled", scheduledDate: TODAY }),
+    ];
+
+    // The board is handed live lists only (useLists drops archived rows); the
+    // server reads every non-deleted row, archived included.
+    const board = buildBoard(todos, LISTS, ctx);
+    const boardBacklog = board.lists.find((c) => c.list.isBacklog)!.todos.map((t) => t.id);
+    const inBacklog = backlogMembership([...LISTS, archived])!;
+
+    expect(todos.filter(inBacklog).map((t) => t.id).sort()).toEqual([...boardBacklog].sort());
+    expect(boardBacklog.sort()).toEqual(["archived-list", "in-backlog", "missing-list", "no-list"]);
   });
 });

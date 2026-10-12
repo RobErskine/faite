@@ -276,7 +276,7 @@ that have no REST equivalent:
 | `list_labels` | read | |
 | `list_attachments` | read | Metadata only, across every to-do; fetch bytes from `GET /api/attachments/{id}` with the same credentials. No REST equivalent — attaching a file still needs the app UI. |
 | `list_tabs` | read | |
-| `get_backlog` | read | To-dos whose list has `isBacklog: true`. No REST equivalent. |
+| `get_backlog` | read | The board's Backlog column, by placement: unscheduled to-dos whose `listId` is the Backlog list's, null, or a deleted/archived list (EI-366 — email captures and list-less creates used to be missing). Status is not filtered. REST: `GET /api/v1/backlog`, same rule (`backlogMembership`, `src/lib/backlog.ts`). |
 | `get_overflow` | read | Runs `@/lib/scheduling`'s `deriveColumn()` — the SAME pure function the board renders with — against this account's own Settings (`UserDurableObject.getSettings()`) instead of a client's in-memory copy. No REST equivalent. |
 | `get_profile` | read | `timezone` is an IANA name (`"America/New_York"`), or `"UTC"` if never set. `displayName`/avatar fields/`timezone` only — never the device-local board-layout prefs (`backlogWidth`, `splitRatio`, etc.) that live in the same `settings` row but describe one device's screen, not the account. |
 
