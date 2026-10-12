@@ -38,6 +38,10 @@ interface ListFieldProps {
   id?: string;
   /** For a field with no `<label>` pointing at it. */
   "aria-label"?: string;
+  /** Open the list as soon as the input gets focus, however it got it —
+   * Quick sort (EI-370) focuses it from `L` and "Pick a list", and the point
+   * of going there is to see the lists, not an empty field. */
+  openOnFocus?: boolean;
 }
 
 /**
@@ -117,8 +121,10 @@ export function ListField({
   tabs,
   id = "todo-list",
   "aria-label": ariaLabel,
+  openOnFocus = false,
 }: ListFieldProps) {
   const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
 
   const tabsById = useMemo(() => new Map(tabs.map((t) => [t.id, t])), [tabs]);
   const listsById = useMemo(() => new Map(lists.map((l) => [l.id, l])), [lists]);
@@ -174,6 +180,8 @@ export function ListField({
         onChange(entry.list.id);
         setQuery("");
       }}
+      open={open}
+      onOpenChange={setOpen}
       inputValue={query}
       onInputValueChange={setQuery}
       itemToStringLabel={(entry: Entry) => listLabel(entry.list, tabsById)}
@@ -205,6 +213,7 @@ export function ListField({
         <ComboboxInput
           id={id}
           aria-label={ariaLabel}
+          onFocus={openOnFocus ? () => setOpen(true) : undefined}
           placeholder={chipLabel ? "Move to…" : "Search lists…"}
           onKeyDown={(e) => {
             // Backspace on an empty query clears the list, the way it removes

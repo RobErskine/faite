@@ -825,7 +825,10 @@ schedule, `⌫` step back, Esc.
   in board order, minus the "away" ones, which have a date.
 - **`↓`.** `reduce` gets the picked list as `currentListId`. With nothing
   picked, `toList` commits nothing, because "file it in Backlog" is where the
-  card already is. The button says "Move to {list}" or "Pick a list".
+  card already is. The button says "Move to {list}" or "Pick a list". With
+  nothing picked, the button and `↓` both focus the picker instead, so the
+  press is never dead. The picker opens its list on focus (`openOnFocus`),
+  so you see every list before you type.
 - **The picker.** `ListField`, now controlled (`value`/`onChange`, its own
   `id`). It lists every live non-Backlog list, grouped by tab. `L` focuses
   it. While it has focus, the `isTextEntry` guard ignores every verdict key.

@@ -29,7 +29,7 @@ Raycast/email/MCP/REST stays visible in Backlog with a chip until the user acts.
 | 2 | EI-367 A: schema + engine + push hook + suggest route | `rob/ei-367-smart-sorting-a-suggestedlistid-field-jev-list-suggestion` | done (#133) |
 | 3 | EI-368 B: settings tab + toggle | `rob/ei-368-smart-sorting-b-rename-the-duplicates-settings-tab-to-smart` | done (#134) |
 | 4 | EI-369 C: chip, ⇧→, dismiss, toast | `rob/ei-369-smart-sorting-c-suggested-list-chip-on-backlog-cards-click` | done (#135) |
-| 5 | EI-370 D: Quick sort (Overdrive Backlog mode) | `rob/ei-370-smart-sorting-d-quick-sort-an-overdrive-mode-for-the-backlog` | in review |
+| 5 | EI-370 D: Quick sort (Overdrive Backlog mode) | `rob/ei-370-smart-sorting-d-quick-sort-an-overdrive-mode-for-the-backlog` | done (#136) |
 
 Ticket bodies in Linear are the spec. Read them with `get_issue` at the start of each pass.
 
@@ -52,3 +52,5 @@ Ticket bodies in Linear are the spec. Read them with `get_issue` at the start of
   a new event kind needs the kind-filter migration ripple (`kind-filter.ts`, migrations 21-ish). Moved to EI-371.
 - 2026-10-11: EI-367 (#133) and EI-368 (#134) merged. Session restarted a second time mid-check;
   no work lost (all on disk). Landscape-phone Overdrive e2e is broken on main too → EI-372 filed.
+- 2026-10-11: EI-369 (#135) and EI-370 (#136) merged; epic EI-365 Done. Follow-up from Rob's review:
+  "Pick a list" (and ↓) with nothing picked focuses the Quick sort picker.

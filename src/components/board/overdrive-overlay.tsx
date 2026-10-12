@@ -480,6 +480,13 @@ function OverdriveOverlayContent({
       return;
     }
 
+    // Quick sort with no list picked: "Pick a list" (or `↓`) has nowhere to
+    // file the card, so it takes you to the picker instead of doing nothing.
+    if (quickSort && action === "toList" && !pickedListId && currentTodo) {
+      document.getElementById(QUICK_SORT_LIST_ID)?.focus();
+      return;
+    }
+
     const listContext: ListContext = {
       currentListId: quickSort ? pickedListId : (currentTodo?.listId ?? null),
       backlogListId,
@@ -824,6 +831,7 @@ function OverdriveOverlayContent({
                     key={currentTodo.id}
                     id={QUICK_SORT_LIST_ID}
                     aria-label="List to file this to-do in"
+                    openOnFocus
                     value={pickedListId}
                     onChange={(listId) => {
                       setPicks((current) => new Map(current).set(currentTodo.id, listId));
