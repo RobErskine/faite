@@ -917,17 +917,21 @@ describe("derived reads", () => {
     await expect(res.json()).resolves.toMatchObject({ timezone: "UTC" });
   });
 
-  it("GET /backlog returns only to-dos in the Backlog list", async () => {
+  it("GET /backlog returns the Backlog column: Backlog's own and list-less to-dos (EI-366)", async () => {
     stub.listEntities.mockImplementation(async (kind: string) =>
       kind === "todo"
-        ? [rawTodoRow({ id: "a", listId: "backlog-1" }), rawTodoRow({ id: "b", listId: "other" })]
-        : [rawListRow({ id: "backlog-1", isBacklog: true })],
+        ? [
+            rawTodoRow({ id: "a", listId: "backlog-1" }),
+            rawTodoRow({ id: "b", listId: "other" }),
+            rawTodoRow({ id: "c", listId: null }),
+          ]
+        : [rawListRow({ id: "backlog-1", isBacklog: true }), rawListRow({ id: "other" })],
     );
 
     const res = await handleV1Request(v1Request("GET", "/api/v1/backlog"), env);
 
     expect(res.status).toBe(200);
-    await expect(res.json()).resolves.toMatchObject([{ id: "a" }]);
+    await expect(res.json()).resolves.toMatchObject([{ id: "a" }, { id: "c" }]);
   });
 
   it("GET /overflow returns the slipped to-dos", async () => {
