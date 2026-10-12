@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  BACKLOG,
   OVERDRIVE_MIN_TODOS,
   RAMP_MAX,
   WEEK_STEP,
@@ -208,6 +209,29 @@ describe("reduce — immediate commits", () => {
   it("toBacklog always targets Backlog, even with a current list", () => {
     const result = reduce(session(), "toBacklog", ctx(), lists);
     expect(result.commit).toEqual({ kind: "listed", listId: "list-backlog" });
+  });
+});
+
+describe("reduce — Quick sort (EI-370)", () => {
+  const quick = () => session({ source: BACKLOG });
+
+  it("toList files the card in the list picked on it", () => {
+    const picked: ListContext = { currentListId: "list-groceries", backlogListId: "list-backlog" };
+    expect(reduce(quick(), "toList", ctx(), picked).commit).toEqual({
+      kind: "listed",
+      listId: "list-groceries",
+    });
+  });
+
+  it("toList with nothing picked is not a decision — the card is already in Backlog", () => {
+    const none: ListContext = { currentListId: null, backlogListId: "list-backlog" };
+    const result = reduce(quick(), "toList", ctx(), none);
+    expect(result.commit).toBeUndefined();
+    expect(result.session).toEqual(quick());
+  });
+
+  it("ramps from today, like Overflow", () => {
+    expect(overdriveBase(BACKLOG, ctx())).toEqual({ base: "2026-08-03", min: 0 });
   });
 });
 

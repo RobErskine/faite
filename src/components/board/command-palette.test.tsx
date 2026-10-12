@@ -171,6 +171,8 @@ function renderPalette(
     onDeleteTodo: () => {},
     overflowCount: 0,
     onOpenOverdrive: () => {},
+    backlogCount: 0,
+    onOpenQuickSort: () => {},
     onOpenHelp: () => {},
     onOpenActivity: () => {},
     onOpenHistory: () => {},

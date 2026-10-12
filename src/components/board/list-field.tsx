@@ -12,7 +12,7 @@ import {
   ComboboxPortal,
   ComboboxPositioner,
 } from "@/components/ui/combobox";
-import type { List, Tab, Todo } from "@/lib/schema";
+import type { List, Tab } from "@/lib/schema";
 
 interface ListEntry {
   kind: "list";
@@ -25,11 +25,19 @@ interface ListEntry {
 type Entry = ListEntry;
 
 interface ListFieldProps {
-  todo: Todo;
+  /** The chosen list id, or null for none. Controlled: the field writes
+   * nothing itself, so the sheet saves on change and Quick sort (EI-370)
+   * only records a pick. */
+  value: string | null;
+  onChange: (listId: string | null) => void;
   /** Live, non-archived lists across EVERY tab — not just the active one. */
   lists: List[];
   tabs: Tab[];
-  onSave: (id: string, patch: Partial<Todo>) => void;
+  /** The input's id. The sheet's `<Label htmlFor>` points at the default;
+   * a second field on the page needs its own. */
+  id?: string;
+  /** For a field with no `<label>` pointing at it. */
+  "aria-label"?: string;
 }
 
 /**
@@ -102,7 +110,14 @@ function listLabel(list: List, tabsById: ReadonlyMap<string, Tab>): string {
  * match a TAB name too — typing "Work" surfaces every list in Work, which is
  * how people actually look for a list they cannot name exactly.
  */
-export function ListField({ todo, lists, tabs, onSave }: ListFieldProps) {
+export function ListField({
+  value,
+  onChange,
+  lists,
+  tabs,
+  id = "todo-list",
+  "aria-label": ariaLabel,
+}: ListFieldProps) {
   const [query, setQuery] = useState("");
 
   const tabsById = useMemo(() => new Map(tabs.map((t) => [t.id, t])), [tabs]);
@@ -140,11 +155,11 @@ export function ListField({ todo, lists, tabs, onSave }: ListFieldProps) {
     );
   }, [entries, query]);
 
-  const clear = () => onSave(todo.id, { listId: null });
+  const clear = () => onChange(null);
 
-  const current = todo.listId ? listsById.get(todo.listId) : undefined;
+  const current = value ? listsById.get(value) : undefined;
   // A dangling id — its list was archived — still has to read as SOMETHING.
-  const chipLabel = todo.listId
+  const chipLabel = value
     ? current
       ? listLabel(current, tabsById)
       : "Archived list"
@@ -156,7 +171,7 @@ export function ListField({ todo, lists, tabs, onSave }: ListFieldProps) {
       value={null}
       onValueChange={(entry: Entry | null) => {
         if (!entry) return;
-        onSave(todo.id, { listId: entry.list.id });
+        onChange(entry.list.id);
         setQuery("");
       }}
       inputValue={query}
@@ -188,13 +203,14 @@ export function ListField({ todo, lists, tabs, onSave }: ListFieldProps) {
           </span>
         )}
         <ComboboxInput
-          id="todo-list"
+          id={id}
+          aria-label={ariaLabel}
           placeholder={chipLabel ? "Move to…" : "Search lists…"}
           onKeyDown={(e) => {
             // Backspace on an empty query clears the list, the way it removes
             // the last chip in a multi-select. Guarded on the query being
             // empty so it never eats a character mid-search.
-            if (e.key === "Backspace" && query === "" && todo.listId !== null) {
+            if (e.key === "Backspace" && query === "" && value !== null) {
               e.preventDefault();
               clear();
             }

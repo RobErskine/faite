@@ -117,6 +117,7 @@ At root, in render order:
 | **View** | Show 1 / 3 / 5 / 7 days | writes `settings.visibleDays` |
 | | Roll over on workdays only ⇄ every day | writes `settings.workdaysOnly` — same setting also lives in Settings → Faite Loop (`loop-section.tsx`, EI-96), which additionally exposes `overflowAfterDays`; see [FAITE-LOOP.md](FAITE-LOOP.md) |
 | | Open Overdrive (N) | disabled when Overflow is empty; opens the same full-screen triage overlay as the button at the foot of the Overflow column (EI-97) — see [OVERDRIVE.md](OVERDRIVE.md). Overflow-only, deliberately: a day column's own Overdrive entry (EI-253) is a header icon, not a palette command — see OVERDRIVE.md §12 |
+| | Quick sort Backlog (N) | disabled when Backlog has no open to-dos; opens Overdrive over Backlog with a list picker per card (EI-370) — see OVERDRIVE.md §13 |
 
 Every mutating item routes through the shared undo helpers (`recordCreate`,
 `deleteListWithUndo`, `deleteTabWithUndo`) so palette actions and their

@@ -810,3 +810,47 @@ cases, §5a), `overdrive-overlay.test.tsx` (includes a `"day sessions
 `DayOverdriveButton`), `board-column.test.tsx` ("footer" and "actions"
 blocks), `board-guards.test.ts`, `developer-section.test.tsx` ("Seed
 Overflow" block), `e2e/overdrive.spec.ts`.
+
+## 13. Quick sort — the Backlog source (EI-370)
+
+Quick sort is Overdrive over the Backlog column. It has one change: each
+card has a **list picker**, and `↓` files the card into the picked list.
+Everything else is the same as Overdrive: `←` won't do, `↑` done, `→`/`⇧→`/`D`
+schedule, `⌫` step back, Esc.
+
+- **Source.** `BACKLOG` in `lib/overdrive.ts`. The ramp counts from today
+  with a floor of 0, as for Overflow: a Backlog card has no date, so today is
+  a real move.
+- **Queue.** `quickSortTodos` in `use-board-data.ts`: Backlog's open to-dos
+  in board order, minus the "away" ones, which have a date.
+- **`↓`.** `reduce` gets the picked list as `currentListId`. With nothing
+  picked, `toList` commits nothing, because "file it in Backlog" is where the
+  card already is. The button says "Move to {list}" or "Pick a list".
+- **The picker.** `ListField`, now controlled (`value`/`onChange`, its own
+  `id`). It lists every live non-Backlog list, grouped by tab. `L` focuses
+  it. While it has focus, the `isTextEntry` guard ignores every verdict key.
+  Picking a list sends focus back to the dialog, so `↓` works next.
+- **Pre-selection.** A card starts on its own proposal
+  (`todo.suggestedListId`, `docs/SMART-SORT.md`). On open, the overlay asks
+  `POST /api/smart-sort/suggest` once for the cards with none. A late answer
+  never replaces a pick the user made. Nothing is written until `↓`. With no
+  key, the route answers 409 and nothing is pre-selected.
+- **The write.** `handleOverdriveVerdict` clears `suggestedListId` on any
+  list verdict. When the card goes where Jev proposed, it logs `via:
+  "smart-sort"`; otherwise `via: "overdrive"`. That keeps accepts countable
+  for EI-371.
+- **Entry points.** A `ListTree` icon in the Backlog header
+  (`QuickSortButton`), shown from the first open to-do with no threshold.
+  On desktop it sits left of the collapse strip, which is absolutely
+  positioned; on phone it is the only header action. There is also a ⌘K
+  command, "Quick sort Backlog (N)".
+- **Focus.** `initialFocus={popupRef}` on `DialogContent`: without it, Base
+  UI would focus the picker (the first tabbable element) on open, and the
+  verdict keys would do nothing. The eyebrow and the dialog title say "Quick
+  sort".
+- **Landscape phone.** `e2e/overdrive.spec.ts` fails on
+  `phone-iphone-landscape` on main as well (EI-372). It does not run in the
+  CI gate.
+- **Tests.** `overdrive.test.ts` ("reduce — Quick sort"),
+  `list-field.test.tsx` (controlled API), `e2e/overdrive.spec.ts` (Quick
+  sort walk).

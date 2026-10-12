@@ -1,4 +1,6 @@
 import { test, expect } from "./support/fixtures";
+import { switchToLists } from "./support/phone";
+import { addListAndPropose } from "./support/smart-sort";
 import type { Page } from "@playwright/test";
 
 /**
@@ -379,4 +381,58 @@ test("→ Enter from a day session schedules onto the NEXT day, never the day it
     .filter({ has: page.getByText("Aug 12", { exact: true }) });
   await expect(tomorrow.getByText(title!, { exact: true })).toBeVisible();
   await expect(todayColumn(page).getByText(title!, { exact: true })).toHaveCount(0);
+});
+
+test.describe("Quick sort — the Backlog source (EI-370)", () => {
+  const quickSort = (page: Page) => page.getByRole("dialog", { name: "Quick sort" });
+  const backlog = (page: Page) => page.getByRole("region", { name: "Backlog" });
+
+  test("↓ files each card into its picked list: a proposal pre-selects, L picks by keyboard", async ({
+    page,
+  }) => {
+    await switchToLists(page);
+    const addField = backlog(page).getByPlaceholder("Add a to-do");
+    for (const title of ["Buy oat milk", "Fix the gate"]) {
+      await addField.fill(title);
+      await addField.press("Enter");
+    }
+    // Saved before `addListAndPropose` reads them back out of IndexedDB.
+    for (const title of ["Buy oat milk", "Fix the gate"]) {
+      await expect(backlog(page).getByRole("button", { name: title, exact: true })).toBeVisible();
+    }
+    // "Buy oat milk" arrives with a proposal (EI-367); "Fix the gate" without.
+    await addListAndPropose(page, "Groceries", ["Buy oat milk"]);
+    await switchToLists(page);
+
+    await page.getByRole("button", { name: "Quick sort Backlog — 2 to-dos" }).click();
+    await expect(quickSort(page)).toBeVisible();
+    // Focus starts on the dialog, not the picker, so the verdict keys work.
+    await expect(page.getByRole("combobox", { name: "List to file this to-do in" })).not.toBeFocused();
+
+    // Card 1: pre-selected from its proposal, so ↓ files it straight away.
+    await expect(quickSort(page).locator(".animate-in h2")).toHaveText("Buy oat milk");
+    await expect(quickSort(page).getByRole("button", { name: /Move to Groceries/ })).toBeVisible();
+    await page.keyboard.press("ArrowDown");
+
+    // Card 2: nothing picked — ↓ is not a decision, the card stays.
+    await expect(quickSort(page).locator(".animate-in h2")).toHaveText("Fix the gate");
+    await expect(quickSort(page).getByRole("button", { name: /Pick a list/ })).toBeVisible();
+    await page.keyboard.press("ArrowDown");
+    await expect(quickSort(page).locator(".animate-in h2")).toHaveText("Fix the gate");
+
+    // L focuses the picker; choosing a list hands the keys back for ↓.
+    await page.keyboard.press("l");
+    await expect(page.getByRole("combobox", { name: "List to file this to-do in" })).toBeFocused();
+    await page.keyboard.type("Groc");
+    await page.keyboard.press("Enter");
+    await expect(quickSort(page).getByRole("button", { name: /Move to Groceries/ })).toBeVisible();
+    await page.keyboard.press("ArrowDown");
+
+    await expect(quickSort(page).getByText("2 sorted into lists")).toBeVisible();
+    await page.keyboard.press("Enter");
+    await expect(quickSort(page)).toHaveCount(0);
+    for (const title of ["Buy oat milk", "Fix the gate"]) {
+      await expect(backlog(page).getByRole("button", { name: title, exact: true })).toHaveCount(0);
+    }
+  });
 });

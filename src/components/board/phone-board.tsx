@@ -16,7 +16,8 @@ import { TabPillMenu } from "./tab-pill-menu";
 import { BoardEmptyBanner } from "./board-empty-banner";
 import { CreateListColumn } from "./create-list-column";
 import { DateNav } from "./date-nav";
-import { DayOverdriveButton, OverdriveButton } from "./overdrive-button";
+import { DayOverdriveButton, OverdriveButton, QuickSortButton } from "./overdrive-button";
+import { BACKLOG } from "@/lib/overdrive";
 import { OverflowEmptyState } from "./overflow-empty-state";
 import { TabStrip } from "./tab-strip";
 import { PhoneBottomBar } from "./phone-bottom-bar";
@@ -78,6 +79,7 @@ export function PhoneBoard({
     ctx,
     board,
     overdriveDayTodos,
+    quickSortTodos,
     trackSlots,
     backlogColumn,
     otherListColumns,
@@ -414,6 +416,14 @@ export function PhoneBoard({
                   isColumnDragActive={!!activeList}
                   accentColor={null}
                   quickAddPlaceholderVisible
+                  // Phone Backlog's only header action (EI-370) — there is
+                  // no rail to collapse here.
+                  actions={
+                    <QuickSortButton
+                      count={quickSortTodos.length}
+                      onOpen={() => setOverdriveSource(BACKLOG)}
+                    />
+                  }
                 />
               )}
               {/*

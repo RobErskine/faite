@@ -1496,9 +1496,11 @@ export function useBoardActions(
       verdict: Verdict,
       origin?: ConfettiOrigin | null,
     ): { undoId: string; label: string } => {
+      // A list verdict also settles any Jev proposal (EI-370): the card has
+      // been sorted, whichever list it went to.
       const forward: Partial<Todo> =
         verdict.kind === "listed"
-          ? listPatch(verdict.listId)
+          ? { ...listPatch(verdict.listId), ...(todo.suggestedListId ? { suggestedListId: null } : {}) }
           : verdict.kind === "scheduled"
             ? schedulePatch(verdict.date, todo.scheduledDate)
             : statusPatch(verdict.kind);
@@ -1524,7 +1526,11 @@ export function useBoardActions(
           const eventId = await setTodoStatus(todo.id, verdict.kind, "overdrive");
           if (eventId) attachEventIds(entryId, [eventId]);
         } else if (verdict.kind === "listed") {
-          await moveTodoToList(todo.id, verdict.listId, undefined, "overdrive");
+          // Filed where Jev proposed: logged as an accepted proposal, the
+          // same as the chip (EI-369), so EI-371 can count it.
+          const accepted = !!todo.suggestedListId && verdict.listId === todo.suggestedListId;
+          await moveTodoToList(todo.id, verdict.listId, undefined, accepted ? "smart-sort" : "overdrive");
+          if (todo.suggestedListId) await updateTodo(todo.id, { suggestedListId: null });
         } else {
           await scheduleTodo(todo.id, verdict.date, todo.scheduledDate, undefined, "overdrive");
         }

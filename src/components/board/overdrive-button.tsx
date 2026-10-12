@@ -1,6 +1,6 @@
 "use client";
 
-import { Zap } from "lucide-react";
+import { ListTree, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { OVERDRIVE_MIN_TODOS } from "@/lib/overdrive";
 import { cn } from "@/lib/utils";
@@ -87,6 +87,45 @@ export function DayOverdriveButton({
       )}
     >
       <Zap className="size-3.5" aria-hidden />
+    </button>
+  );
+}
+
+/**
+ * Backlog's entry point into Quick sort (EI-370) — Overdrive over the
+ * Backlog, with a list picker on each card. Same shape as
+ * `DayOverdriveButton`, but shown from the first open to-do: Backlog is
+ * quiet intake, not pressure, so there is no threshold to earn. Its own
+ * accessible name, so a `/overdrive/i` locator never finds it.
+ *
+ * On desktop it shares the header with `RailCollapseButton`, which is
+ * absolutely positioned on the header's right edge; `className` lets the
+ * caller clear that strip.
+ */
+export function QuickSortButton({
+  count,
+  onOpen,
+  className,
+}: {
+  count: number;
+  onOpen: () => void;
+  className?: string;
+}) {
+  if (count < 1) return null;
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-label={`Quick sort Backlog — ${count} to-dos`}
+      className={cn(
+        "shrink-0 self-center rounded text-muted-foreground transition-colors",
+        "-m-1.5 p-1.5 pointer-coarse:-m-2.5 pointer-coarse:p-2.5",
+        "hover:text-foreground focus-ring",
+        className,
+      )}
+    >
+      <ListTree className="size-3.5" aria-hidden />
     </button>
   );
 }

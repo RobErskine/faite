@@ -81,6 +81,9 @@ interface CommandPaletteProps {
    * the same unfiltered count the column's own Overdrive button (EI-97) uses. */
   overflowCount: number;
   onOpenOverdrive: () => void;
+  /** Open to-dos in Backlog, and Quick sort over them (EI-370). */
+  backlogCount: number;
+  onOpenQuickSort: () => void;
   /** `?` opens the same sheet — see help-sheet.tsx. */
   onOpenHelp: () => void;
   /** `⌘⇧A` opens the same sheet — see activity-sheet.tsx. */
@@ -119,6 +122,8 @@ export function CommandPalette({
   onDeleteTodo,
   overflowCount,
   onOpenOverdrive,
+  backlogCount,
+  onOpenQuickSort,
   onOpenHelp,
   onOpenActivity,
   onOpenHistory,
@@ -430,12 +435,14 @@ export function CommandPalette({
     quickAddTitle: quickAdd.title,
     settings,
     overflowCount,
+    backlogCount,
     duplicateCount,
     platform,
     enterMode,
     createFromQuery,
     openHelp: onOpenHelp,
     openOverdrive: onOpenOverdrive,
+    openQuickSort: onOpenQuickSort,
     openActivity: onOpenActivity,
     openHistory: onOpenHistory,
     openDuplicates: onOpenDuplicates,

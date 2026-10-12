@@ -112,15 +112,21 @@ function pick(option: HTMLElement) {
   fireEvent.click(option);
 }
 
-function setup(props: Partial<Parameters<typeof ListField>[0]> = {}) {
+/** Drives the controlled field the way the sheet does — `value` from the
+ * to-do, `onChange` saved as a `listId` patch — so the assertions below still
+ * read in terms of what the sheet writes. */
+function setup({
+  todo: t = todo(),
+  lists = [BACKLOG, BRAIN_DUMP, PROJECT_1],
+  tabs = [MY_LISTS, WORK],
+}: { todo?: Todo; lists?: List[]; tabs?: Tab[] } = {}) {
   const onSave = vi.fn();
   render(
     <ListField
-      todo={todo()}
-      lists={[BACKLOG, BRAIN_DUMP, PROJECT_1]}
-      tabs={[MY_LISTS, WORK]}
-      onSave={onSave}
-      {...props}
+      value={t.listId}
+      onChange={(listId) => onSave(t.id, { listId })}
+      lists={lists}
+      tabs={tabs}
     />,
   );
   return { onSave };

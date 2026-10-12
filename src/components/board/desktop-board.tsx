@@ -18,7 +18,8 @@ import { TabPillMenu } from "./tab-pill-menu";
 import { BoardEmptyBanner } from "./board-empty-banner";
 import { CreateListColumn } from "./create-list-column";
 import { DateNav } from "./date-nav";
-import { DayOverdriveButton, OverdriveButton } from "./overdrive-button";
+import { DayOverdriveButton, OverdriveButton, QuickSortButton } from "./overdrive-button";
+import { BACKLOG } from "@/lib/overdrive";
 import { OverflowEmptyState } from "./overflow-empty-state";
 import { RailCollapseButton } from "./rail-collapse-button";
 import { RailHandle } from "./rail-handle";
@@ -112,6 +113,7 @@ export function DesktopBoard({
     ctx,
     board,
     overdriveDayTodos,
+    quickSortTodos,
     trackSlots,
     backlogColumn,
     otherListColumns,
@@ -629,10 +631,19 @@ export function DesktopBoard({
               collapsed={backlogCollapsed}
               onExpand={() => void mutateSettings(LOCAL_OWNER_ID, { backlogCollapsed: false })}
               actions={
-                <RailCollapseButton
-                  label="Backlog"
-                  onCollapse={() => void mutateSettings(LOCAL_OWNER_ID, { backlogCollapsed: true })}
-                />
+                <>
+                  {/* `mr-7` clears the collapse button's 24px strip, which is
+                      absolutely positioned on the header's right edge. */}
+                  <QuickSortButton
+                    count={quickSortTodos.length}
+                    onOpen={() => ui.setOverdriveSource(BACKLOG)}
+                    className="mr-7"
+                  />
+                  <RailCollapseButton
+                    label="Backlog"
+                    onCollapse={() => void mutateSettings(LOCAL_OWNER_ID, { backlogCollapsed: true })}
+                  />
+                </>
               }
             />
             {!backlogCollapsed && (
