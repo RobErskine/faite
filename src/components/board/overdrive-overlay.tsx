@@ -831,6 +831,7 @@ function OverdriveOverlayContent({
                     key={currentTodo.id}
                     id={QUICK_SORT_LIST_ID}
                     aria-label="List to file this to-do in"
+                    openOnFocus
                     value={pickedListId}
                     onChange={(listId) => {
                       setPicks((current) => new Map(current).set(currentTodo.id, listId));

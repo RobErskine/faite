@@ -420,6 +420,8 @@ test.describe("Quick sort — the Backlog source (EI-370)", () => {
     await expect(quickSort(page).locator(".animate-in h2")).toHaveText("Fix the gate");
     await quickSort(page).getByRole("button", { name: /Pick a list/ }).click();
     await expect(picker).toBeFocused();
+    // …with the lists already showing, before anything is typed.
+    await expect(page.getByRole("option", { name: /Groceries/ })).toBeVisible();
     await expect(quickSort(page).locator(".animate-in h2")).toHaveText("Fix the gate");
 
     // Back to the dialog, then L reaches the same picker by keyboard;
