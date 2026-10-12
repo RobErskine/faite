@@ -2,7 +2,7 @@
 
 To-dos arrive from five places: the board, REST (the Raycast extension),
 MCP, email forwarding, and the desktop shell. It is easy to add the same thing
-twice. With a TypeSafe Jev key saved in **Settings → Duplicates**, every new
+twice. With a TypeSafe Jev key saved in **Settings → Smart sorting** (named Duplicates until EI-368), every new
 open to-do is compared against the open ones, and a likely repeat is flagged.
 
 ## 1. The one hook
@@ -57,7 +57,7 @@ Two nullable synced fields on `todo` (migration 24):
   A to-do typed on the board carries its device's HLC and stays visible, only
   flagged; hiding it would make it vanish a second after typing.
 
-**Settings → Duplicates → Hold every duplicate** (`settings.holdAllDuplicates`,
+**Settings → Smart sorting → Hold every duplicate** (`settings.holdAllDuplicates`,
 synced, migration 25) holds every match, board-typed ones too. It is read on
 the client, never by the server, so turning it on or off also applies to
 flags that already exist. `isHeldDuplicate()` (`src/lib/duplicates.ts`) is the
@@ -85,7 +85,7 @@ the synced `settings` row. `wipe()` removes it with the account. Rotating
 | Dot on the avatar (Status channel `--info`, not Urgent red) and **Duplicates** menu item | `app-header.tsx` |
 | ⌘K **Review duplicates (N)**, only while N > 0 | `command-registry.ts` |
 | The review sheet | `duplicates-sheet.tsx` |
-| The key, and the Hold every duplicate switch | `settings/duplicates-section.tsx` |
+| The key, and the Hold every duplicate switch | `settings/smart-sorting-section.tsx` (EI-368) |
 
 In the sheet, **Mark as duplicate and remove** is the board's own delete, with
 its Undo toast. **Add to board** (held) or **Keep both** (flagged but visible)

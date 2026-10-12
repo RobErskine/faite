@@ -95,7 +95,18 @@ kind of routing.
 - The client is `fetchListSuggestions` (`src/lib/smart-sort.ts`). It never
   throws; every failure means "nothing to pre-select".
 
-## 5. Fields
+## 5. Settings
+
+**Settings → Smart sorting** (`settings/smart-sorting-section.tsx`, EI-368)
+replaced the Duplicates tab, because one key now powers both features. It has:
+
+- the key block;
+- the Duplicates group with **Hold every duplicate**;
+- **Smart to-do sorting → Suggest a list for new to-dos**
+  (`smartSortEnabled`). This switch is disabled, and shows as off, until a key
+  is saved. The server could not act on it without a key.
+
+## 6. Fields
 
 | Field | Written by | Meaning |
 |---|---|---|
@@ -104,7 +115,7 @@ kind of routing.
 
 Migration 26 adds both.
 
-## 6. Known limits
+## 7. Known limits
 
 - It is not tested against a live key. The tests use a fake `fetch`, as for
   duplicates.
