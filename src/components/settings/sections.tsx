@@ -1,12 +1,12 @@
 import {
   Bell,
-  CopyX,
   CornerDownRight,
   Info,
   KeyRound,
   Mail,
   MapPin,
   Palette,
+  Sparkles,
   User,
   UserCog,
   Wrench,
@@ -21,7 +21,7 @@ import { LoopSection } from "./loop-section";
 import { RemindersSection } from "./reminders-section";
 import { PlacesSection } from "./places-section";
 import { EmailSection } from "./email-section";
-import { DuplicatesSection } from "./duplicates-section";
+import { SmartSortingSection } from "./smart-sorting-section";
 import { DeveloperSection } from "./developer-section";
 
 /**
@@ -80,11 +80,11 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     Component: EmailSection,
   },
   {
-    id: "duplicates",
-    label: "Duplicates",
-    description: "Catch a to-do you already have, using your own TypeSafe key.",
-    icon: CopyX,
-    Component: DuplicatesSection,
+    id: "smart-sorting",
+    label: "Smart sorting",
+    description: "Catch duplicates and suggest a list for new to-dos, using your own TypeSafe key.",
+    icon: Sparkles,
+    Component: SmartSortingSection,
   },
   {
     id: "api-keys",

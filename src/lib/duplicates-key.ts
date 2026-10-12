@@ -42,8 +42,8 @@ async function request(method: "GET" | "POST" | "DELETE", body?: unknown): Promi
     headers: body ? { "Content-Type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined,
   });
-  if (response.status === 401) throw new DuplicatesUnavailableError("Sign in to use duplicate detection.");
-  if (response.status === 404) throw new DuplicatesUnavailableError("Duplicate detection is not available here.");
+  if (response.status === 401) throw new DuplicatesUnavailableError("Sign in to use smart sorting.");
+  if (response.status === 404) throw new DuplicatesUnavailableError("Smart sorting is not available here.");
   if (response.status === 422) throw new JevKeyRejectedError();
   if (!response.ok) throw new Error(`/api/duplicates/key responded ${response.status}`);
   return response.json();
