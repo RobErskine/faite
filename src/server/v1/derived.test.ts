@@ -86,14 +86,25 @@ describe("overflowTodos", () => {
 describe("backlogTodos", () => {
   const lists = [list({ id: "backlog", isBacklog: true }), list({ id: "other" })];
 
-  it("returns only the to-dos filed in the Backlog list", () => {
+  it("matches the board: Backlog id, null, or a gone list, and only when unscheduled (EI-366)", () => {
+    const withGone = [
+      ...lists,
+      list({ id: "archived", archivedAt: "2026-09-02T00:00:00.000Z" }),
+      list({ id: "deleted", deletedAt: "2026-09-02T00:00:00.000Z" }),
+    ];
     const todos = [
       todo({ id: "a", listId: "backlog" }),
       todo({ id: "b", listId: "other" }),
       todo({ id: "c", listId: null }),
+      todo({ id: "d", listId: "missing" }),
+      todo({ id: "e", listId: "archived" }),
+      todo({ id: "f", listId: "deleted" }),
+      todo({ id: "g", listId: null, scheduledDate: "2026-09-09" }),
+      todo({ id: "h", listId: "backlog", scheduledDate: "2026-09-09" }),
+      todo({ id: "i", listId: null, status: "done" }),
     ];
 
-    expect(backlogTodos(todos, lists).map((t) => t.id)).toEqual(["a"]);
+    expect(backlogTodos(todos, withGone).map((t) => t.id)).toEqual(["a", "c", "d", "e", "f", "i"]);
   });
 
   /** Should be impossible, but a read endpoint is the wrong place to discover

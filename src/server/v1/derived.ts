@@ -1,4 +1,5 @@
 import { listSchema, settingsSchema, todoSchema, type List, type Settings, type Todo } from "@/lib/schema";
+import { backlogMembership } from "@/lib/backlog";
 import { contextFromSettings, deriveColumn, OVERFLOW } from "@/lib/scheduling";
 
 /**
@@ -48,18 +49,22 @@ export function overflowTodos(todos: Todo[], settings: Settings, now: Date = new
 }
 
 /**
- * To-dos in the Backlog list — the always-present column a to-do lands in
- * when it is not filed anywhere else.
+ * To-dos in Backlog — the always-present column a to-do lands in when it is
+ * not filed anywhere else.
+ *
+ * `backlogMembership` is the board's own rule (EI-366): an unscheduled to-do
+ * whose `listId` is Backlog's, null, or a list that is gone. Matching the id
+ * alone missed every email capture and every list-less API create.
  *
  * An account with no Backlog row yields an empty array rather than throwing.
  * That state should be impossible, but a read endpoint is the wrong place to
  * discover it, and returning "nothing is in Backlog" is true either way.
  */
 export function backlogTodos(todos: Todo[], lists: List[]): Todo[] {
-  const backlog = lists.find((list) => list.isBacklog);
-  if (!backlog) return [];
+  const inBacklog = backlogMembership(lists);
+  if (!inBacklog) return [];
 
-  return todos.filter((todo) => todo.listId === backlog.id);
+  return todos.filter(inBacklog);
 }
 
 /**
