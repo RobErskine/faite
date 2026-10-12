@@ -47,6 +47,7 @@ function todo(overrides: Partial<Todo> & { id: string }): Todo {
     source: null,
     duplicateOf: null,
     duplicateHeld: null,
+    suggestedListId: null,
     ...overrides,
   };
 }

@@ -1,6 +1,8 @@
 import { DurableObject } from "cloudflare:workers";
 import { drizzle, type DrizzleSqliteDODatabase } from "drizzle-orm/durable-sqlite";
+import { backlogMembership } from "@/lib/backlog";
 import { positionAtEnd } from "@/lib/ordering";
+import type { List } from "@/lib/schema";
 import type { PullResponse, PushRequest, PushResponse } from "@/lib/sync/wire";
 import { SETTINGS_ENTITY_ID, SYNC_KINDS, SYNC_PROTOCOL_VERSION } from "@/lib/sync/wire";
 import type { ServerMessage } from "@/lib/sync/ws-protocol";
@@ -28,6 +30,7 @@ import {
 import {
   type Candidate,
   checkJevKey,
+  eligibleNewTodos,
   findDuplicate,
   type InsertedTodo,
   type KeyCheck,
@@ -41,6 +44,7 @@ import {
   JEV_KEY_STORAGE_KEY,
   type StoredJevKey,
 } from "./duplicates/jev-key";
+import { type ListOption, suggestLists } from "./smart-sort/suggest";
 import { chunkForInClause } from "./sync/sql-limits";
 import { buildInsertColumns } from "./sync/upsert";
 import { clampPullArgs, parsePushRequest } from "./sync/validate";
@@ -928,12 +932,15 @@ export class UserDurableObject extends DurableObject {
     // account that has never attached anything.
     if (tombstonedAttachment) await this.scheduleSweep();
 
-    // Deliberately not awaited: the push acks now and the check finishes on
-    // its own (EI-346). `ctx.waitUntil` is a no-op in a Durable Object — the
-    // object stays alive while it has pending I/O, and a Jev call is a
-    // second or two, far inside the idle window.
+    // Deliberately not awaited: the push acks now and the checks finish on
+    // their own (EI-346, EI-367). `ctx.waitUntil` is a no-op in a Durable
+    // Object — the object stays alive while it has pending I/O, and a Jev
+    // call is a second or two, far inside the idle window.
     const toCheck = selectNewTodosToCheck(insertedTodos);
-    if (toCheck.length > 0) void this.checkDuplicates(userId, toCheck);
+    const toPropose = eligibleNewTodos(insertedTodos)
+      .filter(({ apply }) => apply.scheduledDate == null && apply.suggestedListId == null)
+      .map(({ entityId }) => entityId);
+    if (toCheck.length > 0 || toPropose.length > 0) void this.afterCreate(userId, toCheck, toPropose);
 
     return {
       acked: accepted.map((entry) => entry.id),
@@ -966,6 +973,117 @@ export class UserDurableObject extends DurableObject {
   private async loadJevKey(): Promise<string | null> {
     const stored = await this.ctx.storage.get<StoredJevKey>(JEV_KEY_STORAGE_KEY);
     return stored ? decryptJevKey(stored, this.env.BETTER_AUTH_SECRET) : null;
+  }
+
+  /** Duplicates first, so a to-do flagged as one is not also given a list
+   * (`backlogTodosToPropose` skips flagged rows). */
+  private async afterCreate(userId: string, toCheck: NewTodoToCheck[], toPropose: string[]): Promise<void> {
+    if (toCheck.length > 0) await this.checkDuplicates(userId, toCheck);
+    if (toPropose.length > 0) await this.proposeLists(userId, toPropose);
+  }
+
+  /**
+   * Asks Jev which list each new Backlog to-do belongs in, and writes the
+   * answer to `suggestedListId` through `push()` (EI-367). A proposal only —
+   * nothing moves until the user accepts it on the board.
+   *
+   * Gated on `settings.smartSortEnabled` and a saved key. Best effort and
+   * total, like `checkDuplicates`: every failure ends in "no proposal", and
+   * logs carry no titles. The to-dos are read again after Jev answers, so one
+   * the user filed, scheduled or closed meanwhile is left alone.
+   */
+  private async proposeLists(userId: string, ids: string[]): Promise<void> {
+    try {
+      const settings = await this.getSettings();
+      if (!settings?.smartSortEnabled) return;
+      const apiKey = await this.loadJevKey();
+      if (!apiKey) return;
+
+      const todos = await this.backlogTodosToPropose(ids);
+      if (todos.length === 0) return;
+      const proposals = await suggestLists(apiKey, todos, await this.listOptions());
+
+      const stillInBacklog = new Set((await this.backlogTodosToPropose(ids)).map((todo) => todo.id));
+      const entries: PushRequest["entries"] = [];
+      for (const [i, todo] of todos.entries()) {
+        const listId = proposals[i];
+        if (!listId || !stillInBacklog.has(todo.id)) continue;
+        entries.push({
+          id: crypto.randomUUID(),
+          kind: "todo",
+          entityId: todo.id,
+          patch: { suggestedListId: listId },
+          hlc: await this.nextServerHlc(),
+        });
+      }
+      if (entries.length > 0) await this.push(userId, { protocol: SYNC_PROTOCOL_VERSION, entries });
+    } catch (error) {
+      console.warn("[faite] list proposal failed", error instanceof Error ? error.message : "unknown");
+    }
+  }
+
+  /**
+   * Proposed lists for `todoIds`, for Quick sort to pre-select (EI-367).
+   * Writes nothing and ignores `smartSortEnabled` — the user asked, by
+   * opening Quick sort. `connected: false` when no key is saved. Throws on a
+   * Jev failure; the route turns that into a 502.
+   */
+  async suggestListsFor(
+    todoIds: string[],
+  ): Promise<{ connected: boolean; suggestions: Record<string, string | null> }> {
+    const apiKey = await this.loadJevKey();
+    if (!apiKey) return { connected: false, suggestions: {} };
+
+    const todos: { id: string; title: string; description: string | null }[] = [];
+    for (const batch of chunkForInClause(todoIds)) {
+      const placeholders = batch.map(() => "?").join(", ");
+      todos.push(
+        ...this.ctx.storage.sql
+          .exec<{ id: string; title: string; description: string | null }>(
+            `SELECT id, title, description FROM todos
+              WHERE id IN (${placeholders}) AND status = 'open' AND deleted_at IS NULL AND trim(title) != ''`,
+            ...batch,
+          )
+          .toArray(),
+      );
+    }
+    const proposals = await suggestLists(apiKey, todos, await this.listOptions());
+    return { connected: true, suggestions: Object.fromEntries(todos.map((todo, i) => [todo.id, proposals[i]])) };
+  }
+
+  /** Of `ids`, the to-dos still open, unflagged, without a proposal, and in
+   * Backlog by the board's own rule (`backlogMembership`). */
+  private async backlogTodosToPropose(
+    ids: string[],
+  ): Promise<{ id: string; title: string; description: string | null }[]> {
+    const inBacklog = backlogMembership((await this.listEntities("list")) as List[]);
+    if (!inBacklog) return [];
+    const placeholders = ids.map(() => "?").join(", ");
+    return this.ctx.storage.sql
+      .exec<{ id: string; title: string; description: string | null; list_id: string | null; scheduled_date: string | null }>(
+        `SELECT id, title, description, list_id, scheduled_date FROM todos
+          WHERE id IN (${placeholders}) AND status = 'open' AND deleted_at IS NULL
+            AND duplicate_of IS NULL AND suggested_list_id IS NULL`,
+        ...ids,
+      )
+      .toArray()
+      .filter((row) => inBacklog({ listId: row.list_id, scheduledDate: row.scheduled_date }))
+      .map(({ id, title, description }) => ({ id, title, description }));
+  }
+
+  /** The lists a to-do can be proposed for: live, not archived, not Backlog,
+   * in board order, each with its tab's name. */
+  private async listOptions(): Promise<ListOption[]> {
+    const [lists, tabs] = await Promise.all([this.listEntities("list"), this.listEntities("tab")]);
+    const tabName = new Map(tabs.map((tab) => [tab.id as string, tab.name as string]));
+    return (lists as List[])
+      .filter((list) => !list.isBacklog && !list.archivedAt)
+      .map((list) => ({
+        id: list.id,
+        name: list.name,
+        tabName: (list.tabId && tabName.get(list.tabId)) || null,
+        description: list.description,
+      }));
   }
 
   /**

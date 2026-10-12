@@ -362,6 +362,16 @@ export const todoSchema = z.object({
    * Meaningless while `duplicateOf` is null.
    */
   duplicateHeld: z.boolean().nullable().default(null),
+
+  /**
+   * The list Jev proposes for this Backlog to-do (EI-367, smart sorting).
+   * Only the server writes a value — `src/server/smart-sort/suggest.ts`, after
+   * a create, for a user with a Jev key and `settings.smartSortEnabled`. It
+   * is a proposal, never a move: the to-do stays in Backlog until the user
+   * accepts (which moves it and writes null) or dismisses (null). A value
+   * pointing at a list that has since gone simply stops being shown.
+   */
+  suggestedListId: idSchema.nullable().default(null),
 });
 export type Todo = z.infer<typeof todoSchema>;
 
@@ -782,6 +792,13 @@ export const settingsSchema = z.object({
    * also applies to flags that already exist.
    */
   holdAllDuplicates: z.boolean().default(false),
+  /**
+   * Smart to-do sorting (EI-367): after a create lands in Backlog, ask Jev
+   * which list it belongs in and store the answer as `todo.suggestedListId`.
+   * Read by the server (`UserDurableObject.push`), so it gates the Jev call
+   * itself. Off by default — it spends the user's own TypeSafe credit.
+   */
+  smartSortEnabled: z.boolean().default(false),
   updatedAt: z.string(),
 });
 export type Settings = z.infer<typeof settingsSchema>;

@@ -91,6 +91,8 @@ export const todos = sqliteTable("todos", {
   /** EI-346 — see `todoSchema.duplicateOf`. */
   duplicateOf: text("duplicate_of"),
   duplicateHeld: integer("duplicate_held", { mode: "boolean" }),
+  /** EI-367 — see `todoSchema.suggestedListId`. */
+  suggestedListId: text("suggested_list_id"),
 });
 
 export const tabs = sqliteTable("tabs", {
@@ -255,6 +257,8 @@ export const settings = sqliteTable("settings", {
   goodJobMode: integer("good_job_mode", { mode: "boolean" }).notNull().default(false),
   /** EI-346 — see `settingsSchema.holdAllDuplicates`. Off by default. */
   holdAllDuplicates: integer("hold_all_duplicates", { mode: "boolean" }).notNull().default(false),
+  /** EI-367 — see `settingsSchema.smartSortEnabled`. Off by default. */
+  smartSortEnabled: integer("smart_sort_enabled", { mode: "boolean" }).notNull().default(false),
   updatedAt: text("updated_at").notNull(),
   version: integer("version").notNull(),
 });

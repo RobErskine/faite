@@ -416,6 +416,17 @@ export const USER_DB_MIGRATIONS: readonly UserDbMigration[] = [
       "ALTER TABLE settings ADD COLUMN hold_all_duplicates integer NOT NULL DEFAULT 0",
     ],
   },
+  {
+    id: 26,
+    name: "smart-sort-fields",
+    statements: [
+      // EI-367: smart sorting. The to-do column is nullable with no default —
+      // NULL is "no proposal", true of every existing row. The setting is NOT
+      // NULL with a DEFAULT matching the Zod default (off), as in migration 25.
+      "ALTER TABLE todos ADD COLUMN suggested_list_id text",
+      "ALTER TABLE settings ADD COLUMN smart_sort_enabled integer NOT NULL DEFAULT 0",
+    ],
+  },
   // Add new migrations here. Never edit one above this line.
   //
   // Example — adding a nullable column (the safe, ordinary case):

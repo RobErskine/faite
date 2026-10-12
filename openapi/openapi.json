@@ -10810,6 +10810,18 @@
                 "type": "null"
               }
             ]
+          },
+          "suggestedListId": {
+            "default": null,
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -10838,7 +10850,8 @@
           "reminderTime",
           "source",
           "duplicateOf",
-          "duplicateHeld"
+          "duplicateHeld",
+          "suggestedListId"
         ],
         "additionalProperties": false
       },
@@ -11886,6 +11899,10 @@
             "default": false,
             "type": "boolean"
           },
+          "smartSortEnabled": {
+            "default": false,
+            "type": "boolean"
+          },
           "updatedAt": {
             "type": "string"
           }
@@ -11924,6 +11941,7 @@
           "overdriveAutoConfirmMs",
           "goodJobMode",
           "holdAllDuplicates",
+          "smartSortEnabled",
           "updatedAt"
         ],
         "additionalProperties": false

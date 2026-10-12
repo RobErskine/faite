@@ -247,6 +247,13 @@ after `POST /api/v1/todos` or MCP `create_todo` returns. A held duplicate is
 off the board until the user reviews it, though it still appears in
 `GET /api/v1/todos`. See `docs/DUPLICATES.md`.
 
+**A Backlog create can gain a proposed list (EI-367).** With a Jev key saved
+and smart sorting on, a new open, unscheduled to-do that lands in Backlog may
+gain `suggestedListId` a second or two after it is created. It is a proposal
+only: `listId` does not change, and the to-do stays in Backlog until the user
+accepts or dismisses it on the board. A client that moves the to-do itself
+should write `suggestedListId: null` too. See `docs/SMART-SORT.md`.
+
 ## MCP server (A6, EI-52)
 
 A remote MCP server at `/mcp` — deliberately not under `/api`, matching the

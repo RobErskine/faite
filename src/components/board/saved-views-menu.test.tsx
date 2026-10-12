@@ -41,6 +41,7 @@ const settings = (over: Partial<Settings> = {}): Settings => ({
   reminderPresetsSeeded: false,
   goodJobMode: false,
   holdAllDuplicates: false,
+  smartSortEnabled: false,
   overdriveMinTodos: 5,
   overdriveAutoConfirmMs: 0,
   updatedAt: "2026-08-03T00:00:00.000Z",

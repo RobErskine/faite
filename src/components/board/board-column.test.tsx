@@ -59,6 +59,7 @@ const todo = (id: string): Todo => ({
   source: null,
   duplicateOf: null,
   duplicateHeld: null,
+  suggestedListId: null,
 });
 
 const group = (
