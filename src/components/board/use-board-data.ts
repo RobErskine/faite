@@ -2,6 +2,7 @@
 
 import { useMemo, useCallback } from "react";
 import type { CivilDate, List, Tab, Todo } from "@/lib/schema";
+import { suggestedListFor } from "@/lib/suggested-list";
 import {
   buildBoard,
   filterComputedColumn,
@@ -652,6 +653,17 @@ export function useBoardData(params: UseBoardDataParams) {
   /** The fallback for a homeless todo, mirroring `groupTodosByList`'s `?? backlog`. */
   const backlogList = useMemo(() => lists.find((l) => l.isBacklog), [lists]);
 
+  /** Backlog to-do id → the list Jev proposes for it (EI-369). Only Backlog
+   * cards show a proposal: a to-do anywhere else has already been sorted. */
+  const suggestedLists = useMemo(() => {
+    const map = new Map<string, List>();
+    for (const todo of backlogColumn?.todos ?? []) {
+      const list = suggestedListFor(todo, listsById);
+      if (list) map.set(todo.id, list);
+    }
+    return map;
+  }, [backlogColumn, listsById]);
+
   /**
    * Quick-add's "@list" mention candidates, color-resolved up front — a list
    * without its own color falls back to its tab's, the same rule `accentColor`
@@ -936,6 +948,7 @@ export function useBoardData(params: UseBoardDataParams) {
     visibleTodos,
     subtaskCounts,
     attachmentCounts,
+    suggestedLists,
     templates,
     nonTemplateTodos,
     searchableTodos,

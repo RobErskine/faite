@@ -13,6 +13,8 @@ import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
 import type { Menu as MenuPrimitive } from "@base-ui/react/menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { badgeVariants } from "@/components/ui/badge";
+import { Sparkles, X } from "lucide-react";
 import { DragGrip } from "./drag-grip";
 import { PriorityRail, TitleMarkers, TodoMetaBadges } from "./todo-row-parts";
 import { cardStop, navKeyOf, type NavKey } from "@/lib/column-nav";
@@ -20,7 +22,7 @@ import { formatCompletionStamp } from "@/lib/event-time";
 import { priorityRail } from "@/lib/priority";
 import { TITLE_CLAMP_CLASS } from "@/lib/title";
 import { rollEventsFor } from "@/lib/rollover-events";
-import type { Label as LabelRecord, ReminderPreset, Todo } from "@/lib/schema";
+import type { Label as LabelRecord, List, ReminderPreset, Todo } from "@/lib/schema";
 import type { PlacementContext } from "@/lib/scheduling";
 import { originOf, type ConfettiOrigin } from "@/lib/celebrate";
 import { detectPlatform, type Platform } from "@/lib/keyboard";
@@ -143,6 +145,14 @@ interface TodoCardProps {
    * `attachmentCounts`. Undefined or 0 shows no badge.
    */
   attachmentCount?: number;
+  /**
+   * The list Jev proposes for this Backlog to-do (EI-369), already checked by
+   * the caller (`suggestedListFor`): live, not archived, not Backlog. Shown
+   * as a chip; clicking it or `⇧→` on the row accepts.
+   */
+  suggestedList?: List | null;
+  onAcceptSuggestion?: (todo: Todo) => void;
+  onDismissSuggestion?: (todo: Todo) => void;
 }
 
 export function TodoCard({
@@ -167,6 +177,9 @@ export function TodoCard({
   recurrenceSummary,
   subtaskCount,
   attachmentCount,
+  suggestedList,
+  onAcceptSuggestion,
+  onDismissSuggestion,
 }: TodoCardProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: todo.id });
@@ -390,7 +403,22 @@ export function TodoCard({
         // the row itself does, or a press on the checkbox, the title button or
         // the drag grip would fire twice as it bubbled through here.
         if (e.target !== e.currentTarget) return;
-        if (e.key === "Enter") {
+        if (
+          e.key === "ArrowRight" &&
+          e.shiftKey &&
+          !e.metaKey &&
+          !e.ctrlKey &&
+          !e.altKey &&
+          suggestedList &&
+          onAcceptSuggestion
+        ) {
+          // Accept the proposed list (EI-369). `⇧`, because bare `→` is the
+          // board's arrow navigation (`navKeyOf` returns null for any
+          // modifier, so the press reaches here). Registered in
+          // `lib/shortcuts.ts` as a local shortcut.
+          e.preventDefault();
+          onAcceptSuggestion(todo);
+        } else if (e.key === "Enter") {
           e.preventDefault();
           onOpen(todo);
         } else if (e.key === " ") {
@@ -714,6 +742,51 @@ export function TodoCard({
           attachmentCount={attachmentCount}
         />
       </button>
+      {suggestedList && onAcceptSuggestion && (
+        /*
+          Siblings of the title button, never inside it — a button cannot
+          hold a button. Dashed and quiet, because it is a proposal: the to-do
+          has not moved, and nothing will until the chip is pressed. The × is
+          the dismiss route on touch, where there is no context menu.
+        */
+        <span className="mt-1.5 ml-6 inline-flex items-center gap-0.5">
+          <button
+            type="button"
+            data-suggested-list
+            aria-label={`Move to ${suggestedList.name}`}
+            title="Suggested list"
+            onClick={(e) => {
+              e.stopPropagation();
+              onAcceptSuggestion(todo);
+            }}
+            className={cn(
+              badgeVariants({ variant: "outline" }),
+              "cursor-pointer gap-1 border-dashed text-2xs font-normal text-muted-foreground",
+              "hover:bg-accent hover:text-foreground focus-ring",
+            )}
+          >
+            <Sparkles className="size-2.5" aria-hidden />
+            {suggestedList.emoji ? `${suggestedList.emoji} ` : ""}
+            {suggestedList.name}
+          </button>
+          {onDismissSuggestion && (
+            <button
+              type="button"
+              aria-label="Dismiss suggestion"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDismissSuggestion(todo);
+              }}
+              className={cn(
+                "rounded p-0.5 text-muted-foreground transition-colors hover:text-foreground focus-ring",
+                "pointer-coarse:p-1.5",
+              )}
+            >
+              <X className="size-3" aria-hidden />
+            </button>
+          )}
+        </span>
+      )}
     </ContextMenuTrigger>
     {contextActions && (
       <TodoCardMenu
@@ -723,6 +796,7 @@ export function TodoCard({
         actions={contextActions}
         selectionCount={selectionCount}
         inListColumn={isAway}
+        onDismissSuggestion={suggestedList ? onDismissSuggestion : undefined}
         close={() => menuActionsRef.current?.close()}
       />
     )}

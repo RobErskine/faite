@@ -135,6 +135,7 @@ export function DesktopBoard({
     recurrenceExpansion,
     subtaskCounts,
     attachmentCounts,
+    suggestedLists,
     overflowCollapsed,
     backlogCollapsed,
     renderedDays,
@@ -613,6 +614,9 @@ export function DesktopBoard({
               recurrenceSummaries={recurrenceSummaries}
               subtaskCounts={subtaskCounts}
               attachmentCounts={attachmentCounts}
+              suggestedLists={suggestedLists}
+              onAcceptSuggestion={actions.handleAcceptSuggestion}
+              onDismissSuggestion={actions.handleDismissSuggestion}
               // Backlog cannot be renamed, archived, or deleted, so its one
               // real action is collapsing the rail — see RailCollapseButton.
               isColumnDragActive={!!activeList}

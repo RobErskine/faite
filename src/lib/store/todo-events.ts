@@ -30,7 +30,10 @@ export type TodoEventKind =
  * optional key on a JSON payload, so no migration and no `v` bump: an older
  * bundle reads straight past it.
  */
-export type EventVia = "overdrive";
+/** Where a triage decision was made, for History (EI-321). `smart-sort` is
+ * an accepted Jev list proposal (EI-369) — the record a later version can
+ * learn from (EI-371). */
+export type EventVia = "overdrive" | "smart-sort";
 
 interface EmptyPayload {
   v: 1;

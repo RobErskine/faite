@@ -106,6 +106,31 @@ replaced the Duplicates tab, because one key now powers both features. It has:
   (`smartSortEnabled`). This switch is disabled, and shows as off, until a key
   is saved. The server could not act on it without a key.
 
+## 5a. The chip (EI-369)
+
+A Backlog card whose `suggestedListId` resolves through `suggestedListFor`
+(`src/lib/suggested-list.ts`) shows a dashed chip under the title. The list
+must be live, not archived and not Backlog, and the to-do must be open.
+
+| Action | Result |
+|---|---|
+| Click the chip, or `⇧→` on the focused row | `moveTodoToList(…, "smart-sort")`, then `suggestedListId: null`, with an Undo toast. Undo brings the chip back. |
+| Click the ×, or **Dismiss suggestion** in the card menu | Sets `suggestedListId: null`. The to-do stays. Nothing proposes it again. |
+
+The shortcut is `⇧`, not bare `→`. Bare `→` is board navigation
+(KEYBOARD.md §11), and on every Backlog card it moves to the first list. The
+× exists because touch screens have no context menu.
+
+**What is logged.** An accept is a `moved` event with `via: "smart-sort"`.
+That is the record EI-371 can learn from. A dismiss is **not** logged in v1:
+it needs a new event kind, and a new kind changes every kind filter
+(`kind-filter.ts` and the settings arrays, see the EI-320 lesson). EI-371
+owns that work.
+
+The e2e spec is `e2e/smart-sort.spec.ts`. It runs on desktop and
+phone-iphone, and it writes the proposal into IndexedDB in place of the
+server.
+
 ## 6. Fields
 
 | Field | Written by | Meaning |

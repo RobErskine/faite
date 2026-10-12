@@ -1,6 +1,6 @@
 "use client";
 
-import { Ban, Check, SquarePen, Trash2, Undo2 } from "lucide-react";
+import { Ban, Check, SquarePen, Trash2, Undo2, X } from "lucide-react";
 import {
   ContextMenuContent,
   ContextMenuItem,
@@ -57,6 +57,9 @@ interface TodoCardMenuProps {
   /** An away card — dated, but rendered in its own list column, so "Move back"
    * has nowhere to move it. */
   inListColumn?: boolean;
+  /** Set only while the card shows a proposed list (EI-369). Clears the
+   * proposal; the to-do stays where it is. */
+  onDismissSuggestion?: (todo: Todo) => void;
   /** Dismiss the menu after a chord fires — clicking an item closes it on its
    * own, but a keyboard shortcut has to say so. */
   close: () => void;
@@ -69,6 +72,7 @@ export function TodoCardMenu({
   actions,
   selectionCount = 1,
   inListColumn = false,
+  onDismissSuggestion,
   close,
 }: TodoCardMenuProps) {
   const platform = usePlatform();
@@ -166,6 +170,14 @@ export function TodoCardMenu({
           {many
             ? `Move${n} back to their lists`
             : `Move back to ${actions.homeListName(todo)}`}
+        </ContextMenuItem>
+      )}
+
+      {/* About this card's own proposal, so it steps aside for a batch. */}
+      {onDismissSuggestion && !many && (
+        <ContextMenuItem onClick={() => onDismissSuggestion(todo)}>
+          <X />
+          Dismiss suggestion
         </ContextMenuItem>
       )}
 
