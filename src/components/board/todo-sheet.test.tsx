@@ -51,6 +51,7 @@ const TODO: Todo = {
   source: null,
   duplicateOf: null,
   duplicateHeld: null,
+  suggestedListId: null,
 };
 
 interface HarnessProps {

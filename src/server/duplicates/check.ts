@@ -61,13 +61,12 @@ export interface InsertedTodo {
 }
 
 /**
- * Which of a push's newly inserted to-dos to check.
- *
- * Skips sub-tasks and recurring occurrences (an occurrence is its series
- * repeating, not a duplicate), anything not open, and the whole push when it
- * is a bulk write.
+ * The creates a Jev check may look at — shared by duplicate detection and
+ * smart sorting (EI-367), which must agree on what "a person adding a to-do"
+ * is. Open, top-level, not a recurring occurrence, not already flagged, with
+ * a title; and none at all when the push is a bulk write.
  */
-export function selectNewTodosToCheck(inserted: InsertedTodo[]): NewTodoToCheck[] {
+export function eligibleNewTodos(inserted: InsertedTodo[]): InsertedTodo[] {
   const eligible = inserted.filter(({ apply }) => {
     const status = apply.status ?? "open";
     return (
@@ -80,14 +79,25 @@ export function selectNewTodosToCheck(inserted: InsertedTodo[]): NewTodoToCheck[
       apply.title.trim() !== ""
     );
   });
-  if (eligible.length > MAX_NEW_TODOS_PER_PUSH) return [];
+  return eligible.length > MAX_NEW_TODOS_PER_PUSH ? [] : eligible;
+}
+
+/**
+ * Which of a push's newly inserted to-dos to check.
+ *
+ * Skips sub-tasks and recurring occurrences (an occurrence is its series
+ * repeating, not a duplicate), anything not open, and the whole push when it
+ * is a bulk write.
+ */
+export function selectNewTodosToCheck(inserted: InsertedTodo[]): NewTodoToCheck[] {
+  const eligible = eligibleNewTodos(inserted);
   return eligible.map(({ entityId, hlcs }) => ({
     id: entityId,
     held: hlcs.length > 0 && hlcs.every((hlc) => hlc.endsWith(SERVER_HLC_SUFFIX)),
   }));
 }
 
-function describe(todo: TodoText): Record<string, string> {
+export function describeTodo(todo: TodoText): Record<string, string> {
   const notes = todo.description?.trim().slice(0, NOTES_MAX);
   return notes ? { title: todo.title, notes } : { title: todo.title };
 }
@@ -98,14 +108,14 @@ function describe(todo: TodoText): Record<string, string> {
 export function buildJevRequest(newTodo: TodoText, candidates: Candidate[]) {
   return {
     model: JEV_MODEL,
-    state: { new_todo: describe(newTodo) },
+    state: { new_todo: describeTodo(newTodo) },
     questions: Object.fromEntries(
       candidates.map((candidate, i) => [
         `c${i}`,
         {
           type: "noul",
           instructions: {
-            existing_todo: describe(candidate),
+            existing_todo: describeTodo(candidate),
             question:
               "Is `new_todo` the same task as `existing_todo`, so that doing one would also complete the other?",
           },
@@ -126,11 +136,11 @@ export class JevError extends Error {
   }
 }
 
-interface JevResponse {
-  answers?: Record<string, { noul?: number }>;
+export interface JevResponse {
+  answers?: Record<string, { noul?: number; choice?: string; confidence?: number }>;
 }
 
-async function askJev(apiKey: string, body: unknown, fetchImpl: typeof fetch): Promise<JevResponse> {
+export async function askJev(apiKey: string, body: unknown, fetchImpl: typeof fetch): Promise<JevResponse> {
   const response = await fetchImpl(JEV_ENDPOINT, {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },

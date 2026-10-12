@@ -34,6 +34,7 @@ const EXAMPLE_TODO: Todo = {
   source: null,
   duplicateOf: null,
   duplicateHeld: null,
+  suggestedListId: null,
 };
 
 /**

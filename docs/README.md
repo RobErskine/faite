@@ -28,6 +28,7 @@ reasoning — two copies drift, and the stale one always wins the argument.
 | [ATTACHMENTS.md](ATTACHMENTS.md) | Files on a to-do over R2 — the JSON/bytes two-plane split, the ordering invariant, and why the limits are not higher. |
 | [EMAIL-INGEST.md](EMAIL-INGEST.md) | Forwarding mail into Backlog: Email Routing → `worker.ts email()` → DO push, with the trust and privacy invariants. |
 | [DUPLICATES.md](DUPLICATES.md) | Duplicate to-do detection on the user's own Jev key: the one hook in `push()`, the held flag, the encrypted key. |
+| [SMART-SORT.md](SMART-SORT.md) | Smart sorting: Jev proposes a list for each new Backlog to-do (one Choice per to-do), the user confirms; the push hook, the suggest route, and Quick sort. |
 
 ## The board
 

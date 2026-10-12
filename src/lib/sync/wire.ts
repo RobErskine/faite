@@ -108,6 +108,9 @@ export const SETTINGS_SYNCED_FIELDS: ReadonlySet<string> = new Set([
   // How flagged duplicates behave (EI-346) — an account preference, so it
   // follows the user to every device.
   "holdAllDuplicates",
+  // Whether new Backlog to-dos get a proposed list (EI-367). Read by the
+  // server, so it must reach the Durable Object.
+  "smartSortEnabled",
 ]);
 
 export const SYNC_PROTOCOL_VERSION = 1 as const;

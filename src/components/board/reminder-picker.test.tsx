@@ -38,6 +38,7 @@ const todo = (overrides: Partial<Todo> = {}): Todo => ({
   source: null,
   duplicateOf: null,
   duplicateHeld: null,
+  suggestedListId: null,
   ...overrides,
 });
 

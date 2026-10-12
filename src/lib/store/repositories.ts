@@ -113,6 +113,7 @@ export async function createTodo(input: CreateTodoInput): Promise<string> {
     source: input.source ?? null,
     duplicateOf: null,
     duplicateHeld: null,
+    suggestedListId: null,
   };
   return create("todo", todo, { events: [logTodoEvent(todo.id, "created")] });
 }
