@@ -480,6 +480,13 @@ function OverdriveOverlayContent({
       return;
     }
 
+    // Quick sort with no list picked: "Pick a list" (or `↓`) has nowhere to
+    // file the card, so it takes you to the picker instead of doing nothing.
+    if (quickSort && action === "toList" && !pickedListId && currentTodo) {
+      document.getElementById(QUICK_SORT_LIST_ID)?.focus();
+      return;
+    }
+
     const listContext: ListContext = {
       currentListId: quickSort ? pickedListId : (currentTodo?.listId ?? null),
       backlogListId,

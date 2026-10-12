@@ -414,15 +414,19 @@ test.describe("Quick sort — the Backlog source (EI-370)", () => {
     await expect(quickSort(page).getByRole("button", { name: /Move to Groceries/ })).toBeVisible();
     await page.keyboard.press("ArrowDown");
 
-    // Card 2: nothing picked — ↓ is not a decision, the card stays.
+    // Card 2: nothing picked — "Pick a list" files nothing; it takes you to
+    // the picker instead, and the card stays.
+    const picker = page.getByRole("combobox", { name: "List to file this to-do in" });
     await expect(quickSort(page).locator(".animate-in h2")).toHaveText("Fix the gate");
-    await expect(quickSort(page).getByRole("button", { name: /Pick a list/ })).toBeVisible();
-    await page.keyboard.press("ArrowDown");
+    await quickSort(page).getByRole("button", { name: /Pick a list/ }).click();
+    await expect(picker).toBeFocused();
     await expect(quickSort(page).locator(".animate-in h2")).toHaveText("Fix the gate");
 
-    // L focuses the picker; choosing a list hands the keys back for ↓.
+    // Back to the dialog, then L reaches the same picker by keyboard;
+    // choosing a list hands the keys back for ↓.
+    await quickSort(page).locator(".animate-in h2").click();
     await page.keyboard.press("l");
-    await expect(page.getByRole("combobox", { name: "List to file this to-do in" })).toBeFocused();
+    await expect(picker).toBeFocused();
     await page.keyboard.type("Groc");
     await page.keyboard.press("Enter");
     await expect(quickSort(page).getByRole("button", { name: /Move to Groceries/ })).toBeVisible();
