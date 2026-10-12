@@ -966,7 +966,12 @@ function TodoSheetContent({
 
           <div className="space-y-2">
             <SheetRow label="List" htmlFor="todo-list">
-              <ListField todo={todo} lists={lists} tabs={tabs} onSave={onSave} />
+              <ListField
+                value={todo.listId}
+                onChange={(listId) => onSave(todo.id, { listId })}
+                lists={lists}
+                tabs={tabs}
+              />
             </SheetRow>
 
             <SheetRow label="Labels" htmlFor="todo-label-input">

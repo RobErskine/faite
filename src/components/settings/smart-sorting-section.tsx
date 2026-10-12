@@ -24,8 +24,8 @@ import type { SettingsSectionProps } from "./types";
  * to-dos (EI-367, `docs/SMART-SORT.md`).
  *
  * The key is write-only from here: the field never shows it again, only its
- * last four. Both switches are synced settings; smart sorting's is disabled
- * without a key, because the server reads it and would have nothing to call.
+ * last four. Both switches are synced settings, and both are off and disabled
+ * without a key — neither feature can run without one.
  */
 export function SmartSortingSection({ settings }: SettingsSectionProps) {
   const [status, setStatus] = useState<JevKeyStatus | null>(null);
@@ -163,10 +163,16 @@ export function SmartSortingSection({ settings }: SettingsSectionProps) {
               Keep every likely duplicate off your board, including ones you type on the board. It
               waits under Duplicates until you add it back or remove it.
             </p>
+            {status?.connected ? null : (
+              <p className="text-sm text-muted-foreground">Save a TypeSafe key above to turn this on.</p>
+            )}
           </div>
+          {/* Off and disabled without a key, like smart sorting below: with no
+              key nothing is ever flagged, so the switch would do nothing. */}
           <Switch
             id="hold-all-duplicates"
-            checked={settings?.holdAllDuplicates ?? false}
+            disabled={!status?.connected}
+            checked={(status?.connected ?? false) && (settings?.holdAllDuplicates ?? false)}
             onCheckedChange={(checked) => void mutateSettings(LOCAL_OWNER_ID, { holdAllDuplicates: checked })}
           />
         </div>

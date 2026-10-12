@@ -103,8 +103,11 @@ replaced the Duplicates tab, because one key now powers both features. It has:
 - the key block;
 - the Duplicates group with **Hold every duplicate**;
 - **Smart to-do sorting → Suggest a list for new to-dos**
-  (`smartSortEnabled`). This switch is disabled, and shows as off, until a key
-  is saved. The server could not act on it without a key.
+  (`smartSortEnabled`).
+
+Both switches are disabled, and show as off, until a key is saved. Neither
+feature can run without a key, so a switch that could be turned on would do
+nothing. The stored setting is kept: saving a key brings back what was on.
 
 ## 5a. The chip (EI-369)
 

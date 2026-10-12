@@ -14,12 +14,15 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { prefersReducedMotion } from "@/lib/reduced-motion";
-import type { Label as LabelRecord, List, ReminderPreset, Todo } from "@/lib/schema";
+import type { Label as LabelRecord, List, ReminderPreset, Tab, Todo } from "@/lib/schema";
+import { fetchListSuggestions } from "@/lib/smart-sort";
+import { suggestedListFor } from "@/lib/suggested-list";
 import { OVERFLOW, toCivilDate, type PlacementContext } from "@/lib/scheduling";
 import { isTextEntry, undoById } from "@/lib/undo";
 import { originOf, type ConfettiOrigin } from "@/lib/celebrate";
 import { useExitRetained } from "@/lib/use-exit-retained";
 import {
+  BACKLOG,
   applyDecision,
   createSession,
   currentTodoId,
@@ -37,6 +40,7 @@ import {
   type Verdict,
 } from "@/lib/overdrive";
 import { civilDateToLocalDate } from "./date-nav";
+import { ListField } from "./list-field";
 import { OverdriveCard } from "./overdrive-card";
 
 /**
@@ -175,6 +179,10 @@ export interface OverdriveOverlayProps {
    * effect below for the actual timer.
    */
   autoConfirmMs?: number;
+  /** Quick sort's list picker (EI-370): live lists across every tab, and the
+   * tabs to group them by. Only read when `source` is `BACKLOG`. */
+  lists?: List[];
+  tabs?: Tab[];
 }
 
 /**
@@ -214,12 +222,53 @@ function OverdriveOverlayContent({
   onClose,
   onVerdict,
   autoConfirmMs = 0,
+  lists = [],
+  tabs = [],
 }: Omit<OverdriveOverlayProps, "source"> & { source: OverdriveSource; sheetOpen: boolean }) {
   // Lazy initializer runs exactly once, at mount — this IS the "frozen at
   // open" snapshot (decision #7). `todosById` below stays live so the CURRENT
   // todo's own fields (title edits, label changes) are always what renders.
   const [session, setSession] = useState<OverdriveSession>(() => createSession(todos, source));
   const [pickerOpen, setPickerOpen] = useState(false);
+
+  /**
+   * Quick sort (EI-370): the list picked on each card, by to-do id. Seeded
+   * from each to-do's own proposal (EI-367), then from one request to Jev for
+   * the rest — a pre-selection only; nothing is written until `↓`. A pick
+   * the user made is never overwritten by a late answer.
+   */
+  const quickSort = source === BACKLOG;
+  const [picks, setPicks] = useState<ReadonlyMap<string, string | null>>(() => {
+    const map = new Map<string, string | null>();
+    if (!quickSort) return map;
+    for (const todo of todos) {
+      const list = suggestedListFor(todo, listsById);
+      if (list) map.set(todo.id, list.id);
+    }
+    return map;
+  });
+  useEffect(() => {
+    if (!quickSort) return;
+    const ask = session.queue.filter((id) => !picks.has(id)).slice(0, 50);
+    if (ask.length === 0) return;
+    let canceled = false;
+    void fetchListSuggestions(ask).then((suggestions) => {
+      if (canceled || !suggestions) return;
+      setPicks((current) => {
+        const next = new Map(current);
+        for (const [id, listId] of Object.entries(suggestions)) {
+          if (listId && !next.has(id) && listsById.has(listId)) next.set(id, listId);
+        }
+        return next;
+      });
+    });
+    return () => {
+      canceled = true;
+    };
+    // Once, on open: the queue is frozen, and a re-ask would only race the
+    // user's own picks.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const currentId = currentTodoId(session);
   const currentTodo = currentId ? (todosById.get(currentId) ?? null) : null;
@@ -236,7 +285,10 @@ function OverdriveOverlayContent({
    * alone, so it's surfaced in both the dialog's a11y description and a
    * visible line above the card.
    */
-  const sourceLabel = source === OVERFLOW ? "Overflow" : rampLabel(source, ctx.today);
+  const sourceLabel =
+    source === OVERFLOW ? "Overflow" : source === BACKLOG ? "Backlog" : rampLabel(source, ctx.today);
+  const pickedListId = quickSort && currentId ? (picks.get(currentId) ?? null) : null;
+  const pickedList = pickedListId ? (listsById.get(pickedListId) ?? null) : null;
 
   /**
    * `onKeyDown` below lives on this element, so keyboard control of the
@@ -428,11 +480,11 @@ function OverdriveOverlayContent({
       return;
     }
 
-    const lists: ListContext = {
-      currentListId: currentTodo?.listId ?? null,
+    const listContext: ListContext = {
+      currentListId: quickSort ? pickedListId : (currentTodo?.listId ?? null),
       backlogListId,
     };
-    const result = reduce(session, action, ctx, lists);
+    const result = reduce(session, action, ctx, listContext);
 
     if (result.stepBack) {
       void undoById(result.stepBack.undoId);
@@ -549,6 +601,13 @@ function OverdriveOverlayContent({
     // a session transition on its own (it just raises UI, same as clicking
     // the button below), and matching `e.key` case-insensitively covers Caps
     // Lock without also matching modified combos.
+    if (quickSort && e.key.toLowerCase() === "l" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      // Quick sort's list picker (EI-370). While it has focus, every verdict
+      // key is ignored by the `isTextEntry` guard above.
+      e.preventDefault();
+      document.getElementById(QUICK_SORT_LIST_ID)?.focus();
+      return;
+    }
     if (e.key.toLowerCase() === "d" && !e.metaKey && !e.ctrlKey && !e.altKey) {
       e.preventDefault();
       setPickerOpen(true);
@@ -618,6 +677,10 @@ function OverdriveOverlayContent({
       */}
       <DialogContent
         ref={popupRef}
+        // The popup itself, not its first tabbable: Quick sort's list picker
+        // (EI-370) would otherwise take focus on open, and every verdict key
+        // is ignored while a text field has it.
+        initialFocus={popupRef}
         showCloseButton={false}
         overlayClassName="bg-black/10 dark:bg-black/50 supports-backdrop-filter:backdrop-blur-none"
         className={cn(
@@ -636,11 +699,13 @@ function OverdriveOverlayContent({
         )}
         onKeyDown={handleKeyDown}
       >
-        <DialogTitle className="sr-only">Overdrive</DialogTitle>
+        <DialogTitle className="sr-only">{quickSort ? "Quick sort" : "Overdrive"}</DialogTitle>
         <DialogDescription className="sr-only">
           {source === OVERFLOW
             ? "Triage the Overflow column one to-do at a time."
-            : `Triage ${sourceLabel} one to-do at a time.`}
+            : quickSort
+              ? "Sort the Backlog into your lists one to-do at a time."
+              : `Triage ${sourceLabel} one to-do at a time.`}
         </DialogDescription>
 
         {/*
@@ -681,7 +746,8 @@ function OverdriveOverlayContent({
                     tally.dropped > 0 && `${tally.dropped} won’t do`,
                     tally.done > 0 && `${tally.done} done`,
                     tally.scheduled > 0 && `${tally.scheduled} scheduled`,
-                    tally.listed > 0 && `${tally.listed} back to lists`,
+                    tally.listed > 0 &&
+                      (quickSort ? `${tally.listed} sorted into lists` : `${tally.listed} back to lists`),
                   ]
                     .filter(Boolean)
                     .join(" · ")}
@@ -696,7 +762,7 @@ function OverdriveOverlayContent({
               {/* EI-253: with two kinds of session possible, which pile
                   this is is no longer inferable from the cards alone. */}
               <p className="type-eyebrow">
-                Overdrive · {sourceLabel}
+                {quickSort ? "Quick sort" : "Overdrive"} · {sourceLabel}
               </p>
               {/*
                 One card, in normal flow — never two at once. While
@@ -751,6 +817,24 @@ function OverdriveOverlayContent({
                   total={transitioning ? transitioning.total : session.queue.length}
                 />
               </div>
+
+              {quickSort && currentTodo && !transitioning && (
+                <div className="w-full max-w-sm">
+                  <ListField
+                    key={currentTodo.id}
+                    id={QUICK_SORT_LIST_ID}
+                    aria-label="List to file this to-do in"
+                    value={pickedListId}
+                    onChange={(listId) => {
+                      setPicks((current) => new Map(current).set(currentTodo.id, listId));
+                      // Hand the keys back to the overlay, so `↓` files it.
+                      popupRef.current?.focus();
+                    }}
+                    lists={lists.filter((l) => !l.isBacklog)}
+                    tabs={tabs}
+                  />
+                </div>
+              )}
 
               {staged && !transitioning && (
                 <div className="flex flex-wrap items-center justify-center gap-3 rounded-md border-2 border-primary bg-primary/5 px-4 py-3 shadow-sm">
@@ -812,7 +896,12 @@ function OverdriveOverlayContent({
                   className={cn("pointer-coarse:min-h-11", staged && "opacity-60")}
                   onClick={() => dispatch("toList")}
                 >
-                  <ArrowDown aria-hidden /> Back to {list ? list.name : "Backlog"}
+                  <ArrowDown aria-hidden />{" "}
+                  {quickSort
+                    ? pickedList
+                      ? `Move to ${pickedList.name}`
+                      : "Pick a list"
+                    : `Back to ${list ? list.name : "Backlog"}`}
                 </Button>
                 <Button
                   variant="outline"
@@ -880,6 +969,9 @@ function OverdriveOverlayContent({
     </Dialog>
   );
 }
+
+/** The Quick sort list picker's input id — `L` focuses it. */
+const QUICK_SORT_LIST_ID = "quick-sort-list";
 
 /** Maps a raw `KeyboardEvent.key` (plus Shift) to an `overdrive.ts` action.
  * A lookup table rather than a chain of `if`s, matching `lib/keyboard.ts`'s

@@ -284,7 +284,16 @@ export const LOCAL_SHORTCUTS: ShortcutEntry[] = [
   {
     id: "overdrive-to-list",
     combo: "arrowdown",
-    label: "Send back to the card's own list",
+    label: "Send back to the card's own list (Quick sort: move to the picked list)",
+    scope: "Overdrive",
+    source: "overdrive-overlay.tsx",
+  },
+  {
+    id: "overdrive-quick-sort-list",
+    combo: "l",
+    // Quick sort only (EI-370). While the picker has focus, every verdict
+    // key is ignored; picking hands focus back to the overlay.
+    label: "Quick sort: focus the list picker",
     scope: "Overdrive",
     source: "overdrive-overlay.tsx",
   },

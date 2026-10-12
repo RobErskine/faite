@@ -5,6 +5,7 @@ import { DndContext, DragOverlay, MeasuringStrategy } from "@dnd-kit/core";
 import { GripVertical, MapPin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useViewport } from "@/lib/use-viewport";
+import { BACKLOG } from "@/lib/overdrive";
 import { OVERFLOW } from "@/lib/scheduling";
 import { LIFTED } from "@/lib/drop-animation";
 import { tint } from "@/lib/colors";
@@ -631,6 +632,8 @@ export function Board() {
         onDeleteTodo={actions.handleDelete}
         overflowCount={data.board.overflow.todos.length}
         onOpenOverdrive={() => ui.setOverdriveSource(OVERFLOW)}
+        backlogCount={data.quickSortTodos.length}
+        onOpenQuickSort={() => ui.setOverdriveSource(BACKLOG)}
         onOpenHelp={() => ui.setHelpSheetOpen(true)}
         onOpenActivity={() => ui.setActivityOpen(true)}
         onOpenHistory={() => ui.setHistoryDay(today)}
@@ -695,10 +698,14 @@ export function Board() {
     <OverdriveOverlay
       source={ui.overdriveSource}
       todos={
-        ui.overdriveSource && ui.overdriveSource !== OVERFLOW
-          ? (data.overdriveDayTodos.get(ui.overdriveSource) ?? [])
-          : data.board.overflow.todos
+        ui.overdriveSource === BACKLOG
+          ? data.quickSortTodos
+          : ui.overdriveSource && ui.overdriveSource !== OVERFLOW
+            ? (data.overdriveDayTodos.get(ui.overdriveSource) ?? [])
+            : data.board.overflow.todos
       }
+      lists={data.lists}
+      tabs={data.tabs}
       todosById={data.todosById}
       listsById={data.listsById}
       backlogListId={data.backlogList?.id ?? ""}

@@ -52,11 +52,18 @@ export type Verdict =
   | { kind: "scheduled"; date: CivilDate };
 
 /**
- * What a session is triaging — the Overflow column, or one specific day.
- * Reuses `scheduling.ts`'s `OVERFLOW` sentinel rather than inventing a
- * second one, the same way `Placement`'s calendar half already does.
+ * Quick sort (EI-370): an Overdrive session over the Backlog column, where
+ * `↓` files a card into the list picked on it rather than "back" to its own.
  */
-export type OverdriveSource = CivilDate | typeof OVERFLOW;
+export const BACKLOG = "backlog" as const;
+
+/**
+ * What a session is triaging — the Overflow column, one specific day, or
+ * Backlog (Quick sort). Reuses `scheduling.ts`'s `OVERFLOW` sentinel rather
+ * than inventing a second one, the same way `Placement`'s calendar half
+ * already does.
+ */
+export type OverdriveSource = CivilDate | typeof OVERFLOW | typeof BACKLOG;
 
 /** One committed card, in the order they were decided. `undoId` is the
  * `pushUndo` entry id the write registered — `⌫` replays it via `undoById`.
@@ -99,7 +106,9 @@ export type KeyAction =
   | "stepBack"; // ⌫
 
 /** Where `toList`/`toBacklog` resolve to — decision #2: back to the todo's
- * OWN list, Backlog only when it has none or when forced. */
+ * OWN list, Backlog only when it has none or when forced. In a Quick sort
+ * session (`BACKLOG`) the caller passes the list picked on the card as
+ * `currentListId` instead. */
 export interface ListContext {
   currentListId: string | null;
   backlogListId: string;
@@ -191,7 +200,9 @@ export function overdriveBase(
   source: OverdriveSource,
   ctx: Pick<PlacementContext, "today">,
 ): { base: CivilDate; min: number } {
-  if (source === OVERFLOW) return { base: ctx.today, min: 0 };
+  // Backlog cards are unscheduled, like Overflow's are past due: today is a
+  // real move for both.
+  if (source === OVERFLOW || source === BACKLOG) return { base: ctx.today, min: 0 };
   return { base: source < ctx.today ? ctx.today : source, min: 1 };
 }
 
@@ -257,11 +268,14 @@ export function reduce(
     case "done":
       return { session, commit: { kind: "done" } };
 
-    case "toList":
-      return {
-        session,
-        commit: { kind: "listed", listId: lists.currentListId ?? lists.backlogListId },
-      };
+    case "toList": {
+      const listId = lists.currentListId ?? lists.backlogListId;
+      // Quick sort: `currentListId` is the list picked on the card. With
+      // none picked, "file it in Backlog" is where it already is — not a
+      // decision, so not a write.
+      if (session.source === BACKLOG && listId === lists.backlogListId) return { session };
+      return { session, commit: { kind: "listed", listId } };
+    }
 
     case "toBacklog":
       return { session, commit: { kind: "listed", listId: lists.backlogListId } };

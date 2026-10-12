@@ -51,6 +51,8 @@ export interface PaletteCommandCtx {
   quickAddTitle: string;
   settings: Settings | undefined;
   overflowCount: number;
+  /** Open to-dos in Backlog — Quick sort's queue (EI-370). */
+  backlogCount: number;
   /** Probable duplicates waiting for review (EI-346). */
   duplicateCount: number;
   platform: Platform;
@@ -58,6 +60,7 @@ export interface PaletteCommandCtx {
   createFromQuery: () => void | Promise<void>;
   openHelp: () => void;
   openOverdrive: () => void;
+  openQuickSort: () => void;
   openActivity: () => void;
   openHistory: () => void;
   openDuplicates: () => void;
@@ -227,6 +230,18 @@ const VIEW_MISC_COMMANDS: PaletteCommand[] = [
     disabled: (ctx) => ctx.overflowCount === 0,
     run: (ctx) => {
       ctx.openOverdrive();
+      ctx.close();
+    },
+  },
+  {
+    // Overdrive over Backlog, with a list picker per card (EI-370).
+    id: "view-quick-sort",
+    group: "View",
+    label: (ctx) =>
+      ctx.backlogCount > 0 ? `Quick sort Backlog (${ctx.backlogCount})` : "Quick sort — Backlog is empty",
+    disabled: (ctx) => ctx.backlogCount === 0,
+    run: (ctx) => {
+      ctx.openQuickSort();
       ctx.close();
     },
   },

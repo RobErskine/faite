@@ -653,6 +653,16 @@ export function useBoardData(params: UseBoardDataParams) {
   /** The fallback for a homeless todo, mirroring `groupTodosByList`'s `?? backlog`. */
   const backlogList = useMemo(() => lists.find((l) => l.isBacklog), [lists]);
 
+  /** Quick sort's queue (EI-370): Backlog's open to-dos in board order,
+   * minus "away" ones — those carry a date, so they are not unsorted. */
+  const quickSortTodos = useMemo(
+    () =>
+      (backlogColumn?.todos ?? []).filter(
+        (t) => t.status === "open" && !board?.awayTodoIds.has(t.id),
+      ),
+    [backlogColumn, board],
+  );
+
   /** Backlog to-do id → the list Jev proposes for it (EI-369). Only Backlog
    * cards show a proposal: a to-do anywhere else has already been sorted. */
   const suggestedLists = useMemo(() => {
@@ -964,6 +974,7 @@ export function useBoardData(params: UseBoardDataParams) {
     recurrenceExpansion,
     board,
     overdriveDayTodos,
+    quickSortTodos,
     todosById,
     rawTodoIds,
     openTodo,
