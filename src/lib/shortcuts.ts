@@ -165,6 +165,15 @@ export const LOCAL_SHORTCUTS: ShortcutEntry[] = [
     scope: "To-do card",
     source: "todo-card.tsx",
   },
+  {
+    id: "accept-suggested-list",
+    combo: "shift+arrowright",
+    // ⇧, because bare → is board navigation (KEYBOARD.md §11). Right, because
+    // the lists sit to the right of Backlog (EI-369).
+    label: "Move a Backlog to-do to its suggested list",
+    scope: "To-do card",
+    source: "todo-card.tsx",
+  },
 
   // --- To-do sheet ------------------------------------------------------
   // The two arrow verbs are the SAME keys and the same meanings Overdrive

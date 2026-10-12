@@ -101,6 +101,7 @@ export function PhoneBoard({
     recurrenceExpansion,
     subtaskCounts,
     attachmentCounts,
+    suggestedLists,
     renderedDays,
   } = data;
 
@@ -407,6 +408,9 @@ export function PhoneBoard({
                   recurrenceSummaries={recurrenceSummaries}
                   subtaskCounts={subtaskCounts}
                   attachmentCounts={attachmentCounts}
+                  suggestedLists={suggestedLists}
+                  onAcceptSuggestion={actions.handleAcceptSuggestion}
+                  onDismissSuggestion={actions.handleDismissSuggestion}
                   isColumnDragActive={!!activeList}
                   accentColor={null}
                   quickAddPlaceholderVisible

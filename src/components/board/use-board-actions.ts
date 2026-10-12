@@ -1797,6 +1797,45 @@ export function useBoardActions(
   );
 
   /**
+   * Accept Jev's proposed list for a Backlog to-do (EI-369): the chip, or
+   * `⇧→` on the row. Moves it with `via: "smart-sort"`, so History — and a
+   * later version that learns from accepts (EI-371) — can tell it apart from
+   * a hand move, and clears the proposal. Undo restores both, chip included.
+   */
+  const handleAcceptSuggestion = useCallback(
+    (todo: Todo) => {
+      const list = todo.suggestedListId ? listsById.get(todo.suggestedListId) : undefined;
+      if (!list) return;
+      const label = `Moved “${short(todo.title)}” to ${list.name}`;
+      const entryId = pushUndo(label, [
+        {
+          kind: "todo",
+          entityId: todo.id,
+          patch: inversePatch(todo, { ...listPatch(list.id), suggestedListId: null }),
+        },
+      ]);
+      void (async () => {
+        await moveTodoToList(todo.id, list.id, undefined, "smart-sort");
+        await updateTodo(todo.id, { suggestedListId: null });
+      })();
+      toast.success(label, {
+        duration: 6000,
+        action: { label: "Undo", onClick: () => void undoById(entryId) },
+      });
+    },
+    [listsById],
+  );
+
+  /** Clear a proposal without moving anything (EI-369). Nothing proposes it
+   * again: the server only proposes on create. */
+  const handleDismissSuggestion = useCallback((todo: Todo) => {
+    pushUndo(`Dismissed the suggestion for “${short(todo.title)}”`, [
+      { kind: "todo", entityId: todo.id, patch: { suggestedListId: todo.suggestedListId } },
+    ]);
+    void updateTodo(todo.id, { suggestedListId: null });
+  }, []);
+
+  /**
    * The handlers a card's menu needs, as one stable object — a card takes
    * `contextActions` or nothing, rather than optional callbacks that could be
    * wired up half-way.
@@ -2070,6 +2109,8 @@ export function useBoardActions(
     handleSheetSave,
     handleSheetStatus,
     handleOverdriveVerdict,
+    handleAcceptSuggestion,
+    handleDismissSuggestion,
     handleToggleLabel,
     handleDelete,
     handleContextTarget,

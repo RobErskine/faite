@@ -22,7 +22,7 @@ import { foldQuickAddDraft, parseQuickAdd, quickAddDraftToString, type QuickAddM
 import { isTextEntry } from "@/lib/undo";
 import { MentionMenu, useMention, type MentionSource } from "@/components/mention-menu";
 import { createLabel } from "@/lib/store/repositories";
-import type { CivilDate, Label as LabelRecord, ReminderPreset, Todo } from "@/lib/schema";
+import type { CivilDate, Label as LabelRecord, List, ReminderPreset, Todo } from "@/lib/schema";
 import type { PlacementContext } from "@/lib/scheduling";
 import {
   InputGroup,
@@ -318,6 +318,10 @@ interface BoardColumnProps {
   /** Attachment counts per todo (EI-242) — see `use-board-data.ts`'s
    * `attachmentCounts`. Same shape and same reason as `subtaskCounts`. */
   attachmentCounts?: ReadonlyMap<string, number>;
+  /** Todo id → Jev's proposed list (EI-369). Only Backlog passes it. */
+  suggestedLists?: ReadonlyMap<string, List>;
+  onAcceptSuggestion?: (todo: Todo) => void;
+  onDismissSuggestion?: (todo: Todo) => void;
   /**
    * Escape hatch, merged onto the root `<section>` after every other class
    * here. The phone pager (`phone-board.tsx`) uses it to add `pager-column`
@@ -395,6 +399,9 @@ export function BoardColumn({
   recurrenceSummaries,
   subtaskCounts,
   attachmentCounts,
+  suggestedLists,
+  onAcceptSuggestion,
+  onDismissSuggestion,
   className,
   footer,
 }: BoardColumnProps) {
@@ -643,6 +650,9 @@ export function BoardColumn({
         }
         subtaskCount={subtaskCounts?.get(todo.id)}
         attachmentCount={attachmentCounts?.get(todo.id)}
+        suggestedList={suggestedLists?.get(todo.id)}
+        onAcceptSuggestion={onAcceptSuggestion}
+        onDismissSuggestion={onDismissSuggestion}
       />
     ));
 

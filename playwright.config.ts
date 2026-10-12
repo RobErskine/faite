@@ -64,6 +64,7 @@ const SPECS = {
   contextMenu: "**/context-menu.spec.ts",
   touchAffordances: "**/touch-affordances.spec.ts",
   touchSmoke: "**/touch-smoke.spec.ts",
+  smartSort: "**/smart-sort.spec.ts",
 } as const;
 
 export default defineConfig({
@@ -165,6 +166,7 @@ export default defineConfig({
         // else. See docs/E2E.md §8.
         SPECS.contextMenu,
         SPECS.linkPreview,
+        SPECS.smartSort,
       ],
     },
     // Every touch/tablet project below forces `defaultBrowserType: "chromium"`
@@ -205,6 +207,9 @@ export default defineConfig({
         // move the text cursor into it (`getLinkAtSelection()`), not a real
         // mouse hover, so it needs no touch-specific behavior to verify here.
         SPECS.linkPreview,
+        // Both gate projects: the chip renders in each shell's own Backlog
+        // column (EI-369), and the × is the only dismiss route on touch.
+        SPECS.smartSort,
       ],
     },
     {
