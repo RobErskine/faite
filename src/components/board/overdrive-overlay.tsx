@@ -249,7 +249,13 @@ function OverdriveOverlayContent({
   });
   useEffect(() => {
     if (!quickSort) return;
-    const ask = session.queue.filter((id) => !picks.has(id)).slice(0, 50);
+    const ask = session.queue
+      .filter((id) => !picks.has(id))
+      .slice(0, 50)
+      .flatMap((id) => {
+        const todo = todosById.get(id);
+        return todo ? [{ id, title: todo.title, description: todo.description }] : [];
+      });
     if (ask.length === 0) return;
     let canceled = false;
     void fetchListSuggestions(ask).then((suggestions) => {

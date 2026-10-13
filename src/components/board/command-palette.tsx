@@ -1,5 +1,6 @@
 "use client";
 
+import { proposeListForNewTodo } from "@/lib/smart-sort";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -325,19 +326,18 @@ export function CommandPalette({
   const createFromQuery = async () => {
     const backlog = lists.find((l) => l.isBacklog);
     const listId = mentionedList?.id ?? backlog?.id ?? null;
-    recordCreate(
-      `To-do added to ${mentionedList?.name ?? "Backlog"}`,
-      "todo",
-      await createTodo({
-        title: quickAdd.title,
-        listId,
-        scheduledDate: quickAdd.scheduledDate,
-        deadline: quickAdd.deadline,
-        priority: quickAdd.priority,
-        reminderTime: quickAdd.reminderTime,
-        labelIds: mentionedLabels.map((l) => l.id),
-      }),
-    );
+    const id = await createTodo({
+      title: quickAdd.title,
+      listId,
+      scheduledDate: quickAdd.scheduledDate,
+      deadline: quickAdd.deadline,
+      priority: quickAdd.priority,
+      reminderTime: quickAdd.reminderTime,
+      labelIds: mentionedLabels.map((l) => l.id),
+    });
+    recordCreate(`To-do added to ${mentionedList?.name ?? "Backlog"}`, "todo", id);
+    // Smart sorting asks Jev now, not after sync (EI-373).
+    void proposeListForNewTodo(id);
     close();
   };
 
@@ -372,19 +372,17 @@ export function CommandPalette({
       case "new-todo": {
         const backlog = lists.find((l) => l.isBacklog);
         const listId = mentionedList?.id ?? backlog?.id ?? null;
-        recordCreate(
-          `To-do added to ${mentionedList?.name ?? "Backlog"}`,
-          "todo",
-          await createTodo({
-            title: quickAdd.title,
-            listId,
-            scheduledDate: quickAdd.scheduledDate,
-            deadline: quickAdd.deadline,
-            priority: quickAdd.priority,
-            reminderTime: quickAdd.reminderTime,
-            labelIds: mentionedLabels.map((l) => l.id),
-          }),
-        );
+        const id = await createTodo({
+          title: quickAdd.title,
+          listId,
+          scheduledDate: quickAdd.scheduledDate,
+          deadline: quickAdd.deadline,
+          priority: quickAdd.priority,
+          reminderTime: quickAdd.reminderTime,
+          labelIds: mentionedLabels.map((l) => l.id),
+        });
+        recordCreate(`To-do added to ${mentionedList?.name ?? "Backlog"}`, "todo", id);
+        void proposeListForNewTodo(id);
         break;
       }
       default:
