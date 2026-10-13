@@ -1,5 +1,6 @@
 "use client";
 
+import { resetListSuggestions } from "@/lib/smart-sort";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -56,6 +57,8 @@ export function SmartSortingSection({ settings }: SettingsSectionProps) {
     setBusy(true);
     try {
       const next = await saveJevKey(apiKey);
+      // A board that was told "no key" stops asking; now it may again.
+      resetListSuggestions();
       setStatus(next);
       setDraft("");
       if (next.check === "unverified") {

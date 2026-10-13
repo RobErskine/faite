@@ -28,21 +28,44 @@ one of these:
 `src/lib/board.test.ts` asserts that this rule files the same to-dos as
 `buildBoard`.
 
-## 2. The proposal: the push hook
+## 2. When the proposal is made
 
-`UserDurableObject.push()` collects new to-do inserts. After the commit, and
-without awaiting it, `afterCreate()` does two things in this order:
+There are two paths, and each create takes exactly one, so Jev is never asked
+twice for the same to-do.
 
-1. **`checkDuplicates`** (EI-346). It runs first, so a to-do flagged as a
-   duplicate is not also given a list.
+### 2a. Board creates: the board asks at once (EI-373)
+
+A to-do typed into Backlog (quick-add, or ⌘K) calls `proposeListForNewTodo`
+(`src/lib/smart-sort.ts`) right after the local create. It sends the to-do's
+**text** to the suggest route (§4) and writes the answer locally as
+`suggestedListId`, which then syncs like any edit.
+
+This is the fast path because it skips everything else in the way:
+
+- the board's **2 s sync debounce** (`DEFAULT_DEBOUNCE_MS`,
+  `lib/sync/engine.ts`), which coalesces typing and must stay;
+- the push round trip, and the duplicate check;
+- the write-back and the pull that brings the chip to the board.
+
+What is left is one request to the Worker and one Jev call. The helper reads
+the settings, the to-do and the lists from the local store, and it does
+nothing unless `smartSortEnabled` is on and the to-do is open and in Backlog.
+It reads the to-do again before it writes, so a to-do filed while Jev was
+answering is left alone.
+
+### 2b. Server creates: the push hook
+
+`UserDurableObject.push()` collects new to-do inserts. For
+**server-stamped** creates only (`isServerStamped`: REST, MCP, Raycast,
+email), `afterCreate()` runs two things **at the same time**:
+
+1. **`checkDuplicates`** (EI-346).
 2. **`proposeLists`** (EI-367). It runs only if `settings.smartSortEnabled` is
-   true and a key is saved. It:
-   - reads the to-dos again (still open, not flagged, no proposal, in
-     Backlog);
-   - asks Jev;
-   - reads them again, because the user may have filed one while Jev was
-     answering;
-   - writes `suggestedListId` through `push()` with a server HLC.
+   true and a key is saved. It reads the to-dos (still open, not flagged, no
+   proposal, in Backlog), asks Jev, then **waits for the duplicate check**,
+   reads them again, and writes `suggestedListId` through `push()` with a
+   server HLC. So a to-do flagged as a duplicate gets no list, but the two
+   Jev calls overlap instead of running one after the other.
 
 That write is an update, not an insert, so it does not start the hook again.
 
@@ -52,8 +75,13 @@ occurrence, not flagged, and have a title. A push with more than 3 such
 creates is a bulk write and is skipped. Smart sorting also skips a create
 that already has a `scheduledDate`.
 
-Every path is covered: board, REST, Raycast, MCP and email all reach
-`push()`.
+Both paths log the Jev call's time (`[faite] list proposal` / `[faite] list
+suggestions`, counts and `ms` only, never titles). Read them with
+`wrangler tail` to see how much of a delay is Jev itself.
+
+**The list lookup is not a cost.** `listOptions()` is a SQLite read in the
+same Durable Object, well under a millisecond, so a cache of the lists would
+save nothing.
 
 ## 3. The judgment
 
@@ -83,17 +111,21 @@ Other limits:
 Jev nothing to go on. The `description` field (EI-236) was added for this
 kind of routing.
 
-## 4. The suggest route (Quick sort)
+## 4. The suggest route
 
-`POST /api/smart-sort/suggest` takes `{ todoIds }` (at most 50) and returns
-`{ suggestions: { [todoId]: listId | null } }`.
+`POST /api/smart-sort/suggest` takes `{ todos: [{ id, title, description? }] }`
+(at most 50) and returns `{ suggestions: { [id]: listId | null } }`.
 
-- It uses the cookie session only.
-- It **writes nothing**: a pre-selection in Quick sort is not a decision.
-- It ignores `smartSortEnabled`, because opening Quick sort is the request.
+- It takes the to-do's **text**, not an id: a board create has not synced
+  yet (§2a). `id` only keys the answer.
+- Two callers: `proposeListForNewTodo` (a board create) and Quick sort on
+  open (EI-370).
+- It uses the cookie session only, and it **writes nothing**.
+- It ignores `smartSortEnabled`; the caller checks it.
 - It returns 409 `no-key` when no key is saved, and 502 when Jev fails.
 - The client is `fetchListSuggestions` (`src/lib/smart-sort.ts`). It never
-  throws; every failure means "nothing to pre-select".
+  throws. After a 401, 404 or 409 it stops asking for the rest of the
+  session; saving a key resets that (`resetListSuggestions`).
 
 ## 5. Settings
 
@@ -148,6 +180,9 @@ Migration 26 adds both.
 - It is not tested against a live key. The tests use a fake `fetch`, as for
   duplicates.
 - Only creates are checked. A to-do moved back into Backlog later gets no
-  proposal from the hook; Quick sort asks for one on demand.
+  proposal; Quick sort asks for one on demand.
+- A board create made while offline gets no proposal: the board asks once,
+  at create time, and the server hook skips board creates. Quick sort covers
+  it.
 - One threshold for everyone. EI-371 plans to learn from what users accept
   and dismiss.

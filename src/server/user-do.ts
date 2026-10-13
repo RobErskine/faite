@@ -32,6 +32,7 @@ import {
   checkJevKey,
   eligibleNewTodos,
   findDuplicate,
+  isServerStamped,
   type InsertedTodo,
   type KeyCheck,
   MAX_CANDIDATES,
@@ -937,8 +938,15 @@ export class UserDurableObject extends DurableObject {
     // Object — the object stays alive while it has pending I/O, and a Jev
     // call is a second or two, far inside the idle window.
     const toCheck = selectNewTodosToCheck(insertedTodos);
+    // Only server-stamped creates (REST, MCP, Raycast, email). A board create
+    // asks Jev from the board itself, the moment it is made (EI-373,
+    // `lib/smart-sort.ts`), without waiting on sync — so asking here too would
+    // only pay for the same answer twice, later.
     const toPropose = eligibleNewTodos(insertedTodos)
-      .filter(({ apply }) => apply.scheduledDate == null && apply.suggestedListId == null)
+      .filter(
+        ({ apply, hlcs }) =>
+          isServerStamped(hlcs) && apply.scheduledDate == null && apply.suggestedListId == null,
+      )
       .map(({ entityId }) => entityId);
     if (toCheck.length > 0 || toPropose.length > 0) void this.afterCreate(userId, toCheck, toPropose);
 
@@ -975,11 +983,17 @@ export class UserDurableObject extends DurableObject {
     return stored ? decryptJevKey(stored, this.env.BETTER_AUTH_SECRET) : null;
   }
 
-  /** Duplicates first, so a to-do flagged as one is not also given a list
-   * (`backlogTodosToPropose` skips flagged rows). */
+  /**
+   * The duplicate check and the list proposal ask Jev at the same time
+   * (EI-373) — one after the other cost two full Jev round trips. The
+   * proposal still waits for the duplicate check before it WRITES, so a to-do
+   * flagged as a duplicate gets no list (`backlogTodosToPropose` skips flagged
+   * rows).
+   */
   private async afterCreate(userId: string, toCheck: NewTodoToCheck[], toPropose: string[]): Promise<void> {
-    if (toCheck.length > 0) await this.checkDuplicates(userId, toCheck);
-    if (toPropose.length > 0) await this.proposeLists(userId, toPropose);
+    const duplicates = toCheck.length > 0 ? this.checkDuplicates(userId, toCheck) : Promise.resolve();
+    if (toPropose.length > 0) await this.proposeLists(userId, toPropose, duplicates);
+    await duplicates;
   }
 
   /**
@@ -992,7 +1006,7 @@ export class UserDurableObject extends DurableObject {
    * logs carry no titles. The to-dos are read again after Jev answers, so one
    * the user filed, scheduled or closed meanwhile is left alone.
    */
-  private async proposeLists(userId: string, ids: string[]): Promise<void> {
+  private async proposeLists(userId: string, ids: string[], duplicatesDone: Promise<void>): Promise<void> {
     try {
       const settings = await this.getSettings();
       if (!settings?.smartSortEnabled) return;
@@ -1001,8 +1015,14 @@ export class UserDurableObject extends DurableObject {
 
       const todos = await this.backlogTodosToPropose(ids);
       if (todos.length === 0) return;
-      const proposals = await suggestLists(apiKey, todos, await this.listOptions());
+      const lists = await this.listOptions();
+      const started = Date.now();
+      const proposals = await suggestLists(apiKey, todos, lists);
+      // Counts and time only — never titles (EI-373: `wrangler tail` shows
+      // how long Jev itself takes, apart from sync).
+      console.log("[faite] list proposal", { todos: todos.length, lists: lists.length, ms: Date.now() - started });
 
+      await duplicatesDone;
       const stillInBacklog = new Set((await this.backlogTodosToPropose(ids)).map((todo) => todo.id));
       const entries: PushRequest["entries"] = [];
       for (const [i, todo] of todos.entries()) {
@@ -1023,31 +1043,25 @@ export class UserDurableObject extends DurableObject {
   }
 
   /**
-   * Proposed lists for `todoIds`, for Quick sort to pre-select (EI-367).
-   * Writes nothing and ignores `smartSortEnabled` — the user asked, by
-   * opening Quick sort. `connected: false` when no key is saved. Throws on a
-   * Jev failure; the route turns that into a 502.
+   * Proposed lists for to-dos the CALLER describes — the board, the moment
+   * it creates one (EI-373), and Quick sort on open (EI-370). Taking the
+   * text rather than ids is the point: a board create is not on the server
+   * yet, and waiting for it to sync is the delay this exists to skip.
+   *
+   * Writes nothing and ignores `smartSortEnabled` (the caller checks it).
+   * `connected: false` when no key is saved. Throws on a Jev failure; the
+   * route turns that into a 502.
    */
   async suggestListsFor(
-    todoIds: string[],
+    todos: { id: string; title: string; description: string | null }[],
   ): Promise<{ connected: boolean; suggestions: Record<string, string | null> }> {
     const apiKey = await this.loadJevKey();
     if (!apiKey) return { connected: false, suggestions: {} };
 
-    const todos: { id: string; title: string; description: string | null }[] = [];
-    for (const batch of chunkForInClause(todoIds)) {
-      const placeholders = batch.map(() => "?").join(", ");
-      todos.push(
-        ...this.ctx.storage.sql
-          .exec<{ id: string; title: string; description: string | null }>(
-            `SELECT id, title, description FROM todos
-              WHERE id IN (${placeholders}) AND status = 'open' AND deleted_at IS NULL AND trim(title) != ''`,
-            ...batch,
-          )
-          .toArray(),
-      );
-    }
-    const proposals = await suggestLists(apiKey, todos, await this.listOptions());
+    const lists = await this.listOptions();
+    const started = Date.now();
+    const proposals = await suggestLists(apiKey, todos, lists);
+    console.log("[faite] list suggestions", { todos: todos.length, lists: lists.length, ms: Date.now() - started });
     return { connected: true, suggestions: Object.fromEntries(todos.map((todo, i) => [todo.id, proposals[i]])) };
   }
 

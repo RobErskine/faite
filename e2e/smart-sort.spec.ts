@@ -61,3 +61,22 @@ test("the × dismisses a suggestion and leaves the to-do in Backlog", async ({ p
   await expect(row(page, "Buy oat milk").getByRole("button", { name: "Move to Groceries" })).toHaveCount(0);
   await expect(backlog(page).getByRole("button", { name: "Buy oat milk", exact: true })).toBeVisible();
 });
+
+test("a quick-add in Backlog gets its chip straight from Jev, without waiting on sync (EI-373)", async ({ page }) => {
+  const groceries = await addListAndPropose(page, "Pantry", [], { smartSortEnabled: true });
+  // The board asks the suggest route itself; this stands in for the Worker.
+  const asked: unknown[] = [];
+  await page.route("**/api/smart-sort/suggest", async (route) => {
+    const body = route.request().postDataJSON() as { todos: { id: string; title: string }[] };
+    asked.push(body);
+    await route.fulfill({ json: { suggestions: { [body.todos[0].id]: groceries } } });
+  });
+  await switchToLists(page);
+
+  const addField = backlog(page).getByPlaceholder("Add a to-do");
+  await addField.fill("Buy flour");
+  await addField.press("Enter");
+
+  await expect(row(page, "Buy flour").getByRole("button", { name: "Move to Pantry" })).toBeVisible();
+  expect(asked).toEqual([{ todos: [expect.objectContaining({ title: "Buy flour", description: null })] }]);
+});

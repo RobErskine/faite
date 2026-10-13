@@ -37,6 +37,12 @@ const TIMEOUT_MS = 10_000;
  * MCP and email creates all use it; a board create carries its device's. */
 const SERVER_HLC_SUFFIX = ":server";
 
+/** True when every field of a create was stamped by the server — REST, MCP,
+ * Raycast or email, never a device's own board. */
+export function isServerStamped(hlcs: string[]): boolean {
+  return hlcs.length > 0 && hlcs.every((hlc) => hlc.endsWith(SERVER_HLC_SUFFIX));
+}
+
 export interface TodoText {
   title: string;
   description: string | null;
@@ -93,7 +99,7 @@ export function selectNewTodosToCheck(inserted: InsertedTodo[]): NewTodoToCheck[
   const eligible = eligibleNewTodos(inserted);
   return eligible.map(({ entityId, hlcs }) => ({
     id: entityId,
-    held: hlcs.length > 0 && hlcs.every((hlc) => hlc.endsWith(SERVER_HLC_SUFFIX)),
+    held: isServerStamped(hlcs),
   }));
 }
 

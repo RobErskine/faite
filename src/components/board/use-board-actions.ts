@@ -1,5 +1,6 @@
 "use client";
 
+import { proposeListForNewTodo } from "@/lib/smart-sort";
 import { useCallback, useEffect, useMemo } from "react";
 import {
   KeyboardSensor,
@@ -1346,6 +1347,9 @@ export function useBoardActions(
         reminderTime: parsed.reminderTime,
         labelIds: mentionedLabelIds,
       });
+      // Ask Jev for a list now, not after sync (EI-373). It checks for itself
+      // that smart sorting is on and the to-do landed in Backlog.
+      void proposeListForNewTodo(id);
       // Name where it landed whenever a token or mention moved it off the
       // column it was typed into — a card leaving its column is otherwise silent.
       const parts: string[] = [];
