@@ -173,7 +173,53 @@ time (`2pm`, `14:00`). Tokens are only recognized at the edges of the string
 (trailing run for all kinds, leading run for priority only) — see the module
 for why: it's what keeps "call mom about p1 stuff" from parsing anything. The
 `@`/`#` mentions are **not** part of this grammar — they're a UI pick, not
-text the parser sees (see `quick-add-preview.tsx`'s doc comment).
+text the parser sees (see `quick-add-preview.tsx`'s doc comment). The one
+exception (EI-375): an `@list` typed out in full and never picked is resolved
+from the text by `resolveQuickAdd` before parsing — see below.
+
+**Never misfiled silently (EI-375).** Seen in production on one day: `oct 1`
+landed in *next* October with a chip reading just "Oct 1"; `@to-read` matched
+nothing and stayed in the title; "Call the dentist about Thursday" went onto
+Thursday titled "Call the dentist about"; and none of it said a word. The
+rules that came out of it, shared by the column row and both ⌘K creates
+through one helper, `resolveQuickAdd` (`src/lib/quick-add.ts`):
+
+- **The year shows when it isn't this year** — on the chip ("Fri Oct 1,
+  2027") and in the toast.
+- **Every create toasts where it landed**, with Undo: "Added to Thu, Oct 15 ·
+  To Read", "Added to Backlog". Backlog is named only when it is the whole
+  answer (a dated to-do sits on its day). Built by `describeQuickAddLanding`
+  and raised by `announceQuickAdd` (`quick-add-toast.ts`) under one sonner
+  id, so five adds in a row replace one toast rather than stacking five.
+- **`@list` matches loosely**: case, spaces, hyphens and underscores are
+  ignored, so `@to-read`, `@toread` and `@To_Read` all find "To Read" — both
+  in the menu (`filterMentionItems`) and when the mention is typed out in
+  full and never picked (`extractListMentions`). An exact name (ignoring
+  case) wins over a loose one; two matches at the same level are ambiguous
+  and file nowhere.
+- **An `@mention` that matches no list stays in the title, as typed**, and the
+  to-do files where it would have without it (the column's list or day; ⌘K's
+  Backlog). It is never silent: the preview shows a dashed, achromatic chip
+  ("@novels · no list", or "@to · 2 lists match") with **Create list** when
+  nothing matched, and the toast adds a line: "No list is called @novels, so
+  it stayed in the title." It also no longer ends the token scan, so
+  "dentist fri @nolist" still schedules Friday. The chip waits until the
+  caret leaves the mention, so it doesn't flash "no list" while typing.
+- **A date word inside a sentence still parses** — the owner's decision —
+  so "Call the dentist about Thursday" is scheduled for Thursday. The chip is
+  what makes that safe: **every parsed chip has a ×**, and dismissing it puts
+  the word back in the title as plain text ("Call the dentist about
+  Thursday", unscheduled). With the mouse, it's the ×. With the keyboard,
+  Tab to the × and press Enter or Space; focus goes back to the field. That
+  is ordinary focus order, not a new shortcut. A column's row commits when
+  focus leaves the *whole row*, not just the field, so tabbing to a chip
+  doesn't create the to-do. A dismissed word is a *literal*: it doesn't parse
+  or fold out again until it's deleted from the field. A word that had
+  already folded out goes back where it was typed (`restoreFoldedMatch`).
+- **"yesterday" stays in the title**, with a dashed "yesterday · not
+  scheduled" chip. A past day can't be scheduled — the same reason a passed
+  month-day rolls forward to next year — so parsing it would only make an
+  instantly overdue to-do.
 
 **Where it's live:** root mode's search box (via the `Create to-do` fallback)
 and `New to-do`. **Not** `new-list`/`new-label`/`new-project`/`new-tab`/

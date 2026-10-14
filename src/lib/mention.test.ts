@@ -138,4 +138,10 @@ describe("filterMentionItems", () => {
   it("respects the limit", () => {
     expect(filterMentionItems(items, "", 2)).toHaveLength(2);
   });
+
+  it("matches loosely — case, spaces, hyphens and underscores ignored (EI-375)", () => {
+    for (const q of ["to-read", "toread", "To_Read", "to re"]) {
+      expect(filterMentionItems(items, q)).toEqual([{ label: "To Read" }]);
+    }
+  });
 });

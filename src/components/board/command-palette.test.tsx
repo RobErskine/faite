@@ -1,8 +1,9 @@
 // @vitest-environment happy-dom
 import "fake-indexeddb/auto";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CommandPalette } from "./command-palette";
+import { announceQuickAdd } from "./quick-add-toast";
 import { formatShortDate } from "@/lib/scheduling";
 import { collapseRecurringSeries } from "@/lib/search";
 import { resetDbForTests, getDb } from "@/lib/store/db";
@@ -189,6 +190,10 @@ function search(text: string) {
     target: { value: text },
   });
 }
+
+// The toast itself is sonner's; what matters here is what the palette asks
+// it to say. `describeQuickAddLanding` has its own unit tests.
+vi.mock("./quick-add-toast", () => ({ announceQuickAdd: vi.fn() }));
 
 // Not using vitest globals, so RTL's automatic cleanup does not run. Without
 // this, each render leaks into the next test's DOM queries.
@@ -501,20 +506,20 @@ describe("CommandPalette — folding a completed date/time word out of the input
     expect(input).toHaveProperty("value", "Buy milk ");
   });
 
-  it("shows the folded word as a removable chip", () => {
+  it("shows the folded word as a dismissible chip", () => {
     renderPalette();
     const input = enterNewTodoMode();
     fireEvent.change(input, { target: { value: "Buy milk tomorrow " } });
-    expect(screen.getByRole("button", { name: /^Remove/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Keep “tomorrow” in the title" })).toBeTruthy();
   });
 
-  it("removing the chip drops the confirmed match without touching the remaining text", () => {
+  it("dismissing the chip puts the word back in the title (EI-375)", () => {
     renderPalette();
     const input = enterNewTodoMode();
     fireEvent.change(input, { target: { value: "Buy milk tomorrow " } });
-    fireEvent.mouseDown(screen.getByRole("button", { name: /^Remove/ }));
-    expect(screen.queryByRole("button", { name: /^Remove/ })).toBeNull();
-    expect(input).toHaveProperty("value", "Buy milk ");
+    fireEvent.mouseDown(screen.getByRole("button", { name: "Keep “tomorrow” in the title" }));
+    expect(screen.queryByRole("button", { name: /^Keep “/ })).toBeNull();
+    expect(input).toHaveProperty("value", "Buy milk tomorrow");
   });
 
   it("creating still applies the folded field even though it's no longer in the visible text", async () => {
@@ -622,5 +627,87 @@ describe("CommandPalette — a repeating to-do is one row, the next one", () => 
 
     const rows = document.body.querySelectorAll("[data-todo-id]");
     expect([...rows].map((r) => r.getAttribute("data-todo-id"))).toEqual(["one-off"]);
+  });
+});
+
+/**
+ * EI-375 in the palette: the year on a date outside this year, a date chip
+ * that can be dismissed, a typed-out "@list" that files, and a toast that
+ * says where. Clock pinned to the day it was seen: Wed 2026-10-14.
+ */
+describe("CommandPalette — quick-add never misfiles silently (EI-375)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-14T12:00:00.000Z"));
+    vi.mocked(announceQuickAdd).mockClear();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const NEW_TODO = "What needs doing?";
+  const openNewTodo = () => fireEvent.click(screen.getByText("New to-do"));
+  const type = (text: string) =>
+    fireEvent.change(screen.getByPlaceholderText(NEW_TODO), { target: { value: text } });
+  const submit = () => fireEvent.keyDown(screen.getByPlaceholderText(NEW_TODO), { key: "Enter" });
+  const onlyTodo = async () => {
+    await waitFor(async () => expect(await getDb().todos.count()).toBe(1));
+    return (await getDb().todos.toArray())[0];
+  };
+
+  it("shows the year when the date is not this year", () => {
+    renderPalette();
+    search("renew passport oct 1");
+    expect(screen.getByText("Fri Oct 1, 2027")).toBeTruthy();
+  });
+
+  it("a dismissed date chip leaves the word in the title, unscheduled", async () => {
+    renderPalette();
+    openNewTodo();
+    type("Call the dentist about Thursday");
+    expect(screen.getByText("Thu Oct 15")).toBeTruthy();
+    fireEvent.mouseDown(screen.getByRole("button", { name: "Keep “Thursday” in the title" }));
+    expect(screen.queryByText("Thu Oct 15")).toBeNull();
+    submit();
+
+    const created = await onlyTodo();
+    expect(created.title).toBe("Call the dentist about Thursday");
+    expect(created.scheduledDate).toBeNull();
+    expect(announceQuickAdd).toHaveBeenCalledWith(created.id, "Call the dentist about Thursday", {
+      message: "Added to Backlog",
+      note: null,
+    });
+  });
+
+  it("files a typed-out @to-read into To Read, and says so", async () => {
+    renderPalette({ lists: [...LISTS, list("l3", "To Read")] });
+    openNewTodo();
+    type("@to-read Dune thu");
+    submit();
+
+    const created = await onlyTodo();
+    expect(created.title).toBe("Dune");
+    expect(created.listId).toBe("l3");
+    expect(announceQuickAdd).toHaveBeenCalledWith(created.id, "Dune", {
+      message: "Added to Thu, Oct 15 · To Read",
+      note: null,
+    });
+  });
+
+  it("keeps an unmatched @mention in the title, shows it dashed, and says why", async () => {
+    renderPalette();
+    openNewTodo();
+    type("@novels Dune");
+    expect(screen.getByText("@novels · no list")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Create a list called “novels”" })).toBeTruthy();
+    submit();
+
+    const created = await onlyTodo();
+    expect(created.title).toBe("@novels Dune");
+    expect(created.listId).toBe("l1");
+    expect(announceQuickAdd).toHaveBeenCalledWith(created.id, "@novels Dune", {
+      message: "Added to Backlog",
+      note: "No list is called @novels, so it stayed in the title.",
+    });
   });
 });

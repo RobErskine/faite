@@ -1,6 +1,7 @@
 import { test, expect } from "./support/fixtures";
 import type { Page } from "@playwright/test";
 import { realHover } from "./support/hover";
+import { actionUndo } from "./support/toast";
 
 /**
  * Right-click context menus (EI-281 — the card menu EI-285, the list column
@@ -92,7 +93,7 @@ test.describe("to-do card menu", () => {
 
     // The default view shows open to-dos only, so completing it takes it away.
     await expect(card(page, "Water the plants")).toBeHidden();
-    await expect(page.getByRole("button", { name: "Undo" })).toBeVisible();
+    await expect(actionUndo(page)).toBeVisible();
   });
 
   test("quick reschedule moves the card onto a day column", async ({ page }) => {
@@ -113,7 +114,7 @@ test.describe("to-do card menu", () => {
         exact: true,
       }),
     ).toBeVisible();
-    await expect(page.getByRole("button", { name: "Undo" })).toBeVisible();
+    await expect(actionUndo(page)).toBeVisible();
   });
 
   test("Move back returns a scheduled card to the list it came from (EI-336)", async ({
@@ -145,7 +146,7 @@ test.describe("to-do card menu", () => {
     await expect(
       wednesday.getByRole("button", { name: "Water the plants", exact: true }),
     ).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Undo" }).first()).toBeVisible();
+    await expect(actionUndo(page).first()).toBeVisible();
   });
 
   /**
@@ -187,7 +188,7 @@ test.describe("to-do card menu", () => {
     await expect(page.getByRole("menu")).toBeHidden();
     // Dropped, so it leaves the default (open-only) view.
     await expect(card(page, "Water the plants")).toBeHidden();
-    await expect(page.getByRole("button", { name: "Undo" })).toBeVisible();
+    await expect(actionUndo(page)).toBeVisible();
   });
 
   test("shows each chord beside its item", async ({ page }) => {
@@ -357,7 +358,7 @@ test.describe("list group header menu", () => {
       await expect(friday.getByRole("button", { name: title, exact: true })).toBeVisible();
     }
     await expect(groupHeader(page)).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Undo" }).first()).toBeVisible();
+    await expect(actionUndo(page).first()).toBeVisible();
   });
 });
 

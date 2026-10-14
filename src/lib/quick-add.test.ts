@@ -1,9 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  describeQuickAddLanding,
+  extractListMentions,
   foldQuickAddDraft,
+  formatQuickAddDate,
+  matchListMention,
   parseDatePhrase,
   parseQuickAdd,
   quickAddDraftToString,
+  resolveQuickAdd,
+  restoreFoldedMatch,
 } from "./quick-add";
 import type { ReminderPreset } from "./schema";
 
@@ -421,5 +427,217 @@ describe("parseDatePhrase (EI-318)", () => {
       const scanned = parseQuickAdd(`Pay rent ${phrase}`, MONDAY).scheduledDate;
       expect(parseDatePhrase(phrase, MONDAY)).toBe(scanned);
     }
+  });
+});
+
+/**
+ * EI-375 — every case seen in production on Wed 2026-10-14, plus the rules
+ * the fix introduced. `today` is passed in, so this IS the fixed clock.
+ */
+describe("EI-375: quick-add never misfiles silently", () => {
+  const OCT_14 = "2026-10-14"; // a Wednesday
+  const LISTS = [
+    { id: "read", name: "To Read" },
+    { id: "buy", name: "To Buy" },
+    { id: "backlog", name: "Backlog", isBacklog: true },
+  ];
+
+  describe("the year, when it is not this year", () => {
+    it("labels 'oct 1' — already past — with next year's year", () => {
+      const result = parseQuickAdd("renew passport oct 1", OCT_14);
+      expect(result.scheduledDate).toBe("2027-10-01");
+      expect(result.matches[0].label).toBe("Fri Oct 1, 2027");
+    });
+
+    it("leaves a date in this year bare", () => {
+      expect(parseQuickAdd("renew passport oct 20", OCT_14).matches[0].label).toBe("Tue Oct 20");
+    });
+
+    it("labels a deadline in another year the same way", () => {
+      expect(parseQuickAdd("file taxes !1/5", OCT_14).matches[0].label).toBe("Due Tue Jan 5, 2027");
+    });
+
+    it("formats the toast's date with a comma, and the year only when needed", () => {
+      expect(formatQuickAddDate("2026-10-15", OCT_14)).toBe("Thu, Oct 15");
+      expect(formatQuickAddDate("2027-10-01", OCT_14)).toBe("Fri, Oct 1, 2027");
+    });
+  });
+
+  describe("loose @list matching", () => {
+    it.each(["to-read", "toread", "To_Read", "TO-READ"])(
+      "@%s matches To Read",
+      (query) => {
+        expect(matchListMention(query, LISTS)).toEqual({ kind: "match", list: LISTS[0] });
+      },
+    );
+
+    it("an exact name wins over a loose one", () => {
+      const lists = [...LISTS, { id: "toread", name: "Toread" }];
+      expect(matchListMention("toread", lists)).toEqual({ kind: "match", list: lists[3] });
+      expect(matchListMention("to-read", lists)).toEqual({
+        kind: "ambiguous",
+        lists: [lists[0], lists[3]],
+      });
+    });
+
+    it("two lists that fold to the same name are ambiguous, and file nowhere", () => {
+      const lists = [{ name: "To Read" }, { name: "to-read" }];
+      expect(matchListMention("toread", lists).kind).toBe("ambiguous");
+      const out = extractListMentions("Dune @toread", lists);
+      expect(out.list).toBeNull();
+      expect(out.text).toBe("Dune @toread");
+      expect(out.unresolved).toEqual([{ raw: "@toread", query: "toread", matches: 2 }]);
+    });
+
+    it("lifts a typed-out @to-read out of the title and files it (the production case)", () => {
+      const result = resolveQuickAdd("Dune @to-read", OCT_14, { lists: LISTS });
+      expect(result.title).toBe("Dune");
+      expect(result.list).toBe(LISTS[0]);
+      expect(result.unresolvedMentions).toEqual([]);
+    });
+
+    it("lifts a mention from the middle, and the tokens after it still parse", () => {
+      const result = resolveQuickAdd("Dune @to-read fri", OCT_14, { lists: LISTS });
+      expect(result.title).toBe("Dune");
+      expect(result.list?.id).toBe("read");
+      expect(result.scheduledDate).toBe("2026-10-16");
+    });
+
+    it("a lone mention is a title, not an empty to-do", () => {
+      const result = resolveQuickAdd("@to-read", OCT_14, { lists: LISTS });
+      expect(result.title).toBe("@to-read");
+      expect(result.list).toBeNull();
+    });
+
+    it("never reads an email address as a mention", () => {
+      expect(extractListMentions("mail bob@toread.com", LISTS).list).toBeNull();
+    });
+  });
+
+  describe("an @mention that matched no list", () => {
+    it("stays in the title, is reported, and does not swallow the date after it", () => {
+      const result = resolveQuickAdd("Call the dentist fri @nolist", OCT_14, { lists: LISTS });
+      expect(result.title).toBe("Call the dentist @nolist");
+      expect(result.scheduledDate).toBe("2026-10-16");
+      expect(result.list).toBeNull();
+      expect(result.unresolvedMentions).toEqual([{ raw: "@nolist", query: "nolist", matches: 0 }]);
+    });
+
+    it("leaves the title untouched when nothing parsed", () => {
+      expect(parseQuickAdd("read  about @nolist", OCT_14).title).toBe("read  about @nolist");
+    });
+  });
+
+  describe("'yesterday'", () => {
+    it("stays in the title, unscheduled, with a notice", () => {
+      const result = parseQuickAdd("Ask about what happened yesterday", OCT_14);
+      expect(result.title).toBe("Ask about what happened yesterday");
+      expect(result.scheduledDate).toBeNull();
+      expect(result.notices).toEqual([
+        { raw: "yesterday", kind: "past-date", label: "yesterday · not scheduled" },
+      ]);
+    });
+
+    it("is only noticed where a date would have parsed", () => {
+      expect(parseQuickAdd("yesterday was long, call mom", OCT_14).notices).toEqual([]);
+    });
+  });
+
+  describe("a date word inside a sentence", () => {
+    it("still parses — the owner's call", () => {
+      const result = parseQuickAdd("Call the dentist about Thursday", OCT_14);
+      expect(result.title).toBe("Call the dentist about");
+      expect(result.scheduledDate).toBe("2026-10-15");
+      expect(result.matches).toEqual([{ raw: "Thursday", kind: "date", label: "Thu Oct 15" }]);
+    });
+
+    it("dismissed, it is title text and nothing is scheduled", () => {
+      const result = parseQuickAdd("Call the dentist about Thursday", OCT_14, [], {
+        literals: ["Thursday"],
+      });
+      expect(result.title).toBe("Call the dentist about Thursday");
+      expect(result.scheduledDate).toBeNull();
+      expect(result.matches).toEqual([]);
+    });
+
+    it("dismissing one word leaves the tokens after it parsing", () => {
+      const result = parseQuickAdd("Call the dentist about Thursday p1", OCT_14, [], {
+        literals: ["Thursday"],
+      });
+      expect(result.title).toBe("Call the dentist about Thursday");
+      expect(result.priority).toBe(1);
+    });
+
+    it("dismissing a two-word date keeps both words", () => {
+      const result = parseQuickAdd("renew passport oct 1", OCT_14, [], { literals: ["oct 1"] });
+      expect(result.title).toBe("renew passport oct 1");
+      expect(result.scheduledDate).toBeNull();
+    });
+
+    it("a dismissed word does not fold out of the field on the next space", () => {
+      const folded = foldQuickAddDraft("Call the dentist about Thursday ", [], OCT_14, [], {
+        literals: ["Thursday"],
+      });
+      expect(folded.text).toBe("Call the dentist about Thursday ");
+      expect(folded.confirmed).toEqual([]);
+    });
+
+    it("a folded word goes back where it was typed, not on the end", () => {
+      const folded = foldQuickAddDraft("Call the dentist about Thursday ", [], OCT_14);
+      expect(folded.text).toBe("Call the dentist about ");
+      const [thursday] = folded.confirmed;
+      expect(restoreFoldedMatch("Call the dentist about and the cleaning", thursday)).toBe(
+        "Call the dentist about Thursday and the cleaning",
+      );
+    });
+
+    it("falls back to the end when the text before it was edited into a word", () => {
+      const match = { raw: "fri", kind: "date" as const, label: "Fri Oct 16", at: 4 };
+      expect(restoreFoldedMatch("lunchtime", match)).toBe("lunchtime fri");
+    });
+  });
+
+  describe("where it landed", () => {
+    it("names the day and the list", () => {
+      expect(
+        describeQuickAddLanding({
+          today: OCT_14,
+          scheduledDate: "2026-10-15",
+          list: { name: "To Read" },
+        }),
+      ).toEqual({ message: "Added to Thu, Oct 15 · To Read", note: null });
+    });
+
+    it("says Backlog when that is the whole answer", () => {
+      expect(
+        describeQuickAddLanding({ today: OCT_14, scheduledDate: null, list: LISTS[2] }).message,
+      ).toBe("Added to Backlog");
+      expect(describeQuickAddLanding({ today: OCT_14, scheduledDate: null, list: null }).message).toBe(
+        "Added to Backlog",
+      );
+    });
+
+    it("leaves Backlog off a dated to-do — it sits on its day", () => {
+      expect(
+        describeQuickAddLanding({ today: OCT_14, scheduledDate: "2027-10-01", list: LISTS[2] })
+          .message,
+      ).toBe("Added to Fri, Oct 1, 2027");
+    });
+
+    it("notes a mention that filed nowhere", () => {
+      expect(
+        describeQuickAddLanding({
+          today: OCT_14,
+          scheduledDate: null,
+          list: null,
+          unresolvedMentions: [
+            { raw: "@novels", query: "novels", matches: 0 },
+            { raw: "@to", query: "to", matches: 2 },
+          ],
+        }).note,
+      ).toBe(
+        "No list is called @novels, so it stayed in the title. @to matches 2 lists, so it stayed in the title.",
+      );
+    });
   });
 });

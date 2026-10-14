@@ -18,7 +18,13 @@ import { cn } from "@/lib/utils";
 import { edge, tint, wash } from "@/lib/colors";
 import { listDragId, type TodoGroup } from "@/lib/board";
 import { addStop, groupStop, navKeyOf, type NavKey } from "@/lib/column-nav";
-import { foldQuickAddDraft, parseQuickAdd, quickAddDraftToString, type QuickAddMatch } from "@/lib/quick-add";
+import {
+  foldQuickAddDraft,
+  quickAddDraftToString,
+  resolveQuickAdd,
+  restoreFoldedMatch,
+  type QuickAddMatch,
+} from "@/lib/quick-add";
 import { isTextEntry } from "@/lib/undo";
 import { MentionMenu, useMention, type MentionSource } from "@/components/mention-menu";
 import { createLabel } from "@/lib/store/repositories";
@@ -31,7 +37,12 @@ import {
   InputGroupInput,
 } from "@/components/ui/input-group";
 import { DragGrip } from "./drag-grip";
-import { QuickAddPreview, type QuickAddChip } from "./quick-add-preview";
+import {
+  QuickAddPreview,
+  dismissibleMatchChip,
+  quickAddStatusChips,
+  type QuickAddChip,
+} from "./quick-add-preview";
 import { TodoCard } from "./todo-card";
 import type { TodoContextActions } from "./todo-card-menu";
 import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
@@ -153,9 +164,21 @@ interface BoardColumnProps {
    * `listId` is set when the "@list" mention resolved one — it overrides
    * whatever list this column would otherwise file into (see `handleQuickAdd`
    * in board.tsx). `labelIds` carries every "#label" mention picked, in the
-   * order they were picked.
+   * order they were picked. `literals` are the words whose chip was dismissed
+   * (EI-375) — `handleQuickAdd` reads them as title text, not tokens.
    */
-  onQuickAdd?: (title: string, listId?: string, labelIds?: string[]) => void;
+  onQuickAdd?: (
+    title: string,
+    listId?: string,
+    labelIds?: string[],
+    literals?: readonly string[],
+  ) => void;
+  /**
+   * Creates a list from a quick-add "@mention" that matched none (EI-375) —
+   * offered as "Create list" on the mention's dashed chip. Omit and the chip
+   * still shows, just without the offer.
+   */
+  onCreateList?: (name: string) => void;
   /**
    * Every list, for the quick-add row's "@list" mention — `color` already
    * resolved to what the list actually shows elsewhere on the board (its own
@@ -367,6 +390,7 @@ export function BoardColumn({
   onToggle,
   onOpen,
   onQuickAdd,
+  onCreateList,
   lists,
   reminderPresets,
   onNavigate,
@@ -481,6 +505,8 @@ export function BoardColumn({
   const [quickAddCursor, setQuickAddCursor] = useState(0);
   const [mentionedList, setMentionedList] = useState<MentionListOption | null>(null);
   const [mentionedLabels, setMentionedLabels] = useState<MentionLabelOption[]>([]);
+  /** Words whose chip was dismissed — title text from then on (EI-375). */
+  const [literals, setLiterals] = useState<string[]>([]);
   /**
    * Set right after a mention resolves, so an effect can move the DOM caret
    * there once the controlled input's value has actually updated — React
@@ -551,7 +577,7 @@ export function BoardColumn({
     // itself, so it never needs to know folding happened.
     const combined = quickAddDraftToString(draft, confirmedMatches);
     if (!combined || !onQuickAdd) return;
-    onQuickAdd(combined, mentionedList?.id, mentionedLabels.map((l) => l.id));
+    onQuickAdd(combined, mentionedList?.id, mentionedLabels.map((l) => l.id), literals);
     // The new to-do almost never matches whatever was typed — an add that
     // appears to do nothing reads as broken, not as filtered.
     if (filterActive) onFilterChange?.("");
@@ -560,26 +586,44 @@ export function BoardColumn({
     setQuickAddCursor(0);
     setMentionedList(null);
     setMentionedLabels([]);
+    setLiterals([]);
+  };
+
+  /**
+   * Dismissing a parsed chip (EI-375): the word goes back into the title and
+   * stays there as text. A folded match is put back where it was typed; a
+   * live one is already in `draft`, so only `literals` changes.
+   */
+  const dismissMatch = (match: QuickAddMatch) => {
+    if (confirmedMatches.includes(match)) {
+      const restored = restoreFoldedMatch(draft, match);
+      setConfirmedMatches((ms) => ms.filter((m) => m !== match));
+      // No caret ref here: this runs from chips built during render, and a
+      // controlled input whose value is replaced puts the caret at the end
+      // on its own — which is where `restored` ends anyway.
+      setDraft(restored);
+      setQuickAddCursor(restored.length);
+    }
+    setLiterals((ls) => (ls.includes(match.raw) ? ls : [...ls, match.raw]));
   };
 
   // Parsed only for the live preview — `handleQuickAdd` (use-board-actions.ts)
   // re-parses the committed title itself with its own presets, so the write
   // path never depends on this. `reminderPresets` is threaded here anyway
   // (EI-106 P4) so a preset-name match shows the right chip before commit.
-  const quickAddChips = useMemo((): QuickAddChip[] => {
-    const chips: QuickAddChip[] = confirmedMatches.map((m) => ({
-      key: `confirmed:${m.kind}`,
-      label: m.label,
-      onRemove: () => setConfirmedMatches((ms) => ms.filter((x) => x.kind !== m.kind)),
-    }));
-    if (draft.trim()) {
-      chips.push(
-        ...parseQuickAdd(draft, ctx.today, reminderPresets ?? []).matches.map((m) => ({
-          key: `${m.kind}:${m.raw}`,
-          label: m.label,
-        })),
-      );
-    }
+  const typingMention = mention.trigger ? `@${mention.trigger.query}` : null;
+  // Not memoized: `dismissMatch` is a fresh closure each render, and one
+  // short string's parse costs less than tracking what it closes over.
+  const quickAddChips = ((): QuickAddChip[] => {
+    const chips: QuickAddChip[] = confirmedMatches.map((m) =>
+      dismissibleMatchChip(m, dismissMatch, "confirmed:"),
+    );
+    const resolved = resolveQuickAdd(draft, ctx.today, {
+      presets: reminderPresets ?? [],
+      lists: lists ?? [],
+      literals,
+    });
+    if (draft.trim()) chips.push(...resolved.matches.map((m) => dismissibleMatchChip(m, dismissMatch)));
     if (mentionedList) {
       chips.push({
         key: `list:${mentionedList.id}`,
@@ -595,8 +639,15 @@ export function BoardColumn({
         onRemove: () => setMentionedLabels((ls) => ls.filter((l) => l.id !== label.id)),
       });
     }
+    chips.push(
+      ...quickAddStatusChips(resolved, {
+        typingMention,
+        pickedList: mentionedList !== null,
+        onCreateList,
+      }),
+    );
     return chips;
-  }, [draft, confirmedMatches, ctx.today, mentionedList, mentionedLabels, reminderPresets]);
+  })();
 
   /**
    * The groups to render, or null for a flat column.
@@ -1121,7 +1172,16 @@ export function BoardColumn({
 
           {/* Quick add sits directly under the last item, like the reference UI. */}
           {onQuickAdd && (
-            <div className="group">
+            <div
+              className="group"
+              // Commits when focus leaves the whole row — not the field alone,
+              // so Tab can reach a chip's × without creating the to-do first
+              // (EI-375). Leaving the row from a chip commits the same way.
+              onBlur={(e) => {
+                if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+                commit();
+              }}
+            >
               <div className="relative flex items-center">
                 <Plus
                   className={cn(
@@ -1138,9 +1198,15 @@ export function BoardColumn({
                   value={draft}
                   onChange={(e) => {
                     const raw = e.target.value;
-                    const folded = foldQuickAddDraft(raw, confirmedMatches, ctx.today, reminderPresets ?? []);
+                    const folded = foldQuickAddDraft(raw, confirmedMatches, ctx.today, reminderPresets ?? [], {
+                      literals,
+                    });
                     setDraft(folded.text);
                     setConfirmedMatches(folded.confirmed);
+                    // A dismissed word that is no longer typed stops being one.
+                    if (literals.some((w) => !raw.includes(w))) {
+                      setLiterals((ls) => ls.filter((w) => raw.includes(w)));
+                    }
                     if (folded.text !== raw) {
                       // The field just shrank out from under the caret —
                       // land it at the new end, same mechanism `applyMention`
@@ -1189,6 +1255,7 @@ export function BoardColumn({
                       setConfirmedMatches([]);
                       setMentionedList(null);
                       setMentionedLabels([]);
+                      setLiterals([]);
                     }
 
                     const key = navKeyOf(e);
@@ -1205,7 +1272,6 @@ export function BoardColumn({
                     if (draft !== "" || confirmedMatches.length > 0) return;
                     if (onNavigate?.(addStop(id), key)) e.preventDefault();
                   }}
-                  onBlur={commit}
                   placeholder="Add a to-do"
                   // The browser's own form-history suggestions render as
                   // native UI on top of everything, including `MentionMenu` —
@@ -1240,7 +1306,10 @@ export function BoardColumn({
                   />
                 )}
               </div>
-              <QuickAddPreview chips={quickAddChips} />
+              <QuickAddPreview
+                chips={quickAddChips}
+                focusField={() => quickAddInputRef.current?.focus()}
+              />
             </div>
           )}
 
