@@ -110,10 +110,9 @@ discoverability on touch without it: the card drag grip (`todo-card.tsx`),
 the tab info button and tab drag grip (`tab-strip.tsx` — the grip is
 currently the *only* way to reorder tabs, so this one is a real gap, not
 polish), and the rail collapse chevron (`rail-collapse-button.tsx`). A fifth
-candidate — the list-column drag grip's `group-hover/column:text-muted-
-foreground` in `board-column.tsx` — turned out not to need one: unlike the
-other four, it's a color intensification on an already-visible-at-rest
-element (base state is `text-muted-foreground/30`, not `opacity-0`), so
+candidate — the list-column drag grip in `board-column.tsx` — turned out not
+to need one: unlike the other four, it is visible at rest (`opacity` is never
+0; its resting ink is `text-muted-foreground` since EI-378, `/30` before), so
 there's nothing invisible for touch to miss.
 
 ## 4. Safe-area insets

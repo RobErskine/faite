@@ -155,6 +155,9 @@ export function PhoneBoard({
         onOpenDuplicates={() => ui.setDuplicatesOpen(true)}
       />
 
+      {/* The content landmark (EI-378) — see desktop-board.tsx. The bottom
+          bar is navigation and stays outside it. */}
+      <main className="flex min-h-0 flex-1 flex-col">
       {/*
         Above both pagers, not inside either — it has to read the same
         whether the Days or Lists page is active, and neither pager alone
@@ -265,6 +268,10 @@ export function PhoneBoard({
                     listDayDrop?.day === column.day && listDayDrop.count > 0
                   }
                   title={weekday}
+                  // The region's name carries the date (EI-378): ~30 day
+                  // columns named by weekday alone read "Wednesday" five
+                  // times over in a screen reader's landmark list.
+                  regionLabel={`${weekday}, ${formatShortDate(column.day)}`}
                   subtitle={
                     <span className="num">
                       {isToday && "Today · "}
@@ -497,6 +504,8 @@ export function PhoneBoard({
           </div>
         )}
       </div>
+
+      </main>
 
       <PhoneBottomBar view={phoneView} onSelectView={setPhoneView} />
     </div>

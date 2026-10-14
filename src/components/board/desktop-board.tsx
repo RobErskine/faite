@@ -228,6 +228,14 @@ export function DesktopBoard({
         onOpenDuplicates={() => ui.setDuplicatesOpen(true)}
       />
 
+      {/*
+        The board's one landmark for its content (EI-378): everything below
+        the header — date nav, both halves, the split handle. The header stays
+        outside it as the banner landmark. A plain flex column with the same
+        growth the halves had against the shell, so the split's arithmetic is
+        unchanged (it measures the halves, not this).
+      */}
+      <main className="flex min-h-0 flex-1 flex-col">
       <DateNav
         settings={settings}
         today={ctx.today}
@@ -409,6 +417,10 @@ export function DesktopBoard({
                     listDayDrop?.day === column.day && listDayDrop.count > 0
                   }
                   title={weekday}
+                  // The region's name carries the date (EI-378): ~30 day
+                  // columns named by weekday alone read "Wednesday" five
+                  // times over in a screen reader's landmark list.
+                  regionLabel={`${weekday}, ${formatShortDate(column.day)}`}
                   // `subtitle` also carries prose on other columns, so the
                   // numeral face is applied here rather than in BoardColumn.
                   //
@@ -764,6 +776,7 @@ export function DesktopBoard({
         </div>
       </div>
       )}
+      </main>
     </div>
   );
 }

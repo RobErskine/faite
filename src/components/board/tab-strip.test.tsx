@@ -183,3 +183,46 @@ describe("archived button", () => {
     expect(onOpenArchive).toHaveBeenCalled();
   });
 });
+
+describe("accessibility floor (EI-378)", () => {
+  it("draws the count in ink that passes 4.5:1, not muted-foreground at 60%", () => {
+    render(
+      <Harness
+        tabs={[tab("t1", "Work")]}
+        activeTabId="t1"
+        counts={new Map([["t1", { lists: 4, items: 1, assigned: 0 }]])}
+      />,
+    );
+    const count = screen.getByRole("button", { name: /^Work\b/ }).querySelector(".num")!;
+    // 2.3:1 light / 3.07:1 dark measured on production before; foreground at
+    // 60% measured 5.25:1 / 6.14:1 in the browser. Any alpha on the muted
+    // token is what failed, so no form of it is allowed back.
+    expect(count.className).not.toMatch(/text-muted-foreground\/\d+/);
+    expect(count.className).toContain("text-foreground/60");
+  });
+
+  it("never calls scrollIntoView on mount, so the first Tab still starts at the top", () => {
+    /*
+      Chrome moves the sequential focus navigation starting point to the
+      element `scrollIntoView` was called on. Called on mount, it made the
+      first Tab after a reload land on this strip's grip instead of the
+      header.
+    */
+    const spy = vi.fn();
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = spy;
+    try {
+      render(<Harness tabs={[tab("t1", "Work"), tab("t2", "Home")]} activeTabId="t2" />);
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
+  });
+
+  it("grows the tab button's target without growing the pill", () => {
+    render(<Harness tabs={[tab("t1", "Work")]} activeTabId="t1" />);
+    const cls = screen.getByRole("button", { name: /^Work\b/ }).className.split(/\s+/);
+    expect(cls).toContain("py-1");
+    expect(cls).toContain("-my-1");
+  });
+});

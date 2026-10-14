@@ -38,7 +38,12 @@ export function UserAvatar({ settings, className, decorative }: UserAvatarProps)
       {avatar.kind === "image" && avatar.imageSrc ? (
         <AvatarImage src={avatar.imageSrc} alt="" />
       ) : null}
-      <AvatarFallback>
+      {/*
+        `text-foreground/60` over the fallback's `bg-muted` (EI-378): the
+        shared muted ink measured 4.35:1 there, just under 4.5:1 for 12px
+        initials. 5.11:1 light, 6.15:1 dark.
+      */}
+      <AvatarFallback className="text-foreground/60">
         {avatar.kind === "emoji" && avatar.emoji ? avatar.emoji : avatar.initials}
       </AvatarFallback>
     </Avatar>

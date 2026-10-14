@@ -110,6 +110,7 @@ interface HarnessProps {
   headerMenu?: React.ReactNode;
   onRescheduleGroup?: (todos: readonly Todo[], date: string) => void;
   tone?: "urgent";
+  regionLabel?: string;
 }
 
 function Harness({ groups, todos, ...rest }: HarnessProps) {
@@ -883,5 +884,45 @@ describe("header context menu", () => {
     // A list with no color of its own says so, and stays selected.
     const none = screen.getByRole("menuitemradio", { name: "None" });
     expect(none.getAttribute("aria-checked")).toBe("true");
+  });
+});
+
+describe("accessibility floor (EI-378)", () => {
+  it("names a day's region with its date when given one", () => {
+    render(<Harness regionLabel="Sunday, Aug 9" />);
+    // Exact: the name is the weekday AND the date, not the weekday alone —
+    // a board renders ~30 days, so "Sunday" by itself repeats.
+    expect(screen.getByRole("region", { name: "Sunday, Aug 9" })).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "Sunday" })).toBeNull();
+  });
+
+  it("falls back to the title when no region label is given", () => {
+    render(<Harness />);
+    expect(screen.getByRole("region", { name: "Sunday" })).toBeTruthy();
+  });
+
+  it("gives the quick-add a visible focus and keeps it clear of the +", () => {
+    render(<Harness />);
+    const field = screen.getByRole("textbox", { name: "Add a to-do to Sunday" });
+    const cls = field.className.split(/\s+/);
+    // The shared spectrum outline, not a bare `outline-none` with nothing
+    // in its place (which is what this field used to have).
+    expect(cls).toContain("focus-ring");
+    expect(cls).not.toContain("outline-none");
+    // Unconditional: the + is also revealed by hover and on touch, not only
+    // on focus, so padding that followed focus let it overlap the "A".
+    expect(cls).toContain("pl-6");
+    expect(cls.some((c) => c.endsWith(":pl-6"))).toBe(false);
+  });
+
+  it("keeps Overflow's red count off the smallest size", () => {
+    render(<Harness tone="urgent" todos={[todo("o1"), todo("o2")]} />);
+    const count = [...document.querySelectorAll<HTMLElement>("header span[aria-hidden]")].find(
+      (el) => el.textContent === "2",
+    )!;
+    // Still red: the channel's text token, which passes on the chip's tint.
+    expect(count.className).toContain("text-urgent-foreground");
+    expect(count.className).toContain("text-xs");
+    expect(count.className).not.toContain("text-2xs");
   });
 });

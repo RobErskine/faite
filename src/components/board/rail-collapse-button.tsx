@@ -32,7 +32,9 @@ export function RailCollapseButton({ label, onCollapse }: RailCollapseButtonProp
       aria-label={`Collapse the ${label} column`}
       className={cn(
         "absolute inset-y-0 right-0 z-10 flex w-6 items-center justify-center rounded-tr-md",
-        "text-muted-foreground/50 transition-colors",
+        // Full muted ink once revealed (EI-378): /50 was 1.96:1 when a
+        // keyboard focus revealed it, under the 3:1 non-text floor.
+        "text-muted-foreground transition-colors",
         // `hover-reveal` (globals.css) is the resting state plus the touch and
         // focus-visible fallbacks; the reveal itself names this component's
         // group scope, which the utility cannot.

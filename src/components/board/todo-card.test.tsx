@@ -1014,3 +1014,42 @@ describe("context menu", () => {
     expect(startsDrag({ button: 0, ctrlKey: false }, "mac")).toBe(true);
   });
 });
+
+describe("the title button's name reads as parts (EI-378)", () => {
+  /*
+    textContent, which includes the visually hidden separators, is the run a
+    screen reader builds the name from. happy-dom has no layout, so it adds
+    none of the whitespace Chrome inserts at a block boundary — what is left
+    is exactly the text this component supplies.
+  */
+  const titleButtonOf = (name: RegExp) =>
+    screen.getAllByRole("button", { name }).find((b) => !b.getAttribute("aria-label"))!;
+
+  it("separates the title, the priority and each badge with commas", () => {
+    render(
+      <Harness
+        todo={todo({ title: "Call dentist", priority: 2, reminderTime: "10:00" })}
+        subtaskCount={{ done: 1, total: 3 }}
+      />,
+    );
+    const text = titleButtonOf(/^Call dentist/).textContent!;
+    expect(text).toMatch(/^Call dentist, Priority 2, /);
+    // No information lost, and no part runs into the next.
+    expect(text).toContain(", 10:00");
+    expect(text).toContain(", 1/3");
+    expect(text).not.toContain("—");
+  });
+
+  it("adds nothing to a plain to-do, so exact-name selectors still match", () => {
+    render(<Harness />);
+    expect(titleButton().textContent).toBe("Buy milk");
+  });
+
+  it("keeps a one-line title at the 24px target without moving the row", () => {
+    render(<Harness />);
+    const cls = titleButton().className.split(/\s+/);
+    // `py-1` grows the box, `-my-1` hands the space back — both or neither.
+    expect(cls).toContain("py-1");
+    expect(cls).toContain("-my-1");
+  });
+});
