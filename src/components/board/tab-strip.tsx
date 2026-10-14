@@ -170,15 +170,32 @@ export function TabStrip({
   // Keeps the active tab reachable without a manual scroll — selecting one
   // via `⌘K` or the keyboard would otherwise land off-screen exactly when a
   // scrolled strip makes that most likely.
+  //
+  // Scrolls the STRIP, never `pill.scrollIntoView()` (EI-378). Chrome moves
+  // the sequential focus navigation starting point to whatever element
+  // `scrollIntoView` was called on, and this effect runs on mount — so after
+  // every reload the first Tab skipped the header and the whole calendar half
+  // and landed on this tab's grip. Measured, then proven by calling
+  // `scrollIntoView` on the help button and watching Tab land on the control
+  // after it. `scrollTo` on the container moves nothing but the scroll.
   useEffect(() => {
-    const el = scrollRef.current?.querySelector<HTMLElement>(
+    const strip = scrollRef.current;
+    const pill = strip?.querySelector<HTMLElement>(
       `[data-tab-pill="${CSS.escape(activeTabId)}"]`,
     );
-    el?.scrollIntoView({
-      inline: "nearest",
-      block: "nearest",
-      behavior: prefersReducedMotion() ? "auto" : "smooth",
-    });
+    if (!strip || !pill) return;
+    // `offsetLeft` is measured against the strip itself (it is `relative`),
+    // the same space `scrollLeft` is in — see `trackPointer` above.
+    const start = pill.offsetLeft;
+    const end = start + pill.offsetWidth;
+    const left =
+      start < strip.scrollLeft
+        ? start
+        : end > strip.scrollLeft + strip.clientWidth
+          ? end - strip.clientWidth
+          : null;
+    if (left === null) return;
+    strip.scrollTo?.({ left, behavior: prefersReducedMotion() ? "auto" : "smooth" });
   }, [activeTabId]);
 
   return (
@@ -452,6 +469,11 @@ function TabPill({
         aria-current={isActive ? "true" : undefined}
         className={cn(
           "focus-ring flex max-w-40 min-w-0 items-baseline gap-1 rounded text-xs",
+          // 16px of text is a 16px target. `py-1` grows the box to the 24px
+          // WCAG 2.2 floor and `-my-1` hands the same 4px back, so the pill's
+          // height and the strip's density are untouched (EI-378). The pill's
+          // own `py-1.5` is the room it grows into.
+          "-my-1 py-1",
           isActive ? "font-semibold" : "text-muted-foreground",
         )}
       >
@@ -463,7 +485,16 @@ function TabPill({
           by letter, so `sr-only` below carries the real sentence — the same
           bargain as the deadline/location markers in todo-row-parts.tsx.
         */}
-        <span aria-hidden className="num shrink-0 text-2xs font-normal text-muted-foreground/60">
+        {/*
+          `text-foreground/60`, not `text-muted-foreground/60` (EI-378). The
+          old ink measured 2.3:1 in light and 3.07:1 in dark — `aria-hidden`
+          keeps it out of the accessibility tree, not out of anyone's eyes.
+          Plain `text-muted-foreground` passes at rest (4.73:1) but not under
+          the strip's hover wash (4.25:1) or an active pill's 12% tint (~3.9:1);
+          foreground at 60% clears 4.5:1 on all three, in both themes (5.25:1
+          light, 7.0:1 dark, on the page) and reads as the same quiet gray.
+        */}
+        <span aria-hidden className="num shrink-0 text-2xs font-normal text-foreground/60">
           {count.lists}/{count.items}/
           {/*
             The third number is the one that confuses: a tab can read `3/0/1`
@@ -491,7 +522,17 @@ function TabPill({
           // both set opacity — it would keep both and let emit order decide
           // (.ai/lessons.md, tailwind-merge and per-axis forms). Mutually
           // exclusive, there is nothing to resolve.
-          "size-4 text-muted-foreground/50 transition-opacity",
+          //
+          // `relative` + `after:` is the extender DragGrip uses: the 16px box
+          // stays 16px (so its hover fill does too) while the target reaches
+          // 24×24. `5px`, not `-inset-1`: the pseudo-element is placed from
+          // the PADDING box, and Button's 1px transparent border sits outside
+          // it — measured 22px at `-inset-1`. It ends 4px past the border
+          // box, at the edge of the tab button — `gap-1` is exactly that
+          // room. Full `text-muted-foreground`: at
+          // /50 the revealed icon was 1.96:1, under the 3:1 non-text floor.
+          "relative size-4 text-muted-foreground transition-opacity",
+          "after:absolute after:-inset-[5px] after:content-['']",
           isInfoOpen ? "opacity-100" : "hover-reveal group-hover/tab:opacity-100",
         )}
       >

@@ -35,7 +35,14 @@ export function DragGrip({ className, ...props }: ComponentProps<"button">) {
     <button
       type="button"
       className={cn(
-        "relative shrink-0 rounded text-muted-foreground/30",
+        /*
+          Full `text-muted-foreground` at rest, not `/30` (EI-378). The grip is
+          a control, so WCAG's 3:1 non-text floor applies to it, and /30
+          measured 1.47:1 — visible at rest on columns (§5.5) but only just.
+          4.73:1 on the page, 4.53:1 on a rail's `surface-0`; hover still
+          steps up to full ink.
+        */
+        "relative shrink-0 rounded text-muted-foreground",
         "cursor-grab transition-colors active:cursor-grabbing",
         /*
           The hit expansion is stated per AXIS rather than as `-inset-1.5`, so a

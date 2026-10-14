@@ -223,6 +223,16 @@ export function TitleMarkers({
 }
 
 /**
+ * Opens every badge in the row (EI-378). The badges sit inside the card's
+ * title button, so they are part of its accessible name, and with nothing
+ * between them a name read "Call dentist, Priority 2 10:00 AM Work". A
+ * visually hidden comma makes each badge its own clause and costs no pixels.
+ * Inside the badge rather than between them, so the row's `gap-1` is the only
+ * thing the flex layout sees.
+ */
+const SEP = <span className="sr-only">, </span>;
+
+/**
  * The badge row: a missed deadline, an outstanding-occurrences count, a
  * scheduled date (only when the caller opts in via `showScheduledDate` — the
  * board card only wants this away from its own column, the palette always
@@ -283,12 +293,14 @@ export function TodoMetaBadges({
     <span className="mt-1.5 flex flex-wrap items-center gap-1">
       {showScheduledDate && todo.scheduledDate && (
         <Badge variant="outline" className="num gap-1 text-2xs font-normal">
+          {SEP}
           <CalendarClock className="size-2.5" aria-hidden />
           {formatShortDate(todo.scheduledDate)}
         </Badge>
       )}
       {todo.reminderTime && (
         <Badge variant="outline" className="num gap-1 text-2xs font-normal">
+          {SEP}
           <Bell className="size-2.5" aria-hidden />
           {reminderLabelFor(todo.reminderTime, reminderPresets ?? [])}
         </Badge>
@@ -299,6 +311,7 @@ export function TodoMetaBadges({
           className="num gap-1 text-2xs font-normal"
           title={`${subtaskCount.done} of ${subtaskCount.total} sub-tasks done`}
         >
+          {SEP}
           <ListChecks className="size-2.5" aria-hidden />
           {subtaskCount.done}/{subtaskCount.total}
         </Badge>
@@ -309,6 +322,7 @@ export function TodoMetaBadges({
           className="num gap-1 text-2xs font-normal"
           title={`${attachmentCount} ${attachmentCount === 1 ? "attachment" : "attachments"}`}
         >
+          {SEP}
           <Paperclip className="size-2.5" aria-hidden />
           {attachmentCount}
         </Badge>
@@ -337,6 +351,7 @@ export function TodoMetaBadges({
                   "num gap-1 text-2xs font-normal text-muted-foreground",
                 )}
               >
+                {SEP}
                 <CornerDownRight className="size-2.5" aria-hidden />
                 {formatOverflowAge(overflow.since, today)}
               </span>
@@ -350,6 +365,7 @@ export function TodoMetaBadges({
       )}
       {deadlineMissed && todo.deadline && (
         <Badge variant="destructive" className="text-2xs font-normal">
+          {SEP}
           Deadline <span className="num">{formatShortDate(todo.deadline)}</span>
         </Badge>
       )}
@@ -359,6 +375,7 @@ export function TodoMetaBadges({
           className="num gap-1 text-2xs font-normal"
           title={`Missed ${missedCount} times in a row`}
         >
+          {SEP}
           <Repeat className="size-2.5" aria-hidden />×{missedCount}
         </Badge>
       )}
@@ -378,6 +395,7 @@ export function TodoMetaBadges({
               : undefined
           }
         >
+          {SEP}
           {label.emoji ? `${label.emoji} ` : ""}
           {label.name}
         </Badge>

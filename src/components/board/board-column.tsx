@@ -119,6 +119,14 @@ export type MentionPick =
 interface BoardColumnProps {
   id: string;
   title: React.ReactNode;
+  /**
+   * The region's accessible name, when the visible title alone is ambiguous.
+   * Day columns pass "Wednesday, Oct 14": a board shows ~30 days, so a name
+   * of "Wednesday" alone repeats five times in the landmark list (EI-378).
+   * Starts with the title, so a substring selector on the weekday still
+   * matches. Defaults to `title` when it is a string.
+   */
+  regionLabel?: string;
   subtitle?: React.ReactNode;
   todos: Todo[];
   labels: LabelRecord[];
@@ -373,6 +381,7 @@ interface BoardColumnProps {
 export function BoardColumn({
   id,
   title,
+  regionLabel,
   subtitle,
   todos,
   labels,
@@ -712,10 +721,8 @@ export function BoardColumn({
       ref={setNodeRef}
       aria-label={
         collapsed
-          ? `Expand the ${typeof title === "string" ? title : "column"}`
-          : typeof title === "string"
-            ? title
-            : undefined
+          ? `Expand the ${regionLabel ?? (typeof title === "string" ? title : "column")}`
+          : (regionLabel ?? (typeof title === "string" ? title : undefined))
       }
       role={collapsed ? "button" : undefined}
       tabIndex={collapsed ? 0 : undefined}
@@ -889,12 +896,11 @@ export function BoardColumn({
                 {dragListName !== null ? (
                   <DragGrip
                     aria-label={`Drag to reorder the ${dragListName} list`}
-                    className={cn(
-                      // Visible at rest, not hover-only, so the affordance is
-                      // discoverable without sweeping the header.
-                      "group-hover/column:text-muted-foreground",
-                      isDragging && "opacity-40",
-                    )}
+                    // Visible at rest, not hover-only, so the affordance is
+                    // discoverable without sweeping the header. DragGrip's own
+                    // resting ink is the visible state now (EI-378); it used
+                    // to sit at /30 and darken on the column's hover.
+                    className={cn(isDragging && "opacity-40")}
                     {...dragAttributes}
                     onKeyDown={startKeyboardDrag}
                   />
@@ -948,7 +954,15 @@ export function BoardColumn({
                 {tone === "urgent" && todos.length > 0 && (
                   <span
                     aria-hidden
-                    className="num shrink-0 rounded-4xl bg-urgent/10 px-1.5 text-2xs font-medium text-urgent"
+                    // Red stays on the count (docs/DESIGN.md §1), at a size
+                    // and ink that pass (EI-378). `text-xs`, not `text-2xs`:
+                    // never colored text at the smallest size; the chip sits
+                    // beside a `text-lg` title, so the 2px it gains changes
+                    // no row height. `--urgent-foreground`, the channel's own
+                    // text token, not `--urgent`: that measured 3.83:1 on
+                    // this 10% tint in light; this is 9.73:1 light, 10.95:1
+                    // dark.
+                    className="num shrink-0 rounded-4xl bg-urgent/10 px-1.5 text-xs font-medium text-urgent-foreground"
                   >
                     {todos.length}
                   </span>
@@ -1283,7 +1297,16 @@ export function BoardColumn({
                     typeof title === "string" ? `Add a to-do to ${title}` : "Add a to-do"
                   }
                   className={cn(
-                    "w-full bg-transparent px-3 py-2 text-sm outline-none",
+                    "w-full bg-transparent px-3 py-2 text-sm",
+                    /*
+                      The board's one focus treatment (EI-378). This field had
+                      `outline-none` and nothing in its place, so tabbing onto
+                      it changed nothing but a caret that blinks at half the
+                      time. `focus-ring` is the spectrum outline every button,
+                      card and title already uses (docs/DESIGN.md §3), drawn
+                      inset so the column's overflow cannot clip it.
+                    */
+                    "focus-ring rounded-md",
                     // Day columns stay quiet at rest — the placeholder only
                     // earns its keep once you've shown intent (hover, focus,
                     // or a touch device with no hover to show it on).
@@ -1292,7 +1315,15 @@ export function BoardColumn({
                     quickAddPlaceholderVisible
                       ? "placeholder:text-muted-foreground"
                       : "placeholder:text-transparent group-hover/column:placeholder:text-muted-foreground focus:placeholder:text-muted-foreground touch:placeholder:text-muted-foreground",
-                    quickAddPlaceholderVisible ? "pl-6" : "group-focus-within:pl-6",
+                    /*
+                      Always clear of the `+` (EI-378). Padding used to follow
+                      focus alone, but the `+` is also revealed by the
+                      column's hover and, on touch, by `hover-reveal`'s
+                      `(hover: none)` branch — on a phone it sat on the "A" of
+                      the placeholder. Unconditional costs nothing: an empty,
+                      unfocused, unhovered field shows neither.
+                    */
+                    "pl-6",
                   )}
                 />
                 {mention.isOpen && (

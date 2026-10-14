@@ -181,8 +181,10 @@ test("the due banner opens the day sheet to an unscheduled due item", async ({ p
 
   await switchToDays(page);
   // `.first()`: the rendered day track holds several weeks, so more than one
-  // Thursday column exists — the column's `aria-label` is just the weekday
-  // (board-column.tsx), with no date to disambiguate by.
+  // Thursday column exists. The region's name is "Thursday, Aug 13"
+  // (`regionLabel`, EI-378), and Playwright's string `name` is a substring
+  // match, so the weekday alone still finds every Thursday; `.first()` is
+  // this week's.
   const thursday = page.getByRole("region", { name: "Thursday" }).first();
   await thursday
     .getByRole("button", { name: "Show the 1 to-do due on this day" })

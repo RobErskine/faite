@@ -1257,8 +1257,9 @@ icon undoes the point of making the mark small.
 
 ### 5.5 Visible at rest on columns; revealed on hover or focus on cards
 
-On a **column header** the grip is `text-muted-foreground/30`, darkening on
-hover — not hidden. A control that only exists on hover is undiscoverable until
+On a **column header** the grip is `text-muted-foreground`, stepping up to full
+ink on hover — not hidden. (It was `/30` until EI-378: 1.47:1, under WCAG's 3:1
+floor for a control's glyph. Full muted ink is 4.73:1 on the page.) A control that only exists on hover is undiscoverable until
 you happen to sweep over it, and that was the original complaint that prompted
 the affordance work.
 

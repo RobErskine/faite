@@ -34,6 +34,7 @@ import { flushOutbox } from "@/components/sync/sync-provider";
 import { clearDeviceData } from "@/lib/store/clear-device";
 import { getBoundOwnerId } from "@/lib/store/owner";
 import type { Settings as SettingsRow } from "@/lib/schema";
+import { cn } from "@/lib/utils";
 
 interface AppHeaderProps {
   /** Opens the command palette. Owned by Board, which also owns ⌘K. */
@@ -58,6 +59,19 @@ interface AppHeaderProps {
   duplicateCount?: number;
   onOpenDuplicates?: () => void;
 }
+
+/**
+ * A header icon's tap target on a coarse pointer (EI-378). The 32px buttons
+ * are fine for a mouse; under `pointer: coarse` an `::after` extender grows the
+ * target to 44px, the floor `ui/button.tsx` already applies to its small
+ * sizes, without growing the circle you see. Same extender as DragGrip's.
+ * The avatar trigger is 28px, so its extender reaches 8px rather than 6px.
+ * The header's `gap-3` is the room these grow into.
+ */
+const HEADER_TOUCH_TARGET =
+  "pointer-coarse:after:absolute pointer-coarse:after:-inset-1.5 pointer-coarse:after:content-['']";
+const AVATAR_TOUCH_TARGET =
+  "pointer-coarse:after:absolute pointer-coarse:after:-inset-2 pointer-coarse:after:content-['']";
 
 /**
  * The app's only global chrome: wordmark, palette trigger, account menu.
@@ -198,7 +212,10 @@ export function AppHeader({
           type="button"
           onClick={onOpenPalette}
           aria-label="Search or run a command"
-          className="focus-ring ml-auto flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted"
+          className={cn(
+            "focus-ring relative ml-auto flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted",
+            HEADER_TOUCH_TARGET,
+          )}
         >
           <Search className="size-4" aria-hidden />
         </button>
@@ -211,7 +228,12 @@ export function AppHeader({
             className="focus-ring flex h-8 w-full max-w-md items-center gap-2 rounded-lg border bg-surface-sunken px-2.5 text-left transition-colors hover:bg-muted"
           >
             <Search className="size-3.5 text-muted-foreground" aria-hidden />
-            <span className="text-xs text-muted-foreground">
+            {/*
+              `text-foreground/60`, not `text-muted-foreground` (EI-378): on
+              the sunken field muted ink measured 4.16:1, a hair under the
+              4.5:1 a 12px label needs. 5.04:1 light, 6.99:1 dark.
+            */}
+            <span className="text-xs text-foreground/60">
               Search or run a command…
             </span>
             <kbd className="ml-auto rounded border bg-background px-1 font-mono text-2xs text-muted-foreground">
@@ -260,7 +282,10 @@ export function AppHeader({
         type="button"
         onClick={onOpenHelp}
         aria-label="Keyboard shortcuts"
-        className="focus-ring flex size-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted"
+        className={cn(
+          "focus-ring relative flex size-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted",
+          HEADER_TOUCH_TARGET,
+        )}
       >
         <CircleHelp className="size-4" aria-hidden />
       </button>
@@ -272,7 +297,7 @@ export function AppHeader({
               ? `Account, ${duplicateCount} possible duplicate${duplicateCount === 1 ? "" : "s"}`
               : "Account"
           }
-          className="focus-ring relative rounded-full"
+          className={cn("focus-ring relative rounded-full", AVATAR_TOUCH_TARGET)}
         >
           {/*
             The initials (or emoji) are decorative here: the trigger's name is

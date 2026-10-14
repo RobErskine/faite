@@ -657,6 +657,14 @@ export function TodoCard({
           // block boxes have no flex automatic minimum size, so the min-content
           // floor that used to push the row into the next column is simply gone.
           "block w-full text-left text-sm leading-snug",
+          // A one-line title is a ~19px target. `py-1` grows the box to the
+          // 24px WCAG 2.2 floor and `-my-1` gives the 4px back, so the row's
+          // 36px rhythm is unchanged; the row's own `py-2` is the room it
+          // grows into, so it never reaches a neighbor (EI-378). Padding, not
+          // an `::after` extender: a pseudo-element over the button would sit
+          // on top of the title span and the markers, and swallow the hover
+          // their tooltips need.
+          "-my-1 py-1",
           // Stated rather than inherited: dragging is the primary gesture over
           // the title now, and a click still opens the sheet.
           draggable && "cursor-grab active:cursor-grabbing",
@@ -715,7 +723,13 @@ export function TodoCard({
                   rolledFrom={rolledFrom}
                 />
                 {todo.title}
-                {rail && <span className="sr-only"> — {rail.label}</span>}
+                {/*
+                  Commas, not an em dash or nothing (EI-378): the name is
+                  read as one run, and "Call dentist — Priority 2 10:00 AM"
+                  ran its parts together. `TodoMetaBadges` opens each badge
+                  with the same separator.
+                */}
+                {rail && <span className="sr-only">, {rail.label}</span>}
                 {/*
                   The tooltip is a pointer nicety; this is the real channel.
                   Base UI's `aria-describedby` only exists while the tooltip is
@@ -723,7 +737,7 @@ export function TodoCard({
                   hear it — and the checkbox's own `aria-label` is a name, not
                   a place to put a description.
                 */}
-                {completionStamp && <span className="sr-only"> — {completionStamp}</span>}
+                {completionStamp && <span className="sr-only">, {completionStamp}</span>}
               </span>
             }
           />
