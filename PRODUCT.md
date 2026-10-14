@@ -23,12 +23,17 @@ One person planning their own life. Faite is solo-user through v1
 ideas on the board are the user's own, which is why it never nags
 (`docs/RESEARCH.md` §2.3).
 
-*Inferred from the product, not stated in a doc:* the primary user is
-keyboard-heavy and keeps one planner across work and personal life (the sync
-milestone is described as "a work and a personal machine", and the product
-ships a Raycast extension, an API and an MCP server). Their job, in order:
-catch an idea the moment it appears, decide which day it belongs to, and give
-everything an honest ending.
+**Confirmed by the owner (2026-10-14):** Faite is for anyone who wants to
+see the week, and all of their to-dos, in front of them at once. They are not
+afraid to let items roll over, because they trust the board to get each one to
+an ending: done on a later date, done by an agent, or not done at all. Their
+job, in order: catch an idea the moment it appears, decide which day it
+belongs to, and give everything an honest ending.
+
+*Inferred, not confirmed:* many of them are keyboard-heavy and keep one
+planner across work and personal life (the sync milestone is described as "a
+work and a personal machine", and the product ships a Raycast extension, an
+API and an MCP server). Design for the keyboard without making it required.
 
 A second user is an **agent** acting for that person, through MCP or the REST
 API, or by reading the screen. Design for both.
@@ -50,6 +55,11 @@ three honest endings: **you do it, you send it back, or you let it go**
 (`docs/RESEARCH.md` §1).
 
 ## Positioning
+
+**The claim a competitor could not truthfully make: forgiveness and honest
+endings** (confirmed by the owner, 2026-10-14). A missed date is not a
+failure; the board carries the to-do forward and, when it has waited too
+long, makes you choose its ending. Every other point below serves this one.
 
 - **Capture is separate from commitment.** A list is where an idea waits; a
   day is a promise. Dragging a card onto a day is the act of committing, not
@@ -117,9 +127,13 @@ feed, undo (no redo, on purpose), opt-in "GOOD JOB" confetti.
 
 **Hard constraints future work must keep.**
 
-- No streaks, scores, percentages, or progress gamification
+- No streaks, scores, percentages, or progress gamification by default
   (`docs/RESEARCH.md` §2.9 and §4 are binding). The one narrow exception is
-  per-list completion counts in History's hover card.
+  per-list completion counts in History's hover card. **Opt-in goals and
+  streaks may come later** (owner, 2026-10-14; parked as EI-363,
+  `docs/GAMIFY.md`): if they ship they are off by default, forgiving, and
+  never change the default board or the homepage's "no streak to break"
+  promise. Design work must not add them before that ticket decides.
 - No notifications meant to bring the user back. No nagging copy.
 - The homepage demo board may show only features the product has
   (`docs/HOMEPAGE.md` §4), and `demo-board.tsx` / `story-panel.tsx` ship zero
@@ -131,8 +145,7 @@ feed, undo (no redo, on purpose), opt-in "GOOD JOB" confetti.
 - Every keyboard shortcut is registered in `src/lib/shortcuts.ts` and
   `docs/KEYBOARD.md` §1.
 
-**Deliberately undecided.** The audience has never been formally named in a
-doc. The product voice is not yet written down (`docs/CONTENT.md`). Label
+**Deliberately undecided.** The product voice is not yet written down (`docs/CONTENT.md`). Label
 colors are off "for now".
 
 ## Brand Commitments
