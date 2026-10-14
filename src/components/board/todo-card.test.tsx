@@ -598,9 +598,9 @@ describe("the completion stamp", () => {
     expect(title().textContent).toContain("Completed Aug 14 · 9:41 PM");
   });
 
-  it("says dropped, not completed, for a won't-do", () => {
+  it("says won't do, not completed, for a won't-do", () => {
     render(<Harness todo={done({ status: "dropped" })} timezone="UTC" />);
-    expect(title().textContent).toContain("Dropped Aug 14 · 9:41 PM");
+    expect(title().textContent).toContain("Marked won’t do Aug 14 · 9:41 PM");
     expect(title().textContent).not.toContain("Completed");
   });
 

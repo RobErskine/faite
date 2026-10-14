@@ -39,7 +39,7 @@ export function DeveloperSection() {
         overflowAfterDays: settings.overflowAfterDays,
         timezone: settings.timezone,
       });
-      toast.success(`Seeded ${count} to-dos into Overflow`, {
+      toast.success(`Seeded ${count} to-do${count === 1 ? "" : "s"} into Overflow`, {
         description: "Backdated past the current Faite Loop threshold.",
       });
     } catch (error) {

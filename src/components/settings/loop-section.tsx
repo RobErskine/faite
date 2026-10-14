@@ -129,7 +129,7 @@ export function LoopSection({ settings }: SettingsSectionProps) {
           <div className="space-y-0.5">
             <Label htmlFor="loop-workdays-only">Roll over on workdays only</Label>
             <p className="text-sm text-muted-foreground">
-              A Friday miss lands on Monday instead of Saturday. Todos you
+              A Friday miss lands on Monday instead of Saturday. To-dos you
               explicitly scheduled on a weekend still show up then.
             </p>
           </div>

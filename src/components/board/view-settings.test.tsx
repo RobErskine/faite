@@ -78,7 +78,7 @@ afterEach(() => {
 describe("ViewSettings — status filter", () => {
   it("labels the trigger with the selected statuses", () => {
     render(<ViewSettings settings={settings()} />);
-    expect(triggerText(/which statuses/i)).toContain("View: Todo");
+    expect(triggerText(/which statuses/i)).toContain("View: To-do");
   });
 
   it("collapses to 'All' rather than listing three", () => {
@@ -91,7 +91,7 @@ describe("ViewSettings — status filter", () => {
   it("adds a status in the canonical order, not click order", async () => {
     render(<ViewSettings settings={settings({ visibleStatuses: ["dropped"] })} />);
     openMenu(/which statuses/i);
-    fireEvent.click(await screen.findByRole("menuitemcheckbox", { name: "Todo" }));
+    fireEvent.click(await screen.findByRole("menuitemcheckbox", { name: "To-do" }));
     // Appending would give ["dropped", "open"], which then reads back as
     // "Marked as won't do, Todo" on the trigger.
     expect(lastPatch()).toEqual({ visibleStatuses: ["open", "dropped"] });
@@ -112,7 +112,7 @@ describe("ViewSettings — status filter", () => {
   it("refuses to turn off the last remaining status", async () => {
     render(<ViewSettings settings={settings({ visibleStatuses: ["open"] })} />);
     openMenu(/which statuses/i);
-    fireEvent.click(await screen.findByRole("menuitemcheckbox", { name: "Todo" }));
+    fireEvent.click(await screen.findByRole("menuitemcheckbox", { name: "To-do" }));
     expect(mutateSettings).not.toHaveBeenCalled();
   });
 });
@@ -179,8 +179,21 @@ describe("ViewSettings — before Dexie resolves", () => {
    */
   it("renders the schema defaults rather than blanks", () => {
     render(<ViewSettings settings={undefined} />);
-    expect(triggerText(/which statuses/i)).toContain("View: Todo");
+    expect(triggerText(/which statuses/i)).toContain("View: To-do");
     expect(triggerText(/how many day columns/i)).toContain("7 days");
     expect(screen.getByRole("button", { name: "Weekends" })).toBeTruthy();
+  });
+
+  /*
+    WCAG 2.5.3 Label in Name (EI-377): a voice-control user says what they
+    see, so each trigger's accessible name must contain its visible text.
+  */
+  it("names each trigger starting with its visible text", () => {
+    render(<ViewSettings settings={settings({ visibleDays: 3 })} />);
+    for (const name of [/which statuses/i, /how many day columns/i]) {
+      const trigger = screen.getByRole("button", { name });
+      const visible = trigger.textContent!.trim();
+      expect(trigger.getAttribute("aria-label")!.startsWith(visible)).toBe(true);
+    }
   });
 });

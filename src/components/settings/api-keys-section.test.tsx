@@ -131,7 +131,7 @@ describe("ApiKeysSection", () => {
     await flush();
 
     const readCheckbox = screen.getByRole("checkbox", { name: /read — always included/i });
-    const writeCheckbox = screen.getByRole("checkbox", { name: /write — create and update todos/i });
+    const writeCheckbox = screen.getByRole("checkbox", { name: /write — create and update to-dos/i });
     expect(readCheckbox.getAttribute("aria-checked")).toBe("true");
     expect(readCheckbox.getAttribute("aria-disabled")).toBe("true");
     expect(writeCheckbox.getAttribute("aria-checked")).toBe("false");
@@ -165,7 +165,7 @@ describe("ApiKeysSection", () => {
     fireEvent.change(screen.getByPlaceholderText(/Pointer, my script/i), {
       target: { value: "my new key" },
     });
-    fireEvent.click(screen.getByRole("checkbox", { name: /write — create and update todos/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /write — create and update to-dos/i }));
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Create" }));
     });

@@ -32,7 +32,7 @@ import { cn } from "@/lib/utils";
  */
 
 const STATUS_OPTIONS: ReadonlyArray<{ value: TodoStatus; label: string }> = [
-  { value: "open", label: "Todo" },
+  { value: "open", label: "To-do" },
   { value: "done", label: "Completed" },
   { value: "dropped", label: "Marked as won't do" },
 ];
@@ -59,7 +59,7 @@ export function ViewSettings({ settings }: ViewSettingsProps) {
     if (!next && statuses.length <= 1) return;
     const nextStatuses = next
       ? // Rebuilt from STATUS_OPTIONS rather than appended, so the stored order
-        // is always Todo, Completed, Won't do — the trigger label below reads
+        // is always To-do, Completed, Won't do — the trigger label below reads
         // off it, and an append would make the label depend on click order.
         STATUS_OPTIONS.filter((o) => o.value === value || statuses.includes(o.value)).map(
           (o) => o.value,
@@ -75,11 +75,20 @@ export function ViewSettings({ settings }: ViewSettingsProps) {
           .map((o) => o.label)
           .join(", ") || "None";
 
+  const dayLabel = `${visibleDays} day${visibleDays === 1 ? "" : "s"}`;
+
   return (
     <div className="flex items-center gap-1">
       <DropdownMenu>
+        {/*
+          Both triggers' accessible names START with their visible text
+          (WCAG 2.5.3, Label in Name; EI-377). A voice-control user says what
+          they see — "click View: To-do" — and a name of only "Which statuses
+          to show" gives them nothing to say. The purpose stays on as a suffix
+          for screen readers.
+        */}
         <DropdownMenuTrigger
-          aria-label="Which statuses to show"
+          aria-label={`View: ${statusLabel} — which statuses to show`}
           className={cn(
             buttonVariants({ variant: "ghost", size: "xs" }),
             "max-w-56 text-muted-foreground",
@@ -109,7 +118,7 @@ export function ViewSettings({ settings }: ViewSettingsProps) {
 
       <DropdownMenu>
         <DropdownMenuTrigger
-          aria-label="How many day columns to show"
+          aria-label={`${dayLabel} — how many day columns to show`}
           className={cn(
             buttonVariants({ variant: "ghost", size: "xs" }),
             "text-muted-foreground",
@@ -117,9 +126,7 @@ export function ViewSettings({ settings }: ViewSettingsProps) {
         >
           {/* `nums` keeps the body font while switching to tabular figures, so
               the trigger's width does not jitter between 3, 5 and 7. */}
-          <span className="nums">
-            {visibleDays} day{visibleDays === 1 ? "" : "s"}
-          </span>
+          <span className="nums">{dayLabel}</span>
           <ChevronDown aria-hidden />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="center" className="w-40">

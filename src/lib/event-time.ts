@@ -64,7 +64,8 @@ export function formatEventStamp(instant: string, timezone: string): string {
  * stamps `completedAt` for both — the field really means "settled at" — but
  * "Completed" over an abandoned to-do claims credit for work that was
  * explicitly given up on, which is the distinction `todoStatusSchema` keeps
- * `dropped` separate for in the first place.
+ * `dropped` separate for in the first place. The UI never says "dropped"
+ * (EI-377), so it reads "Marked won’t do Aug 14 · 9:41 AM".
  *
  * Takes primitives rather than a `Todo` so this module stays schema-free, the
  * way every other formatter here already is.
@@ -82,5 +83,5 @@ export function formatCompletionStamp(
   const stamp = formatEventStamp(completedAt, timezone);
   if (!stamp) return null;
 
-  return `${status === "done" ? "Completed" : "Dropped"} ${stamp}`;
+  return `${status === "done" ? "Completed" : "Marked won’t do"} ${stamp}`;
 }

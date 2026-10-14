@@ -124,7 +124,7 @@ export const SITE_PAGES: readonly SitePage[] = [
     // on `DocsPage` for why that h1 belongs to Scalar, not to this table.
     path: "/docs",
     title: "Faite API",
-    description: "The public, versioned Faite API — read and write todos from your own client.",
+    description: "The public, versioned Faite API — read and write to-dos from your own client.",
     updated: "2026-08-22",
     footerGroup: "product",
     footerLabel: "API",

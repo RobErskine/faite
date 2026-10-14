@@ -2,7 +2,7 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { OVERDRIVE_MIN_TODOS } from "@/lib/overdrive";
-import { DayOverdriveButton, OverdriveButton } from "./overdrive-button";
+import { DayOverdriveButton, OverdriveButton, QuickSortButton } from "./overdrive-button";
 
 afterEach(cleanup);
 
@@ -87,5 +87,17 @@ describe("DayOverdriveButton", () => {
       <DayOverdriveButton count={7} minTodos={5} label="Wednesday, Aug 13" onOpen={vi.fn()} />,
     );
     expect(screen.getByRole("button", { name: /wednesday, aug 13.*7/i })).toBeTruthy();
+  });
+});
+
+describe("QuickSortButton", () => {
+  it("counts in the singular for one to-do (EI-377)", () => {
+    render(<QuickSortButton count={1} onOpen={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Quick sort Backlog — 1 to-do" })).toBeTruthy();
+  });
+
+  it("and in the plural for more", () => {
+    render(<QuickSortButton count={2} onOpen={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Quick sort Backlog — 2 to-dos" })).toBeTruthy();
   });
 });

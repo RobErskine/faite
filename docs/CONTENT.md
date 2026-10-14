@@ -83,3 +83,18 @@ strings this rule first caught on the board would have passed.
 2. Run `npx vitest run src/lib/spelling.test.ts`. If it fails, the failure
    message is the fix list — it names every file and the replacement for each.
 3. Fix them, or add the case to §3 if it is one of the exceptions.
+
+## 6. "Won't do" and "to-do"
+
+The UI never says **"Dropped"** — the status is **"Won't do"** — and never
+**"todo"/"Todo"** — the thing is a **"to-do"**, plural **"to-dos"**. Counts
+agree with their noun: "1 to-do", "2 to-dos". The `dropped` status and the
+`todo` entity keep those names in code, the schema, the REST API and MCP;
+this is about what a user reads (EI-377).
+
+`src/lib/ui-vocabulary.test.ts` enforces it over `src/components`, `src/app`
+and `src/lib`, with the same extractor as the spelling test
+(`src/lib/user-facing-text.ts`). A lowercase quoted `"todo"`/`"dropped"` is an
+enum value and passes; a capitalized one is a label and fails. Genuine
+exceptions — the drag-and-drop verb "was dropped" — go in its `ALLOWED`
+list with a reason.

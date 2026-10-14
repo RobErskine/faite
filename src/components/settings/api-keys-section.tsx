@@ -367,7 +367,7 @@ export function ApiKeysSection() {
           <div className="flex items-center gap-2">
             <Checkbox id="api-key-scope-write" checked={write} onCheckedChange={setWrite} />
             <Label htmlFor="api-key-scope-write" className="font-normal">
-              Write — create and update todos (needed for MCP tools)
+              Write — create and update to-dos (needed for MCP tools)
             </Label>
           </div>
         </div>
