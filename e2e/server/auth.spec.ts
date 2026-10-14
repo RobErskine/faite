@@ -56,7 +56,7 @@ test("sign-out clears the device, and signing back in restores the account's to-
   // Signed out, /board is the local-first app again: the welcome dialog offers
   // the no-account path, and the account's to-do is gone from this device.
   await page.goto("/board");
-  await page.getByRole("button", { name: "Continue without an account" }).click({ timeout: 15_000 });
+  await page.getByRole("button", { name: "Start planning" }).click({ timeout: 15_000 });
   await expect(page.getByRole("region", { name: "Overflow" })).toBeVisible();
   await expect(todoCard(page, title)).toHaveCount(0);
 
@@ -68,7 +68,7 @@ test("sign-out clears the device, and signing back in restores the account's to-
 test("a signed-out visitor to /board can still use Faite without an account", async ({ page }) => {
   await page.goto("/board");
   await expect(page.getByRole("dialog", { name: "Welcome to Faite" })).toBeVisible({ timeout: 15_000 });
-  await page.getByRole("button", { name: "Continue without an account" }).click();
+  await page.getByRole("button", { name: "Start planning" }).click();
   await expect(page.getByRole("region", { name: "Overflow" })).toBeVisible();
   expect(await sessionEmail(page)).toBeNull();
 

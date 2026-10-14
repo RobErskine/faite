@@ -5,7 +5,7 @@ import { openSheet } from "./sheet";
 /**
  * Fixtures for the server-backed suite (`playwright.server.config.ts`,
  * docs/E2E.md §10). The local-first `fixtures.ts` enters every test through
- * "Continue without an account"; these enter through a real account instead.
+ * "Start planning" in the welcome dialog; these enter through a real account instead.
  *
  * Every test signs up its OWN account through the app's own `/signup` page —
  * never a raw D1 insert (raw seed writes caused EI-68), and never an account

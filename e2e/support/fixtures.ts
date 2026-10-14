@@ -36,7 +36,7 @@ export const test = base.extend({
     // the header's palette trigger, which is what made this failure mode so
     // confusing (the errors pointed at those, not at the dialog).
     await page
-      .getByRole("button", { name: "Continue without an account" })
+      .getByRole("button", { name: "Start planning" })
       .click({ timeout: 15_000 });
 
     // `useBootstrap()` seeds Backlog + the default tab asynchronously, and

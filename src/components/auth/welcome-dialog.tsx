@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import {
   Dialog,
@@ -18,13 +18,16 @@ import { dismissWelcomeDialog, isWelcomeDialogDismissed } from "@/lib/onboarding
 /**
  * First-visit explanation for a logged-out board: what Faite is, and that
  * signing up is what makes this device's data durable. Shown once ever per
- * device — dismissing it is permanent, not per-session, because it explains
- * rather than warns (see lib/onboarding.ts for why that's a different storage
- * tier than the banner).
+ * device — dismissing it is permanent, because it explains rather than warns
+ * (lib/onboarding.ts; the banner is permanent too since EI-376).
  */
 export function WelcomeDialog() {
   const shouldShowNudges = useShouldShowAuthNudges();
   const [open, setOpen] = useState(() => !isWelcomeDialogDismissed());
+  /** Initial focus. Sign up comes first in the DOM (see the footer), and the
+   * dialog would otherwise focus it — so Enter on arrival would leave for
+   * /signup instead of opening the board. */
+  const startRef = useRef<HTMLButtonElement>(null);
 
   const close = () => {
     dismissWelcomeDialog();
@@ -43,7 +46,7 @@ export function WelcomeDialog() {
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && close()}>
-      <DialogContent>
+      <DialogContent initialFocus={startRef}>
         <DialogHeader>
           <DialogTitle>Welcome to Faite</DialogTitle>
           <DialogDescription>
@@ -57,17 +60,32 @@ export function WelcomeDialog() {
           lives offline, only in this browser. Create a free account and it&apos;s
           saved to you, not just this device.
         </p>
+        {/*
+          Starting is the primary action, signing up the secondary one
+          (EI-376). The board needs no account (PRODUCT.md), so the filled
+          button is the one that opens it; Sign up stays one click away here,
+          in the header, and in the account menu. Primary last: the footer is
+          `flex-col-reverse` on a phone, so it lands on top there and on the
+          right everywhere else.
+        */}
         <DialogFooter>
-          <Button variant="outline" onClick={close}>
-            Continue without an account
-          </Button>
           {isDesktopShell() ? (
-            <Button onClick={handleDesktopSignUp}>Sign up</Button>
+            <Button variant="outline" onClick={handleDesktopSignUp}>
+              Sign up
+            </Button>
           ) : (
-            <Button nativeButton={false} render={<Link href="/signup" />} onClick={close}>
+            <Button
+              variant="outline"
+              nativeButton={false}
+              render={<Link href="/signup" />}
+              onClick={close}
+            >
               Sign up
             </Button>
           )}
+          <Button ref={startRef} onClick={close}>
+            Start planning
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

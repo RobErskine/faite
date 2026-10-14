@@ -5,8 +5,10 @@
  *
  * Deliberately separate from `lib/store/owner.ts`: owner.ts resolves *identity*
  * (which account this device's data belongs to) and is permanent by nature.
- * This only remembers what a visitor has already dismissed, which is why the
- * two flags below don't share a storage tier — see each function's comment.
+ * This only remembers what a visitor has already dismissed. Both flags are
+ * permanent per device (`localStorage`): Faite never nags (PRODUCT.md), and a
+ * notice that has been read and dismissed once has nothing new to say the
+ * next time (EI-376).
  *
  * Same localStorage-with-try/catch discipline as owner.ts and the pre-paint
  * scripts in layout.tsx: privacy modes throw on any access, and a nudge that
@@ -56,15 +58,24 @@ export function dismissWelcomeDialog(): void {
 }
 
 /**
- * Per-session only — `sessionStorage`. Unlike the dialog, the banner is a
- * standing warning ("this device's data isn't backed up"), and it stays true
- * every time a logged-out visitor returns. Dismissing it should quiet the
- * current visit, not silence a real warning forever.
+ * Permanent, once dismissed — `localStorage`, like the dialog (EI-376).
+ *
+ * This used to be `sessionStorage`, on the theory that "only on this device"
+ * stays true every visit and so deserves repeating every visit. In practice
+ * that made it the one thing a signed-out visitor had to close every session,
+ * stacked under the welcome dialog and the header's Sign up — a funnel, not a
+ * notice. The fact does not change between visits, so neither does the
+ * answer: read once, dismissed for good. The header's Sign up and the account
+ * menu's Sign in stay as the always-available routes to an account.
+ *
+ * `clearDeviceData()` deliberately leaves this key alone
+ * (`clear-device.test.ts`): signing out erases the board, not the visitor's
+ * own preferences about this device.
  */
 export function isBannerDismissed(): boolean {
   return (
     safeGet(
-      typeof sessionStorage === "undefined" ? undefined : sessionStorage,
+      typeof localStorage === "undefined" ? undefined : localStorage,
       BANNER_DISMISSED_KEY,
     ) === "1"
   );
@@ -72,7 +83,7 @@ export function isBannerDismissed(): boolean {
 
 export function dismissBanner(): void {
   safeSet(
-    typeof sessionStorage === "undefined" ? undefined : sessionStorage,
+    typeof localStorage === "undefined" ? undefined : localStorage,
     BANNER_DISMISSED_KEY,
     "1",
   );
