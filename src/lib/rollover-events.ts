@@ -1,5 +1,11 @@
 import type { CivilDate, Todo } from "./schema";
-import { type PlacementContext, formatShortDate, rollsElapsed, rolloverTarget } from "./scheduling";
+import {
+  type PlacementContext,
+  daysBetween,
+  formatShortDate,
+  rollsElapsed,
+  rolloverTarget,
+} from "./scheduling";
 import { zonedInstant } from "./zoned";
 
 /**
@@ -71,6 +77,30 @@ export function rollEventsFor(
     }
   }
   return events;
+}
+
+/**
+ * Calendar days a todo has sat in Overflow as of `today`, counted from
+ * `since` — the `overflowed` event's `day`. 0 on the day it overflowed.
+ *
+ * Deliberately NOT `RollEvent.rolls`: `rollEventsFor` stops at the
+ * `overflowed` event, so that event's `rolls` is always
+ * `overflowAfterDays + 1` and every Overflow card would read the same age
+ * (EI-374). Calendar days, not eligible days, because "how long has this been
+ * waiting" is a wall-clock question — a card does not stop waiting over a
+ * weekend just because `workdaysOnly` stops it rolling. Clamped at 0 so a
+ * clock skew can never produce a negative age.
+ */
+export function overflowAgeDays(since: CivilDate, today: CivilDate): number {
+  return Math.max(0, daysBetween(since, today));
+}
+
+/** The per-card Overflow age, as the badge reads it: "In Overflow today" on
+ * the day it overflowed, then "In Overflow 1 day", "In Overflow 9 days". */
+export function formatOverflowAge(since: CivilDate, today: CivilDate): string {
+  const days = overflowAgeDays(since, today);
+  if (days === 0) return "In Overflow today";
+  return `In Overflow ${days} ${days === 1 ? "day" : "days"}`;
 }
 
 export interface RolledTodo {

@@ -18,6 +18,7 @@ import { priorityRail, railBackgroundImage } from "@/lib/priority";
 import type { CivilDate, Label as LabelRecord, ReminderPreset, Todo } from "@/lib/schema";
 import { formatDeadlineDue, formatShortDate, isDeadlineMissed } from "@/lib/scheduling";
 import { reminderLabelFor } from "@/lib/reminder-presets";
+import { formatOverflowAge } from "@/lib/rollover-events";
 
 /**
  * Shared with `command-palette.tsx` — see the note there on why `TodoCard`
@@ -245,9 +246,10 @@ export function TodoMetaBadges({
   showScheduledDate?: boolean;
   missedCount?: number | null;
   /** Set only once the todo has crossed into Overflow. See `rollEventsFor`
-   * in `lib/rollover-events.ts` — `rolls` counts eligible days since
-   * `from`, the same clock that put it here. */
-  overflow?: { from: CivilDate; since: CivilDate; rolls: number };
+   * in `lib/rollover-events.ts` — `since` is the `overflowed` event's day,
+   * and the badge's age is calendar days from it to `today`
+   * (`formatOverflowAge`), so each card reports its own wait. */
+  overflow?: { from: CivilDate; since: CivilDate };
   /** Named reminder times (EI-106 P5) — resolves `todo.reminderTime` through
    * `reminderLabelFor` so a preset match reads "🌅 In the morning" instead
    * of a bare clock time. Omit (or pass `[]`) where presets aren't in scope;
@@ -318,14 +320,25 @@ export function TodoMetaBadges({
             other trigger in this file is a plain element for the same
             reason (§ location pin above): the badge's visual classes are
             applied directly rather than composing two render-prop components.
+
+            Muted ink, not the urgent red (EI-374, docs/DESIGN.md §1): the
+            Overflow column's rule and count already carry the urgency once,
+            so a red pill on every card in it was a wall of red saying the
+            same thing N times — and red at `text-2xs` breaks PRODUCT.md's
+            "colored text never at the smallest size". Same quiet register as
+            the rolled-over marker this badge replaces.
           */}
           <TooltipTrigger
             render={
               <span
-                className={cn(badgeVariants({ variant: "destructive" }), "num gap-1 text-2xs font-normal")}
+                data-overflow-age
+                className={cn(
+                  badgeVariants({ variant: "outline" }),
+                  "num gap-1 text-2xs font-normal text-muted-foreground",
+                )}
               >
                 <CornerDownRight className="size-2.5" aria-hidden />
-                In Overflow {overflow.rolls} {overflow.rolls === 1 ? "day" : "days"}
+                {formatOverflowAge(overflow.since, today)}
               </span>
             }
           />

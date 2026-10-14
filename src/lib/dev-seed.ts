@@ -48,8 +48,11 @@ const DESCRIPTION_POOL = [
  * one list.
  *
  * `-(overflowAfterDays + 2 + i)` rather than a fixed offset: staggering by
- * `i` gives every card a different "In Overflow N days" badge, which is the
- * whole point of testing against a realistic pile rather than a uniform one.
+ * `i` staggers the day each card crossed into Overflow, so each card's "In
+ * Overflow N days" badge (calendar days since that crossing, EI-374) differs
+ * (with `workdaysOnly`, two cards whose crossings land on the same workday
+ * share a number). That spread is the whole point of testing against a
+ * realistic pile rather than a uniform one.
  * `+2` clears the threshold with room to spare regardless of `workdaysOnly`
  * skipping a weekend in between.
  */

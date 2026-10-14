@@ -102,6 +102,7 @@ interface HarnessProps {
   isColumnDropTarget?: boolean;
   headerMenu?: React.ReactNode;
   onRescheduleGroup?: (todos: readonly Todo[], date: string) => void;
+  tone?: "urgent";
 }
 
 function Harness({ groups, todos, ...rest }: HarnessProps) {
@@ -307,6 +308,27 @@ describe("column heading", () => {
     render(<Harness />);
     expect(screen.queryByRole("button", { name: "Sunday" })).toBeNull();
     expect(screen.getByText("Sunday")).toBeTruthy();
+  });
+});
+
+/**
+ * EI-374. Overflow's red is said once, by the column — and only while it has
+ * something in it. The count was already gated on `todos.length`; the rule
+ * under the title was not, so an empty Overflow still wore a red line.
+ */
+describe("the urgent tone", () => {
+  const urgentRule = () => document.querySelector("[class*='border-urgent']");
+
+  it("draws the red rule and the count while the column holds something", () => {
+    render(<Harness tone="urgent" todos={[todo("o1"), todo("o2")]} />);
+    expect(urgentRule()).not.toBeNull();
+    expect(urgentRule()?.textContent).toContain("2");
+  });
+
+  it("draws neither on an empty column", () => {
+    render(<Harness tone="urgent" todos={[]} />);
+    expect(urgentRule()).toBeNull();
+    expect(document.querySelector("[class*='text-urgent']")).toBeNull();
   });
 });
 

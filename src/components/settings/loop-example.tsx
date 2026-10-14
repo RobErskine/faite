@@ -72,7 +72,7 @@ export function LoopExampleCards({
       : undefined;
   const overflow =
     overflowedEvent?.kind === "overflowed"
-      ? { from: overflowedEvent.from, since: overflowedEvent.day, rolls: overflowedEvent.rolls }
+      ? { from: overflowedEvent.from, since: overflowedEvent.day }
       : undefined;
 
   return (
@@ -129,7 +129,7 @@ function ExampleCard({
   todo: Todo;
   today: CivilDate;
   rolledFrom?: { from: CivilDate; rolls: number; overflowsIn: number };
-  overflow?: { from: CivilDate; since: CivilDate; rolls: number };
+  overflow?: { from: CivilDate; since: CivilDate };
 }) {
   return (
     <div className="rounded-md border bg-card px-2 py-1.5">

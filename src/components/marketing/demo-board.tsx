@@ -77,7 +77,9 @@ export interface DemoTodo {
    *
    * Both dates, not just a count, because the real badge explains itself with
    * "Scheduled X · in Overflow since Y" — a number on its own says how long
-   * without saying since when.
+   * without saying since when. `days` is calendar days from `since` to the
+   * demo's today (Sep 7), as `formatOverflowAge` counts them on the board;
+   * `from` is `since` minus the default loop's three rolls and one more day.
    */
   overflow?: { from: string; since: string; days: number };
   /**
@@ -157,18 +159,18 @@ const ERRANDS: DemoLabel = { name: "errands" };
 export const DEMO_COLUMNS: DemoColumn[] = [
   {
     title: "Overflow",
-    subtitle: "Put off too long",
+    subtitle: "Waiting for an ending",
     tone: "urgent",
     pinned: true,
     todos: [
       {
         title: "Sort through the mail pile",
         priority: 4,
-        overflow: { from: "Sep 1", since: "Sep 1", days: 6 },
+        overflow: { from: "Aug 28", since: "Sep 1", days: 6 },
       },
       {
         title: "Cancel unused subscription",
-        overflow: { from: "Sep 1", since: "Sep 4", days: 3 },
+        overflow: { from: "Aug 31", since: "Sep 4", days: 3 },
       },
     ],
   },
@@ -418,10 +420,12 @@ function DemoCard({ todo }: { todo: DemoTodo }) {
               <DemoTooltip
                 label={`Scheduled ${todo.overflow.from} · in Overflow since ${todo.overflow.since}`}
               >
+                {/* Muted, as the board draws it (EI-374): the column's rule
+                    and count carry Overflow's red, never each card. */}
                 <span
                   className={cn(
-                    badgeVariants({ variant: "destructive" }),
-                    "num gap-1 text-2xs font-normal",
+                    badgeVariants({ variant: "outline" }),
+                    "num gap-1 text-2xs font-normal text-muted-foreground",
                   )}
                 >
                   <CornerDownRight className="size-2.5" aria-hidden />

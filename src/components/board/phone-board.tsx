@@ -197,7 +197,11 @@ export function PhoneBoard({
               className="pager-column"
               id={board.overflow.id}
               title="Overflow"
-              subtitle="Put off too long"
+              // Same urgency channel as desktop's pinned rail (EI-374): the
+              // rule and the count are the one place Overflow is red, and a
+              // phone user deserves the same signal.
+              tone="urgent"
+              subtitle="Waiting for an ending"
               todos={filteredOverflow.todos}
               labels={labels}
               reminderPresets={data.reminderPresets}

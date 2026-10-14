@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { dailyRollSummaries, describeLoop, loopExample, rollEventsFor } from "./rollover-events";
+import {
+  dailyRollSummaries,
+  describeLoop,
+  formatOverflowAge,
+  loopExample,
+  overflowAgeDays,
+  rollEventsFor,
+} from "./rollover-events";
 import { type PlacementContext, addDays, buildWindow } from "./scheduling";
 import type { Todo } from "./schema";
 
@@ -101,6 +108,42 @@ describe("rollEventsFor", () => {
     expect(rollEventsFor(todo, ctx({ overflowAfterDays: 3 }))).toEqual([
       { kind: "rolledOver", day: "2026-08-03", from: "2026-08-02", rolls: 1, overflowsIn: 3 },
     ]);
+  });
+});
+
+describe("overflow age (EI-374)", () => {
+  /** The age the board card shows: `since` is the `overflowed` event's day. */
+  const ageOf = (scheduledDate: string, c = ctx()) => {
+    const last = rollEventsFor({ status: "open", scheduledDate, recurrenceParentId: null }, c).at(-1);
+    expect(last?.kind).toBe("overflowed");
+    return formatOverflowAge(last!.day, c.today);
+  };
+
+  it("reads 'today' on the day a todo overflows, never '0 days'", () => {
+    expect(formatOverflowAge("2026-08-03", "2026-08-03")).toBe("In Overflow today");
+  });
+
+  it("counts calendar days since it overflowed, singular at 1", () => {
+    expect(formatOverflowAge("2026-08-02", "2026-08-03")).toBe("In Overflow 1 day");
+    expect(formatOverflowAge("2026-07-24", "2026-08-03")).toBe("In Overflow 10 days");
+  });
+
+  it("never goes negative", () => {
+    expect(overflowAgeDays("2026-08-05", "2026-08-03")).toBe(0);
+  });
+
+  it("gives two todos that overflowed on different days different ages", () => {
+    // today Aug 3, overflowAfterDays 3: scheduled X overflows on X + 4.
+    expect(ageOf("2026-07-30")).toBe("In Overflow today"); // overflowed Aug 3
+    expect(ageOf("2026-07-27")).toBe("In Overflow 3 days"); // overflowed Jul 31
+    expect(ageOf("2026-07-20")).toBe("In Overflow 10 days"); // overflowed Jul 24
+  });
+
+  it("keeps counting over a weekend even when workdaysOnly stops the rolls", () => {
+    // Scheduled Mon Jul 20; rolls Tue–Thu, overflows Fri Jul 24. Ten
+    // calendar days to Mon Aug 3, though only six of them were workdays.
+    const c = ctx({ workdaysOnly: true });
+    expect(ageOf("2026-07-20", c)).toBe("In Overflow 10 days");
   });
 });
 

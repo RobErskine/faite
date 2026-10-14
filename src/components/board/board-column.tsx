@@ -784,8 +784,10 @@ export function BoardColumn({
           // the original headers rather than gaining a gray rule.
           accentColor && !collapsed && "border-b-2",
           // Overflow: the urgency channel's rule, so the queue reads as
-          // pressure. Same 2px as a tab accent, different meaning.
-          tone === "urgent" && !collapsed && "border-b-2 border-urgent/40",
+          // pressure. Same 2px as a tab accent, different meaning. Gated on
+          // the count exactly like the count chip below (EI-374): an empty
+          // Overflow has nothing waiting on a verdict, so it gets no red.
+          tone === "urgent" && todos.length > 0 && !collapsed && "border-b-2 border-urgent/40",
           // Today: the spectrum's one hairline on the board (docs/DESIGN.md
           // §1). On the header, not the section, so the section's rounded
           // corners and outline states stay untouched.

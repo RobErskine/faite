@@ -190,7 +190,7 @@ An achromatic ink-on-paper ladder, plus five channels that each mean one thing: 
 - **Spectrum Solid** (`spectrum-solid`): the lavender stop alone, for the focus ring (`--ring`) and the check flash. Darkened in light theme to clear 3:1 on white (§7, 2026-09-05).
 
 ### Tertiary
-- **Urgent** (`urgent`, `urgent-foreground`, `urgent-soft`): "needs a verdict now." An alias of `--destructive`. The In Overflow badge, a missed Deadline, `×N` missed occurrences, the N-due banner, a drop-refused outline, the Overflow rail's edge rule.
+- **Urgent** (`urgent`, `urgent-foreground`, `urgent-soft`): "needs a verdict now." An alias of `--destructive`. The Overflow column's edge rule and count (only while it holds something), a missed Deadline, `×N` missed occurrences, the N-due banner, a drop-refused outline. Never the per-card "In Overflow N days" age, which is muted ink: the column says it once.
 - **Status** (`warning`, `info`, `success`, each with `-foreground` and `-soft`): system state, for desktop and auth banners and toasts.
 - **Identity hue** (user-chosen per tab or list; the ten Radix step-9 presets in `src/lib/colors.ts`): "belongs to X." Applied as a ladder: `edge()` 35% rule under a column title, `tint()` 12% on group and tab headers, `wash()` 5% behind a run of rows.
 
@@ -288,7 +288,7 @@ Quiet and tactile; the board has no loud fills.
 
 ### Column Header
 - `type-column-title`; today and Overflow keep full ink, other days recede to muted.
-- Today: spectrum hairline. Overflow: 2px urgent edge rule. A colored list or tab: 2px `edge()` rule. Day eyebrows read "Sep 5", no year.
+- Today: spectrum hairline. Overflow: 2px urgent edge rule, only while it holds something. A colored list or tab: 2px `edge()` rule. Day eyebrows read "Sep 5", no year.
 
 ### Overlays (dialog, sheet, alert-dialog, command palette)
 - Popover surface, `rounded.3xl`, `p-5`, `--shadow-overlay`; heading-weight titles; footers are a `border-line-faint` hairline, never a filled bar.

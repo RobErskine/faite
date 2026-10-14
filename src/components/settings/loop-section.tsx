@@ -105,12 +105,12 @@ export function LoopSection({ settings }: SettingsSectionProps) {
     <div className="space-y-8">
       <div className="space-y-6">
         <p className="text-sm text-muted-foreground">
-          A todo missed on its scheduled day rolls forward onto today instead
+          A to-do missed on its scheduled day rolls forward onto today instead
           of sitting on a date that&apos;s already passed. After it&apos;s
           rolled this many times, it falls into{" "}
-          <span className="font-medium text-foreground">Overflow</span> — put
-          off that long, it probably wasn&apos;t important. From there you can
-          send it back to the backlog, another list, or a new day.
+          <span className="font-medium text-foreground">Overflow</span>, where
+          it waits for an ending: do it, send it back to a list, schedule it
+          again, or let it go (Won&apos;t do).
         </p>
 
         <LoopRollsField
