@@ -23,7 +23,7 @@ export function SplitStrip({ label, count, direction, onExpand }: SplitStripProp
     <div
       role="button"
       tabIndex={0}
-      aria-label={`Show ${label}${count > 0 ? `, ${count} to-dos` : ""}`}
+      aria-label={`Show ${label}${count > 0 ? `, ${count} to-do${count === 1 ? "" : "s"}` : ""}`}
       onClick={onExpand}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {

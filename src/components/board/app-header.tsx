@@ -274,7 +274,13 @@ export function AppHeader({
           }
           className="focus-ring relative rounded-full"
         >
-          <UserAvatar settings={settings} />
+          {/*
+            The initials (or emoji) are decorative here: the trigger's name is
+            "Account", and exposing "RE" as visible-but-unnamed text is a
+            WCAG 2.5.3 Label-in-Name mismatch (EI-377). Hidden from AT, there
+            is no visible text left for the name to disagree with.
+          */}
+          <UserAvatar settings={settings} decorative />
           {/*
             Status channel, not Urgent red (docs/DESIGN.md §1): a duplicate is
             system state worth a look, not a verdict needed now.

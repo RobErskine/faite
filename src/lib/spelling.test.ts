@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { americanize, BRITISH_SPELLING_RE, SPELLINGS } from "./spelling";
+import { SCANNED_SOURCE, SKIPPED_SOURCE, userFacingText } from "./user-facing-text";
 
 /**
  * Faite writes American English (`docs/CONTENT.md`), and this is what makes
@@ -42,10 +43,8 @@ const SRC = join(import.meta.dirname, "..");
  * dictionary, so it contains every British form there is, as string literals.
  * Scanning it would report the rule as a violation of itself.
  */
-const SKIP = /\.(test|spec)\.tsx?$|^spelling\.ts$/;
-
 function skipped(entry: string): boolean {
-  return SKIP.test(entry);
+  return SKIPPED_SOURCE.test(entry) || entry === "spelling.ts";
 }
 
 function sourceFiles(dir: string): string[] {
@@ -54,32 +53,15 @@ function sourceFiles(dir: string): string[] {
     const path = join(dir, entry);
     if (statSync(path).isDirectory()) {
       out.push(...sourceFiles(path));
-    } else if (/\.tsx?$/.test(entry) && !skipped(entry)) {
+    } else if (SCANNED_SOURCE.test(entry) && !skipped(entry)) {
       out.push(path);
     }
   }
   return out;
 }
 
-/**
- * Comments out, then string literals and JSX text in.
- *
- * Comments are stripped FIRST so a `//` inside a string cannot end one, and so
- * a stripped comment cannot leave an unbalanced quote behind that swallows the
- * rest of the file into a phantom "string".
- */
-function userFacingText(source: string): string {
-  const code = source
-    .replace(/\/\*[\s\S]*?\*\//g, " ")
-    .replace(/^\s*\/\/.*$/gm, " ");
-
-  const strings = code.match(/"[^"\n]*"|'[^'\n]*'|`[^`]*`/g) ?? [];
-  // JSX text: between a tag's `>` and the next `<`. Crude, and it does not
-  // need to be better — a false positive here is a word we would want to fix
-  // anyway, and the words are rare enough that noise never showed up.
-  const jsx = code.match(/>[^<>{}]{3,}</g) ?? [];
-  return [...strings, ...jsx].join("\n");
-}
+// The extractor itself lives in `user-facing-text.ts`, shared with
+// `ui-vocabulary.test.ts`; its tests stay here, where it was born.
 
 describe("the spelling dictionary", () => {
   it("maps every British form to a different American one", () => {

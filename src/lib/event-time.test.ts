@@ -14,10 +14,10 @@ describe("formatCompletionStamp", () => {
     expect(formatCompletionStamp("done", instant, "UTC")).toBe("Completed Aug 14 · 9:41 PM");
   });
 
-  it("says dropped, not completed, for a won't-do", () => {
+  it("says won't do, not completed, for a won't-do", () => {
     // The whole reason this is not one string: "Completed" over abandoned
     // work claims credit for it.
-    expect(formatCompletionStamp("dropped", instant, "UTC")).toBe("Dropped Aug 14 · 9:41 PM");
+    expect(formatCompletionStamp("dropped", instant, "UTC")).toBe("Marked won’t do Aug 14 · 9:41 PM");
   });
 
   it("says nothing for an open todo", () => {

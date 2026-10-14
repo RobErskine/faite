@@ -377,7 +377,7 @@ export const keyboardCoordinates: KeyboardCoordinateGetter = (event, args) => {
 const STATUS_VERB: Record<Todo["status"], string> = {
   open: "Reopened",
   done: "Completed",
-  dropped: "Dropped",
+  dropped: "Won’t do",
 };
 
 /**

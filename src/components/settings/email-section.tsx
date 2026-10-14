@@ -104,7 +104,7 @@ export function EmailSection() {
             </div>
             <p className="text-sm text-muted-foreground">
               Forward or send anything here and it becomes a to-do in Backlog — the subject is
-              the title, the plaintext body becomes the notes. Attachments are dropped.
+              the title, the plaintext body becomes the notes. Attachments are discarded.
             </p>
             {/*
               Stated plainly because the cap DESTROYS mail rather than delaying

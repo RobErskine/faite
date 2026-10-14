@@ -79,7 +79,7 @@ export function DayOverdriveButton({
     <button
       type="button"
       onClick={onOpen}
-      aria-label={`Overdrive ${label} — ${count} to-dos`}
+      aria-label={`Overdrive ${label} — ${count} to-do${count === 1 ? "" : "s"}`}
       className={cn(
         "shrink-0 self-center rounded text-muted-foreground transition-colors",
         "-m-1.5 p-1.5 pointer-coarse:-m-2.5 pointer-coarse:p-2.5",
@@ -117,7 +117,7 @@ export function QuickSortButton({
     <button
       type="button"
       onClick={onOpen}
-      aria-label={`Quick sort Backlog — ${count} to-dos`}
+      aria-label={`Quick sort Backlog — ${count} to-do${count === 1 ? "" : "s"}`}
       className={cn(
         "shrink-0 self-center rounded text-muted-foreground transition-colors",
         "-m-1.5 p-1.5 pointer-coarse:-m-2.5 pointer-coarse:p-2.5",

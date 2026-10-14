@@ -61,7 +61,7 @@ export function WeekendColumn({
       data-nav-stop={id}
       role="button"
       tabIndex={0}
-      aria-label={`Show the weekend, ${range}${count > 0 ? `, ${count} to-dos` : ", empty"}`}
+      aria-label={`Show the weekend, ${range}${count > 0 ? `, ${count} to-do${count === 1 ? "" : "s"}` : ", empty"}`}
       onClick={onExpand}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {

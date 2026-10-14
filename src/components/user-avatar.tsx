@@ -9,6 +9,13 @@ import { cn } from "@/lib/utils";
 interface UserAvatarProps {
   settings: Settings | undefined;
   className?: string;
+  /**
+   * Hide the initials/emoji from assistive tech. Set where the avatar sits
+   * inside a control that names itself ("Account" in the header): the
+   * initials are then visible text the name does not contain, a WCAG 2.5.3
+   * Label-in-Name mismatch (EI-377).
+   */
+  decorative?: boolean;
 }
 
 /**
@@ -19,7 +26,7 @@ interface UserAvatarProps {
  * so a dead remote URL degrades to initials for free — no error handling
  * needed here.
  */
-export function UserAvatar({ settings, className }: UserAvatarProps) {
+export function UserAvatar({ settings, className, decorative }: UserAvatarProps) {
   // Read internally rather than taken as a prop, so every render site gets the
   // signed-in identity without threading it — and so the settings preview and
   // the header cannot drift apart.
@@ -27,7 +34,7 @@ export function UserAvatar({ settings, className }: UserAvatarProps) {
   const avatar = resolveAvatar(settings, identity);
 
   return (
-    <Avatar className={cn(className)}>
+    <Avatar className={cn(className)} aria-hidden={decorative || undefined}>
       {avatar.kind === "image" && avatar.imageSrc ? (
         <AvatarImage src={avatar.imageSrc} alt="" />
       ) : null}

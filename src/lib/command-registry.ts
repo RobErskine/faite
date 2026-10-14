@@ -96,7 +96,7 @@ export interface PaletteCommand {
  * reach it through.
  */
 const STATUS_FILTERS: ReadonlyArray<{ value: TodoStatus; label: string }> = [
-  { value: "open", label: "todo items" },
+  { value: "open", label: "to-do items" },
   { value: "done", label: "completed items" },
   { value: "dropped", label: "items marked as won't do" },
 ];
