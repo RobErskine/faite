@@ -30,7 +30,7 @@ async function seedOverflow(page: Page, count = 10): Promise<void> {
   await page
     .getByRole("button", { name: new RegExp(`seed overflow \\(${count}\\)`, "i") })
     .click();
-  const toast = page.getByText(new RegExp(`seeded ${count} to-dos into overflow`, "i"));
+  const toast = page.getByText(new RegExp(`seeded ${count} to-dos? into overflow`, "i"));
   // Not `expect`'s 5s default. This is not waiting for a render — it is
   // waiting for `dev-seed.ts` to finish, and that is `count` *sequential*
   // `await createTodo()` calls, each its own IndexedDB transaction, each
