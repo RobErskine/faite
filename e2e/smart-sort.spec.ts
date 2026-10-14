@@ -2,6 +2,7 @@ import type { Page } from "@playwright/test";
 import { test, expect } from "./support/fixtures";
 import { switchToLists } from "./support/phone";
 import { addListAndPropose } from "./support/smart-sort";
+import { actionUndo } from "./support/toast";
 
 /**
  * Smart sorting's board half (EI-369): a Backlog to-do with a proposed list
@@ -42,7 +43,7 @@ test("the chip moves a to-do to its suggested list and offers Undo", async ({ pa
   // Asserted as offered, not pressed: ⌘Z does not fire in this harness (see
   // multi-drag.spec.ts), and the toast layer is click-through by fixture. The
   // undo entry is `inversePatch`, which restores `suggestedListId` too.
-  await expect(page.getByRole("button", { name: "Undo" })).toBeVisible();
+  await expect(actionUndo(page)).toBeVisible();
 });
 
 test("⇧→ on a focused Backlog card accepts its suggestion", async ({ page }) => {

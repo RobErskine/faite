@@ -164,7 +164,7 @@ export function DesktopBoard({
     setOpenDay,
   } = ui;
 
-  const { handleToggle, handleQuickAdd, handleCreateTab } = actions;
+  const { handleToggle, handleQuickAdd, handleCreateListFromMention, handleCreateTab } = actions;
 
   const overflowWidth = settings?.overflowWidth ?? null;
   const backlogWidth = settings?.backlogWidth ?? null;
@@ -483,10 +483,11 @@ export function DesktopBoard({
                   )}
                   onToggle={handleToggle}
                   onOpen={(todo) => openTodoSheet(todo.id)}
-                  onQuickAdd={(title, listId, labelIds) =>
-                    void handleQuickAdd(title, { day: column.day }, listId, labelIds)
+                  onQuickAdd={(title, listId, labelIds, literals) =>
+                    void handleQuickAdd(title, { day: column.day }, listId, labelIds, literals)
                   }
                   lists={mentionLists}
+                  onCreateList={(name) => void handleCreateListFromMention(name)}
                   reminderPresets={data.reminderPresets}
                   onNavigate={navigate}
                   filter={columnFilters.get(column.id)}
@@ -589,15 +590,17 @@ export function DesktopBoard({
               awayTodoIds={board.awayTodoIds}
               onToggle={handleToggle}
               onOpen={(todo) => openTodoSheet(todo.id)}
-              onQuickAdd={(title, listId, labelIds) =>
+              onQuickAdd={(title, listId, labelIds, literals) =>
                 void handleQuickAdd(
                   title,
                   { listId: filteredBacklogColumn.list.id },
                   listId,
                   labelIds,
+                  literals,
                 )
               }
               lists={mentionLists}
+              onCreateList={(name) => void handleCreateListFromMention(name)}
               reminderPresets={data.reminderPresets}
               onNavigate={navigate}
               filter={columnFilters.get(filteredBacklogColumn.id)}
@@ -713,10 +716,11 @@ export function DesktopBoard({
                   awayTodoIds={board.awayTodoIds}
                   onToggle={handleToggle}
                   onOpen={(todo) => openTodoSheet(todo.id)}
-                  onQuickAdd={(title, listId, labelIds) =>
-                    void handleQuickAdd(title, { listId: column.list.id }, listId, labelIds)
+                  onQuickAdd={(title, listId, labelIds, literals) =>
+                    void handleQuickAdd(title, { listId: column.list.id }, listId, labelIds, literals)
                   }
                   lists={mentionLists}
+                  onCreateList={(name) => void handleCreateListFromMention(name)}
                   reminderPresets={data.reminderPresets}
                   onNavigate={navigate}
                   filter={columnFilters.get(column.id)}

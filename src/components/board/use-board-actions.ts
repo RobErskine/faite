@@ -48,7 +48,8 @@ import {
   positionsForDropOnItem,
 } from "@/lib/ordering";
 import { OVERFLOW, addDays, formatShortDate } from "@/lib/scheduling";
-import { parseQuickAdd } from "@/lib/quick-add";
+import { describeQuickAddLanding, resolveQuickAdd } from "@/lib/quick-add";
+import { announceQuickAdd } from "./quick-add-toast";
 import {
   nextOccurrenceAfter,
   occurrenceAnchor,
@@ -58,6 +59,7 @@ import {
 } from "@/lib/recurrence";
 import {
   createSeriesFromTodo,
+  createList,
   createSubtask,
   createTodo,
   deleteSeries,
@@ -1325,13 +1327,17 @@ export function useBoardActions(
       mentionedListId?: string,
       /** Every "#label" mention picked, in pick order — see `board-column.tsx`. */
       mentionedLabelIds?: string[],
+      /** Words dismissed from the preview, kept as title text (EI-375). */
+      literals?: readonly string[],
     ) => {
       // Quick-add rows only render once `ctx` is loaded (the `!ctx` early
       // return below gates the whole board), so this never actually fires
       // null — the guard is here purely so the closure typechecks.
       if (!ctx) return;
-      const parsed = parseQuickAdd(input, ctx.today, reminderPresets);
-      const listId = mentionedListId ?? target.listId ?? null;
+      // Same resolution the row's preview ran, so the chip and the write agree:
+      // a typed-out "@to-read" files into "To Read" even if never picked.
+      const parsed = resolveQuickAdd(input, ctx.today, { presets: reminderPresets, lists, literals });
+      const listId = mentionedListId ?? parsed.list?.id ?? target.listId ?? null;
       // An explicit date token beats the column it was typed into — the user
       // said Friday. Only falls back to `target.day` (a day column drop) when
       // nothing was parsed.
@@ -1350,19 +1356,41 @@ export function useBoardActions(
       // Ask Jev for a list now, not after sync (EI-373). It checks for itself
       // that smart sorting is on and the to-do landed in Backlog.
       void proposeListForNewTodo(id);
-      // Name where it landed whenever a token or mention moved it off the
-      // column it was typed into — a card leaving its column is otherwise silent.
-      const parts: string[] = [];
-      if (scheduledDate && scheduledDate !== target.day) parts.push(formatShortDate(scheduledDate));
-      if (mentionedListId && mentionedListId !== (target.listId ?? null)) {
-        parts.push(listsById.get(mentionedListId)?.name ?? "another list");
-      }
-      const label = parts.length
-        ? `Added “${short(parsed.title)}” · ${parts.join(" · ")}`
-        : `Added “${short(parsed.title)}”`;
-      pushUndo(label, [createUndoStep("todo", id)]);
+      // Every add says where it landed (EI-375) — not only when it left the
+      // column, because "oct 1" landing in NEXT year's October also "left"
+      // nothing visible, and that was exactly the silent one.
+      const list = listId ? (listsById.get(listId) ?? null) : null;
+      announceQuickAdd(
+        id,
+        parsed.title,
+        describeQuickAddLanding({
+          today: ctx.today,
+          scheduledDate,
+          list,
+          unresolvedMentions: parsed.unresolvedMentions,
+        }),
+      );
     },
-    [ctx, listsById, reminderPresets],
+    [ctx, lists, listsById, reminderPresets],
+  );
+
+  /**
+   * "Create list" on a quick-add chip whose "@mention" matched no list
+   * (EI-375). Lands on the tab being looked at, like the create-list column,
+   * with the same toast and Undo. Nothing else to wire: the new list arrives
+   * through the live `lists` query, and the "@mention" still in the field
+   * then resolves to it on its own.
+   */
+  const handleCreateListFromMention = useCallback(
+    async (name: string) => {
+      const id = await createList(name, {}, activeTabId);
+      const label = `List "${name}" created`;
+      const entryId = pushUndo(label, [createUndoStep("list", id)]);
+      toast.success(label, {
+        action: { label: "Undo", onClick: () => void undoById(entryId) },
+      });
+    },
+    [activeTabId],
   );
 
   /**
@@ -2115,6 +2143,7 @@ export function useBoardActions(
     handleDragCancel,
     dropAnimation,
     handleQuickAdd,
+    handleCreateListFromMention,
     handleToggle,
     handleSheetSave,
     handleSheetStatus,

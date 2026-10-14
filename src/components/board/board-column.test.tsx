@@ -95,7 +95,14 @@ interface HarnessProps {
   filter?: string;
   onFilterChange?: (query: string) => void;
   totalCount?: number;
-  onQuickAdd?: (title: string, listId?: string, labelIds?: string[]) => void;
+  onQuickAdd?: (
+    title: string,
+    listId?: string,
+    labelIds?: string[],
+    literals?: readonly string[],
+  ) => void;
+  onCreateList?: (name: string) => void;
+  lists?: { id: string; name: string; color: string | null }[];
   footer?: React.ReactNode;
   actions?: React.ReactNode;
   isColumnDragActive?: boolean;
@@ -570,7 +577,7 @@ describe("in-column filter", () => {
     const addInput = screen.getByRole("textbox", { name: "Add a to-do to Sunday" });
     fireEvent.change(addInput, { target: { value: "New task" } });
     fireEvent.keyDown(addInput, { key: "Enter" });
-    expect(onQuickAdd).toHaveBeenCalledWith("New task", undefined, []);
+    expect(onQuickAdd).toHaveBeenCalledWith("New task", undefined, [], []);
     expect(onFilterChange).toHaveBeenCalledWith("");
   });
 });
@@ -598,18 +605,26 @@ describe("quick-add — folding a completed date/time word out of the input", ()
     expect(addInput()).toHaveProperty("value", "Buy milk tom");
   });
 
-  it("shows the folded word as a removable chip", () => {
+  const keep = (word: string) => screen.queryByRole("button", { name: `Keep “${word}” in the title` });
+
+  it("shows the folded word as a dismissible chip", () => {
     render(<Harness />);
     fireEvent.change(addInput(), { target: { value: "Buy milk tomorrow " } });
-    expect(screen.getByRole("button", { name: /^Remove/ })).toBeTruthy();
+    expect(keep("tomorrow")).toBeTruthy();
   });
 
-  it("removing the chip drops the confirmed match without touching the remaining text", () => {
-    render(<Harness />);
+  it("dismissing the chip puts the word back in the title, unparsed (EI-375)", () => {
+    const onQuickAdd = vi.fn();
+    render(<Harness onQuickAdd={onQuickAdd} />);
     fireEvent.change(addInput(), { target: { value: "Buy milk tomorrow " } });
-    fireEvent.mouseDown(screen.getByRole("button", { name: /^Remove/ }));
-    expect(screen.queryByRole("button", { name: /^Remove/ })).toBeNull();
-    expect(addInput()).toHaveProperty("value", "Buy milk ");
+    fireEvent.mouseDown(keep("tomorrow")!);
+    expect(keep("tomorrow")).toBeNull();
+    expect(addInput()).toHaveProperty("value", "Buy milk tomorrow");
+    // It must not fold straight back out on the next space.
+    fireEvent.change(addInput(), { target: { value: "Buy milk tomorrow " } });
+    expect(addInput()).toHaveProperty("value", "Buy milk tomorrow ");
+    fireEvent.keyDown(addInput(), { key: "Enter" });
+    expect(onQuickAdd).toHaveBeenCalledWith("Buy milk tomorrow", undefined, [], ["tomorrow"]);
   });
 
   it("committing reappends the folded word so the created todo still gets the parsed field", () => {
@@ -617,15 +632,16 @@ describe("quick-add — folding a completed date/time word out of the input", ()
     render(<Harness onQuickAdd={onQuickAdd} />);
     fireEvent.change(addInput(), { target: { value: "Buy milk tomorrow " } });
     fireEvent.keyDown(addInput(), { key: "Enter" });
-    expect(onQuickAdd).toHaveBeenCalledWith("Buy milk tomorrow", undefined, []);
+    expect(onQuickAdd).toHaveBeenCalledWith("Buy milk tomorrow", undefined, [], []);
     expect(addInput()).toHaveProperty("value", "");
   });
 
   it("Escape clears both the live text and any folded chip", () => {
     render(<Harness />);
     fireEvent.change(addInput(), { target: { value: "Buy milk tomorrow " } });
+    expect(keep("tomorrow")).toBeTruthy();
     fireEvent.keyDown(addInput(), { key: "Escape" });
-    expect(screen.queryByRole("button", { name: /^Remove/ })).toBeNull();
+    expect(keep("tomorrow")).toBeNull();
     expect(addInput()).toHaveProperty("value", "");
   });
 
@@ -633,8 +649,99 @@ describe("quick-add — folding a completed date/time word out of the input", ()
     render(<Harness />);
     fireEvent.change(addInput(), { target: { value: "Buy milk tomorrow " } });
     fireEvent.change(addInput(), { target: { value: "Buy milk fri " } });
-    expect(screen.getAllByRole("button", { name: /^Remove/ })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: /^Keep “/ })).toHaveLength(1);
     expect(addInput()).toHaveProperty("value", "Buy milk ");
+  });
+});
+
+/**
+ * EI-375: a date word inside a sentence still parses — the owner's call —
+ * so its chip is the one place a misread shows, and it has to be
+ * dismissible by mouse and by keyboard without committing the field.
+ */
+describe("quick-add — a dismissible date chip (EI-375)", () => {
+  const addInput = () => screen.getByRole("textbox", { name: "Add a to-do to Sunday" });
+  const keepThursday = () =>
+    screen.queryByRole("button", { name: "Keep “Thursday” in the title" });
+
+  it("shows the date a mid-sentence word parsed to", () => {
+    render(<Harness />);
+    fireEvent.change(addInput(), { target: { value: "Call the dentist about Thursday" } });
+    // ctx.today is Sunday 2026-08-09, so Thursday is Aug 13.
+    expect(screen.getByText("Thu Aug 13")).toBeTruthy();
+    expect(keepThursday()).toBeTruthy();
+  });
+
+  it("× by mouse keeps the word in the title and files it unscheduled", () => {
+    const onQuickAdd = vi.fn();
+    render(<Harness onQuickAdd={onQuickAdd} />);
+    fireEvent.change(addInput(), { target: { value: "Call the dentist about Thursday" } });
+    fireEvent.mouseDown(keepThursday()!);
+    expect(screen.queryByText("Thu Aug 13")).toBeNull();
+    expect(addInput()).toHaveProperty("value", "Call the dentist about Thursday");
+    fireEvent.keyDown(addInput(), { key: "Enter" });
+    expect(onQuickAdd).toHaveBeenCalledWith(
+      "Call the dentist about Thursday",
+      undefined,
+      [],
+      ["Thursday"],
+    );
+  });
+
+  it("is reachable from the keyboard: Tab to it does not commit, Enter dismisses, focus returns", () => {
+    const onQuickAdd = vi.fn();
+    render(<Harness onQuickAdd={onQuickAdd} />);
+    addInput().focus();
+    fireEvent.change(addInput(), { target: { value: "Call the dentist about Thursday" } });
+    const chip = keepThursday()!;
+    // Tab: focus moves from the field to the chip inside the same row.
+    fireEvent.blur(addInput(), { relatedTarget: chip });
+    chip.focus();
+    expect(onQuickAdd).not.toHaveBeenCalled();
+    // Enter/Space on a button is a click with `detail === 0`.
+    fireEvent.click(chip, { detail: 0 });
+    expect(keepThursday()).toBeNull();
+    expect(document.activeElement).toBe(addInput());
+    expect(addInput()).toHaveProperty("value", "Call the dentist about Thursday");
+  });
+
+  it("still commits when focus leaves the row entirely", () => {
+    const onQuickAdd = vi.fn();
+    render(<Harness onQuickAdd={onQuickAdd} />);
+    fireEvent.change(addInput(), { target: { value: "Buy milk" } });
+    fireEvent.blur(addInput(), { relatedTarget: null });
+    expect(onQuickAdd).toHaveBeenCalledWith("Buy milk", undefined, [], []);
+  });
+});
+
+describe("quick-add — typed @mentions (EI-375)", () => {
+  const addInput = () => screen.getByRole("textbox", { name: "Add a to-do to Sunday" });
+  const LISTS = [
+    { id: "read", name: "To Read", color: null },
+    { id: "buy", name: "To Buy", color: null },
+  ];
+
+  it("shows a typed-out @to-read as filing into To Read once the caret leaves it", () => {
+    render(<Harness lists={LISTS} />);
+    fireEvent.change(addInput(), { target: { value: "Dune @to-read later" } });
+    expect(screen.getByText("→ To Read")).toBeTruthy();
+  });
+
+  it("shows an @mention that matched no list as a dashed chip, with Create list", () => {
+    const onCreateList = vi.fn();
+    render(<Harness lists={LISTS} onCreateList={onCreateList} />);
+    fireEvent.change(addInput(), { target: { value: "Dune @novels later" } });
+    expect(screen.getByText("@novels · no list")).toBeTruthy();
+    fireEvent.mouseDown(screen.getByRole("button", { name: "Create a list called “novels”" }));
+    expect(onCreateList).toHaveBeenCalledWith("novels");
+  });
+
+  it("says nothing about the mention still being typed", () => {
+    render(<Harness lists={LISTS} />);
+    const input = addInput();
+    fireEvent.change(input, { target: { value: "Dune @nov" } });
+    fireEvent.select(input, { target: { selectionStart: 9 } });
+    expect(screen.queryByText(/no list/)).toBeNull();
   });
 });
 

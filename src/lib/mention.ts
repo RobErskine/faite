@@ -76,24 +76,34 @@ export function resolveMentionTrigger(
 }
 
 /**
+ * Case, spaces, hyphens and underscores dropped — "@to-read" has to find
+ * "To Read" (EI-375). The same fold `normalizeListName` (quick-add.ts)
+ * applies when a typed mention is resolved without the menu, so the menu
+ * never offers less than Enter would have filed.
+ */
+function looseKey(text: string): string {
+  return text.toLowerCase().replace(/[\s_-]+/g, "");
+}
+
+/**
  * Filters and ranks mention candidates by their label: prefix matches first,
  * then shortest label wins ties (the more specific match). Generic over any
  * item shape with a `label`, so the same ranking serves lists today and
- * labels/projects/places later.
+ * labels/projects/places later. Matching is loose — see `looseKey`.
  */
 export function filterMentionItems<T extends { label: string }>(
   items: readonly T[],
   query: string,
   limit = 6,
 ): T[] {
-  const q = query.trim().toLowerCase();
+  const q = looseKey(query);
   if (!q) return items.slice(0, limit);
 
   return items
-    .filter((item) => item.label.toLowerCase().includes(q))
+    .filter((item) => looseKey(item.label).includes(q))
     .sort((a, b) => {
-      const aPrefix = a.label.toLowerCase().startsWith(q) ? 0 : 1;
-      const bPrefix = b.label.toLowerCase().startsWith(q) ? 0 : 1;
+      const aPrefix = looseKey(a.label).startsWith(q) ? 0 : 1;
+      const bPrefix = looseKey(b.label).startsWith(q) ? 0 : 1;
       return aPrefix - bPrefix || a.label.length - b.label.length;
     })
     .slice(0, limit);

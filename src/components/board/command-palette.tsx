@@ -26,7 +26,14 @@ import { deleteListWithUndo } from "./list-actions";
 import { createTabWithUndo, deleteTabWithUndo } from "./tab-actions";
 import { todayIn } from "@/lib/scheduling";
 import { effectiveListColor } from "@/lib/colors";
-import { foldQuickAddDraft, parseQuickAdd, quickAddDraftToString, type QuickAddMatch } from "@/lib/quick-add";
+import {
+  describeQuickAddLanding,
+  foldQuickAddDraft,
+  quickAddDraftToString,
+  resolveQuickAdd,
+  restoreFoldedMatch,
+  type QuickAddMatch,
+} from "@/lib/quick-add";
 import { useMention, MentionMenu, type MentionSource } from "@/components/mention-menu";
 import { searchTodos } from "@/lib/search";
 import { cn } from "@/lib/utils";
@@ -49,7 +56,8 @@ import type {
 } from "@/lib/schema";
 import { originOf, type ConfettiOrigin } from "@/lib/celebrate";
 import type { MentionLabelOption, MentionListOption, MentionPick } from "./board-column";
-import { QuickAddPreview } from "./quick-add-preview";
+import { QuickAddPreview, dismissibleMatchChip, quickAddStatusChips } from "./quick-add-preview";
+import { announceQuickAdd } from "./quick-add-toast";
 import { formatCombo } from "@/lib/keyboard";
 import { usePlatform } from "@/lib/use-platform";
 
@@ -142,6 +150,8 @@ export function CommandPalette({
   // Matches `foldQuickAddDraft` has already folded out of `value` — see
   // board-column.tsx's own quick-add row for the identical pattern.
   const [confirmedMatches, setConfirmedMatches] = useState<QuickAddMatch[]>([]);
+  /** Words whose chip was dismissed — title text from then on (EI-375). */
+  const [literals, setLiterals] = useState<string[]>([]);
   /** Same reason `board-column.tsx`'s quick-add row uses one: moves the DOM
    * caret only after the controlled input's value has actually updated. */
   const pendingCaretRef = useRef<number | null>(null);
@@ -162,21 +172,6 @@ export function CommandPalette({
     [settings?.timezone],
   );
 
-  /**
-   * Parsed once, up front, and reused by both creation paths — the "Create
-   * to-do" fallback in root mode and the New to-do entry mode both create
-   * from `value`, so they must not be free to disagree on what it parses to.
-   *
-   * Parses `quickAddDraftToString(value, confirmedMatches)`, not `value`
-   * alone — matches `foldQuickAddDraft` has already folded out of the visible
-   * text are reappended here so every consumer below (`quickAdd.title`,
-   * `.matches`, the creation calls) keeps working exactly as if folding never
-   * happened, without needing to know about it.
-   */
-  const quickAdd = useMemo(
-    () => parseQuickAdd(quickAddDraftToString(value, confirmedMatches), today, reminderPresets),
-    [value, confirmedMatches, today, reminderPresets],
-  );
   // A folded match can leave `query` empty while a confirmed chip still
   // needs somewhere to render — see `foldQuickAddDraft`.
   const showQuickAddPreview =
@@ -204,6 +199,31 @@ export function CommandPalette({
         color: effectiveListColor(list, tabsById),
       })),
     [lists, tabsById],
+  );
+
+  /**
+   * Parsed once, up front, and reused by both creation paths — the "Create
+   * to-do" fallback in root mode and the New to-do entry mode both create
+   * from `value`, so they must not be free to disagree on what it parses to.
+   *
+   * Parses `quickAddDraftToString(value, confirmedMatches)`, not `value`
+   * alone — matches `foldQuickAddDraft` has already folded out of the visible
+   * text are reappended here so every consumer below (`quickAdd.title`,
+   * `.matches`, the creation calls) keeps working exactly as if folding never
+   * happened, without needing to know about it.
+   *
+   * `resolveQuickAdd`, not `parseQuickAdd` (EI-375): it also resolves an
+   * "@mention" typed out in full and never picked from the menu, and honors
+   * the words whose chip was dismissed.
+   */
+  const quickAdd = useMemo(
+    () =>
+      resolveQuickAdd(quickAddDraftToString(value, confirmedMatches), today, {
+        presets: reminderPresets,
+        lists: mentionListOptions,
+        literals,
+      }),
+    [value, confirmedMatches, today, reminderPresets, mentionListOptions, literals],
   );
 
   const mentionedLabelIds = useMemo(() => new Set(mentionedLabels.map((l) => l.id)), [mentionedLabels]);
@@ -278,6 +298,7 @@ export function CommandPalette({
       setMode({ kind: "root" });
       setValue("");
       setConfirmedMatches([]);
+      setLiterals([]);
       setCursor(0);
       setMentionedList(null);
       setMentionedLabels([]);
@@ -298,6 +319,7 @@ export function CommandPalette({
     setMode({ kind });
     setValue("");
     setConfirmedMatches([]);
+    setLiterals([]);
   };
 
   /**
@@ -320,12 +342,18 @@ export function CommandPalette({
   };
 
   /**
-   * Files a to-do titled with whatever was typed — into Backlog, unless the
-   * "@list" mention picked somewhere else.
+   * Files a to-do titled with whatever was typed — into Backlog, unless an
+   * "@list" mention (picked from the menu, or typed out in full) named
+   * somewhere else. The one create for both the root "Create to-do" fallback
+   * and New to-do mode, so the two cannot drift apart.
+   *
+   * Then says where it landed (EI-375) — the palette can file into a column
+   * scrolled out of view, or a day in next year, and the toast is the only
+   * place that shows.
    */
-  const createFromQuery = async () => {
+  const createQuickAddTodo = async () => {
     const backlog = lists.find((l) => l.isBacklog);
-    const listId = mentionedList?.id ?? backlog?.id ?? null;
+    const listId = mentionedList?.id ?? quickAdd.list?.id ?? backlog?.id ?? null;
     const id = await createTodo({
       title: quickAdd.title,
       listId,
@@ -335,10 +363,44 @@ export function CommandPalette({
       reminderTime: quickAdd.reminderTime,
       labelIds: mentionedLabels.map((l) => l.id),
     });
-    recordCreate(`To-do added to ${mentionedList?.name ?? "Backlog"}`, "todo", id);
+    announceQuickAdd(
+      id,
+      quickAdd.title,
+      describeQuickAddLanding({
+        today,
+        scheduledDate: quickAdd.scheduledDate,
+        list: lists.find((l) => l.id === listId) ?? null,
+        unresolvedMentions: quickAdd.unresolvedMentions,
+      }),
+    );
     // Smart sorting asks Jev now, not after sync (EI-373).
     void proposeListForNewTodo(id);
+  };
+
+  const createFromQuery = async () => {
+    await createQuickAddTodo();
     close();
+  };
+
+  /**
+   * "Create list" on the dashed chip of an "@mention" that matched no list
+   * (EI-375). The list lands on the tab being looked at, like New list; the
+   * mention still in the field resolves to it as soon as `lists` updates.
+   */
+  const createMentionedList = async (name: string) => {
+    recordCreate(`List "${name}" created`, "list", await createList(name, {}, activeTabId));
+  };
+
+  /** Dismissing a parsed chip puts its word back in the title (EI-375). */
+  const dismissMatch = (match: QuickAddMatch) => {
+    const folded = confirmedMatches.find((c) => c.kind === match.kind && c.raw === match.raw);
+    if (folded) {
+      const restored = restoreFoldedMatch(value, folded);
+      setConfirmedMatches((ms) => ms.filter((m) => m !== folded));
+      setValue(restored);
+      setCursor(restored.length);
+    }
+    setLiterals((ls) => (ls.includes(match.raw) ? ls : [...ls, match.raw]));
   };
 
   const submit = async () => {
@@ -369,22 +431,9 @@ export function CommandPalette({
       case "new-label":
         recordCreate(`Label "${name}" created`, "label", await createLabel(name));
         break;
-      case "new-todo": {
-        const backlog = lists.find((l) => l.isBacklog);
-        const listId = mentionedList?.id ?? backlog?.id ?? null;
-        const id = await createTodo({
-          title: quickAdd.title,
-          listId,
-          scheduledDate: quickAdd.scheduledDate,
-          deadline: quickAdd.deadline,
-          priority: quickAdd.priority,
-          reminderTime: quickAdd.reminderTime,
-          labelIds: mentionedLabels.map((l) => l.id),
-        });
-        recordCreate(`To-do added to ${mentionedList?.name ?? "Backlog"}`, "todo", id);
-        void proposeListForNewTodo(id);
+      case "new-todo":
+        await createQuickAddTodo();
         break;
-      }
       default:
         return;
     }
@@ -516,9 +565,15 @@ export function CommandPalette({
               setCursor(inputRef.current?.selectionStart ?? next.length);
               return;
             }
-            const folded = foldQuickAddDraft(next, confirmedMatches, today, reminderPresets);
+            const folded = foldQuickAddDraft(next, confirmedMatches, today, reminderPresets, {
+              literals,
+            });
             setValue(folded.text);
             setConfirmedMatches(folded.confirmed);
+            // A dismissed word that is no longer typed stops being one.
+            if (literals.some((w) => !next.includes(w))) {
+              setLiterals((ls) => ls.filter((w) => next.includes(w)));
+            }
             if (folded.text !== next) {
               pendingCaretRef.current = folded.text.length;
             } else {
@@ -598,6 +653,7 @@ export function CommandPalette({
               setMode({ kind: "root" });
               setValue("");
               setConfirmedMatches([]);
+              setLiterals([]);
             }
           }}
         />
@@ -614,16 +670,11 @@ export function CommandPalette({
       </div>
       {showQuickAddPreview && (
         <QuickAddPreview
+          focusField={() => inputRef.current?.focus()}
           chips={[
-            ...quickAdd.matches.map((m) => ({
-              key: `${m.kind}:${m.raw}`,
-              label: m.label,
-              // Only a folded (confirmed) match is independently removable —
-              // one still live in `value` goes away by editing the text.
-              onRemove: confirmedMatches.some((c) => c.kind === m.kind && c.raw === m.raw)
-                ? () => setConfirmedMatches((ms) => ms.filter((x) => x.kind !== m.kind))
-                : undefined,
-            })),
+            // Every parsed chip is dismissible — folded or still live in
+            // `value` — and dismissing puts the word back in the title.
+            ...quickAdd.matches.map((m) => dismissibleMatchChip(m, dismissMatch)),
             ...(mentionedList
               ? [
                   {
@@ -640,6 +691,11 @@ export function CommandPalette({
               onRemove: () =>
                 setMentionedLabels((ls) => ls.filter((l) => l.id !== label.id)),
             })),
+            ...quickAddStatusChips(quickAdd, {
+              typingMention: mention.trigger ? `@${mention.trigger.query}` : null,
+              pickedList: mentionedList !== null,
+              onCreateList: (name) => void createMentionedList(name),
+            }),
           ]}
         />
       )}

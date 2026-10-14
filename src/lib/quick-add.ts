@@ -22,8 +22,39 @@ export interface QuickAddMatch {
   /** The exact substring matched, for display. */
   raw: string;
   kind: QuickAddMatchKind;
-  /** Human label for a preview chip, e.g. "P2", "Fri Aug 14", "2:00 PM". */
+  /** Human label for a preview chip, e.g. "P2", "Fri Aug 14", "2:00 PM" —
+   * a date outside the current year carries it: "Fri Oct 1, 2027" (EI-375). */
   label: string;
+  /**
+   * Set only by `foldQuickAddDraft`: the offset in the live text the word
+   * was folded out of, so dismissing its chip can put the word back where
+   * it was typed (`restoreFoldedMatch`) rather than tacking it on the end.
+   */
+  at?: number;
+}
+
+/**
+ * A word sitting where a token would be, that the parser deliberately did
+ * NOT apply — shown as a chip so it is never silent (EI-375). Today the only
+ * one is "yesterday": a past day cannot be scheduled (`nextMonthDay` rolls a
+ * passed month-day forward for the same reason), so the word stays in the
+ * title and the chip says so.
+ */
+export interface QuickAddNotice {
+  raw: string;
+  kind: "past-date";
+  label: string;
+}
+
+export interface QuickAddOptions {
+  /**
+   * Words the user dismissed from the preview (EI-375) — read as plain title
+   * text even where they would otherwise parse. Matched against a token's
+   * exact `raw`, so "Thursday" dismissed leaves a later "fri" free to parse.
+   * A dismissed word ends the trailing scan the way any non-token word does,
+   * which is what puts it back in the title.
+   */
+  literals?: readonly string[];
 }
 
 export interface QuickAdd {
@@ -34,6 +65,8 @@ export interface QuickAdd {
   reminderTime: string | null;
   /** Left-to-right, one per kind that matched — for a live preview. */
   matches: QuickAddMatch[];
+  /** Words left in the title on purpose — see `QuickAddNotice`. */
+  notices: QuickAddNotice[];
 }
 
 const WEEKDAY_ABBR = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -288,8 +321,20 @@ function matchPresetTime(
   return matches.length === 1 ? matches[0] : null;
 }
 
-function labelForDate(date: CivilDate, prefix = ""): string {
-  return `${prefix}${WEEKDAY_ABBR[dayOfWeek(date)]} ${formatShortDate(date)}`;
+/** ", 2027" when `date` is not in `today`'s year, else "" — "oct 1" typed on
+ * Oct 14 is next year, and a chip reading just "Oct 1" hid that (EI-375). */
+function yearSuffix(date: CivilDate, today: CivilDate): string {
+  return date.slice(0, 4) === today.slice(0, 4) ? "" : `, ${Number(date.slice(0, 4))}`;
+}
+
+function labelForDate(date: CivilDate, today: CivilDate, prefix = ""): string {
+  return `${prefix}${WEEKDAY_ABBR[dayOfWeek(date)]} ${formatShortDate(date)}${yearSuffix(date, today)}`;
+}
+
+/** "Thu, Oct 15", or "Fri, Oct 1, 2027" outside the current year — the date
+ * as a quick-add toast names it (`describeQuickAddLanding`). */
+export function formatQuickAddDate(date: CivilDate, today: CivilDate): string {
+  return `${WEEKDAY_ABBR[dayOfWeek(date)]}, ${formatShortDate(date)}${yearSuffix(date, today)}`;
 }
 
 interface RawMatch {
@@ -323,6 +368,7 @@ export function parseQuickAdd(
   input: string,
   today: CivilDate,
   presets: readonly ReminderPreset[] = [],
+  options: QuickAddOptions = {},
 ): QuickAdd {
   const empty: QuickAdd = {
     title: input,
@@ -331,16 +377,40 @@ export function parseQuickAdd(
     deadline: null,
     reminderTime: null,
     matches: [],
+    notices: [],
   };
 
   const words = tokenize(input);
   if (words.length === 0) return empty;
+  const literals = new Set(options.literals ?? []);
 
   // Trailing run: any token kind, scanned right-to-left. Stops at the first
   // word that isn't a token.
   const trailing: RawMatch[] = [];
+  const notices: QuickAddNotice[] = [];
+  /**
+   * "@word"s inside the trailing run (EI-375). A list mention that resolved
+   * was already lifted out by `resolveQuickAdd`, so one that reaches here
+   * matched no list — and it stays in the title. It must not END the run,
+   * though, or "dentist fri @nolist" would silently lose its date to a typo
+   * in a list name. It is skipped over and rejoined to the title instead.
+   */
+  const carried: Word[] = [];
   let hi = words.length;
   while (hi > 0) {
+    const last = words[hi - 1];
+    if (/^@\S/.test(last.text)) {
+      carried.unshift(last);
+      hi -= 1;
+      continue;
+    }
+    if (literals.has(last.text)) break;
+    if (hi >= 2 && literals.has(input.slice(words[hi - 2].start, last.end))) break;
+    if (last.text.toLowerCase() === "yesterday") {
+      notices.push({ raw: last.text, kind: "past-date", label: `${last.text} · not scheduled` });
+      break;
+    }
+
     if (hi >= 2) {
       const w1 = words[hi - 2];
       const w2 = words[hi - 1];
@@ -404,15 +474,24 @@ export function parseQuickAdd(
   let lo = 0;
   while (lo < hi) {
     const w = words[lo];
+    if (literals.has(w.text)) break;
     const priority = matchPriority(w.text);
     if (priority === null) break;
     leading.push({ kind: "priority", start: w.start, end: w.end, raw: w.text, value: priority });
     lo += 1;
   }
 
-  if (lo >= hi) return empty; // Nothing left for a title — bail entirely.
+  // Nothing parsed: the "@word"s skipped above are just more title, in place.
+  if (trailing.length === 0 && leading.length === 0) {
+    hi = words.length;
+    carried.length = 0;
+  }
 
-  const title = input.slice(words[lo].start, words[hi - 1].end).trim();
+  if (lo >= hi) return { ...empty, notices }; // Nothing left for a title — bail entirely.
+
+  const title = [input.slice(words[lo].start, words[hi - 1].end).trim(), ...carried.map((w) => w.text)].join(
+    " ",
+  );
 
   // Duplicate token of the same kind: the one earliest in the string wins.
   const all = [...leading, ...trailing];
@@ -434,9 +513,9 @@ export function parseQuickAdd(
         m.kind === "priority"
           ? `P${m.value}`
           : m.kind === "date"
-            ? labelForDate(m.value as CivilDate)
+            ? labelForDate(m.value as CivilDate, today)
             : m.kind === "deadline"
-              ? labelForDate(m.value as CivilDate, "Due ")
+              ? labelForDate(m.value as CivilDate, today, "Due ")
               : (m.presetLabel ?? formatTimeLabel(m.value as string)),
     }));
 
@@ -447,6 +526,7 @@ export function parseQuickAdd(
     deadline: (deadlineMatch?.value as CivilDate) ?? null,
     reminderTime: (timeMatch?.value as string) ?? null,
     matches,
+    notices,
   };
 }
 
@@ -476,19 +556,44 @@ export function foldQuickAddDraft(
   confirmed: readonly QuickAddMatch[],
   today: CivilDate,
   presets: readonly ReminderPreset[] = [],
+  options: QuickAddOptions = {},
 ): { text: string; confirmed: QuickAddMatch[] } {
   if (!text.endsWith(" ")) return { text, confirmed: [...confirmed] };
   const trimmed = text.trimEnd();
   if (trimmed === "") return { text, confirmed: [...confirmed] };
 
-  const parsed = parseQuickAdd(trimmed, today, presets);
+  const parsed = parseQuickAdd(trimmed, today, presets, options);
   if (parsed.matches.length === 0) return { text, confirmed: [...confirmed] };
 
   const foldedKinds = new Set(parsed.matches.map((m) => m.kind));
+  const at = parsed.title.length + 1;
   return {
     text: `${parsed.title} `,
-    confirmed: [...confirmed.filter((m) => !foldedKinds.has(m.kind)), ...parsed.matches],
+    confirmed: [
+      ...confirmed.filter((m) => !foldedKinds.has(m.kind)),
+      ...parsed.matches.map((m) => ({ ...m, at })),
+    ],
   };
+}
+
+/**
+ * Puts a folded match's word back into the live text — what dismissing its
+ * chip does (EI-375). The caller also adds `match.raw` to its literals, so
+ * the word reads as title text from then on instead of folding straight back
+ * out on the next space.
+ *
+ * Goes back at `match.at`, where it was typed: "Call the dentist about
+ * Thursday and…" folds "Thursday" out mid-sentence, and appending it would
+ * scramble the title. Falls back to the end when `at` no longer sits on a
+ * word boundary (the text before it was edited since).
+ */
+export function restoreFoldedMatch(text: string, match: QuickAddMatch): string {
+  let at = Math.min(match.at ?? text.length, text.length);
+  const insideWord = at > 0 && at < text.length && /\S/.test(text[at - 1]) && /\S/.test(text[at]);
+  if (insideWord) at = text.length;
+  const before = text.slice(0, at).trimEnd();
+  const after = text.slice(at).trimStart();
+  return [before, match.raw, after].filter(Boolean).join(" ");
 }
 
 /**
@@ -506,4 +611,174 @@ export function quickAddDraftToString(text: string, confirmed: readonly QuickAdd
   if (confirmed.length === 0) return trimmed;
   const suffix = confirmed.map((m) => m.raw).join(" ");
   return trimmed ? `${trimmed} ${suffix}` : suffix;
+}
+
+// ---------------------------------------------------------------------------
+// "@list" mentions typed as text, and where a quick-add lands (EI-375)
+// ---------------------------------------------------------------------------
+
+/**
+ * "To Read", "to-read", "toread" and "To_Read" all fold to "toread": case,
+ * spaces, hyphens and underscores are how people spell a list name from
+ * memory, and none of them is a real difference between two lists.
+ */
+export function normalizeListName(name: string): string {
+  return name.toLowerCase().replace(/[\s_-]+/g, "");
+}
+
+export type ListMentionMatch<L> =
+  | { kind: "match"; list: L }
+  | { kind: "ambiguous"; lists: L[] }
+  | { kind: "none" };
+
+/**
+ * Which list a typed "@query" names. An exact name (ignoring case) wins
+ * outright, so "@toread" still means a list literally called "Toread" when
+ * "To Read" also exists. Only then the loose form (`normalizeListName`). Two
+ * or more at the same level is ambiguous, and an ambiguous mention files
+ * nowhere — guessing between two lists is how a capture gets lost.
+ */
+export function matchListMention<L extends { name: string }>(
+  query: string,
+  lists: readonly L[],
+): ListMentionMatch<L> {
+  const lower = query.toLowerCase();
+  const exact = lists.filter((l) => l.name.toLowerCase() === lower);
+  if (exact.length === 1) return { kind: "match", list: exact[0] };
+  if (exact.length > 1) return { kind: "ambiguous", lists: exact };
+  const key = normalizeListName(query);
+  if (!key) return { kind: "none" };
+  const loose = lists.filter((l) => normalizeListName(l.name) === key);
+  if (loose.length === 1) return { kind: "match", list: loose[0] };
+  if (loose.length > 1) return { kind: "ambiguous", lists: loose };
+  return { kind: "none" };
+}
+
+/** An "@word" in the text that filed nowhere — `matches` lists that fit it:
+ * 0 is "no such list", 2+ is "can't tell which". */
+export interface UnresolvedListMention {
+  raw: string;
+  query: string;
+  matches: number;
+}
+
+/**
+ * Lifts "@list" mentions out of typed text. The mention menu already does
+ * this for a mention PICKED from it; this is the same thing for one typed out
+ * in full and never picked (the menu closed on a space, or Enter came first),
+ * which used to stay in the title and file into the column it was typed in.
+ *
+ * A mention that resolves is removed from the text, and the first one sets
+ * the list. One that resolves nowhere stays in the text, reported in
+ * `unresolved`, so the preview and the toast can say so. If lifting the
+ * mentions would leave no text at all, nothing is lifted: "@groceries" on
+ * its own is a title, not an empty to-do.
+ */
+export function extractListMentions<L extends { name: string }>(
+  input: string,
+  lists: readonly L[],
+): { text: string; list: L | null; unresolved: UnresolvedListMention[] } {
+  let list: L | null = null;
+  const unresolved: UnresolvedListMention[] = [];
+  const spans: { start: number; end: number }[] = [];
+  const re = /(^|\s)@(\S+)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(input))) {
+    const start = m.index + m[1].length;
+    const query = m[2];
+    const result = matchListMention(query, lists);
+    if (result.kind === "match") {
+      list ??= result.list;
+      spans.push({ start, end: start + query.length + 1 });
+    } else {
+      unresolved.push({
+        raw: `@${query}`,
+        query,
+        matches: result.kind === "ambiguous" ? result.lists.length : 0,
+      });
+    }
+  }
+  if (spans.length === 0) return { text: input, list: null, unresolved };
+
+  let text = input;
+  for (const span of [...spans].reverse()) {
+    text = `${text.slice(0, span.start).trimEnd()} ${text.slice(span.end).trimStart()}`;
+  }
+  text = text.trim();
+  if (!text) return { text: input, list: null, unresolved };
+  return { text, list, unresolved };
+}
+
+export interface ResolvedQuickAdd<L> extends QuickAdd {
+  /** The list a typed "@mention" resolved to — null when none did. A list
+   * picked from the mention menu is the caller's, and outranks this. */
+  list: L | null;
+  unresolvedMentions: UnresolvedListMention[];
+}
+
+/**
+ * Everything a quick-add field turns typed text into: the parsed tokens, the
+ * list a typed "@mention" names, and the mentions that named nothing. The ONE
+ * place the three quick-add paths (a column's row via `handleQuickAdd`, ⌘K's
+ * "Create to-do" and its New to-do mode) and their previews read text, so the
+ * chip and the write can never disagree (EI-235 duplicated the glue; this is
+ * where new behavior goes instead).
+ */
+export function resolveQuickAdd<L extends { name: string }>(
+  input: string,
+  today: CivilDate,
+  options: QuickAddOptions & {
+    presets?: readonly ReminderPreset[];
+    lists?: readonly L[];
+  } = {},
+): ResolvedQuickAdd<L> {
+  const mentions = extractListMentions(input, options.lists ?? []);
+  const parsed = parseQuickAdd(mentions.text, today, options.presets ?? [], options);
+  return { ...parsed, list: mentions.list, unresolvedMentions: mentions.unresolved };
+}
+
+/** The chip's words for an "@word" that filed nowhere. */
+export function unresolvedMentionLabel(mention: UnresolvedListMention): string {
+  return mention.matches > 1
+    ? `${mention.raw} · ${mention.matches} lists match`
+    : `${mention.raw} · no list`;
+}
+
+export interface QuickAddLanding {
+  /** "Added to Thu, Oct 15 · To Read", "Added to Backlog". */
+  message: string;
+  /** A second line, only when part of what was typed did not apply. */
+  note: string | null;
+}
+
+/**
+ * What the toast after every quick-add says (EI-375): where the to-do went,
+ * in the board's own terms — the day it is on, the list it is filed in — so
+ * a capture that lands off-screen (next year, another tab) is never silent.
+ *
+ * Backlog is named only when it is the whole answer: a dated to-do sits on
+ * its day, and "· Backlog" beside the date would read as a second place.
+ */
+export function describeQuickAddLanding({
+  today,
+  scheduledDate,
+  list,
+  unresolvedMentions = [],
+}: {
+  today: CivilDate;
+  scheduledDate: CivilDate | null;
+  list: { name: string; isBacklog?: boolean } | null;
+  unresolvedMentions?: readonly UnresolvedListMention[];
+}): QuickAddLanding {
+  const parts: string[] = [];
+  if (scheduledDate) parts.push(formatQuickAddDate(scheduledDate, today));
+  if (list && !(list.isBacklog && scheduledDate)) parts.push(list.name);
+  if (parts.length === 0) parts.push("Backlog");
+
+  const notes = unresolvedMentions.map((m) =>
+    m.matches > 1
+      ? `${m.raw} matches ${m.matches} lists, so it stayed in the title.`
+      : `No list is called ${m.raw}, so it stayed in the title.`,
+  );
+  return { message: `Added to ${parts.join(" · ")}`, note: notes.length ? notes.join(" ") : null };
 }

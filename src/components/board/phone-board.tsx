@@ -134,7 +134,7 @@ export function PhoneBoard({
     dragging,
   } = ui;
 
-  const { handleToggle, handleQuickAdd, handleCreateTab } = actions;
+  const { handleToggle, handleQuickAdd, handleCreateListFromMention, handleCreateTab } = actions;
 
   // The Lists pager has no jump/scroll-position consumer outside this
   // component (no date to jump to), so it keeps its own local ref rather
@@ -307,10 +307,11 @@ export function PhoneBoard({
                   emphasis={isToday}
                   onToggle={handleToggle}
                   onOpen={(todo) => openTodoSheet(todo.id)}
-                  onQuickAdd={(title, listId, labelIds) =>
-                    void handleQuickAdd(title, { day: column.day }, listId, labelIds)
+                  onQuickAdd={(title, listId, labelIds, literals) =>
+                    void handleQuickAdd(title, { day: column.day }, listId, labelIds, literals)
                   }
                   lists={mentionLists}
+                  onCreateList={(name) => void handleCreateListFromMention(name)}
                   reminderPresets={data.reminderPresets}
                   onNavigate={navigate}
                   filter={columnFilters.get(column.id)}
@@ -390,15 +391,17 @@ export function PhoneBoard({
                   awayTodoIds={board.awayTodoIds}
                   onToggle={handleToggle}
                   onOpen={(todo) => openTodoSheet(todo.id)}
-                  onQuickAdd={(title, listId, labelIds) =>
+                  onQuickAdd={(title, listId, labelIds, literals) =>
                     void handleQuickAdd(
                       title,
                       { listId: filteredBacklogColumn.list.id },
                       listId,
                       labelIds,
+                      literals,
                     )
                   }
                   lists={mentionLists}
+                  onCreateList={(name) => void handleCreateListFromMention(name)}
                   reminderPresets={data.reminderPresets}
                   onNavigate={navigate}
                   filter={columnFilters.get(filteredBacklogColumn.id)}
@@ -448,10 +451,11 @@ export function PhoneBoard({
                   awayTodoIds={board.awayTodoIds}
                   onToggle={handleToggle}
                   onOpen={(todo) => openTodoSheet(todo.id)}
-                  onQuickAdd={(title, listId, labelIds) =>
-                    void handleQuickAdd(title, { listId: column.list.id }, listId, labelIds)
+                  onQuickAdd={(title, listId, labelIds, literals) =>
+                    void handleQuickAdd(title, { listId: column.list.id }, listId, labelIds, literals)
                   }
                   lists={mentionLists}
+                  onCreateList={(name) => void handleCreateListFromMention(name)}
                   reminderPresets={data.reminderPresets}
                   onNavigate={navigate}
                   filter={columnFilters.get(column.id)}
