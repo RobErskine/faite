@@ -614,7 +614,7 @@ would cut wall clock further. Not changed here — one variable at a time.
 ## 10. The server-backed suite (EI-354)
 
 Everything above is the **local-first** suite: every spec enters through
-"Continue without an account" on :3000, where `/api/auth/*`, `/api/sync/*`,
+"Start planning" (the welcome dialog) on :3000, where `/api/auth/*`, `/api/sync/*`,
 `/api/v1/*` and `/mcp` do not exist. That leaves sign-up, sync between
 clients, the REST API and the MCP adapter with no browser coverage at all —
 and those are where account and data-loss bugs live (EI-68, EI-347). The
@@ -701,7 +701,7 @@ from the server. `smoke.spec.ts` does both.
 | Spec | Covers |
 |---|---|
 | `smoke.spec.ts` | The harness itself: signup → write → server → a second client (EI-355) |
-| `auth.spec.ts` | Signup logs in; session survives reload; sign-out wipes the device and lands on `/`; sign-in restores the account's to-dos; a signed-out `/board` still offers "Continue without an account" (EI-356) |
+| `auth.spec.ts` | Signup logs in; session survives reload; sign-out wipes the device and lands on `/`; sign-in restores the account's to-dos; a signed-out `/board` still offers the no-account path, "Start planning" (EI-356, EI-376) |
 | `sync.spec.ts` | Two clients on one account: create, rename and complete reach the other client without a refresh; edits made offline flush on reconnect with no duplicates; a conflicting title edit goes to the later HLC, not the later arrival (EI-357) |
 | `api.spec.ts` | A key made in Settings → API Keys, used as a bearer token: a read-write key's REST create, rename, complete and delete reach the open board live, and board writes appear in `GET /api/v1/todos`; a read-only key reads but gets 403 on write; no key gets 401; a revoked key gets 401 (EI-358) |
 | `mcp.spec.ts` | `/mcp` over raw JSON-RPC: `initialize` passes from the app's own origin and from no origin, and gets 403 "Invalid Origin" from another — the EI-347 regression guard, checked to fail against the pre-fix code; `tools/list` equals the tool set `docs/API.md` documents; `list_todos` and `list_lists` with a bearer key return the account's own data; no key gets 401 (EI-359) |

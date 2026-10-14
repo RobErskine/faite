@@ -450,6 +450,25 @@ describe("AppHeader", () => {
     );
   });
 
+  it("renders the Sign up CTA as an outline button, never the filled default (EI-376)", () => {
+    render(
+      <AppHeader
+        onOpenPalette={noop}
+        onOpenSettings={noop}
+        onOpenHelp={noop}
+        settings={undefined}
+      />,
+    );
+
+    const cta = screen.getByText("Sign up").closest("a");
+    const classes = cta?.className.split(/\s+/) ?? [];
+    // The outline variant's border, and none of the filled default's fill.
+    expect(classes).toContain("border-border");
+    expect(classes).toContain("bg-background");
+    expect(classes).not.toContain("bg-primary");
+    expect(classes).not.toContain("text-primary-foreground");
+  });
+
   it("hides the Sign up CTA once signed in", () => {
     mockSession = { user: { id: USER_ID, email: "rob@myfaite.app" } };
     render(

@@ -540,12 +540,15 @@ unaffected by this and reacts immediately, because that transition is not a
 network race the way a cold start is.
 
 The banner is additionally conditional on the board actually holding data
-(`todos.length > 0`). Empty, the warning is noise; once something exists to
-lose, it is the moment the message lands. The welcome dialog and the banner
-also use different storage tiers on purpose (`lib/onboarding.ts`): the dialog
-is a one-time explanation (`localStorage`, dismissed forever), the banner is a
-standing warning (`sessionStorage`, dismissed for the visit, back next time) —
-collapsing them into one mechanism would have made one of the two wrong.
+(`todos.length > 0`). Empty, the notice is noise; once something exists to
+lose, it is the moment the message lands. Both the welcome dialog and the
+banner are dismissed for good on this device (`localStorage`,
+`lib/onboarding.ts`). The banner was once per-session (`sessionStorage`), as a
+"standing warning" — which in practice meant a yellow bar to close on every
+visit, stacked under the dialog and the header's Sign up. Faite never nags
+(PRODUCT.md), and "only on this device" is the same fact every visit, so since
+EI-376 it is said once, in the info tone, and the header's outline Sign up is
+the route to an account that never goes away.
 
 None of this is a security boundary. A client-side nudge (or a gate, had one
 been built) is trivially bypassed from devtools — acceptable only because

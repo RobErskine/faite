@@ -14,11 +14,27 @@ interface SignedOutBannerProps {
 }
 
 /**
- * "This device only" warning. Gated on `hasUserData` rather than always shown
- * logged-out: on an empty board there is nothing to lose yet, so the warning
+ * Shared by the web link and the desktop button below: the shared focus ring
+ * (not the browser's default outline), and a 24px-tall hit area that the
+ * line box alone does not give a `text-xs`/`text-sm` word. The `::after`
+ * grows the target without growing the banner (same technique as
+ * `ui/checkbox.tsx`).
+ */
+const SIGN_UP_LINK =
+  "focus-ring relative rounded-sm font-medium underline underline-offset-2 after:absolute after:-inset-x-1 after:-inset-y-1.5";
+
+/**
+ * "This device only" notice. Gated on `hasUserData` rather than always shown
+ * logged-out: on an empty board there is nothing to lose yet, so the notice
  * is noise; once there is real data, it's the moment the message actually
- * lands. Dismissal is per-session (lib/onboarding.ts) — it is a standing
- * warning, not a one-time explanation, so it returns on the next visit.
+ * lands.
+ *
+ * EI-376: information, not a warning — the info status tone, not the yellow
+ * one (docs/DESIGN.md §1), because nothing is wrong: the board works fully
+ * without an account (PRODUCT.md). Dismissal is permanent on this device
+ * (lib/onboarding.ts) — Faite says this once, not every visit. The copy is
+ * one line at phone width: the phone shell gets the short form, wider
+ * screens the full sentence, with the same two facts in both.
  */
 export function SignedOutBanner({ hasUserData }: SignedOutBannerProps) {
   const shouldShowNudges = useShouldShowAuthNudges();
@@ -32,27 +48,30 @@ export function SignedOutBanner({ hasUserData }: SignedOutBannerProps) {
   };
 
   return (
-    <div className="flex items-center gap-3 border-b bg-warning-soft px-4 py-2 text-sm text-warning-foreground">
-      <span className="flex-1">
-        You&apos;re not signed in — this board only exists on this device.{" "}
+    <div
+      className="flex items-center gap-2 border-b bg-info-soft px-3 py-1.5 text-xs text-info-foreground sm:gap-3 sm:px-4 sm:py-2 sm:text-sm"
+    >
+      <p className="min-w-0 flex-1">
+        <span className="sm:hidden">Only on this device.</span>
+        <span className="hidden sm:inline">Your board is saved on this device only.</span>{" "}
         {isDesktopShell() ? (
           // The embedded webview cannot complete a sign-up itself (D0 §3.7:
           // `tauri://localhost` cannot hold a session cookie) — a click
           // opens the system browser instead. See docs/DESKTOP.md §9.
           <button
             type="button"
-            className="font-medium underline underline-offset-2"
+            className={SIGN_UP_LINK}
             onClick={() => void startDesktopLogin("signup")}
           >
             Sign up
           </button>
         ) : (
-          <Link href="/signup" className="font-medium underline underline-offset-2">
+          <Link href="/signup" className={SIGN_UP_LINK}>
             Sign up
           </Link>
         )}{" "}
-        to save it.
-      </span>
+        to sync it<span className="hidden sm:inline"> to your other devices</span>.
+      </p>
       <Button variant="ghost" size="icon-xs" aria-label="Dismiss" onClick={close}>
         <X aria-hidden />
       </Button>

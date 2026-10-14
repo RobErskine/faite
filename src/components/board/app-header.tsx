@@ -221,17 +221,33 @@ export function AppHeader({
         </div>
       )}
 
+      {/*
+        Outline, not the filled default (EI-376). Filled, this was the darkest
+        thing in the header — louder than the board it sits above, for an
+        action the board does not need (PRODUCT.md: no account required).
+        Still always here while signed out, so the route to an account never
+        depends on a banner the visitor may have dismissed.
+      */}
       {shouldShowAuthNudges ? (
         isDesktopShell() ? (
           // Same reason as the account menu's Sign in below: the embedded
           // webview cannot complete a sign-up itself (D0 §3.7), so this
           // opens the system browser rather than navigating to a form that
           // can never succeed. See docs/DESKTOP.md §9.
-          <Button size="sm" onClick={() => void handleDesktopSignIn("signup")}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void handleDesktopSignIn("signup")}
+          >
             Sign up
           </Button>
         ) : (
-          <Button size="sm" nativeButton={false} render={<Link href="/signup" />}>
+          <Button
+            variant="outline"
+            size="sm"
+            nativeButton={false}
+            render={<Link href="/signup" />}
+          >
             Sign up
           </Button>
         )
