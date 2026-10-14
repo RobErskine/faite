@@ -2,8 +2,8 @@
 
 **The user-facing name for Faite's core mechanic:** a missed to-do rolls
 forward onto today instead of rotting on a date that's already passed, and
-after enough rolls it falls into **Overflow** — put off that long, it
-probably wasn't important. This doc is the canonical reference for how the
+after enough rolls it falls into **Overflow**, where it waits for an
+ending: do it, send it back to a list, schedule it again, or let it go. This doc is the canonical reference for how the
 loop is configured, computed, and made visible. Ticket: EI-96.
 
 The engine (`deriveColumn()`, EI-38, P1) predates this doc and was always
@@ -84,7 +84,8 @@ An overdue recurring occurrence goes **straight** to Overflow — no grace
 period, no gradual rolling (`recurrence-expand.ts`'s `forceOverflow`,
 `isOverdue = liveDate < ctx.today`). Rationale: the series comes back around
 on its own schedule, so there's nothing for the loop to gradually escalate —
-"put off that long" doesn't apply when a fresh occurrence is coming anyway.
+a slow build-up toward Overflow means nothing when a fresh occurrence is
+coming anyway.
 
 `rollEventsFor()` (below) returns `[]` for any todo with a
 `recurrenceParentId`, so every visible trace of the loop — the card marker,
@@ -146,11 +147,21 @@ no new prop plumbing through `board-column.tsx` or `use-board-data.ts`.
   so two direct `<span>` children sit side by side rather than stack —
   actual multi-line content needs one wrapping `flex flex-col` span as the
   single flex item, which stacks its own children as a column.
-- **Overflow age badge** — a loud destructive badge in `TodoMetaBadges`,
-  shown only once in Overflow: "In Overflow N days". `N` counts **eligible
-  days since the original scheduled date** (`rollsElapsed`'s count) — the
-  same clock that placed it there, not days since it entered Overflow.
-  Tooltip: "Scheduled Aug 12 · in Overflow since Aug 16".
+- **Overflow age badge** — a muted outline badge in `TodoMetaBadges`
+  (`data-overflow-age`), shown only once in Overflow: "In Overflow today" on
+  the day it crosses, then "In Overflow 1 day", "In Overflow N days". `N` is
+  **calendar days since it entered Overflow** — `overflowAgeDays(since,
+  today)` in `rollover-events.ts`, where `since` is the `overflowed` event's
+  `day`. Calendar, not eligible, days: a card keeps waiting over a weekend
+  even when `workdaysOnly` stops it rolling. Tooltip: "Scheduled Aug 12 · in
+  Overflow since Aug 16".
+  Not `RollEvent.rolls`: `rollEventsFor` stops at the `overflowed` event, so
+  its `rolls` is always `overflowAfterDays + 1` and every card read the same
+  number until EI-374.
+  Not red, either (EI-374, `docs/DESIGN.md` §1): the Overflow column's rule
+  and count carry the urgency once — and only while the column holds
+  something — so the cards in it stay quiet, in the same register as the
+  rolled-over marker.
 
 These are mutually exclusive states of the same sequence — a card never
 shows both, and shows neither for a settled or recurring todo.
@@ -222,7 +233,7 @@ Faite Loop" block).
 
 ## 8. Overdrive: the documented way out
 
-The loop's whole thesis — "put off that long, it probably wasn't important" —
+The loop's whole thesis — a to-do that keeps rolling is waiting for an ending —
 only lands if Overflow is a queue with an exit, not a pile that just grows.
 **Overdrive** (EI-97, `docs/OVERDRIVE.md`) is that exit: a full-screen,
 one-card-at-a-time overlay, launched from a button at the foot of the

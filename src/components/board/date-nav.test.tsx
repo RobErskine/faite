@@ -167,3 +167,31 @@ describe("DateNav jump buttons — page-aligned steps", () => {
     expect(onJump).toHaveBeenCalledWith(30);
   });
 });
+
+/**
+ * EI-374. On phone, Overflow is page −1 of the pager, so `anchorIndex` is −1
+ * there — and `today + anchorIndex` titled the page with yesterday's date.
+ */
+describe("DateNav on the phone's Overflow page", () => {
+  afterEach(cleanup);
+
+  it("titles the page Overflow, not yesterday", () => {
+    render(<DateNav {...baseProps} compact anchorIndex={-1} visibleCount={1} onOpenActivity={() => {}} />);
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Overflow");
+  });
+
+  it("offers Today as the way back", () => {
+    const onToday = vi.fn();
+    render(
+      <DateNav {...baseProps} compact anchorIndex={-1} visibleCount={1} onToday={onToday} onOpenActivity={() => {}} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Today" }));
+    expect(onToday).toHaveBeenCalledOnce();
+  });
+
+  it("still titles today's page with today's date", () => {
+    render(<DateNav {...baseProps} compact anchorIndex={0} visibleCount={1} onOpenActivity={() => {}} />);
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Aug 10");
+    expect(screen.queryByRole("button", { name: "Today" })).toBeNull();
+  });
+});

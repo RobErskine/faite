@@ -228,7 +228,7 @@ export function TodoCard({
       : undefined;
   const overflowInfo =
     lastRoll?.kind === "overflowed"
-      ? { from: lastRoll.from, since: lastRoll.day, rolls: lastRoll.rolls }
+      ? { from: lastRoll.from, since: lastRoll.day }
       : undefined;
 
   /**

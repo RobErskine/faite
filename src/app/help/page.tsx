@@ -45,9 +45,9 @@ export default function HelpPage() {
             Miss a to-do and it doesn&apos;t just sit on a date that&apos;s already
             passed &mdash; it rolls forward onto today. Roll it enough times
             (configurable in Settings → Faite Loop, three rolls by default)
-            and it falls into <ProseTerm>Overflow</ProseTerm> instead: the idea
-            being that something put off that long probably wasn&apos;t as
-            important as it seemed. Nothing about this is stored or computed
+            and it falls into <ProseTerm>Overflow</ProseTerm> instead, where
+            it waits for an ending: do it, send it back to a list, schedule it
+            again, or let it go. Nothing about this is stored or computed
             by a background job &mdash; it&apos;s recalculated fresh every time
             the board renders, which is why a device that was closed for a
             week catches up correctly the moment you open it again.

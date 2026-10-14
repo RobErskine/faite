@@ -529,7 +529,31 @@ describe("the Faite Loop", () => {
   it("switches to the Overflow age badge one roll past the threshold", () => {
     render(<Harness todo={todo({ scheduledDate: "2026-08-05" })} />); // 4 rolls
     expect(row().querySelector("[data-rollover-marker]")).toBeNull();
+    // It crossed over today (Aug 6, 7, 8 rolled; Aug 9 overflowed), so its
+    // age is "today", not the roll count that put it there (EI-374).
+    expect(badgeRow()?.textContent).toContain("In Overflow today");
+  });
+
+  it("ages each card from the day IT overflowed, not by a shared roll count", () => {
+    // Every overflowed card used to read "In Overflow 4 days" — the
+    // `overflowed` event's `rolls`, always overflowAfterDays + 1 (EI-374).
+    render(<Harness todo={todo({ scheduledDate: "2026-08-01" })} />); // overflowed Aug 5
     expect(badgeRow()?.textContent).toContain("In Overflow 4 days");
+    cleanup();
+    render(<Harness todo={todo({ scheduledDate: "2026-07-25" })} />); // overflowed Jul 29
+    expect(badgeRow()?.textContent).toContain("In Overflow 11 days");
+    cleanup();
+    render(<Harness todo={todo({ scheduledDate: "2026-08-04" })} />); // overflowed Aug 8
+    expect(badgeRow()?.textContent).toContain("In Overflow 1 day");
+    expect(badgeRow()?.textContent).not.toContain("1 days");
+  });
+
+  it("draws the Overflow age in muted ink, never the urgent red", () => {
+    render(<Harness todo={todo({ scheduledDate: "2026-08-01" })} />);
+    const age = row().querySelector("[data-overflow-age]");
+    expect(age).not.toBeNull();
+    expect(age?.className).toContain("text-muted-foreground");
+    expect(age?.className).not.toMatch(/\b(text|bg)-urgent/);
   });
 
   it("shows neither for a settled todo, however stale", () => {

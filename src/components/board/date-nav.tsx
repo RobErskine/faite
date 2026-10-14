@@ -108,8 +108,16 @@ export function DateNav({
 }: DateNavProps) {
   const rangeStart = addDays(today, anchorIndex);
   const rangeEnd = addDays(today, anchorIndex + Math.max(visibleCount - 1, 0));
-  const range =
-    rangeStart === rangeEnd
+  /*
+    A negative anchor only happens on phone, where Overflow is page −1 of the
+    pager (`phone-board.tsx`, `indexOffset` in `use-day-track.ts`). That page
+    is not a day, so `today + anchorIndex` would title it with YESTERDAY's
+    date — a day the board never shows (EI-374). It is titled by what it is.
+  */
+  const onOverflowPage = anchorIndex < 0;
+  const range = onOverflowPage
+    ? "Overflow"
+    : rangeStart === rangeEnd
       ? formatShortDate(rangeStart)
       : `${formatShortDate(rangeStart)} – ${formatShortDate(rangeEnd)}`;
 
@@ -132,7 +140,8 @@ export function DateNav({
         <h1 className="nums min-w-0 flex-1 truncate font-heading text-base font-semibold tracking-tight text-foreground">
           {range}
         </h1>
-        {anchorIndex > 0 && (
+        {/* Off today in either direction — Overflow (−1) included. */}
+        {anchorIndex !== 0 && (
           <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={onToday}>
             Today
           </Button>

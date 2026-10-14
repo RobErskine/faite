@@ -267,10 +267,13 @@ export function StoryPanel({
                     </DemoTooltip>
                     <span data-roll-overflow hidden className="contents">
                       <DemoTooltip label="Scheduled Wed, Sep 9 · in Overflow since Fri, Sep 11">
+                        {/* Muted, as the board draws it (EI-374). No age:
+                            this card's dates run ahead of the board's
+                            "today", so any count here would contradict it. */}
                         <span
                           className={cn(
-                            badgeVariants({ variant: "destructive" }),
-                            "num gap-1 text-2xs font-normal",
+                            badgeVariants({ variant: "outline" }),
+                            "num gap-1 text-2xs font-normal text-muted-foreground",
                           )}
                         >
                           <CornerDownRight className="size-2.5" aria-hidden />

@@ -299,7 +299,7 @@ export function DesktopBoard({
             // The urgency channel (docs/DESIGN.md §1): a rule under the title
             // and a tinted count, so the queue reads as pressure, not as a list.
             tone="urgent"
-            subtitle="Put off too long"
+            subtitle="Waiting for an ending"
             todos={filteredOverflow.todos}
             labels={labels}
             reminderPresets={data.reminderPresets}
