@@ -152,11 +152,15 @@ components:
 
 ## Overview
 
-**Creative North Star: "The Calm Instrument"**
+**Creative North Star: "The Forgiving Page"**
 
-The brief (docs/DESIGN.md, 2026-09-03): Notion's utility, MyMind's calm design and whimsy, the reliability of a Casio F-91W. Snappy and native. The board is an achromatic instrument: white paper, near-black ink, and color only where a color has a job. The hand-drawn cursive F stays black and white; the app's one pop of color is a low-chroma spectrum, used the way the Dia mark uses it. Nothing on the board reads as generic shadcn.
+A page that keeps your whole week in front of you and never holds a missed date against you. It should feel **calm and plain, exact and fast, kind and forgiving** (owner, 2026-10-14). The brief behind it (docs/DESIGN.md, 2026-09-03): Notion's utility, MyMind's calm design and whimsy, the reliability of a Casio F-91W. Snappy and native.
+
+Paper and ink: an achromatic page, near-black ink, and color only where a color has a job. Forgiveness is carried by form, not by a message: a rolled card looks like any other card apart from a muted arrow, Won't do dims and is never struck through, and red appears only when a verdict is due. The hand-drawn cursive F stays black and white; the one pop of color is a low-chroma spectrum, used the way the Dia mark uses it.
 
 Density comes from structure, not decoration. Columns are air, today is the one card, priority is a mark rather than a chip, and every color answers "what does this mean?" with exactly one channel (docs/DESIGN.md §1). Motion is short and lands: a thing is where it belongs inside 260ms, and the state is correct with the motion removed (§4).
+
+**Never looks like** (confirmed visual rejections): a generic shadcn/SaaS app (stock components, the default ring trio, gray cards on gray); a gamified habit app (streak flames, badges, scores, celebration as the default reward); a corporate project tool (assignees, status swimlanes, toolbar walls, enterprise blue).
 
 **Key Characteristics:**
 - Achromatic base (`oklch(L 0 0)` everywhere except the named channels).
@@ -165,6 +169,8 @@ Density comes from structure, not decoration. Columns are air, today is the one 
 - Serif headings over a humanist sans (Editorial pairing); tabular numerals in mono.
 - Whitespace separates columns; no borders, no dividers.
 - Springs on `transform` only; arrival under `--dur-slow`.
+
+**The No-Shame Rule.** A missed scheduled date is ordinary. A rolled to-do gets a muted `CornerDownRight` marker and a tooltip ("Rolled from Sep 5 - 3 days"), never red, a strike, or a dim. Red waits for Overflow or a missed deadline, where a verdict is due (docs/DESIGN.md brief, §1).
 
 **The Arrival Budget Rule.** Arrival is under 260ms (`--dur-slow`). A spring's settle tail may run to ~400ms, on `transform` only. Confetti is the one exception, and opt-in. Scroll-driven motion on `/` is exempt because it has no duration (docs/DESIGN.md §4, §6).
 
@@ -298,6 +304,7 @@ Quiet and tactile; the board has no loud fills.
 - **Do** prefer a color or opacity change to a layout change, and `transform` to anything that reflows (§4).
 - **Do** read docs/DRAG-AND-DROP.md §6 and TODO-ITEM-DESIGN.md §10 before touching a row (§5).
 - **Do** express every new decision as a token or a named rule, so the upcoming SwiftUI app can port it.
+- **Do** keep a rolled card looking like any other card; the muted arrow is the whole signal (The No-Shame Rule).
 
 ### Don't:
 - **Don't** add a second red anywhere in the app (§1).
@@ -310,4 +317,7 @@ Quiet and tactile; the board has no loud fills.
 - **Don't** fill an overlay footer with `bg-muted` (§3).
 - **Don't** let an edge-anchored surface overshoot (§4).
 - **Don't** add streaks, counters, or progress gamification (§4; docs/RESEARCH.md §2.9, §4).
+- **Don't** let the board read as a generic shadcn/SaaS app: no stock ring trio, no gray card on gray, no default component left unstyled.
+- **Don't** borrow from habit apps: no streak flames, badges, or scores, and no celebration unless the user opted in.
+- **Don't** borrow from corporate project tools: no assignee avatars, status swimlanes, toolbar walls, or enterprise blue.
 - **Don't** add a brand color beyond the spectrum, a hero gradient that covers area, or a third font family on the marketing site (§6).
