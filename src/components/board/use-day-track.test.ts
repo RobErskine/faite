@@ -5,9 +5,14 @@ import {
   canJumpBack,
   canJumpForward,
   clampJumpTarget,
+  anchorIndexAt,
+  columnStart,
   computeAnchorIndex,
   computeVisibleCount,
+  lastVisibleIndex,
+  uniformGeometry,
   useDayTrack,
+  type TrackGeometry,
 } from "./use-day-track";
 
 describe("computeAnchorIndex", () => {
@@ -76,6 +81,71 @@ describe("canJumpForward", () => {
   it("is false once the jump would reach or pass the cap", () => {
     expect(canJumpForward(173, 7, 180)).toBe(false);
     expect(canJumpForward(179, 1, 180)).toBe(false);
+  });
+});
+
+/**
+ * EI-384: a wide Today. The real 1440×900 board — a 1174px track, 12px gaps,
+ * every day at the 168px floor and Today at 1.5x (252px).
+ */
+describe("track geometry with a wide Today", () => {
+  const LAPTOP: TrackGeometry = { gap: 12, today: 252, near: 168, nearCount: 6, far: 168 };
+  const TRACK = 1174;
+
+  it("reduces to plain i * pitch on a uniform track", () => {
+    const g = uniformGeometry(168, 12);
+    for (const i of [-1, 0, 1, 5, 40]) expect(columnStart(i, g)).toBe(i * 180);
+    for (const s of [0, 89, 91, 180 * 3 + 80, 180 * 3 + 100]) {
+      expect(anchorIndexAt(s, g)).toBe(computeAnchorIndex(s, 180));
+    }
+  });
+
+  it("starts each day after Today's extra width", () => {
+    expect(columnStart(0, LAPTOP)).toBe(0);
+    expect(columnStart(1, LAPTOP)).toBe(264);
+    expect(columnStart(7, LAPTOP)).toBe(264 + 6 * 180);
+  });
+
+  it("anchors on the column whose start is nearest, Today included", () => {
+    expect(anchorIndexAt(0, LAPTOP)).toBe(0);
+    expect(anchorIndexAt(131, LAPTOP)).toBe(0);
+    expect(anchorIndexAt(133, LAPTOP)).toBe(1);
+    expect(anchorIndexAt(columnStart(7, LAPTOP), LAPTOP)).toBe(7);
+    expect(anchorIndexAt(columnStart(7, LAPTOP) + 80, LAPTOP)).toBe(7);
+  });
+
+  it("keeps the phone's Overflow page at -1", () => {
+    // `dayScroll` subtracts one far pitch on phone, so the Overflow page is
+    // a negative position.
+    expect(anchorIndexAt(-180, uniformGeometry(168, 12))).toBe(-1);
+  });
+
+  /*
+    THE RANGE TITLE (EI-384). Today + five days fill 1164 of 1174px; the 10px
+    left of Tuesday is a scroll hint, not a day, so the title is six days.
+  */
+  it("titles Today's page by what is on it", () => {
+    expect(lastVisibleIndex(0, TRACK, LAPTOP)).toBe(5);
+  });
+
+  it("titles a later page by every column at least a third visible", () => {
+    // Day 7 at the left edge: six full columns plus 94px (56%) of the seventh.
+    expect(lastVisibleIndex(columnStart(7, LAPTOP), TRACK, LAPTOP)).toBe(13);
+  });
+
+  /*
+    The critique's "Oct 14 – Oct 19 while Oct 20 is visible": the old
+    `round(width / pitch)` dropped a column a little under half visible.
+  */
+  it("counts a column that is just under half visible", () => {
+    const g = uniformGeometry(168, 12);
+    const width = 6 * 180 + 80; // the seventh column shows 80px, 48%
+    expect(computeVisibleCount(width, 180)).toBe(6);
+    expect(lastVisibleIndex(0, width, g)).toBe(6);
+  });
+
+  it("never ends before the anchor", () => {
+    expect(lastVisibleIndex(0, 50, LAPTOP)).toBe(0);
   });
 });
 
@@ -244,6 +314,33 @@ describe("useDayTrack", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  /**
+   * EI-384: with a wide Today the jump target is no longer `i * pitch` —
+   * measured from the columns themselves, Today first, the last one far.
+   */
+  it("jumps past a wide Today to the day's real start", () => {
+    const track = document.createElement("div");
+    document.body.appendChild(track);
+    const widths = [252, 168, 168, 168, 168, 168, 168, 168, 168, 168];
+    for (const width of widths) {
+      const column = document.createElement("div");
+      column.setAttribute("data-day-column", "");
+      column.getBoundingClientRect = () => ({ width }) as unknown as DOMRect;
+      track.appendChild(column);
+    }
+    track.style.columnGap = "12px";
+    const scrollTo = vi.fn();
+    track.scrollTo = scrollTo as unknown as typeof track.scrollTo;
+
+    const { result } = renderHook(() =>
+      useDayTrack({ trackRef: { current: track }, cap: 365, onExtend: vi.fn(), leadColumns: 6 }),
+    );
+    act(() => result.current.jumpToIndex(7));
+    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ left: 264 + 6 * 180 }));
+    act(() => result.current.jumpToIndex(0));
+    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ left: 0 }));
   });
 
   it("does not re-anchor on the initial pitchKey — there is no prior anchor to preserve", () => {

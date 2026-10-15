@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { effectiveListColor } from "@/lib/colors";
 import { NAV_LOAD_MORE, navKeyOf } from "@/lib/column-nav";
 import { dayColumnId } from "@/lib/board";
-import { dayRegionLabel, formatDay, formatShortDate, OVERFLOW } from "@/lib/scheduling";
+import { dayRegionLabel, daysBetween, formatDay, formatShortDate, OVERFLOW } from "@/lib/scheduling";
 import { OVERDRIVE_MIN_TODOS } from "@/lib/overdrive";
 import { LOCAL_OWNER_ID } from "@/lib/store/repositories";
 import { mutateSettings } from "@/lib/store/mutate";
@@ -29,6 +29,7 @@ import { SplitStrip } from "./split-strip";
 import { TabStrip } from "./tab-strip";
 import { WeekendColumn } from "./weekend-column";
 import { SkipLinks } from "./skip-links";
+import { DAY_COLUMN_WIDTH_CLASS, dayColumnWidth, dayTrackStyle } from "./day-track-widths";
 import type { BoardData } from "./use-board-data";
 import type { BoardUiState } from "./use-board-ui-state";
 import type { useBoardActions } from "./use-board-actions";
@@ -71,6 +72,14 @@ interface DesktopBoardProps {
   dayTrackRef: React.RefObject<HTMLDivElement | null>;
   anchorIndex: number;
   visibleCount: number;
+  /** The last day index actually shown — the range title's end. From useDayTrack. */
+  visibleThrough: number;
+  /**
+   * Today gets `--column-today-ratio` of its neighbors' width (EI-384). True
+   * on `desktop` only — `tablet` renders this same component and stays
+   * uniform (docs/MOBILE.md).
+   */
+  wideToday: boolean;
   canJumpBack: (delta: number) => boolean;
   canJumpForward: (delta: number) => boolean;
   jumpBy: (delta: number) => void;
@@ -98,6 +107,8 @@ export function DesktopBoard({
   dayTrackRef,
   anchorIndex,
   visibleCount,
+  visibleThrough,
+  wideToday,
   canJumpBack,
   canJumpForward,
   jumpBy,
@@ -180,17 +191,14 @@ export function DesktopBoard({
     used to be), so choosing 3 widens each column rather than merely widening
     a floor that `renderedDays` already exceeds. `max()` with the shared
     floor keeps a narrow viewport scrolling instead of squeezing columns into
-    slivers, same as the default. Min == max (both set to the same value) so
-    columns are rigid, which is what lets `pageAlignedJump` in date-nav.tsx
-    land exactly on a page boundary. Keep the constant below in step with the
-    track's `gap-3` class — `measurePitch` (use-day-track.ts) reads the real
-    computed gap, but this calc cannot.
+    slivers, same as the default. Columns are rigid (min == max), which is
+    what lets `pageAlignedJump` in date-nav.tsx land exactly on a page
+    boundary. On desktop Today takes `--column-today-ratio` of its neighbors
+    (EI-384) — see day-track-widths.ts for the three widths and why.
+    `DAY_GAP_PX` there must stay in step with the track's `gap-3` class —
+    `useDayTrack` reads the real computed gap, but this calc cannot.
   */
-  const DAY_GAP_PX = 12;
-  const dayTrackStyle = {
-    "--column-min": `max(var(--column-floor), calc((100% - ${(visibleDays - 1) * DAY_GAP_PX}px) / ${visibleDays}))`,
-    "--column-max": `max(var(--column-floor), calc((100% - ${(visibleDays - 1) * DAY_GAP_PX}px) / ${visibleDays}))`,
-  } as CSSProperties;
+  const trackStyle = dayTrackStyle(visibleDays, wideToday);
   // Resizing mid-drag would invalidate every droppable rect dnd-kit cached at
   // drag start (§4.2 of DRAG-AND-DROP.md) — same reasoning as `rejectsDrop`.
   const railDisabled = !!activeTodo || !!activeList;
@@ -270,6 +278,7 @@ export function DesktopBoard({
         today={ctx.today}
         anchorIndex={anchorIndex}
         visibleCount={visibleCount}
+        visibleThrough={visibleThrough}
         canJumpBack={canJumpBack}
         canJumpForward={canJumpForward}
         onJump={jumpBy}
@@ -410,7 +419,7 @@ export function DesktopBoard({
           <div
             ref={dayTrackRef}
             className="column-track flex flex-1 gap-3"
-            style={dayTrackStyle}
+            style={trackStyle}
           >
             {trackSlots.map((slot) => {
               if (slot.kind === "weekend") {
@@ -520,6 +529,11 @@ export function DesktopBoard({
                     // its own inset hairline). Every other day is open air on
                     // the page, separated by the track's gap alone.
                     isToday && "rounded-lg shadow-card",
+                    // EI-384: Today wider, the rest of its page a little
+                    // narrower, later pages unchanged — day-track-widths.ts.
+                    DAY_COLUMN_WIDTH_CLASS[
+                      dayColumnWidth(daysBetween(ctx.today, column.day), visibleDays, wideToday)
+                    ],
                   )}
                   onToggle={handleToggle}
                   onOpen={(todo) => openTodoSheet(todo.id)}

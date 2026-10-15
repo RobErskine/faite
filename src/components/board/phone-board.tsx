@@ -49,6 +49,7 @@ interface PhoneBoardProps {
   dayTrackRef: React.RefObject<HTMLDivElement | null>;
   anchorIndex: number;
   visibleCount: number;
+  visibleThrough: number;
   canJumpBack: (delta: number) => boolean;
   canJumpForward: (delta: number) => boolean;
   jumpBy: (delta: number) => void;
@@ -66,6 +67,7 @@ export function PhoneBoard({
   dayTrackRef,
   anchorIndex,
   visibleCount,
+  visibleThrough,
   canJumpBack,
   canJumpForward,
   jumpBy,
@@ -212,6 +214,7 @@ export function PhoneBoard({
           today={ctx.today}
           anchorIndex={anchorIndex}
           visibleCount={visibleCount}
+          visibleThrough={visibleThrough}
           canJumpBack={canJumpBack}
           canJumpForward={canJumpForward}
           onJump={jumpBy}

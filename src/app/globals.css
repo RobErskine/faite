@@ -432,13 +432,14 @@
     wide display stretch into slabs where a five-word to-do occupies an inch of
     a foot of width, and the eye has to travel the whole span to read a row.
 
-    168px is not arbitrary: it is the largest floor at which the default view —
-    a seven-day week — still fits a 1440pt laptop without scrolling. Any wider
-    and the most common window size would open on a half-clipped Sunday, which
-    reads as a bug rather than as an affordance. Overflow and Backlog are no
-    longer part of this arithmetic: they render as fixed-width siblings outside
-    the scrolling track (`pinned` on BoardColumn), so they stay reachable
-    however far the track scrolls and do not count toward "columns that fit".
+    168px was chosen as the largest floor at which a seven-day week fit a
+    1440pt laptop without scrolling. That stopped being true once Overflow
+    became a pinned rail: it renders as a fixed-width sibling outside the
+    scrolling track (`pinned` on BoardColumn), so it stays reachable however
+    far the track scrolls — but it takes 242px of the window doing so. At
+    1440 the track is 1174px and seven floors plus gaps need 1248, so a week
+    already scrolled (measured, EI-384). The floor stays: it is the narrowest
+    column a to-do title reads in.
 
     Named separately from --column-min: the day track (desktop-board.tsx)
     overrides --column-min/--column-max inline per `visibleDays` so N columns
@@ -449,6 +450,20 @@
   --column-floor: 10.5rem;
   --column-min: var(--column-floor);
   --column-max: 18rem;
+
+  /*
+    Today is wider than the other days, on desktop only (EI-384). Today is
+    where rolled cards, "Schedule for Today" and finished work all land, so it
+    is the busiest column on the board — and at one floor-width it showed less
+    than half of 13 to-dos beside near-empty days.
+
+    A ratio, not a width: Today is this many times its neighbor, whatever the
+    neighbor is. The day track (day-track-widths.ts) derives `--column-today`
+    and `--column-near` from it per `visibleDays`, so Today's extra comes out
+    of the other days on its own page and a jumped-ahead page is N equal
+    columns. Unitless, so it ports as-is (a SwiftUI frame multiplier).
+  */
+  --column-today-ratio: 1.5;
 
   /*
     Planning columns run wider than day columns. A day column holds a handful

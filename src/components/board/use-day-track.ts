@@ -7,11 +7,14 @@ import { prefersReducedMotion } from "@/lib/reduced-motion";
  * Pure scroll math for the day track, exported separately so it is testable
  * without a DOM — see use-day-track.test.ts.
  *
- * All day columns are the same width by construction (BoardColumn gives every
- * unpinned day column the same `min-w`/`max-w`), so "which day sits at the
- * left edge" is exact integer division, not a measurement of any one column.
+ * Day columns are rigid (min-w == max-w), and come in at most three widths
+ * (EI-384, day-track-widths.ts): Today, the "near" days sharing Today's first
+ * page, and every "far" day after that. `TrackGeometry` describes those three,
+ * so "which day sits at the left edge" is still closed-form arithmetic rather
+ * than a walk over the DOM. With no wide Today (tablet, phone, or a test stub)
+ * all three are equal and every formula reduces to the old `i * pitch`.
  *
- * KNOWN APPROXIMATION, and the reason `measurePitch` below hunts for a
+ * KNOWN APPROXIMATION, and the reason `measureGeometry` below hunts for a
  * `[data-day-column]` rather than taking the first child: with weekends
  * collapsed the track also holds 40px strips, and a row of mixed widths makes
  * `scrollLeft -> day index` genuinely nonlinear. Measuring a real day column
@@ -26,6 +29,94 @@ import { prefersReducedMotion } from "@/lib/reduced-motion";
 export function computeAnchorIndex(scrollLeft: number, pitch: number): number {
   if (pitch <= 0) return 0;
   return Math.round(scrollLeft / pitch);
+}
+
+/**
+ * The day track's column widths, measured. Indices are days from today:
+ * 0 is Today, 1..`nearCount` are near, everything after is far. Negative
+ * indices (the phone pager's Overflow page) are far-pitched slots.
+ */
+export interface TrackGeometry {
+  gap: number;
+  today: number;
+  near: number;
+  nearCount: number;
+  far: number;
+}
+
+/** Every column the same width — the shape of every track before EI-384. */
+export function uniformGeometry(width: number, gap: number): TrackGeometry {
+  return { gap, today: width, near: width, nearCount: 0, far: width };
+}
+
+/** Where day `index`'s column starts, in scroll coordinates. */
+export function columnStart(index: number, g: TrackGeometry): number {
+  const farPitch = g.far + g.gap;
+  if (index <= 0) return index * farPitch;
+  const todayPitch = g.today + g.gap;
+  const nearPitch = g.near + g.gap;
+  if (index <= g.nearCount) return todayPitch + (index - 1) * nearPitch;
+  return todayPitch + g.nearCount * nearPitch + (index - 1 - g.nearCount) * farPitch;
+}
+
+function columnWidth(index: number, g: TrackGeometry): number {
+  if (index === 0) return g.today;
+  return index > 0 && index <= g.nearCount ? g.near : g.far;
+}
+
+/**
+ * The day whose column starts nearest `scrollLeft` — `computeAnchorIndex`
+ * generalized to mixed widths, and identical to it for a uniform track.
+ */
+export function anchorIndexAt(scrollLeft: number, g: TrackGeometry): number {
+  const farPitch = g.far + g.gap;
+  if (farPitch <= 0) return 0;
+  const todayPitch = g.today + g.gap;
+  if (scrollLeft < todayPitch / 2) {
+    // Today, or (phone) the Overflow page before it.
+    return scrollLeft <= 0 ? Math.round(scrollLeft / farPitch) : 0;
+  }
+  const farStart = columnStart(g.nearCount + 1, g);
+  if (scrollLeft < farStart) {
+    const nearPitch = g.near + g.gap;
+    // Past Today's midpoint, day 1's start is the nearest one.
+    return Math.max(1, 1 + Math.round((scrollLeft - todayPitch) / nearPitch));
+  }
+  return Math.max(1, g.nearCount + 1 + Math.round((scrollLeft - farStart) / farPitch));
+}
+
+/**
+ * A column at least this much on screen counts as shown. A third of a
+ * 168px column is ~56px — enough to read its weekday — while the 10px sliver
+ * a wide Today leaves of the next page is a scroll hint, not a day.
+ */
+export const MIN_VISIBLE_FRACTION = 1 / 3;
+
+/**
+ * The last day actually shown in a viewport `trackWidth` wide at
+ * `scrollLeft` — the range title's end (EI-384).
+ *
+ * It used to be `anchor + round(trackWidth / pitch) - 1`, which drops a
+ * column that is a little under half visible: "Oct 14 – Oct 19" with Oct 20
+ * plainly on screen. Never less than the anchor.
+ */
+export function lastVisibleIndex(
+  scrollLeft: number,
+  trackWidth: number,
+  g: TrackGeometry,
+): number {
+  const anchor = anchorIndexAt(scrollLeft, g);
+  if (g.far + g.gap <= 0) return anchor;
+  const viewEnd = scrollLeft + trackWidth;
+  let last = anchor;
+  // Bounded: a track never shows more than a few dozen columns.
+  for (let i = anchor + 1; i < anchor + 400; i++) {
+    const start = columnStart(i, g);
+    if (start >= viewEnd) break;
+    const width = columnWidth(i, g);
+    if (Math.min(start + width, viewEnd) - start >= width * MIN_VISIBLE_FRACTION) last = i;
+  }
+  return last;
 }
 
 /** How many day columns fit in the visible track width. */
@@ -79,7 +170,7 @@ interface UseDayTrackOptions {
    * False while the calendar half is collapsed (see split-strip.tsx) — the
    * track has no layout to scroll yet. A `jumpToIndex` request made in that
    * state is not dropped: the layout effect below already bails without
-   * recording the request's `seq` whenever `measurePitch` reads 0, precisely
+   * recording the request's `seq` whenever `measureGeometry` reads no width, precisely
    * so a later run can still serve it. What's missing without this flag is a
    * later RUN — a ref appearing when the caller expands the half is not
    * something React re-renders for on its own, so this flag is what gives
@@ -114,13 +205,24 @@ interface UseDayTrackOptions {
    * label and jump buttons, which both read `visibleCount`, don't go stale.
    */
   pitchKey?: unknown;
+  /**
+   * How many days after Today share its first page at the "near" width
+   * (EI-384): `visibleDays - 1` on desktop, where Today is wide, else 0.
+   * Only matters when near and far widths actually differ.
+   */
+  leadColumns?: number;
 }
 
 interface UseDayTrackResult {
   /** Index of the day column at the track's left edge (0 = today). */
   anchorIndex: number;
-  /** How many day columns currently fit in the track's visible width. */
+  /**
+   * How many far-width day columns fit in the track — the PAGE size the jump
+   * buttons quantize to, independent of where the track is scrolled.
+   */
   visibleCount: number;
+  /** The last day index actually shown right now — see `lastVisibleIndex`. */
+  visibleThrough: number;
   canJumpBack: (delta: number) => boolean;
   canJumpForward: (delta: number) => boolean;
   /** Scrolls so the day `delta` days from the anchor sits at the left edge, clamped to `cap`. */
@@ -197,40 +299,57 @@ export function useDayTrack({
   trackReady = true,
   indexOffset = 0,
   pitchKey,
+  leadColumns = 0,
 }: UseDayTrackOptions): UseDayTrackResult {
   const [anchorIndex, setAnchorIndex] = useState(0);
   const [visibleCount, setVisibleCount] = useState(1);
+  const [visibleThrough, setVisibleThrough] = useState(0);
   const [jump, setJump] = useState<JumpRequest | null>(null);
   /**
    * The last `seq` actually scrolled.
    *
    * Makes the effect idempotent per request, which matters because nothing clears
    * `jump` any more: without this, any future re-run of the effect for a reason
-   * other than a new request — a changed `measurePitch` identity, say — would
+   * other than a new request — a changed `measureGeometry` identity, say — would
    * silently re-scroll to a stale target. A ref, not state, so recording the work
    * does not itself schedule a render.
    */
   const handledSeq = useRef(0);
 
-  const measurePitch = useCallback(() => {
+  const measureGeometry = useCallback((): TrackGeometry | null => {
     const track = trackRef.current;
-    // A real day column, never merely the first child: that may be a collapsed
+    if (!track) return null;
+    // Real day columns, never merely the first child: that may be a collapsed
     // weekend strip, whose 40px would deflate the pitch and send every jump
     // several days short. Falls back to the first child so a track that has
     // only ever held uniform columns behaves exactly as it always did.
-    const first = (track?.querySelector<HTMLElement>("[data-day-column]") ??
-      track?.firstElementChild) as HTMLElement | null | undefined;
-    if (!track || !first) return 0;
+    const columns = track.querySelectorAll<HTMLElement>("[data-day-column]");
+    const first = columns[0] ?? (track.firstElementChild as HTMLElement | null);
+    if (!first) return null;
     /*
       `columnGap` computes to the keyword `normal` on a flex container with no
       gap, and `parseFloat("normal")` is NaN — which would poison the pitch and
       silently disable every jump button, since `pitch > 0` is false for NaN. The
-      track carries `gap-px` today so this cannot fire, but the failure would be
+      track carries `gap-3` today so this cannot fire, but the failure would be
       invisible and the cause three steps away from the symptom.
     */
-    const gap = parseFloat(getComputedStyle(track).columnGap);
-    return first.getBoundingClientRect().width + (Number.isFinite(gap) ? gap : 0);
-  }, [trackRef]);
+    const rawGap = parseFloat(getComputedStyle(track).columnGap);
+    const gap = Number.isFinite(rawGap) ? rawGap : 0;
+    const widthOf = (el: HTMLElement) => el.getBoundingClientRect().width;
+    const today = widthOf(first);
+    // The last rendered day is always past Today's page (the track renders
+    // 30+ days), so it carries the far width; the second carries the near one.
+    const far = columns.length > 1 ? widthOf(columns[columns.length - 1]) : today;
+    const near = leadColumns > 0 && columns.length > 1 ? widthOf(columns[1]) : far;
+    if (today <= 0 && far <= 0) return null;
+    return { gap, today, near, nearCount: leadColumns > 0 ? leadColumns : 0, far };
+  }, [trackRef, leadColumns]);
+
+  /** Scroll position in day-index space: the phone's leading pages removed. */
+  const dayScroll = useCallback(
+    (scrollLeft: number, g: TrackGeometry) => scrollLeft - indexOffset * (g.far + g.gap),
+    [indexOffset],
+  );
 
   useEffect(() => {
     return whenTrackReady(trackRef, (track) => {
@@ -239,10 +358,11 @@ export function useDayTrack({
         if (raf) return;
         raf = requestAnimationFrame(() => {
           raf = 0;
-          const pitch = measurePitch();
-          if (pitch > 0) {
-            setAnchorIndex(computeAnchorIndex(track.scrollLeft, pitch) - indexOffset);
-          }
+          const g = measureGeometry();
+          if (!g || g.far + g.gap <= 0) return;
+          const at = dayScroll(track.scrollLeft, g);
+          setAnchorIndex(anchorIndexAt(at, g));
+          setVisibleThrough(lastVisibleIndex(at, track.clientWidth, g));
         });
       };
       track.addEventListener("scroll", onScroll, { passive: true });
@@ -251,7 +371,7 @@ export function useDayTrack({
         if (raf) cancelAnimationFrame(raf);
       };
     });
-  }, [trackRef, measurePitch, indexOffset]);
+  }, [trackRef, measureGeometry, dayScroll]);
 
   /**
    * Recomputes `visibleCount` whenever the track's own width changes, OR
@@ -262,14 +382,37 @@ export function useDayTrack({
   useEffect(() => {
     if (typeof ResizeObserver === "undefined") return;
     return whenTrackReady(trackRef, (track) => {
-      const observer = new ResizeObserver(() => {
-        const pitch = measurePitch();
-        if (pitch > 0) setVisibleCount(computeVisibleCount(track.clientWidth, pitch));
-      });
+      const update = () => {
+        const g = measureGeometry();
+        if (!g || g.far + g.gap <= 0) return;
+        setVisibleCount(computeVisibleCount(track.clientWidth, g.far + g.gap));
+        setVisibleThrough(lastVisibleIndex(dayScroll(track.scrollLeft, g), track.clientWidth, g));
+      };
+      const observer = new ResizeObserver(update);
       observer.observe(track);
-      return () => observer.disconnect();
+      /*
+        Columns carry `transition-all`, so a width change (the day-count
+        toggle, a rail resize) is still animating when the observer fires and
+        the measurement above reads the old widths. Re-measuring once the
+        transition lands keeps the range title honest; coalesced to a frame
+        because every animated property ends separately.
+      */
+      let raf = 0;
+      const onTransitionEnd = () => {
+        if (raf) return;
+        raf = requestAnimationFrame(() => {
+          raf = 0;
+          update();
+        });
+      };
+      track.addEventListener("transitionend", onTransitionEnd);
+      return () => {
+        observer.disconnect();
+        track.removeEventListener("transitionend", onTransitionEnd);
+        if (raf) cancelAnimationFrame(raf);
+      };
     });
-  }, [trackRef, measurePitch, pitchKey]);
+  }, [trackRef, measureGeometry, dayScroll, pitchKey]);
 
   /**
    * Keeps the current day at the left edge when `pitchKey` changes.
@@ -307,15 +450,15 @@ export function useDayTrack({
   useLayoutEffect(() => {
     if (!jump || jump.seq === handledSeq.current) return;
     const track = trackRef.current;
-    const pitch = measurePitch();
+    const g = measureGeometry();
     // Bail WITHOUT recording the seq: a pitch of 0 means the columns have not
     // been laid out yet, so this request has not been served and a later run
     // should still get to serve it.
-    if (!track || pitch <= 0) return;
+    if (!track || !g || g.far + g.gap <= 0) return;
 
     handledSeq.current = jump.seq;
     track.scrollTo({
-      left: (jump.target + indexOffset) * pitch,
+      left: columnStart(jump.target, g) + indexOffset * (g.far + g.gap),
       behavior: scrollBehaviorFor(jump.target - anchorIndex),
     });
     // `anchorIndex` deliberately excluded: it changes as a RESULT of this
@@ -324,7 +467,7 @@ export function useDayTrack({
     // `trackReady` included though this branch never reads it: it flipping
     // true is exactly the "later run" the pitch<=0 bail above is waiting for.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jump, trackRef, measurePitch, trackReady, indexOffset]);
+  }, [jump, trackRef, measureGeometry, trackReady, indexOffset]);
 
   /**
    * The one place that actually moves the track: floors at day 0, extends the
@@ -377,9 +520,9 @@ export function useDayTrack({
     return whenTrackReady(trackRef, (track) => {
       let raf = 0;
       const tryAlign = () => {
-        const pitch = measurePitch();
-        if (pitch > 0) {
-          track.scrollTo({ left: indexOffset * pitch, behavior: "auto" });
+        const g = measureGeometry();
+        if (g && g.far + g.gap > 0) {
+          track.scrollTo({ left: indexOffset * (g.far + g.gap), behavior: "auto" });
           return;
         }
         raf = requestAnimationFrame(tryAlign);
@@ -398,6 +541,9 @@ export function useDayTrack({
   return {
     anchorIndex,
     visibleCount,
+    // Never before the anchor: before the first scroll/resize measurement it
+    // is still its initial 0.
+    visibleThrough: Math.max(visibleThrough, anchorIndex),
     canJumpBack: (delta: number) => canJumpBack(anchorIndex, delta),
     canJumpForward: (delta: number) => canJumpForward(anchorIndex, delta, cap),
     jumpBy,

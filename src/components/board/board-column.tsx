@@ -324,8 +324,9 @@ interface BoardColumnProps {
    * Tags this as a full-width column in the scrolling day track, via
    * `data-day-column`.
    *
-   * Read only by `measurePitch` in use-day-track.ts, which needs one column of
-   * the track's REPEATING width to turn `scrollLeft` into a day index. It used
+   * Read only by `measureGeometry` in use-day-track.ts, which measures the day
+   * columns' widths (Today, its page, the rest — EI-384) to turn `scrollLeft`
+   * into a day index. It used
    * to take the track's first child, which stopped being safe once a collapsed
    * weekend strip could sort first and hand it 40px instead of 168 — every
    * jump would then land several days short of where it said it would.

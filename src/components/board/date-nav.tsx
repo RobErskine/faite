@@ -43,8 +43,18 @@ interface DateNavProps {
   today: CivilDate;
   /** Day index at the track's left edge, from useDayTrack. */
   anchorIndex: number;
-  /** How many day columns are currently in view, from useDayTrack. */
+  /**
+   * The page size the jump buttons quantize to (far-width columns that fit),
+   * from useDayTrack. Not the title's span — see `visibleThrough`.
+   */
   visibleCount: number;
+  /**
+   * The last day index actually on screen, from useDayTrack — the range
+   * title's end. Separate from `visibleCount` since EI-384: with a wide Today
+   * the first page shows fewer days than a later one, and a column a little
+   * under half visible still shows its date.
+   */
+  visibleThrough: number;
   canJumpBack: (delta: number) => boolean;
   canJumpForward: (delta: number) => boolean;
   onJump: (delta: number) => void;
@@ -109,6 +119,7 @@ export function DateNav({
   today,
   anchorIndex,
   visibleCount,
+  visibleThrough,
   canJumpBack,
   canJumpForward,
   onJump,
@@ -120,7 +131,7 @@ export function DateNav({
   overflowPeek,
 }: DateNavProps) {
   const rangeStart = addDays(today, anchorIndex);
-  const rangeEnd = addDays(today, anchorIndex + Math.max(visibleCount - 1, 0));
+  const rangeEnd = addDays(today, Math.max(visibleThrough, anchorIndex));
   /*
     A negative anchor only happens on phone, where Overflow is page −1 of the
     pager (`phone-board.tsx`, `indexOffset` in `use-day-track.ts`). That page

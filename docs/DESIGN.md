@@ -116,6 +116,20 @@ intake. The titles of days that are not today sit in `--muted-foreground`;
 today's and Overflow's keep full ink. Day eyebrows use the short date with
 no year ("Sep 5"); the full date lives in the day sheet and aria labels.
 
+**Today is also the board's widest day** (desktop only, EI-384). Day columns
+are rigid and come in three widths, all floored at `--column-floor` (168px):
+Today is `--column-today-ratio` (**1.5**) times its neighbor; the other days
+on Today's first page share what is left (`--column-near`), so Today plus
+them fill the track exactly as N equal columns used to; every later day keeps
+the old equal width (`--column-min`/`--column-max`), so a page jumped ahead is
+N equal columns. When the floor binds — a seven-day week on any window under
+~1600px — near and far are both 168px and Today (252px) is the only column
+that changes. Measured at 1440×900 (track 1174px): Today plus five days, and
+10px of the sixth. A seven-day week did not fit at 1440 before this either
+(seven floors need 1248px since Overflow became a pinned 242px rail). Tablet
+and phone keep equal columns. The range title ends at the last day at least a
+third on screen. Arithmetic: `src/components/board/day-track-widths.ts`.
+
 Overflow and Backlog are the two exceptions to "columns are air": both carry
 `bg-surface-0` even though neither is `emphasis`. Both are resizable rails
 (`RailHandle`), and with no fill at all their whole region — not just the
@@ -312,3 +326,4 @@ streak, score, or percentage anywhere in it.
 | 2026-10-14 | **Quiet ink that must pass is `text-foreground/60`, and every control clears 24px** (EI-378). Tab counts, the header search label and avatar initials moved off `text-muted-foreground` (or its alphas); grips and small icon controls moved off `/30`–`/70` to full `text-muted-foreground`. Small targets grow by an `::after` extender or a `py-1 -my-1` pair, never by visual size; header icons extend to 44px under `pointer: coarse`. The quick-add takes `focus-ring`. Overflow's red count is `text-xs` in `--urgent-foreground`. | Measured on production: tab counts 2.3:1, the sunken search label 4.16:1, initials 4.35:1, grips 1.47:1; `--urgent` text on its own 10% tint, 3.83:1. Muted ink is 4.73:1 on the page but drops under 4.5:1 on any of the board's tinted surfaces (sunken, hover wash, a tab's 12% tint); foreground at 60% clears all of them in both themes and reads as the same gray. A target grown by padding-with-negative-margin or a pseudo-element changes no row height, so density holds. |
 | 2026-10-14 | **Small and thin red passes contrast** (EI-382). The missed-deadline and `×N` badges and the N-due banner take `--urgent-foreground` at `text-xs`, like Overflow's count; the `destructive` badge variant itself now inks in `--urgent-foreground`. Overflow's rule is `border-urgent/70`. Under Hyperlegible `text-2xs` is 11px. The to-do checkbox's target is a full 24px wide (`after:w-6`). | Measured on production: `--urgent` at 10px on its tint, 3.97:1 (3.46:1 under the hover wash); the rule at /40, 2.09:1 light and 1.98:1 dark on `surface-0`, under the 3:1 non-text floor. Now the red text is 8.76:1 light and 7.50:1 dark at worst, and the rule 3.51:1 and 3.68:1. Hyperlegible exists for low-vision readers and left the smallest size alone. The checkbox's `::after` is placed from inside its 1px border, so `-inset-x-1` gave 22px; `w-6` makes it 24 and keeps the left edge clear of the grip (DRAG-AND-DROP §5.4). |
 | 2026-10-14 | **One meaning per icon, and no number without its words** (EI-383). ↳ (`CornerDownRight`) marks a rolled to-do and nothing else; the Overflow age badge is words only. Every icon-only header button (the day ⚡, Quick sort) shows its accessible name as a tooltip, and a tab's `4/3/↑8` tooltip names all three numbers, in order, in the same words its accessible name uses. | The second critique found ↳ on both the rolled marker and the Overflow age, an unlabeled ⚡ beside a labeled "Overdrive · N", and tab counts nobody could read without already knowing them. A glyph that means two things means neither. |
+| 2026-10-14 | **Today gets room** (EI-384): on desktop, Today is `--column-today-ratio` (1.5×) its neighbor. The other days on Today's first page narrow to share the track (`--column-near`); later pages keep N equal columns; every width keeps the 168px floor. Tablet and phone are unchanged. The range title names every day at least a third on screen. | Today absorbs rolled cards, "Schedule for Today" and finished work, so it is the busiest column, and at 168px it showed under half of 13 to-dos beside near-empty days. 1.5× is a ratio, so it ports to SwiftUI as a frame multiplier. At 1440 the floor binds and seven days already scrolled (track 1174px vs 1248 needed), so no factor could make a week fit there. 1.5× costs the half-column of Tuesday that showed before (Today + 5 days + 10px). At 1280: Today + 4 days + 30px, and Week still steps 6. At 1920 the week still fits: 316px Today, 211px days. The old title rounded, so a column a little under half visible showed on screen but not in "Oct 14 – Oct 19". |
