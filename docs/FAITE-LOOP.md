@@ -68,7 +68,12 @@ the exact same tooltip a real card would, and the example can never drift
 out of sync with what the board actually renders. `loopExample()` supplies
 the dates and `describeLoop()` — still the single sentence-builder, kept as
 an `sr-only` summary for screen readers — both read from the same
-primitive, so they can't disagree. This replaced a plain-text sentence:
+primitive, so they can't disagree. Each box is captioned **"On <day>"** —
+the day it is drawn as of, its own "today" — and the Overflow box is drawn
+**two days after** the crossing (EI-390), so its badge reads in full,
+"since Oct 19 · 2 days" under "On Oct 21". Drawn on the crossing day it could
+only say "since today", and under "Oct 19" while the reader's today was
+Oct 15 that read as a contradiction. This replaced a plain-text sentence:
 
 > Miss Aug 12 → rolls to Aug 13, Aug 14, Aug 15 → Overflow on Aug 16
 
@@ -150,30 +155,40 @@ no new prop plumbing through `board-column.tsx` or `use-board-data.ts`.
   actual multi-line content needs one wrapping `flex flex-col` span as the
   single flex item, which stacks its own children as a column.
 - **Overflow age badge** — a muted outline badge in `TodoMetaBadges`
-  (`data-overflow-age`), shown only once in Overflow. **It shows only the
-  age** (EI-387): "since today" on the day it crosses, then "1 day", "N
-  days" (`formatOverflowAgeShort`). The Overflow column around the card
-  already says "Overflow", and the same words on every card in it said the
-  column's name N times. "since today", not "today": the card also shows its
-  scheduled date, and "today" beside "Oct 9" reads as a date, not a wait.
-  The full sentence — "In Overflow today", "In Overflow 1 day", "In Overflow
-  N days" (`formatOverflowAge`) — is the card's accessible name
-  (`todoRowName`), and ⌘K's result rows show it as the badge, because a
-  search hit has no column around it (`overflowWording="full"`). `N` is
-  **calendar days since it entered Overflow** — `overflowAgeDays(since,
-  today)` in `rollover-events.ts`, where `since` is the `overflowed` event's
-  `day`. Calendar, not eligible, days: a card keeps waiting over a weekend
-  even when `workdaysOnly` stops it rolling. Tooltip: "Scheduled Aug 12 · in
-  Overflow since Aug 16".
+  (`data-overflow-age`), shown only once in Overflow. **It says since when
+  and how long** (EI-390): "since Oct 6 · 9 days", "since Oct 14 · 1 day",
+  and "since today" on the day it crosses — `formatOverflowAge` in
+  `rollover-events.ts`, the one string on the board card, the Overdrive
+  card, ⌘K's result rows, the Settings worked example and the homepage
+  replica. The start carries the year when it is not this year
+  (`formatShortDateAsOf`: "since Dec 30, 2025 · 5 days"). Both halves,
+  because each alone misread: EI-387's bare "9 days" under Overdrive's
+  "Scheduled Aug 30" read as "9 days late", and a start date alone makes the
+  reader do the arithmetic. "In Overflow" stays off the badge — the column
+  says it once — and "since today", not "today", because beside a scheduled
+  date "today" reads as a date, not a wait.
+  The sentence form — "In Overflow since Oct 6, 9 days", "In Overflow since
+  today" (`describeOverflowAge`) — is the card's accessible name
+  (`todoRowName`) and the tooltip, "Scheduled Oct 1 · In Overflow since
+  Oct 6, 9 days": a screen reader, and a search hit, have no column around
+  them to say "Overflow". The count is **calendar days since it entered
+  Overflow** — `overflowAgeDays(since, today)`, where `since` is the
+  `overflowed` event's `day`. Calendar, not eligible, days: a card keeps
+  waiting over a weekend even when `workdaysOnly` stops it rolling.
+  It fits the 168px column floor as one unit (96–101px in Source Sans,
+  112–116px in Hyperlegible, in a 148px badge row). The one string that
+  cannot — a start in another year, in Hyperlegible — breaks between its two
+  halves, never inside one.
   Not `RollEvent.rolls`: `rollEventsFor` stops at the `overflowed` event, so
   its `rolls` is always `overflowAfterDays + 1` and every card read the same
   number until EI-374.
   **Words only, no icon** (EI-383). It used to carry the same ↳
   (`CornerDownRight`) as the rollover marker, so one glyph meant both
   "rolled onto today" and "in Overflow". ↳ is the roll's alone; the
-  homepage replicas (`demo-board.tsx`, `story-panel.tsx`) match, age only
-  included ("6 days"; the story card's "since today"), with the full
-  sentence in their `sr` text.
+  homepage replicas (`demo-board.tsx`, `story-panel.tsx`) match: the demo
+  board calls `formatOverflowAge` itself against its fixed today (Sep 7),
+  "since Sep 1 · 6 days"; the story card shows "since today"; the full
+  sentence is their `sr` text.
   Not red, either (EI-374, `docs/DESIGN.md` §1): the Overflow column's rule
   and count carry the urgency once — and only while the column holds
   something — so the cards in it stay quiet, in the same register as the

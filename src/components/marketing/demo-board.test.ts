@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { DemoBoard } from "./demo-board";
 
 /**
  * The hero board has to stay a Server Component.
@@ -192,5 +195,23 @@ describe("the flying copy", () => {
     // Same rule as the scene (docs/SCENE.md §2). `useState` here would
     // re-render the subtree on every scroll frame.
     expect(travel).not.toContain("useState");
+  });
+});
+
+/**
+ * EI-390: the demo's Overflow badges read what a real card reads — the board's
+ * own `formatOverflowAge` against the demo's today (Mon Sep 7) — and its
+ * screen-reader text is the card's accessible-name sentence.
+ */
+describe("the demo board's Overflow age", () => {
+  const html = renderToStaticMarkup(createElement(DemoBoard));
+
+  it("shows the start and the count, as the board does", () => {
+    expect(html).toContain(">since Sep 1 · 6 days<");
+    expect(html).toContain(">since Sep 4 · 3 days<");
+  });
+
+  it("says the full sentence to a screen reader", () => {
+    expect(html).toContain("In Overflow since Sep 1, 6 days, scheduled Aug 28");
   });
 });

@@ -4,6 +4,8 @@ import { badgeVariants } from "@/components/ui/badge";
 // a ColorPicker). `tint` went with the fabricated label colors.
 import { edge } from "@/lib/colors";
 import { priorityRail, railBackgroundImage } from "@/lib/priority";
+import { describeOverflowAge, formatOverflowAge } from "@/lib/rollover-events";
+import { formatShortDateAsOf } from "@/lib/scheduling";
 import { STORY_BEATS } from "@/lib/story-beats";
 import { TITLE_CLAMP_CLASS } from "@/lib/title";
 import { cn } from "@/lib/utils";
@@ -73,15 +75,14 @@ export interface DemoTodo {
   /** The loud badge: a deadline already missed. */
   deadlineMissed?: string;
   /**
-   * The Overflow badge and the dates behind its tooltip.
+   * The Overflow badge and the dates behind its tooltip, as civil dates.
    *
-   * Both dates, not just a count, because the real badge explains itself with
-   * "Scheduled X · in Overflow since Y" — a number on its own says how long
-   * without saying since when. `days` is calendar days from `since` to the
-   * demo's today (Sep 7), as `formatOverflowAgeShort` counts them on the board;
-   * `from` is `since` minus the default loop's three rolls and one more day.
+   * Real dates, not display strings, so the badge goes through the board's
+   * own `formatOverflowAge` against `DEMO_TODAY` ("since Sep 1 · 6 days") and
+   * cannot drift from what a real card says (EI-390). `from` is `since` minus
+   * the default loop's three rolls and one more day.
    */
-  overflow?: { from: string; since: string; days: number };
+  overflow?: { from: string; since: string };
   /**
    * The sub-tasks behind the `0/6` badge.
    *
@@ -148,6 +149,9 @@ export const MOVE_SUBTASKS: {
 const HOME: DemoLabel = { name: "home" };
 const ERRANDS: DemoLabel = { name: "errands" };
 
+/** The demo board's today: Monday, Sep 7 — the date its Today column shows. */
+const DEMO_TODAY = "2026-09-07";
+
 /**
  * A believable Wednesday.
  *
@@ -166,11 +170,11 @@ export const DEMO_COLUMNS: DemoColumn[] = [
       {
         title: "Sort through the mail pile",
         priority: 4,
-        overflow: { from: "Aug 28", since: "Sep 1", days: 6 },
+        overflow: { from: "2026-08-28", since: "2026-09-01" },
       },
       {
         title: "Cancel unused subscription",
-        overflow: { from: "Aug 31", since: "Sep 4", days: 3 },
+        overflow: { from: "2026-08-31", since: "2026-09-04" },
       },
     ],
   },
@@ -418,23 +422,23 @@ function DemoCard({ todo }: { todo: DemoTodo }) {
             )}
             {todo.overflow && (
               <DemoTooltip
-                label={`Scheduled ${todo.overflow.from} · in Overflow since ${todo.overflow.since}`}
-                sr={`In Overflow ${todo.overflow.days} days: scheduled ${todo.overflow.from}, in Overflow since ${todo.overflow.since}`}
+                label={`Scheduled ${formatShortDateAsOf(todo.overflow.from, DEMO_TODAY)} · ${describeOverflowAge(todo.overflow.since, DEMO_TODAY)}`}
+                sr={`${describeOverflowAge(todo.overflow.since, DEMO_TODAY)}, scheduled ${formatShortDateAsOf(todo.overflow.from, DEMO_TODAY)}`}
               >
                 {/* Muted, as the board draws it (EI-374): the column's rule
                     and count carry Overflow's red, never each card. Words
-                    only: ↳ is the rolled marker's alone (EI-383). Only the
-                    age, as the board shows it (EI-387) — the column says
-                    "Overflow" once; the full sentence is the `sr` text, as it
-                    is the board card's accessible name. */}
+                    only: ↳ is the rolled marker's alone (EI-383). The start
+                    and the count, the board's own string (EI-390) — the
+                    column says "Overflow" once; the full sentence is the `sr`
+                    text, as it is the board card's accessible name. */}
                 <span
                   aria-hidden
                   className={cn(
                     badgeVariants({ variant: "outline" }),
-                    "num text-2xs font-normal text-muted-foreground",
+                    "nums text-2xs font-normal text-muted-foreground",
                   )}
                 >
-                  {todo.overflow.days} days
+                  {formatOverflowAge(todo.overflow.since, DEMO_TODAY)}
                 </span>
               </DemoTooltip>
             )}

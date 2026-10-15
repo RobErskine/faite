@@ -267,24 +267,25 @@ export function StoryPanel({
                     </DemoTooltip>
                     <span data-roll-overflow hidden className="contents">
                       <DemoTooltip
-                        label="Scheduled Wed, Sep 9 · in Overflow since Fri, Sep 11"
-                        sr="In Overflow today: scheduled Wed, Sep 9, in Overflow since Fri, Sep 11"
+                        label="Scheduled Wed, Sep 9 · In Overflow since today"
+                        sr="In Overflow since today, scheduled Wed, Sep 9"
                       >
                         {/* Muted, as the board draws it (EI-374). Words only:
-                            ↳ is the rolled marker's (EI-383). Only the age,
-                            as the board shows it (EI-387), and the only age
-                            this card can honestly give: it appears the moment
-                            the sub-task crosses, beside its own date badge
-                            reading Fri, Sep 11, so in the card's own time it
-                            has been in Overflow since today. A day count
-                            would need a "today" past Sep 11, which the
-                            board's (Sep 7) contradicts. The full sentence is
-                            the `sr` text, as on the board's accessible name. */}
+                            ↳ is the rolled marker's (EI-383). "since today",
+                            the board's `formatOverflowAge` on the crossing day
+                            (EI-390), and the only age this card can honestly
+                            give: it appears the moment the sub-task crosses,
+                            beside its own date badge reading Fri, Sep 11, so
+                            in the card's own time it has been in Overflow
+                            since today. "since Sep 11 · N days" would need a
+                            "today" past Sep 11, which the board's (Sep 7)
+                            contradicts. The full sentence is the `sr` text,
+                            as on the board's accessible name. */}
                         <span
                           aria-hidden
                           className={cn(
                             badgeVariants({ variant: "outline" }),
-                            "num text-2xs font-normal text-muted-foreground",
+                            "nums text-2xs font-normal text-muted-foreground",
                           )}
                         >
                           since today

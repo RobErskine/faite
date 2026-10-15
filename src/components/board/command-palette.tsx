@@ -912,9 +912,6 @@ export function CommandPalette({
                             today={today}
                             showScheduledDate
                             overflow={overflow}
-                            // No Overflow column around a search hit to say
-                            // where it is waiting, so the badge says it.
-                            overflowWording="full"
                           />
                         </span>
                         <span className="ml-auto shrink-0 self-center text-xs text-muted-foreground">
