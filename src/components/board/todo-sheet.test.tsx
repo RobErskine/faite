@@ -245,6 +245,24 @@ describe("title quick-update", () => {
     fireEvent.blur(title);
     expect(onSave).not.toHaveBeenCalled();
   });
+
+  it("leaving an untouched title that ends in a date word re-parses nothing (EI-379)", () => {
+    // A second date kept as "not used" at capture lives in the title.
+    const onSave = vi.fn();
+    render(<Harness onSave={onSave} todo={{ ...TODO, title: "Call about oct 1" }} />);
+    expect(screen.queryByText(/Oct 1/)).toBeNull();
+    fireEvent.blur(screen.getByLabelText("Title"));
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("does not read a date at the start of an existing title (EI-379)", () => {
+    const onSave = vi.fn();
+    render(<Harness onSave={onSave} todo={{ ...TODO, title: "10/1 invoice" }} />);
+    const title = screen.getByLabelText("Title");
+    fireEvent.change(title, { target: { value: "10/1 invoice v2" } });
+    fireEvent.blur(title);
+    expect(onSave).toHaveBeenCalledWith(TODO.id, { title: "10/1 invoice v2" });
+  });
 });
 
 /**

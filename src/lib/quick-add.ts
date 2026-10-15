@@ -8,12 +8,22 @@ import { addDays, dayOfWeek, formatShortDate, toCivilDate } from "./scheduling";
  *
  * Tokens are only recognized at the two EDGES of the string, never in the
  * middle: a trailing run (any token kind) scanned right-to-left, then a
- * leading run (priority only) scanned left-to-right, bounded by wherever the
- * trailing run stopped. This is what keeps ordinary sentences safe — "call
- * mom about p1 stuff" and "today I need to call mom" parse nothing, because
- * the word after/before the candidate token isn't itself a token and the scan
- * stops. Priority is the one kind allowed to lead, since `p1`-`p4` never open
- * a real sentence the way a bare date word could.
+ * leading run scanned left-to-right, bounded by wherever the trailing run
+ * stopped. This is what keeps ordinary sentences safe — "call mom about p1
+ * stuff" parses nothing, because the word after/before the candidate token
+ * isn't itself a token and the scan stops.
+ *
+ * The leading run takes priority and only the dates that can't be ordinary
+ * words: ones with a digit ("oct 1", "10/1", "2026-10-20") or the deadline
+ * "!" ("!fri"). A word-only date ("today", "tom", "sat", "next fri") opens
+ * real sentences too often to be read as a date at the start — "Tom called
+ * back", "Sun cream", "Wednesday anchor" — so it stays title text, but
+ * with a "not used" notice rather than silently (EI-379).
+ *
+ * One date wins (EI-379): when several date phrases parse, the earliest in
+ * the string applies, and every other one STAYS in the title with a "not
+ * used" notice. A date word is never removed from what was typed unless it
+ * is the one that applied.
  */
 
 export type QuickAddMatchKind = "priority" | "date" | "deadline" | "time";
@@ -35,15 +45,34 @@ export interface QuickAddMatch {
 
 /**
  * A word sitting where a token would be, that the parser deliberately did
- * NOT apply — shown as a chip so it is never silent (EI-375). Today the only
- * one is "yesterday": a past day cannot be scheduled (`nextMonthDay` rolls a
- * passed month-day forward for the same reason), so the word stays in the
- * title and the chip says so.
+ * NOT apply — shown as a chip so it is never silent. It always stays in the
+ * title.
+ *
+ * - `past-date` (EI-375): "yesterday". A past day cannot be scheduled
+ *   (`nextMonthDay` rolls a passed month-day forward for the same reason).
+ * - `unused-date` (EI-379): a second date phrase. One date wins — the
+ *   earliest — and the others are left as typed.
+ * - `leading-date` (EI-379): a word-only date at the very start ("today
+ *   call mom") — see the module comment for why the start is not read.
  */
+export type QuickAddNoticeKind = "past-date" | "unused-date" | "leading-date";
+
 export interface QuickAddNotice {
   raw: string;
-  kind: "past-date";
+  kind: QuickAddNoticeKind;
   label: string;
+}
+
+/** The tooltip on a notice's dashed chip — what happened and what to do. */
+export function quickAddNoticeHint(notice: QuickAddNotice): string {
+  switch (notice.kind) {
+    case "past-date":
+      return "A past day can’t be scheduled. It stays in the title.";
+    case "unused-date":
+      return `Only the first date is used, so “${notice.raw}” stays in the title. Remove the other date to use this one.`;
+    case "leading-date":
+      return `A date at the start is read as part of the title. Type “${notice.raw}” at the end to schedule it.`;
+  }
 }
 
 export interface QuickAddOptions {
@@ -55,6 +84,14 @@ export interface QuickAddOptions {
    * which is what puts it back in the title.
    */
   literals?: readonly string[];
+  /**
+   * Whether a date at the very start can apply ("oct 1 renew passport").
+   * On by default — every create path wants it. The to-do sheet's title
+   * field turns it off: it re-parses an EXISTING title on every blur, and a
+   * to-do titled "10/1 invoice" from before EI-379 must not lose its first
+   * word and gain a date just because its sheet was opened.
+   */
+  leadingDates?: boolean;
 }
 
 export interface QuickAdd {
@@ -364,12 +401,51 @@ function tokenize(input: string): Word[] {
   return words;
 }
 
+/** A date phrase that can't be an ordinary word opening a sentence: it has a
+ * digit ("oct 1", "10/1", "2026-10-20") or the deadline "!" ("!fri"). */
+function isUnmistakableDate(raw: string): boolean {
+  return /\d/.test(raw) || raw.startsWith("!");
+}
+
+function isDateKind(kind: QuickAddMatchKind): boolean {
+  return kind === "date" || kind === "deadline";
+}
+
+function labelForMatch(m: RawMatch, today: CivilDate): string {
+  switch (m.kind) {
+    case "priority":
+      return `P${m.value}`;
+    case "date":
+      return labelForDate(m.value as CivilDate, today);
+    case "deadline":
+      return labelForDate(m.value as CivilDate, today, "Due ");
+    case "time":
+      return m.presetLabel ?? formatTimeLabel(m.value as string);
+  }
+}
+
+interface QuickAddScan {
+  result: QuickAdd;
+  /** Parallel to `result.matches`: whether each came from the leading run —
+   * `foldQuickAddDraft` needs it to remember where the word was typed. */
+  leading: boolean[];
+}
+
 export function parseQuickAdd(
   input: string,
   today: CivilDate,
   presets: readonly ReminderPreset[] = [],
   options: QuickAddOptions = {},
 ): QuickAdd {
+  return scanQuickAdd(input, today, presets, options).result;
+}
+
+function scanQuickAdd(
+  input: string,
+  today: CivilDate,
+  presets: readonly ReminderPreset[],
+  options: QuickAddOptions,
+): QuickAddScan {
   const empty: QuickAdd = {
     title: input,
     priority: null,
@@ -381,13 +457,17 @@ export function parseQuickAdd(
   };
 
   const words = tokenize(input);
-  if (words.length === 0) return empty;
+  if (words.length === 0) return { result: empty, leading: [] };
   const literals = new Set(options.literals ?? []);
+  /** Notices with where they sit, so they come out in reading order. */
+  const noticed: { start: number; notice: QuickAddNotice }[] = [];
+  const notice = (start: number, raw: string, kind: QuickAddNoticeKind, label: string) =>
+    noticed.push({ start, notice: { raw, kind, label } });
+  const sortedNotices = () => noticed.sort((a, b) => a.start - b.start).map((n) => n.notice);
 
   // Trailing run: any token kind, scanned right-to-left. Stops at the first
   // word that isn't a token.
   const trailing: RawMatch[] = [];
-  const notices: QuickAddNotice[] = [];
   /**
    * "@word"s inside the trailing run (EI-375). A list mention that resolved
    * was already lifted out by `resolveQuickAdd`, so one that reaches here
@@ -407,7 +487,7 @@ export function parseQuickAdd(
     if (literals.has(last.text)) break;
     if (hi >= 2 && literals.has(input.slice(words[hi - 2].start, last.end))) break;
     if (last.text.toLowerCase() === "yesterday") {
-      notices.push({ raw: last.text, kind: "past-date", label: `${last.text} · not scheduled` });
+      notice(last.start, last.text, "past-date", `${last.text} · not scheduled`);
       break;
     }
 
@@ -469,16 +549,48 @@ export function parseQuickAdd(
     break;
   }
 
-  // Leading run: priority only, bounded by wherever the trailing run stopped.
+  // Leading run: priority, and a date that can't be an ordinary word (EI-379
+  // — see the module comment), bounded by wherever the trailing run stopped.
   const leading: RawMatch[] = [];
+  const leadingDates = options.leadingDates ?? true;
   let lo = 0;
   while (lo < hi) {
     const w = words[lo];
     if (literals.has(w.text)) break;
     const priority = matchPriority(w.text);
-    if (priority === null) break;
-    leading.push({ kind: "priority", start: w.start, end: w.end, raw: w.text, value: priority });
-    lo += 1;
+    if (priority !== null) {
+      leading.push({ kind: "priority", start: w.start, end: w.end, raw: w.text, value: priority });
+      lo += 1;
+      continue;
+    }
+    if (!leadingDates) break;
+
+    let phrase: { end: number; width: number; date: DateResult } | null = null;
+    if (lo + 1 < hi) {
+      const w2 = words[lo + 1];
+      if (literals.has(input.slice(w.start, w2.end))) break;
+      const combo = matchDateCombo(w.text, w2.text, today);
+      if (combo) phrase = { end: w2.end, width: 2, date: combo };
+    }
+    if (!phrase) {
+      const single = matchDateSingle(w.text, today);
+      if (single) phrase = { end: w.end, width: 1, date: single };
+    }
+    if (!phrase) break;
+
+    const raw = input.slice(w.start, phrase.end);
+    if (!isUnmistakableDate(raw)) {
+      notice(w.start, raw, "leading-date", `${raw} · not used`);
+      break;
+    }
+    leading.push({
+      kind: phrase.date.isDeadline ? "deadline" : "date",
+      start: w.start,
+      end: phrase.end,
+      raw,
+      value: phrase.date.date,
+    });
+    lo += phrase.width;
   }
 
   // Nothing parsed: the "@word"s skipped above are just more title, in place.
@@ -487,47 +599,84 @@ export function parseQuickAdd(
     carried.length = 0;
   }
 
-  if (lo >= hi) return { ...empty, notices }; // Nothing left for a title — bail entirely.
+  // Nothing left for a title — bail entirely.
+  if (lo >= hi) return { result: { ...empty, notices: sortedNotices() }, leading: [] };
 
-  const title = [input.slice(words[lo].start, words[hi - 1].end).trim(), ...carried.map((w) => w.text)].join(
-    " ",
-  );
+  // One token per kind applies: the earliest in the string. A losing DATE
+  // phrase is not dropped (EI-379) — it stays in the title, in place, and
+  // says it was not used. A losing priority or time is still just removed.
+  const winners = new Map<QuickAddMatchKind, RawMatch>();
+  const unused: RawMatch[] = [];
+  for (const m of [...leading, ...trailing].sort((a, b) => a.start - b.start)) {
+    if (!winners.has(m.kind)) {
+      winners.set(m.kind, m);
+    } else if (isDateKind(m.kind)) {
+      unused.push(m);
+      notice(m.start, m.raw, "unused-date", `${m.raw} · not used`);
+    }
+  }
 
-  // Duplicate token of the same kind: the one earliest in the string wins.
-  const all = [...leading, ...trailing];
-  const pick = (kind: QuickAddMatchKind): RawMatch | null =>
-    all.filter((m) => m.kind === kind).sort((a, b) => a.start - b.start)[0] ?? null;
-
-  const priorityMatch = pick("priority");
-  const dateMatch = pick("date");
-  const deadlineMatch = pick("deadline");
-  const timeMatch = pick("time");
-
-  const matches: QuickAddMatch[] = [priorityMatch, dateMatch, deadlineMatch, timeMatch]
-    .filter((m): m is RawMatch => m !== null)
+  const title = [
+    { start: words[lo].start, text: input.slice(words[lo].start, words[hi - 1].end).trim() },
+    ...unused.map((m) => ({ start: m.start, text: m.raw })),
+    ...carried.map((w) => ({ start: w.start, text: w.text })),
+  ]
     .sort((a, b) => a.start - b.start)
-    .map((m) => ({
-      raw: m.raw,
-      kind: m.kind,
-      label:
-        m.kind === "priority"
-          ? `P${m.value}`
-          : m.kind === "date"
-            ? labelForDate(m.value as CivilDate, today)
-            : m.kind === "deadline"
-              ? labelForDate(m.value as CivilDate, today, "Due ")
-              : (m.presetLabel ?? formatTimeLabel(m.value as string)),
-    }));
+    .map((piece) => piece.text)
+    .join(" ");
+
+  const applied = [...winners.values()].sort((a, b) => a.start - b.start);
+  const value = (kind: QuickAddMatchKind) => winners.get(kind)?.value ?? null;
 
   return {
-    title,
-    priority: (priorityMatch?.value as Priority) ?? null,
-    scheduledDate: (dateMatch?.value as CivilDate) ?? null,
-    deadline: (deadlineMatch?.value as CivilDate) ?? null,
-    reminderTime: (timeMatch?.value as string) ?? null,
-    matches,
-    notices,
+    result: {
+      title,
+      priority: value("priority") as Priority | null,
+      scheduledDate: value("date") as CivilDate | null,
+      deadline: value("deadline") as CivilDate | null,
+      reminderTime: value("time") as string | null,
+      matches: applied.map((m) => ({ raw: m.raw, kind: m.kind, label: labelForMatch(m, today) })),
+      notices: sortedNotices(),
+    },
+    leading: applied.map((m) => leading.includes(m)),
   };
+}
+
+/**
+ * Hands a folded date back to the text when the text has since gained a
+ * date of the same kind (EI-379).
+ *
+ * Folding takes a date out of the field and holds it as a chip; a second
+ * date typed after it would otherwise compete with a word no longer in the
+ * text, and whichever the string happened to list first would win — the
+ * folded one is reappended at the END (`quickAddDraftToString`), so it
+ * always lost, silently. Putting it back where it was typed means the field
+ * reads exactly as if it had been pasted: the earlier phrase wins and the
+ * later one shows as "not used". Priority and time are not touched — a
+ * second one still replaces the first, as `foldQuickAddDraft` documents.
+ *
+ * Pure, so the previews and the commit run it too, not only the fold:
+ * "buy milk tomorrow " folds, then "fri" + Enter arrives with no space after
+ * it, and must settle the same way.
+ */
+export function settleQuickAddDraft(
+  text: string,
+  confirmed: readonly QuickAddMatch[],
+  today: CivilDate,
+  presets: readonly ReminderPreset[] = [],
+  options: QuickAddOptions = {},
+): { text: string; confirmed: QuickAddMatch[] } {
+  const parsed = parseQuickAdd(text.trim(), today, presets, options);
+  const clashing = confirmed.filter(
+    (c) => isDateKind(c.kind) && parsed.matches.some((m) => m.kind === c.kind),
+  );
+  if (clashing.length === 0) return { text, confirmed: [...confirmed] };
+  // Last-typed position first, so restoring one never shifts another's `at`.
+  let restored = text;
+  for (const c of [...clashing].sort((a, b) => (b.at ?? Infinity) - (a.at ?? Infinity))) {
+    restored = restoreFoldedMatch(restored, c);
+  }
+  return { text: restored, confirmed: confirmed.filter((c) => !clashing.includes(c)) };
 }
 
 /**
@@ -546,10 +695,12 @@ export function parseQuickAdd(
  * `text` finds nothing left to fold and returns it as-is) and a no-op
  * whenever `text` doesn't end in a space or nothing trailing matches.
  *
- * A newly-folded match overwrites an existing `confirmed` one of the same
- * kind — retyping a date after already confirming one replaces it, it
- * doesn't get silently dropped the way `parseQuickAdd`'s own same-string
- * "earliest wins" dedup would.
+ * A newly-folded priority or time overwrites a `confirmed` one of the same
+ * kind — retyping one replaces it. A DATE does not (EI-379): the folded one
+ * goes back in the text first (`settleQuickAddDraft`), and then the field is
+ * read like pasted text — one date wins, the other stays as "not used".
+ * Nothing folds while a "not used" date is in the field: folding the winner
+ * out would reappend it after the loser and hand the loser the win.
  */
 export function foldQuickAddDraft(
   text: string,
@@ -562,16 +713,22 @@ export function foldQuickAddDraft(
   const trimmed = text.trimEnd();
   if (trimmed === "") return { text, confirmed: [...confirmed] };
 
-  const parsed = parseQuickAdd(trimmed, today, presets, options);
-  if (parsed.matches.length === 0) return { text, confirmed: [...confirmed] };
+  const settled = settleQuickAddDraft(trimmed, confirmed, today, presets, options);
+  const unchanged = settled.confirmed.length === confirmed.length ? text : `${settled.text} `;
+  const { result: parsed, leading } = scanQuickAdd(settled.text, today, presets, options);
+  if (parsed.matches.length === 0 || parsed.notices.some((n) => n.kind === "unused-date")) {
+    return { text: unchanged, confirmed: settled.confirmed };
+  }
 
   const foldedKinds = new Set(parsed.matches.map((m) => m.kind));
+  // Where each word goes back if its chip is dismissed: a trailing one after
+  // the title, a leading one (EI-379) before it.
   const at = parsed.title.length + 1;
   return {
     text: `${parsed.title} `,
     confirmed: [
-      ...confirmed.filter((m) => !foldedKinds.has(m.kind)),
-      ...parsed.matches.map((m) => ({ ...m, at })),
+      ...settled.confirmed.filter((m) => !foldedKinds.has(m.kind)),
+      ...parsed.matches.map((m, i) => ({ ...m, at: leading[i] ? 0 : at })),
     ],
   };
 }

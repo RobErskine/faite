@@ -170,8 +170,9 @@ only covers what's specific to wiring it into `CommandInput`.
 `p1`-`p4` for priority, a weekday/`next <weekday>`/`M/D`/month-day/ISO date,
 `!` before any of those for a deadline instead of a scheduled date, and a
 time (`2pm`, `14:00`). Tokens are only recognized at the edges of the string
-(trailing run for all kinds, leading run for priority only) — see the module
-for why: it's what keeps "call mom about p1 stuff" from parsing anything. The
+(trailing run for all kinds; leading run for priority and, since EI-379, a
+date with a digit or a `!` — see below) — see the module for why: it's what
+keeps "call mom about p1 stuff" from parsing anything. The
 `@`/`#` mentions are **not** part of this grammar — they're a UI pick, not
 text the parser sees (see `quick-add-preview.tsx`'s doc comment). The one
 exception (EI-375): an `@list` typed out in full and never picked is resolved
@@ -220,6 +221,52 @@ through one helper, `resolveQuickAdd` (`src/lib/quick-add.ts`):
   scheduled" chip. A past day can't be scheduled — the same reason a passed
   month-day rolls forward to next year — so parsing it would only make an
   instantly overdue to-do.
+
+**One date wins; no date word is dropped without a chip (EI-379).** Seen the
+same day: "Call about Thursday oct 1" went onto Thursday and "oct 1"
+vanished from the title with no chip; "oct 1 renew passport" scheduled
+nothing and said nothing, while "renew passport oct 1" scheduled Oct 1.
+
+- **The earliest date phrase applies**; every other one **stays in the
+  title, where it was typed**, with a dashed "not used" chip (`oct 1 · not
+  used`, same family as `@novels · no list`). "Call about Thursday oct 1" →
+  title "Call about oct 1", Thursday. Scheduled date and `!` deadline are
+  separate kinds — "fri !oct 20" applies both — but two deadlines follow the
+  same rule. A time is never a date: "standup 10am fri oct 20" keeps 10am,
+  applies Friday, and leaves "oct 20" not used. (A second priority or time
+  is still just dropped, as before.)
+- **Dismissing the winner hands the date to the next one**, which gets its
+  own dismissible chip. Chosen over "stays not used" because it is the
+  same stateless rule run again — the dismissed word is plain text, so the
+  next date is now the first — and it leaves the user able to pick either
+  date. Dismiss both and nothing is scheduled.
+- **A date at the start parses when it can't be an ordinary word**: one with
+  a digit (`oct 1`, `10/1`, `2026-10-20`) or a `!` (`!fri`). "oct 1 renew
+  passport" is "renew passport" on Oct 1, 2027, exactly like the trailing
+  form. A **word-only** date at the start (`today`, `tom`, `sat`, `next
+  fri`) is NOT applied — "Tom called back", "Sun cream", "Wednesday anchor"
+  are real titles, and the module has skipped leading date words for that
+  reason since ⌘K quick-add landed — but it is never silent either: it gets
+  a dashed "today · not used" chip whose tooltip says to type it at the
+  end. A bare month ("May the force…", "March madness") is not a date at
+  all and gets nothing.
+- **Typing it live agrees with pasting it.** Folding takes a date out of the
+  field; a second date typed later would compete with a word no longer in
+  the text. So `settleQuickAddDraft` puts the folded date back where it was
+  typed first, and the field is read as if pasted: "buy milk tomorrow "
+  (folds) then "fri " → "buy milk tomorrow fri", tomorrow applies, "fri ·
+  not used". This replaced "retyping a date replaces the chip" — to change a
+  date now, × the old chip. The previews and the commit settle too, so an
+  Enter before the space agrees. Nothing folds while a "not used" date is
+  in the field.
+- **Known limit:** a date only parses at the edges unless it folded as you
+  typed. If one folded mid-sentence ("dentist Thursday ", then "re bill oct
+  1 ") it goes back mid-sentence as plain text and "oct 1" applies — the
+  same as pasting that sentence. Visible in the field, but with no chip.
+- **The to-do sheet's title field** reads an existing title, so it keeps
+  leading dates off (`leadingDates: false`) and no longer re-parses a title
+  you didn't edit — "Call about oct 1" kept at capture must not move to Oct
+  1 just because its sheet was opened.
 
 **Where it's live:** root mode's search box (via the `Create to-do` fallback)
 and `New to-do`. **Not** `new-list`/`new-label`/`new-project`/`new-tab`/

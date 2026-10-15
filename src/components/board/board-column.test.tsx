@@ -669,12 +669,67 @@ describe("quick-add — folding a completed date/time word out of the input", ()
     expect(addInput()).toHaveProperty("value", "");
   });
 
-  it("refolding a second date word replaces the chip rather than adding a second one", () => {
+  it("a second date word puts the first back in the field and shows as 'not used' (EI-379)", () => {
     render(<Harness />);
     fireEvent.change(addInput(), { target: { value: "Buy milk tomorrow " } });
     fireEvent.change(addInput(), { target: { value: "Buy milk fri " } });
+    expect(addInput()).toHaveProperty("value", "Buy milk tomorrow fri ");
     expect(screen.getAllByRole("button", { name: /^Keep “/ })).toHaveLength(1);
-    expect(addInput()).toHaveProperty("value", "Buy milk ");
+    expect(keep("tomorrow")).toBeTruthy();
+    expect(screen.getByText("fri · not used")).toBeTruthy();
+  });
+});
+
+/**
+ * EI-379: one date wins — the earliest — and every other date phrase stays
+ * in the title with a dashed "not used" chip. Never dropped without one.
+ */
+describe("quick-add — a second date is 'not used', never dropped (EI-379)", () => {
+  const addInput = () => screen.getByRole("textbox", { name: "Add a to-do to Sunday" });
+  const keep = (word: string) => screen.queryByRole("button", { name: `Keep “${word}” in the title` });
+
+  it("shows the winner as a dismissible chip and the other as a dashed one with a hint", () => {
+    render(<Harness />);
+    fireEvent.change(addInput(), { target: { value: "Call about Thursday oct 1" } });
+    // ctx.today is Sunday 2026-08-09.
+    expect(screen.getByText("Thu Aug 13")).toBeTruthy();
+    expect(keep("Thursday")).toBeTruthy();
+    const notUsed = screen.getByText("oct 1 · not used");
+    expect(notUsed.className).toContain("border-dashed");
+    expect(notUsed.getAttribute("title")).toMatch(/Only the first date is used/);
+    // Not dismissible: the word is already title text.
+    expect(keep("oct 1")).toBeNull();
+  });
+
+  it("dismissing the winner hands the date to the other one", () => {
+    const onQuickAdd = vi.fn();
+    render(<Harness onQuickAdd={onQuickAdd} />);
+    fireEvent.change(addInput(), { target: { value: "Call about Thursday oct 1" } });
+    fireEvent.mouseDown(keep("Thursday")!);
+    expect(screen.queryByText("oct 1 · not used")).toBeNull();
+    expect(screen.getByText("Thu Oct 1")).toBeTruthy();
+    expect(keep("oct 1")).toBeTruthy();
+    fireEvent.keyDown(addInput(), { key: "Enter" });
+    expect(onQuickAdd).toHaveBeenCalledWith("Call about Thursday oct 1", undefined, [], ["Thursday"]);
+  });
+
+  it("an Enter before the next space still commits the first date as the winner", () => {
+    const onQuickAdd = vi.fn();
+    render(<Harness onQuickAdd={onQuickAdd} />);
+    fireEvent.change(addInput(), { target: { value: "Buy milk tomorrow " } });
+    fireEvent.change(addInput(), { target: { value: "Buy milk fri" } });
+    expect(screen.getByText("fri · not used")).toBeTruthy();
+    fireEvent.keyDown(addInput(), { key: "Enter" });
+    // The folded word goes back where it was typed, so the parse at write
+    // time sees "tomorrow" first — the same thing the preview showed.
+    expect(onQuickAdd).toHaveBeenCalledWith("Buy milk tomorrow fri", undefined, [], []);
+  });
+
+  it("a word-only date at the start says it was not used", () => {
+    render(<Harness />);
+    fireEvent.change(addInput(), { target: { value: "Wednesday anchor" } });
+    const chip = screen.getByText("Wednesday · not used");
+    expect(chip.getAttribute("title")).toMatch(/at the end to schedule it/);
   });
 });
 

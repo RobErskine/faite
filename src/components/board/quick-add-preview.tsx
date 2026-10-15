@@ -3,8 +3,10 @@ import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { edge, tint } from "@/lib/colors";
 import {
+  quickAddNoticeHint,
   unresolvedMentionLabel,
   type QuickAddMatch,
+  type QuickAddNotice,
   type ResolvedQuickAdd,
 } from "@/lib/quick-add";
 
@@ -20,7 +22,8 @@ export interface QuickAddChip {
   color?: string | null;
   /**
    * Something typed that did NOT apply — an "@mention" that matched no list,
-   * "yesterday" (EI-375). Drawn dashed and achromatic: an outline of a chip
+   * "yesterday" (EI-375), a second date or a word-only date at the start
+   * (EI-379: "oct 1 · not used"). Drawn dashed and achromatic: an outline of a chip
    * that isn't there, not a warning. Red stays reserved for urgency
    * (docs/DESIGN.md), and nothing here is urgent — the text is all kept.
    */
@@ -161,8 +164,8 @@ export function dismissibleMatchChip(
 /**
  * The chips both quick-add fields add on top of the parsed tokens, from one
  * `resolveQuickAdd` result (EI-375): the list a typed "@mention" resolved to,
- * every "@mention" that resolved nowhere, and words like "yesterday" that
- * were kept as text on purpose.
+ * every "@mention" that resolved nowhere, and words like "yesterday" or a
+ * second date (EI-379) that were kept as text on purpose.
  *
  * `typingMention` is the "@query" still being typed — it would read "no
  * list" on every keystroke until it matched, so it is left to the mention
@@ -209,13 +212,22 @@ export function quickAddStatusChips<L extends { id: string; name: string; color?
           : undefined,
     });
   }
-  for (const notice of resolved.notices) {
-    chips.push({
-      key: `notice:${notice.raw}`,
-      label: notice.label,
-      dashed: true,
-      hint: "A past day can’t be scheduled. It stays in the title.",
-    });
-  }
+  chips.push(...quickAddNoticeChips(resolved.notices));
   return chips;
+}
+
+/**
+ * A dashed chip per word the parser saw and deliberately left in the title
+ * ("yesterday · not scheduled", "oct 1 · not used"). Not dismissible: the
+ * word is already title text, so there is nothing to undo. To use a "not
+ * used" date instead, dismiss the date that won (EI-379).
+ */
+export function quickAddNoticeChips(notices: readonly QuickAddNotice[]): QuickAddChip[] {
+  return notices.map((notice, i) => ({
+    // The index too: "mon fri fri" leaves two "fri"s, and keys must differ.
+    key: `notice:${notice.kind}:${notice.raw}:${i}`,
+    label: notice.label,
+    dashed: true,
+    hint: quickAddNoticeHint(notice),
+  }));
 }

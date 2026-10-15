@@ -23,6 +23,7 @@ import {
   quickAddDraftToString,
   resolveQuickAdd,
   restoreFoldedMatch,
+  settleQuickAddDraft,
   type QuickAddMatch,
 } from "@/lib/quick-add";
 import { isTextEntry } from "@/lib/undo";
@@ -585,11 +586,19 @@ export function BoardColumn({
     }
   };
 
+  // A folded date whose text has since gained a date of its own goes back
+  // where it was typed (EI-379), so the field reads as if pasted: the first
+  // date wins and the other shows "not used". `foldQuickAddDraft` does this
+  // on the next space; this covers the preview and an Enter that comes first.
+  const settled = settleQuickAddDraft(draft, confirmedMatches, ctx.today, reminderPresets ?? [], {
+    literals,
+  });
+
   const commit = () => {
     // Reappend whatever `foldQuickAddDraft` already folded out of `draft` —
     // `handleQuickAdd` (use-board-actions.ts) re-parses this exact string
     // itself, so it never needs to know folding happened.
-    const combined = quickAddDraftToString(draft, confirmedMatches);
+    const combined = quickAddDraftToString(settled.text, settled.confirmed);
     if (!combined || !onQuickAdd) return;
     onQuickAdd(combined, mentionedList?.id, mentionedLabels.map((l) => l.id), literals);
     // The new to-do almost never matches whatever was typed — an add that
@@ -606,12 +615,15 @@ export function BoardColumn({
   /**
    * Dismissing a parsed chip (EI-375): the word goes back into the title and
    * stays there as text. A folded match is put back where it was typed; a
-   * live one is already in `draft`, so only `literals` changes.
+   * live one is already in `draft`, so only `literals` changes. Found by
+   * kind and word, not identity: a folded date that `settled` put back
+   * shows as a live chip, but it is still only in `confirmedMatches`.
    */
   const dismissMatch = (match: QuickAddMatch) => {
-    if (confirmedMatches.includes(match)) {
-      const restored = restoreFoldedMatch(draft, match);
-      setConfirmedMatches((ms) => ms.filter((m) => m !== match));
+    const folded = confirmedMatches.find((m) => m.kind === match.kind && m.raw === match.raw);
+    if (folded) {
+      const restored = restoreFoldedMatch(draft, folded);
+      setConfirmedMatches((ms) => ms.filter((m) => m !== folded));
       // No caret ref here: this runs from chips built during render, and a
       // controlled input whose value is replaced puts the caret at the end
       // on its own — which is where `restored` ends anyway.
@@ -629,15 +641,17 @@ export function BoardColumn({
   // Not memoized: `dismissMatch` is a fresh closure each render, and one
   // short string's parse costs less than tracking what it closes over.
   const quickAddChips = ((): QuickAddChip[] => {
-    const chips: QuickAddChip[] = confirmedMatches.map((m) =>
+    const chips: QuickAddChip[] = settled.confirmed.map((m) =>
       dismissibleMatchChip(m, dismissMatch, "confirmed:"),
     );
-    const resolved = resolveQuickAdd(draft, ctx.today, {
+    const resolved = resolveQuickAdd(settled.text, ctx.today, {
       presets: reminderPresets ?? [],
       lists: lists ?? [],
       literals,
     });
-    if (draft.trim()) chips.push(...resolved.matches.map((m) => dismissibleMatchChip(m, dismissMatch)));
+    if (settled.text.trim()) {
+      chips.push(...resolved.matches.map((m) => dismissibleMatchChip(m, dismissMatch)));
+    }
     if (mentionedList) {
       chips.push({
         key: `list:${mentionedList.id}`,

@@ -722,4 +722,29 @@ describe("CommandPalette — quick-add never misfiles silently (EI-375)", () => 
       note: "No list is called @novels, so it stayed in the title.",
     });
   });
+
+  it("EI-379: two dates — the first applies, the other stays in the title as 'not used'", async () => {
+    renderPalette();
+    openNewTodo();
+    type("Call about Thursday oct 1");
+    expect(screen.getByText("Thu Oct 15")).toBeTruthy();
+    expect(screen.getByText("oct 1 · not used")).toBeTruthy();
+    submit();
+
+    const created = await onlyTodo();
+    expect(created.title).toBe("Call about oct 1");
+    expect(created.scheduledDate).toBe("2026-10-15");
+  });
+
+  it("EI-379: a date at the start applies, the same as one at the end", async () => {
+    renderPalette();
+    openNewTodo();
+    type("oct 1 renew passport");
+    expect(screen.getByText("Fri Oct 1, 2027")).toBeTruthy();
+    submit();
+
+    const created = await onlyTodo();
+    expect(created.title).toBe("renew passport");
+    expect(created.scheduledDate).toBe("2027-10-01");
+  });
 });

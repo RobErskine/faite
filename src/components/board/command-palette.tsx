@@ -32,6 +32,7 @@ import {
   quickAddDraftToString,
   resolveQuickAdd,
   restoreFoldedMatch,
+  settleQuickAddDraft,
   type QuickAddMatch,
 } from "@/lib/quick-add";
 import { useMention, MentionMenu, type MentionSource } from "@/components/mention-menu";
@@ -215,16 +216,19 @@ export function CommandPalette({
    * `resolveQuickAdd`, not `parseQuickAdd` (EI-375): it also resolves an
    * "@mention" typed out in full and never picked from the menu, and honors
    * the words whose chip was dismissed.
+   *
+   * Settled first (EI-379): a folded date whose text has since gained a date
+   * of its own goes back where it was typed, so the first date wins and the
+   * other reads "not used" — even when Enter comes before the next space.
    */
-  const quickAdd = useMemo(
-    () =>
-      resolveQuickAdd(quickAddDraftToString(value, confirmedMatches), today, {
-        presets: reminderPresets,
-        lists: mentionListOptions,
-        literals,
-      }),
-    [value, confirmedMatches, today, reminderPresets, mentionListOptions, literals],
-  );
+  const quickAdd = useMemo(() => {
+    const settled = settleQuickAddDraft(value, confirmedMatches, today, reminderPresets, { literals });
+    return resolveQuickAdd(quickAddDraftToString(settled.text, settled.confirmed), today, {
+      presets: reminderPresets,
+      lists: mentionListOptions,
+      literals,
+    });
+  }, [value, confirmedMatches, today, reminderPresets, mentionListOptions, literals]);
 
   const mentionedLabelIds = useMemo(() => new Set(mentionedLabels.map((l) => l.id)), [mentionedLabels]);
 

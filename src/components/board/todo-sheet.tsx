@@ -62,7 +62,11 @@ import { LocationField } from "@/components/board/location-field";
 import { CaptureSourceBadge } from "@/components/todo/capture-source-badge";
 import { ListField } from "@/components/board/list-field";
 import { LabelPicker } from "@/components/board/label-picker";
-import { QuickAddPreview, type QuickAddChip } from "@/components/board/quick-add-preview";
+import {
+  QuickAddPreview,
+  quickAddNoticeChips,
+  type QuickAddChip,
+} from "@/components/board/quick-add-preview";
 import { MentionMenu, useMention, type MentionSource } from "@/components/mention-menu";
 import type { MentionListOption, MentionPick } from "@/components/board/board-column";
 import { TimelineList, TimelineRow } from "@/components/board/timeline";
@@ -79,7 +83,7 @@ import {
   toggleHiddenKind,
 } from "@/lib/kind-filter";
 import { formatShortDate, type PlacementContext } from "@/lib/scheduling";
-import { parseQuickAdd } from "@/lib/quick-add";
+import { parseQuickAdd, type QuickAddOptions } from "@/lib/quick-add";
 import { isTextEntry } from "@/lib/undo";
 import { formatCombo } from "@/lib/keyboard";
 import { usePlatform } from "@/lib/use-platform";
@@ -189,6 +193,14 @@ function SheetRow({
  * is already unreachable — `canRepeat` demands `onStartSeries` when there is
  * no series yet. This satisfies the type without widening the prop. */
 const noop = () => {};
+
+/**
+ * The title field re-reads an EXISTING title, so a date at its start stays
+ * title text (EI-379 turned leading dates on for capture only) — a to-do
+ * titled "10/1 invoice" before then must not gain a date from an edit to
+ * its last word.
+ */
+const TITLE_PARSE: QuickAddOptions = { leadingDates: false };
 
 interface TodoSheetProps {
   todo: Todo | null;
@@ -441,8 +453,13 @@ function TodoSheetContent({
       setTitle(todo.title);
       return;
     }
+    // Untouched: nothing to apply. A title can legitimately end in a date
+    // word — one dismissed at capture (EI-375), or a second date left in as
+    // "not used" (EI-379) — and merely opening the sheet and leaving the
+    // field must not re-parse it into a different day.
+    if (next === todo.title) return;
 
-    const parsed = parseQuickAdd(next, today, reminderPresets);
+    const parsed = parseQuickAdd(next, today, reminderPresets, TITLE_PARSE);
     const patch: Partial<Todo> = {};
     if (parsed.matches.length > 0) {
       if (parsed.title !== todo.title) patch.title = parsed.title;
@@ -477,8 +494,12 @@ function TodoSheetContent({
     const trimmed = raw.trimEnd();
     if (trimmed === "") return raw;
 
-    const parsed = parseQuickAdd(trimmed, today, reminderPresets);
-    if (parsed.matches.length === 0) return raw;
+    const parsed = parseQuickAdd(trimmed, today, reminderPresets, TITLE_PARSE);
+    // A "not used" second date in the field (EI-379): folding the winner out
+    // would leave the loser to win on the next space. Leave it to the blur.
+    if (parsed.matches.length === 0 || parsed.notices.some((n) => n.kind === "unused-date")) {
+      return raw;
+    }
 
     const patch: Partial<Todo> = {};
     if (parsed.priority !== null) patch.priority = parsed.priority;
@@ -492,10 +513,15 @@ function TodoSheetContent({
   // Live feedback while typing, same as quick-add's row — teaches that a
   // trailing token is about to become a real field, not just get typed
   // literally into the title.
+  // Nothing while the title is untouched — `commitTitle` applies nothing then.
   const titleChips = useMemo((): QuickAddChip[] => {
-    const parsed = parseQuickAdd(title, today, reminderPresets);
-    return parsed.matches.map((m) => ({ key: `${m.kind}:${m.raw}`, label: m.label }));
-  }, [title, today, reminderPresets]);
+    if (title.trim() === todo.title) return [];
+    const parsed = parseQuickAdd(title, today, reminderPresets, TITLE_PARSE);
+    return [
+      ...parsed.matches.map((m) => ({ key: `${m.kind}:${m.raw}`, label: m.label })),
+      ...quickAddNoticeChips(parsed.notices),
+    ];
+  }, [title, todo.title, today, reminderPresets]);
 
   /** The "Mark done" button's box — the confetti origin for both it and `⌘↵`. */
   const markDoneRef = useRef<HTMLButtonElement | null>(null);
