@@ -38,9 +38,23 @@ CI green (verify + e2e) → squash merge → Linear Done + learnings comment.
 
 | # | Ticket | Status |
 |---|---|---|
-| 13 | EI-384 wider Today (P1) | |
-| 14 | EI-385 phone Lists peek (P1) | |
-| 15 | EI-386 keyboard path gaps | |
-| 16 | EI-387 dates: palette year/state, age-only badge, Won't do toast icon | |
-| 17 | EI-388 phone touch targets 44px | |
-| 18 | Fourth critique on prod | |
+| 13 | EI-384 wider Today (P1) | merged #150 |
+| 14 | EI-385 phone Lists peek (P1) | merged #151 |
+| 15 | EI-386 keyboard path gaps | merged #152 |
+| 16 | EI-387 dates: palette year/state, age-only badge, Won't do toast icon | merged #153 |
+| 17 | EI-388 phone touch targets 44px | merged #154 |
+| 18 | Fourth critique on prod | 29 → 30/40 |
+
+## Batch 4 + polish (owner decisions 2026-10-15: ship EI-389..EI-393 first; I run the passes; the drawer gets /impeccable shape first; surface briefs for the row and drawer; marketing waits until the app is pristine)
+
+| # | Step | Status |
+|---|---|---|
+| 19 | Surface briefs: to-do row (todo-card.tsx), drawer (todo-sheet.tsx) | in EI-389 PR |
+| 20 | EI-389 ⌘K create-from-query ranks last (P1) | |
+| 21 | EI-390 Overflow age "since Oct 6 · 9 days" everywhere | |
+| 22 | EI-391 palette/badge names speak state; "Deadline" in names | |
+| 23 | EI-392 date row + last phone targets | |
+| 24 | EI-393 Overdrive buttons stay put | |
+| 25 | Row: critique → polish (todo-card.tsx) | |
+| 26 | Drawer: /impeccable shape (owner interview) → build → critique | |
+| 27 | Board: critique → polish (src/app/board/page.tsx) | |
