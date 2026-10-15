@@ -86,9 +86,16 @@ describe("commandsByGroup", () => {
     const groups = commandsByGroup(ctx);
     const fallback = groups.get("Create")!.find((c) => c.id === "create-from-query")!;
     expect(fallback.label(ctx)).toBe("Create to-do “milk”");
-    // cmdk's match value stays anchored to the raw query, not the quoted
-    // label — see the doc comment on `PaletteCommand.value`.
+    // The row's cmdk value (its selection key) stays anchored to the raw
+    // query, not the quoted label — see the doc comment on
+    // `PaletteCommand.value`.
     expect(fallback.value?.(ctx)).toBe("Create to-do milk");
+  });
+
+  it("marks the create-from-query row, and only it, as the fallback (EI-389)", () => {
+    // The palette renders `fallback` rows last and never scores them, so a
+    // second one would sink a real command below every match.
+    expect(ROOT_COMMANDS.filter((c) => c.fallback).map((c) => c.id)).toEqual(["create-from-query"]);
   });
 
   it("always offers every New-X entry-mode switch, in Create", () => {

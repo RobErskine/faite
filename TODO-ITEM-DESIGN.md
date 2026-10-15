@@ -358,8 +358,9 @@ The spec of record for color, type, surfaces and motion is
 decisions it builds on.
 
 - Priority is a **rail**, not a chip — a chip cost a whole badge row in a 168px
-  column. Since the V milestone the rail is achromatic: thickness (3/2/1/1px)
-  and opacity carry the four levels, and P4 is dotted. Hue was dropped so red
+  column. Since the V milestone the rail is achromatic: line style, thickness
+  and opacity carry the four levels — P1 double 5px, P2 solid 3px, P3 dashed
+  2px, P4 dotted 2px (`docs/DESIGN.md` §7, 2026-09-10). Hue was dropped so red
   can mean urgency alone — `docs/DESIGN.md` §7, decision A. See
   `src/lib/priority.ts`.
 - `done` is struck through; `dropped` is dimmed only.

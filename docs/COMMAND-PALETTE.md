@@ -110,8 +110,7 @@ At root, in render order:
 | **Triage** | Open Overdrive (N) | only while Overflow has cards — then it is the first row of the palette (EI-383). Same command (`view-overdrive`) as the View row below; `groupFor` moves it |
 | | Quick sort Backlog (N) | only while Backlog has open to-dos, after Overdrive (EI-386) — Overflow is overdue, Backlog only unsorted. Same command (`view-quick-sort`) as the disabled View row below; `groupFor` moves it |
 | **To-dos** | up to 8 search hits | only when the query is non-empty; each hit renders like a board card (priority rail, deadline/location/recurrence markers, label and scheduled-date badges — via `todo-row-parts.tsx`) and supports the row actions below. Since EI-387 a hit also shows its place in the Faite Loop: ↳ while it is still rolling, and "In Overflow 9 days" once it is in Overflow — from `rollStateFor` (`rollover-events.ts`), the function the board card reads, so search and board cannot disagree. The badge keeps the full "In Overflow" wording here, where the board card shows only the age: a search hit has no Overflow column around it to say the rest (`overflowWording="full"`). The row's accessible name (`todoRowName`) includes both. |
-| **Create** | `Create to-do "<query>"` | only when the query is non-empty; parses quick-add tokens — §5 |
-| | New to-do / list / label / project / tab | New to-do parses quick-add tokens too — §5; the rest enter a plain entry mode |
+| **Create** | New to-do / list / label / project / tab | New to-do parses quick-add tokens — §5; the rest enter a plain entry mode |
 | **Tabs** | one row per tab, active marked `current` | hidden when `tabs.length <= 1` |
 | **Manage** | Keyboard shortcuts | opens the help sheet (`?`, EI-75) |
 | | Activity feed | opens the global activity feed (`⌘⇧A`) — the whole-app event log, `activity-sheet.tsx` |
@@ -121,6 +120,7 @@ At root, in render order:
 | | Overdrive — Overflow is empty | the View row only while Overflow is empty, disabled; with cards it moves to **Triage**, top of the list (EI-383). Opens the same full-screen triage overlay as the button at the foot of the Overflow column (EI-97) — see [OVERDRIVE.md](OVERDRIVE.md). Overflow-only, deliberately: a day column's own Overdrive entry (EI-253) is a header icon, not a palette command — see OVERDRIVE.md §12 |
 | | Quick sort — Backlog is empty | the View row only while Backlog is empty, disabled; with open to-dos it moves to **Triage** (EI-386). Opens Overdrive over Backlog with a list picker per card (EI-370) — see OVERDRIVE.md §13 |
 | **Delete** | Delete a list… / Delete a tab… | each enters a picker mode. Last on purpose (EI-383): they used to rank 5th–6th, under Manage, ahead of everything a planning session reaches for. Ids are still `manage-delete-list`/`manage-delete-tab` |
+| **Create** (again) | `Create to-do "<query>"` | only when the query is non-empty; parses quick-add tokens — §5. The registry's one `fallback` row: last, in a group of its own, so every real match is above it and Enter runs the best one; with none it is the only row and Enter captures (EI-389, §6.3). Same `create-from-query` id, still `group: "Create"` in the registry |
 
 **Why this order (EI-383).** The second board critique counted: with
 Overflow full, "Open Overdrive (N)" was the 19th row and "Delete a list…"
@@ -128,7 +128,9 @@ the 5th. The palette's empty-query order is advice about what matters now,
 so the most useful command for a full Overflow leads, and the destructive
 ones close the list. Search is unaffected — a command's label is still its
 cmdk match value, so typing "delete" or "overdrive" finds the same rows as
-before; with a query, cmdk's scoring orders the groups anyway.
+before. With a query, cmdk sorts the rows *within* each group by score, but
+**the groups keep this render order** — §10 has why — so the table's order is
+also the order matches appear in.
 
 Every mutating item routes through the shared undo helpers (`recordCreate`,
 `deleteListWithUndo`, `deleteTabWithUndo`) so palette actions and their
@@ -337,11 +339,46 @@ Also: rows use `value={`${todo.title} ${todo.id}`}` because titles repeat
 ("Follow up") and cmdk keys selection off `value`. Title comes first because
 cmdk scores the value string.
 
+**The palette's `filter` is cmdk's scorer with a floor (EI-389).**
+`paletteFilter` (`command-palette.tsx`) drops any row cmdk scores under
+`MATCH_THRESHOLD` (0.1). cmdk's scorer has a gap there: a query found
+contiguously or on word starts scores at least ~0.17 ("sett" → "Open
+settings" 0.89; "milk" → a "Buttermilk" to-do 0.17), while a subsequence
+scattered over two mid-word jumps scores under ~0.03 ("read" → "Show items
+marked as won't do" 0.02). The first visible row is what Enter runs, so a
+coincidence like that must not sit above the create fallback. No to-do hit is
+ever dropped: `searchTodos` returns substrings only, and a substring always
+scores ≥ ~0.17.
+
 ### 6.3 The create-from-query fallback
 
 When a query matches no command and no to-do, `Create to-do "<query>"` files it
 straight into Backlog with a full undo entry. This is the reason search exists
 at all — a dead end should still be one keystroke from being captured.
+
+**It ranks below every real match (EI-389).** It used to lead the Create group,
+and its value — `Create to-do <query>` — contains the query verbatim, so it
+scored ~0.9 against every query and was the first row of every search: "sett"
+highlighted it above "Open settings", and "loop" + Enter filed a to-do called
+"loop" instead of opening Faite Loop settings. Now:
+
+- It is the registry's one `fallback: true` command. The palette renders it
+  **last**, in a `Create` group of its own after Delete. Since groups keep
+  render order (§10), every to-do hit and every command that matches sits
+  above it, and cmdk's select-first highlights the best of them.
+- `paletteFilter` never scores it — it carries a marker keyword and gets a
+  fixed score, half `MATCH_THRESHOLD`, below any row that survives — so it
+  shows for any query. That also fixed a quieter bug: a
+  folded date leaves a trailing space in the search ("buy milk tomorrow " →
+  "buy milk "), which the row's value, built from the trimmed query, could not
+  match, so the row vanished the moment its date became a chip.
+- When nothing else matches it is the only row, so typing then Enter still
+  captures in one keystroke (PRODUCT.md, principle 5). Its preview chips are
+  unchanged; they render above the list, not in the row.
+
+A query that matches a "New …" row too ("tab", "list") shows two Create
+headings, one at each end. That is the cost of keeping the fallback out of a
+group whose best row would otherwise carry it up.
 
 ### 6.4 What is searchable
 
@@ -398,8 +435,10 @@ interface PaletteCommand {
   groupFor?: (ctx) => PaletteCommandGroup  // overrides `group` per render —
                              // Overdrive moves to Triage while Overflow has cards
   label: (ctx: PaletteCommandCtx) => string
-  value?: (ctx) => string   // cmdk match value override — only the
-                             // create-from-query fallback needs one
+  value?: (ctx) => string   // cmdk value override — only the
+                             // create-from-query fallback sets one; it is
+                             // that row's selection key, never scored
+  fallback?: boolean        // EI-389: never scored, rendered last (§6.3)
   shortcut?: (ctx) => string | undefined
   when?: (ctx) => boolean   // omit to always show
   disabled?: (ctx) => boolean
@@ -539,7 +578,11 @@ Three layers, all required:
   and showing the chip, and the no-match case staying closed. The
   `"CommandPalette — #label mention"` block covers the label half, including
   accumulation, exclusion of an already-picked label, and the inline
-  create-label row.
+  create-label row. The `"Create to-do ranks below real matches (EI-389)"`
+  block covers §6.3: "sett", "loop" + Enter, "overdrive", a to-do hit, and
+  "tab" each put a real match first and the fallback last; "read" drops a
+  coincidental match; "buy milk tomorrow" (with and without the trailing
+  space that folds the date) leaves the fallback first, and Enter files it.
 
 Conventions: `// @vitest-environment happy-dom` pragma on line 1, explicit
 imports from `vitest` (no globals), explicit `afterEach(cleanup)`, plain
@@ -569,6 +612,18 @@ target; palette work must stay client-only.
   this class of crash — open the surface in the test.
 - **cmdk hides non-matching items by unmounting them**, so `queryByText` on a
   filtered-out row correctly returns null. Useful for assertions.
+- **cmdk 1.1.1 sorts rows within a group, never the groups.** Its group sort
+  collects group *ids* (React `useId`) and then looks each one up as
+  `[cmdk-group][data-value="<id>"]` — but a group's `data-value` holds its
+  heading, so the lookup finds nothing and every group stays where it was
+  rendered. Docs here claimed the opposite until EI-389 measured it. So
+  render order *is* cross-group rank: put a row where it should rank, and
+  don't expect a high score to lift it past an earlier group. The
+  create-from-query fallback relies on this (§6.3) — and does not depend on
+  it alone: its fixed score is half `MATCH_THRESHOLD`, under every row that
+  survives the filter, so a cmdk upgrade that fixes the sort would still put
+  it last. `command-palette.test.tsx`'s EI-389 block checks the order either
+  way.
 - **cmdk's root, not `CommandInput`, owns ArrowUp/ArrowDown/Enter** — it
   listens on the `cmdk-root` div, and its source explicitly skips its own
   switch statement when `e.defaultPrevented` is already true (not

@@ -3,6 +3,7 @@
 import { proposeListForNewTodo } from "@/lib/smart-sort";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { defaultFilter } from "cmdk";
 import {
   Command,
   CommandDialog,
@@ -110,6 +111,38 @@ interface CommandPaletteProps {
 
 /** `PaletteEntryMode` (command-registry.ts) plus the always-present root. */
 type Mode = { kind: "root" } | { kind: PaletteEntryMode };
+
+/** How `paletteFilter` recognizes a registry `fallback` row: cmdk hands a
+ * filter only an item's value, the search and its keywords. */
+const FALLBACK_KEYWORD = "faite:fallback";
+
+/**
+ * The lowest cmdk score that counts as a match (EI-389).
+ *
+ * 0.1 sits in the gap in cmdk's scorer between a match and a coincidence. A
+ * query found contiguously, or on word starts, scores at least ~0.17 —
+ * "sett" → "Open settings" 0.89, "milk" → a "Buttermilk" to-do 0.17 — and
+ * every to-do hit is one, since `searchTodos` only returns substrings
+ * (docs/COMMAND-PALETTE.md §6.2). A subsequence scattered across two
+ * mid-word jumps scores under ~0.03 — "read" → "Show items marked as won't
+ * do" 0.02 — and is dropped, because the first visible row is what Enter
+ * runs, and a coincidence must not take Enter from a capture.
+ */
+const MATCH_THRESHOLD = 0.1;
+
+/**
+ * cmdk's own scorer, with two exceptions (EI-389). Rows scoring under
+ * `MATCH_THRESHOLD` are hidden. The create-from-query fallback is never
+ * scored: its value contains the query verbatim, so it used to match every
+ * query. It is shown for any query, and render position puts it last (see
+ * its group below). Its fixed score is under every real match's too, so it
+ * would stay last if a cmdk upgrade ever started sorting groups.
+ */
+function paletteFilter(value: string, search: string, keywords?: string[]): number {
+  if (keywords?.includes(FALLBACK_KEYWORD)) return MATCH_THRESHOLD / 2;
+  const score = defaultFilter(value, search, keywords);
+  return score < MATCH_THRESHOLD ? 0 : score;
+}
 
 /**
  * Keyboard-first entry point for everything that is not drag-and-drop.
@@ -546,11 +579,14 @@ export function CommandPalette({
     },
   };
   const commandGroups = commandsByGroup(commandCtx);
+  const createCommands = commandGroups.get("Create")!;
+  const fallbackCommands = createCommands.filter((cmd) => cmd.fallback);
 
   const renderCommand = (cmd: PaletteCommand) => (
     <CommandItem
       key={cmd.id}
       value={cmd.value?.(commandCtx)}
+      keywords={cmd.fallback ? [FALLBACK_KEYWORD] : undefined}
       disabled={cmd.disabled?.(commandCtx)}
       className={cmd.className}
       onSelect={() => void cmd.run(commandCtx)}
@@ -576,8 +612,11 @@ export function CommandPalette({
         shouldFilter is off in entry modes: there the input is free text (a new
         list name), not a search query, and cmdk's built-in filtering would hide
         the single "create" item as soon as the typed value stopped matching.
+
+        `paletteFilter` is cmdk's own scorer except for the create-from-query
+        fallback, which it pins below every real match (EI-389).
       */}
-      <Command shouldFilter={!isEntryMode}>
+      <Command shouldFilter={!isEntryMode} filter={paletteFilter}>
       <div className="relative">
         <CommandInput
           ref={inputRef}
@@ -786,7 +825,8 @@ export function CommandPalette({
             {/*
               Triage (EI-383): Overdrive, at the very top while Overflow has
               cards — absent otherwise, so an empty group never renders a
-              heading. With a query, cmdk's own scoring orders the groups.
+              heading. With a query, rows sort by score within a group, but
+              groups keep this render order (see the fallback group, last).
             */}
             {commandGroups.get("Triage")!.length > 0 ? (
               <>
@@ -889,13 +929,9 @@ export function CommandPalette({
               </>
             ) : null}
 
-            {/*
-              The fallback the whole search exists for: nothing matched what
-              you typed, so turn it into the to-do instead of making you
-              retype it behind "New to-do". Rendered from the registry
-              (command-registry.ts) — see `commandCtx`/`renderCommand` above.
-            */}
-            <CommandGroup heading="Create">{commandGroups.get("Create")!.map(renderCommand)}</CommandGroup>
+            <CommandGroup heading="Create">
+              {createCommands.filter((cmd) => !cmd.fallback).map(renderCommand)}
+            </CommandGroup>
 
             <CommandSeparator />
 
@@ -950,6 +986,28 @@ export function CommandPalette({
 
             {/* Destructive commands last (EI-383) — see `COMMAND_GROUPS`. */}
             <CommandGroup heading="Delete">{commandGroups.get("Delete")!.map(renderCommand)}</CommandGroup>
+
+            {/*
+              The fallback the whole search exists for: nothing matched what
+              you typed, so turn it into the to-do instead of making you
+              retype it behind "New to-do". Rendered from the registry
+              (command-registry.ts) — see `commandCtx`/`renderCommand` above.
+
+              Last, in a group of its own (EI-389). It used to lead the
+              Create group and so every search: "loop" + Enter filed a to-do
+              instead of opening Faite Loop settings. cmdk sorts rows within
+              a group but never reorders the groups themselves (its group sort
+              looks a group up by React id against `data-value`, which holds
+              the heading, so it finds nothing), so render order is rank.
+              Here, every real match sits above it and takes Enter; with none,
+              it is the only row, so Enter still captures.
+            */}
+            {fallbackCommands.length > 0 ? (
+              <>
+                <CommandSeparator />
+                <CommandGroup heading="Create">{fallbackCommands.map(renderCommand)}</CommandGroup>
+              </>
+            ) : null}
           </>
         )}
       </CommandList>
