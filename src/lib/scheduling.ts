@@ -199,6 +199,22 @@ export function formatShortDate(date: CivilDate): string {
   return MONTH_DAY.format(toUtcNoon(date));
 }
 
+/**
+ * A day column's region name: "Wednesday, Oct 14", and "Today, Wednesday,
+ * Oct 14" for today (EI-381).
+ *
+ * The date is there because a board shows ~30 days, and "Wednesday" alone
+ * repeats five times in a screen reader's landmark list (EI-378). "Today" is
+ * there because the column's only other cue for it is visual: the size, the
+ * full ink and the shadow. "Today · " in the subtitle is text, but it is not
+ * in the name a landmark list reads. The weekday and date stay one unbroken
+ * substring, so an e2e `name: "Wednesday"` selector still matches today.
+ */
+export function dayRegionLabel(day: CivilDate, today: CivilDate): string {
+  const name = `${formatDay(day).weekday}, ${formatShortDate(day)}`;
+  return day === today ? `Today, ${name}` : name;
+}
+
 // ---------------------------------------------------------------------------
 // Rollover
 // ---------------------------------------------------------------------------

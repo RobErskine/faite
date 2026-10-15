@@ -6,7 +6,8 @@ import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { effectiveListColor } from "@/lib/colors";
 import { NAV_LOAD_MORE, navKeyOf } from "@/lib/column-nav";
-import { formatDay, formatShortDate, OVERFLOW } from "@/lib/scheduling";
+import { dayColumnId } from "@/lib/board";
+import { dayRegionLabel, formatDay, formatShortDate, OVERFLOW } from "@/lib/scheduling";
 import { OVERDRIVE_MIN_TODOS } from "@/lib/overdrive";
 import { AppHeader } from "./app-header";
 import { SignedOutBanner } from "@/components/auth/signed-out-banner";
@@ -21,6 +22,7 @@ import { BACKLOG } from "@/lib/overdrive";
 import { OverflowEmptyState } from "./overflow-empty-state";
 import { TabStrip } from "./tab-strip";
 import { PhoneBottomBar } from "./phone-bottom-bar";
+import { SkipLinks } from "./skip-links";
 import type { BoardUiState } from "./use-board-ui-state";
 import type { useBoardActions } from "./use-board-actions";
 import type { NavigateFn } from "./use-column-nav";
@@ -143,6 +145,23 @@ export function PhoneBoard({
 
   return (
     <div className="flex h-dvh flex-col overscroll-none">
+      {/* First in the DOM, so they are the first Tab stops (EI-381). Each
+          switches to the page its column lives on first; the Lists pager
+          opens on Backlog, its first page. */}
+      <SkipLinks
+        today={{
+          columnId: dayColumnId(ctx.today),
+          prefer: "card",
+          prepare: () => setPhoneView("days"),
+          // After the target exists, so the day track is mounted to scroll.
+          reveal: jumpToToday,
+        }}
+        backlog={
+          backlogColumn
+            ? { columnId: backlogColumn.id, prefer: "add", prepare: () => setPhoneView("lists") }
+            : null
+        }
+      />
       <SignedOutBanner hasUserData={todos.length > 0} />
 
       <AppHeader
@@ -268,10 +287,9 @@ export function PhoneBoard({
                     listDayDrop?.day === column.day && listDayDrop.count > 0
                   }
                   title={weekday}
-                  // The region's name carries the date (EI-378): ~30 day
-                  // columns named by weekday alone read "Wednesday" five
-                  // times over in a screen reader's landmark list.
-                  regionLabel={`${weekday}, ${formatShortDate(column.day)}`}
+                  // "Today, Wednesday, Oct 14": the date (EI-378) and, on
+                  // today, the word (EI-381). See `dayRegionLabel`.
+                  regionLabel={dayRegionLabel(column.day, ctx.today)}
                   subtitle={
                     <span className="num">
                       {isToday && "Today · "}

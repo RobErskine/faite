@@ -5,6 +5,7 @@ import {
   buildWindow,
   contextFromSettings,
   dayOfWeek,
+  dayRegionLabel,
   daysBetween,
   deriveColumn,
   formatDeadlineDue,
@@ -321,5 +322,15 @@ describe("rolloverTarget", () => {
   it("does not get stuck when every workday is excluded", () => {
     expect(rolloverTarget("2026-08-07", { workdaysOnly: true, workdays: [] }))
       .toBe("2026-08-08");
+  });
+});
+
+describe("dayRegionLabel (EI-381)", () => {
+  it("names a day by weekday and short date", () => {
+    expect(dayRegionLabel("2026-10-15", "2026-10-14")).toBe("Thursday, Oct 15");
+  });
+
+  it("says Today first on today, with the weekday and date intact after it", () => {
+    expect(dayRegionLabel("2026-10-14", "2026-10-14")).toBe("Today, Wednesday, Oct 14");
   });
 });

@@ -16,11 +16,10 @@ import { cn } from "@/lib/utils";
 import { badgeVariants } from "@/components/ui/badge";
 import { Sparkles, X } from "lucide-react";
 import { DragGrip } from "./drag-grip";
-import { PriorityRail, TitleMarkers, TodoMetaBadges } from "./todo-row-parts";
+import { PriorityRail, TitleMarkers, TodoMetaBadges, todoRowName } from "./todo-row-parts";
 import { cardStop, navKeyOf, type NavKey } from "@/lib/column-nav";
 import { placeSettled } from "@/lib/board";
 import { formatCompletionStamp } from "@/lib/event-time";
-import { priorityRail } from "@/lib/priority";
 import { TITLE_CLAMP_CLASS } from "@/lib/title";
 import { rollEventsFor } from "@/lib/rollover-events";
 import type { Label as LabelRecord, List, ReminderPreset, Todo } from "@/lib/schema";
@@ -202,10 +201,6 @@ export function TodoCard({
     onTouchStart?: TouchEventHandler;
     onKeyDown?: KeyboardEventHandler;
   };
-
-  /** Kept locally only for the sr-only priority label below — the visual
-   * rail itself is rendered by `<PriorityRail>`. */
-  const rail = priorityRail(todo.priority);
 
   /*
    * Null for an open to-do, which is what keeps the tooltip off every card on
@@ -523,8 +518,8 @@ export function TodoCard({
           Air pass removed the border and the rails silently fused. See the
           comment there.
 
-        The rail is `aria-hidden`; the level reaches screen readers as text
-        inside the title button below.
+        The rail is `aria-hidden`; the level reaches screen readers through the
+        title button's name below (`todoRowName`).
       */}
       <PriorityRail priority={todo.priority} />
 
@@ -669,6 +664,30 @@ export function TodoCard({
       <button
         type="button"
         onClick={() => onOpen(todo)}
+        /*
+          An explicit name, not one built from the content (EI-381). Chrome
+          puts a space at every block boundary inside the button, so hidden
+          commas read "Call grandma , Priority 2 , 10:00 AM", and the title
+          glyphs' sentences read before the title. `todoRowName` has the
+          reasons. It also carries the completion stamp: the tooltip is a
+          pointer nicety, and Base UI's `aria-describedby` only exists while
+          it is OPEN, so a screen-reader user who never hovers would never
+          hear it.
+        */
+        aria-label={todoRowName({
+          todo,
+          labels,
+          today: ctx.today,
+          recurrenceSummary,
+          rolledFrom,
+          showScheduledDate: isAway,
+          missedCount,
+          overflow: overflowInfo,
+          reminderPresets,
+          subtaskCount,
+          attachmentCount,
+          completionStamp,
+        })}
         className={cn(
           // `block w-full`, because a button is inline-block by default and
           // would otherwise shrink-wrap its text instead of taking the column's
@@ -743,21 +762,6 @@ export function TodoCard({
                   rolledFrom={rolledFrom}
                 />
                 {todo.title}
-                {/*
-                  Commas, not an em dash or nothing (EI-378): the name is
-                  read as one run, and "Call dentist — Priority 2 10:00 AM"
-                  ran its parts together. `TodoMetaBadges` opens each badge
-                  with the same separator.
-                */}
-                {rail && <span className="sr-only">, {rail.label}</span>}
-                {/*
-                  The tooltip is a pointer nicety; this is the real channel.
-                  Base UI's `aria-describedby` only exists while the tooltip is
-                  OPEN, so a screen-reader user who never hovers would never
-                  hear it — and the checkbox's own `aria-label` is a name, not
-                  a place to put a description.
-                */}
-                {completionStamp && <span className="sr-only">, {completionStamp}</span>}
               </span>
             }
           />
