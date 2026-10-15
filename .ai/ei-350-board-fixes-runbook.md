@@ -27,9 +27,20 @@ CI green (verify + e2e) → squash merge → Linear Done + learnings comment.
 
 | # | Ticket | Status |
 |---|---|---|
-| 7 | EI-380 finished work on completion day (P1) | |
-| 8 | EI-381 names: skip links, Today region, title first, stray-comma regression | |
-| 9 | EI-382 small/thin red contrast, Hyperlegible 2xs, checkbox width | |
-| 10 | EI-379 quick-add leading date + second date word | |
-| 11 | EI-383 recall: 0 rolls, ↳ meaning, tab counts, ⚡, phone dots, ⌘K order, Overdrive toast | |
-| 12 | Third critique on prod | |
+| 7 | EI-380 finished work on completion day (P1) | merged #145 |
+| 8 | EI-381 names: skip links, Today region, title first, stray-comma regression | merged #146 |
+| 9 | EI-382 small/thin red contrast, Hyperlegible 2xs, checkbox width | merged #147 |
+| 10 | EI-379 quick-add leading date + second date word | merged #148 |
+| 11 | EI-383 recall: 0 rolls, ↳ meaning, tab counts, ⚡, phone dots, ⌘K order, Overdrive toast | merged #149 |
+| 12 | Third critique on prod | 27 → 29/40; snapshot uncommitted |
+
+## Batch 3 (owner decisions 2026-10-14: all 5; wider Today column; Overflow badge age only)
+
+| # | Ticket | Status |
+|---|---|---|
+| 13 | EI-384 wider Today (P1) | |
+| 14 | EI-385 phone Lists peek (P1) | |
+| 15 | EI-386 keyboard path gaps | |
+| 16 | EI-387 dates: palette year/state, age-only badge, Won't do toast icon | |
+| 17 | EI-388 phone touch targets 44px | |
+| 18 | Fourth critique on prod | |
