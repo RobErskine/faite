@@ -112,6 +112,20 @@ export function railBackgroundImage(rail: PriorityRail): string | null {
  *
  * Exact, not an approximation: the four levels ARE CSS's four line styles.
  */
+/**
+ * How much of its level's opacity a settled (done or Won't do) row's rail
+ * keeps (EI-395). At full strength the P1 double rail was the loudest mark on
+ * a finished row, louder than its own dimmed title; at 40% it still says what
+ * the level was. Here rather than in `todo-row-parts.tsx` so the homepage's
+ * zero-JS demo board can share it.
+ */
+export const SETTLED_RAIL_OPACITY = 0.4;
+
+/** A rail's opacity on a row, dimmed once the row is settled. */
+export function railOpacity(rail: PriorityRail, settled: boolean): number {
+  return settled ? rail.opacity * SETTLED_RAIL_OPACITY : rail.opacity;
+}
+
 export function railBorderStyle(rail: PriorityRail): RailStyle {
   return rail.style;
 }

@@ -13,8 +13,8 @@ import {
 import { Badge, badgeVariants } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { edge, tint } from "@/lib/colors";
-import { priorityRail, railBackgroundImage } from "@/lib/priority";
+import { labelChipStyle } from "@/lib/colors";
+import { priorityRail, railBackgroundImage, railOpacity } from "@/lib/priority";
 import type { CivilDate, Label as LabelRecord, ReminderPreset, Todo } from "@/lib/schema";
 import { formatDeadlineDue, formatShortDateAsOf, isDeadlineMissed } from "@/lib/scheduling";
 import { reminderLabelFor } from "@/lib/reminder-presets";
@@ -37,9 +37,12 @@ import { describeOverflowAge, formatOverflowAge } from "@/lib/rollover-events";
  */
 export function PriorityRail({
   priority,
+  settled = false,
   className,
 }: {
   priority: Todo["priority"];
+  /** Done or Won't do: the rail steps back with the title. */
+  settled?: boolean;
   className?: string;
 }) {
   const rail = priorityRail(priority);
@@ -59,7 +62,8 @@ export function PriorityRail({
       */
       style={{
         width: rail.width,
-        opacity: rail.opacity,
+        // Steps back on a settled row (EI-395, `SETTLED_RAIL_OPACITY`).
+        opacity: railOpacity(rail, settled),
         ...(railBackgroundImage(rail)
           ? { backgroundImage: railBackgroundImage(rail)! }
           : { backgroundColor: "var(--foreground)" }),
@@ -453,7 +457,10 @@ export function TodoMetaBadges({
                 data-overflow-age
                 className={cn(
                   badgeVariants({ variant: "outline" }),
-                  "nums text-2xs font-normal text-muted-foreground",
+                  // `text-foreground/60`, the quiet ink that passes (EI-378):
+                  // muted ink fell to 4.1:1 under the hover wash on
+                  // Overflow's `surface-0` (EI-395). Worst now 4.90:1.
+                  "nums text-2xs font-normal text-foreground/60",
                   "h-auto min-h-5 max-w-full flex-wrap justify-start gap-x-[0.25em] gap-y-0 whitespace-normal",
                 )}
               >
@@ -503,14 +510,12 @@ export function TodoMetaBadges({
           className="text-2xs font-normal"
           /*
             The identity ladder from lib/colors.ts, not a hand-rolled alpha:
-            tint behind, edge around, and — the one place hue touches text
-            (docs/DESIGN.md §1) — the label's own color on the name.
+            tint behind, edge around, and the text in `labelInk` — 30% of the
+            hue into the foreground (EI-395). The raw hue on the name measured
+            1.4–3.9:1 at this size; the mix clears 7.7:1 for every preset, on
+            every surface, in both themes (docs/DESIGN.md §1).
           */
-          style={
-            label.color
-              ? { backgroundColor: tint(label.color), borderColor: edge(label.color), color: label.color }
-              : undefined
-          }
+          style={labelChipStyle(label.color)}
         >
           {label.emoji ? `${label.emoji} ` : ""}
           {label.name}

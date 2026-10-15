@@ -1380,6 +1380,26 @@ and toasts with an Undo action, the same shape the palette's creates use.
   it doubles as the drop animation's target (§4.7), so its position is load
   bearing, not just decorative
 - landing row held at `opacity-0` while the overlay flies to it
+- **the row's inline `transition` is composed, never dnd-kit's alone**
+  (EI-395, `rowTransition` in `lib/completion-beat.ts`). `useSortable` returns
+  `transform 200ms ease`, or `transform 0ms linear` for the frame it sets up a
+  move, and the row used to pass that straight to `style`. An inline
+  `transition` shorthand replaces the WHOLE list, so the class's
+  `background-color`/`opacity` transitions were gone on every row: the hover
+  wash snapped and the landing fade did nothing. The composed value keeps
+  dnd-kit's string first, untouched, then the wash and the fade on CSS
+  variables (`--row-wash-dur`, `--row-fade-dur`) that the classes set, so
+  `hover:` can still shorten one. Never pass `transition` alone again.
+- **the completion beat's slide is WAAPI, not style** (`use-completion-beat.ts`).
+  When a completed row leaves, the rows below animate `translateY` from where
+  they were with `element.animate()`, which composites over the inline
+  `transform` dnd-kit owns without writing it, and needs no re-render. It runs
+  only on the commit that releases a held row, never on a drop, so it cannot
+  fight §4.7's landing flight.
+- the checkbox's wrapper is `z-[1]`: the title button is `position: relative`
+  (its notched focus outline is pseudo-elements), and a positioned box later in
+  the DOM takes clicks over an earlier one. Without it every checkbox click
+  landed on the title; e2e caught it, `click()` from a script did not
 
 **Column** (`board-column.tsx`) — three mutually exclusive drag states, shared
 by card drags and column drags:

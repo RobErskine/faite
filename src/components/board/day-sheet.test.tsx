@@ -434,7 +434,9 @@ describe("timeline", () => {
     const wrapper = card.parentElement!;
     // An inline background on the row itself would beat `hover:bg-accent/50`.
     expect(wrapper.getAttribute("style")).toContain("background-color");
-    expect(card.getAttribute("style") ?? "").not.toContain("background-color");
+    // The property, not the string: the row's inline `transition` names
+    // `background-color` (EI-395, `rowTransition`), which is not a fill.
+    expect((card as HTMLElement).style.backgroundColor).toBe("");
   });
 
   it("leaves the wash off when the list has no color", () => {

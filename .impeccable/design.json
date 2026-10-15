@@ -887,7 +887,7 @@
       {
         "name": "ease-spring",
         "value": "cubic-bezier(0.34, 1.56, 0.64, 1)",
-        "purpose": "The check flash only."
+        "purpose": "Nothing since EI-395 (the check flash animates box-shadow, so it lands on ease-out-soft). Kept for a transform that wants a pop."
       },
       {
         "name": "ease-spring-travel",
@@ -958,7 +958,7 @@
       "refersTo": "todo-card",
       "description": "Signature row: no border, no fill, a 12px gutter for the square checkbox, an achromatic priority rail (P1 double 5px shown), and an ink-at-5% hover wash in fast, out slower. Done is struck; Won't do only dims.",
       "html": "<div class=\"ds-todo-list\"><div class=\"ds-todo\"><span class=\"ds-todo-rail ds-p1\"></span><span class=\"ds-todo-box\"></span><span class=\"ds-todo-title\">Call the landlord about the lease</span></div><div class=\"ds-todo\"><span class=\"ds-todo-rail ds-p3\"></span><span class=\"ds-todo-box\"></span><span class=\"ds-todo-title\">Draft the quarterly review</span></div><div class=\"ds-todo ds-done\"><span class=\"ds-todo-box ds-checked\"><svg width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"3\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M20 6 9 17l-5-5\"/></svg></span><span class=\"ds-todo-title\">Book flights</span></div><div class=\"ds-todo ds-dropped\"><span class=\"ds-todo-box\"></span><span class=\"ds-todo-title\">Learn the banjo</span></div></div>",
-      "css": ".ds-todo-list { width: 15rem; background: var(--background); } .ds-todo { position: relative; display: block; padding: 8px 8px 8px 12px; color: var(--foreground); font-family: var(--app-sans); font-size: 0.875rem; line-height: 1.375; transition: background-color var(--dur-base, 180ms) cubic-bezier(0.22, 1, 0.36, 1); } .ds-todo:hover, .ds-todo:focus-within { background: color-mix(in oklch, var(--foreground) 5%, transparent); transition-duration: var(--dur-fast, 100ms); } .ds-todo-rail { position: absolute; top: 4px; bottom: 4px; left: 0; pointer-events: none; } .ds-p1 { width: 5px; opacity: 1; background: linear-gradient(to right, var(--foreground) 0 2px, transparent 2px 3px, var(--foreground) 3px); } .ds-p3 { width: 2px; opacity: 0.75; background: repeating-linear-gradient(to bottom, var(--foreground) 0 6px, transparent 6px 9px); } .ds-todo-box { position: absolute; left: 12px; top: 10px; display: inline-grid; place-content: center; width: 16px; height: 16px; border: 1px solid var(--muted-foreground); border-radius: 0; color: var(--primary-foreground); } .ds-todo-box.ds-checked { background: var(--primary); border-color: var(--primary); } .ds-todo-title { display: block; text-indent: 24px; } .ds-done .ds-todo-title { color: var(--muted-foreground); text-decoration: line-through; } .ds-dropped .ds-todo-title { color: var(--muted-foreground); opacity: 0.7; }"
+      "css": ".ds-todo-list { width: 15rem; background: var(--background); } .ds-todo { position: relative; display: block; padding: 8px 8px 8px 12px; color: var(--foreground); font-family: var(--app-sans); font-size: 0.875rem; line-height: 1.375; transition: background-color var(--dur-base, 180ms) cubic-bezier(0.22, 1, 0.36, 1); } .ds-todo:hover, .ds-todo:focus-within { background: color-mix(in oklch, var(--foreground) 5%, transparent); transition-duration: var(--dur-fast, 100ms); } .ds-todo-rail { position: absolute; top: 4px; bottom: 4px; left: 0; pointer-events: none; } .ds-p1 { width: 5px; opacity: 1; background: linear-gradient(to right, var(--foreground) 0 2px, transparent 2px 3px, var(--foreground) 3px); } .ds-p3 { width: 2px; opacity: 0.75; background: repeating-linear-gradient(to bottom, var(--foreground) 0 6px, transparent 6px 9px); } .ds-todo-box { position: absolute; left: 12px; top: 10px; display: inline-grid; place-content: center; width: 16px; height: 16px; border: 1px solid var(--muted-foreground); border-radius: 0; color: var(--primary-foreground); } .ds-todo-box.ds-checked { background: var(--primary); border-color: var(--primary); } .ds-todo-title { display: block; text-indent: 24px; } .ds-done .ds-todo-title { color: color-mix(in oklab, var(--foreground) 60%, transparent); text-decoration: line-through; } .ds-dropped .ds-todo-title { color: color-mix(in oklab, var(--foreground) 60%, transparent); }"
     },
     {
       "name": "Today Column Header",
@@ -1026,7 +1026,7 @@
       },
       {
         "name": "The Strike Means Done Rule",
-        "body": "`done` gets a strike-through; Won't do (`dropped`) only dims (`opacity-70`) and never gets the strike, because a strike says \"this got done\" (docs/DESIGN.md §1).",
+        "body": "`done` gets a strike-through on its title text (never its badges); Won't do (`dropped`) only dims and never gets the strike, because a strike says \"this got done\". Both settle into `text-foreground/60`, the quiet ink that passes 4.5:1 on every surface, and the rail steps back to 40% (docs/DESIGN.md §1, §7 2026-10-15 EI-395).",
         "section": "colors"
       },
       {
@@ -1036,7 +1036,7 @@
       },
       {
         "name": "The Hue Rides Edges Rule",
-        "body": "Identity hue goes on borders and fills, never on text, because a step-9 hue at `text-2xs` fails contrast in one theme or the other. Label chips are the one exception: hue text on a tint of the same hue. Never on a card body (docs/DESIGN.md §1).",
+        "body": "Identity hue goes on borders and fills, never on text, because a step-9 hue at `text-2xs` fails contrast in one theme or the other. Label chips keep the hue on their tint and edge; their text is `labelInk`, 30% of the hue mixed into the foreground (7.7:1 or better for every preset, both themes). No exceptions. Never on a card body (docs/DESIGN.md §1).",
         "section": "colors"
       },
       {

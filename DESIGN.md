@@ -212,11 +212,11 @@ An achromatic ink-on-paper ladder, plus five channels that each mean one thing: 
 
 **The Form Not Hue Rule.** Priority is carried by the rail's thickness, line style and opacity, never by hue: P1 double 5px, P2 solid 3px, P3 dashed 2px, P4 dotted 2px, all `--foreground` at falling opacity (`PRIORITY_RAILS` in `src/lib/priority.ts`; docs/DESIGN.md §1, §7 decision A and 2026-09-10).
 
-**The Strike Means Done Rule.** `done` gets a strike-through; Won't do (`dropped`) only dims (`opacity-70`) and never gets the strike, because a strike says "this got done" (docs/DESIGN.md §1).
+**The Strike Means Done Rule.** `done` gets a strike-through on its title text (never its badges); Won't do (`dropped`) only dims and never gets the strike, because a strike says "this got done". Both settle into `text-foreground/60`, the quiet ink that passes 4.5:1 on every surface, and the rail steps back to 40% (docs/DESIGN.md §1, §7 2026-10-15 EI-395).
 
 **The No New Brand Rule.** The marketing site reuses the app's tokens and invents nothing: no brand color beyond the spectrum (and the spectrum in one place per page at most), no hero gradient that covers area, no third font family (docs/DESIGN.md §6).
 
-**The Hue Rides Edges Rule.** Identity hue goes on borders and fills, never on text, because a step-9 hue at `text-2xs` fails contrast in one theme or the other. Label chips are the one exception: hue text on a tint of the same hue. Never on a card body (docs/DESIGN.md §1).
+**The Hue Rides Edges Rule.** Identity hue goes on borders and fills, never on text, because a step-9 hue at `text-2xs` fails contrast in one theme or the other. Label chips keep the hue on their tint and edge; their text is `labelInk`, 30% of the hue mixed into the foreground (7.7:1 or better for every preset, both themes). No exceptions. Never on a card body (docs/DESIGN.md §1).
 
 ## Typography
 
@@ -275,7 +275,7 @@ Quiet and tactile; the board has no loud fills.
 
 ### Badges
 - **Urgent** (`destructive` variant, read through `--urgent`): urgent at 10% behind `urgent-foreground` text, at `text-xs`, pill shape. The only red badge (§1).
-- **Overflow age**: outline, muted ink, `text-2xs` in `nums`, words only. One string everywhere it appears: "since Oct 6 · 9 days", "since today" on the crossing day; the year joins the start when it is not this year. Too wide for its row, it breaks between the halves, never inside one (§7 2026-10-15).
+- **Overflow age**: outline, `text-foreground/60` ink, `text-2xs` in `nums`, words only. One string everywhere it appears: "since Oct 6 · 9 days", "since today" on the crossing day; the year joins the start when it is not this year. Too wide for its row, it breaks between the halves, never inside one (§7 2026-10-15).
 
 ### Inputs
 - **Style:** 32px, `rounded.lg`, `--input` border, transparent fill.
@@ -285,7 +285,8 @@ Quiet and tactile; the board has no loud fills.
 - Not a flex row: grip and square checkbox sit in a 12px left gutter; the title spans full width with a first-line indent.
 - Priority rail on the left edge per The Form Not Hue Rule; wash on the group container, not the card.
 - Hover wash arrives on `--dur-fast` and leaves on `--dur-base`, so a swept column leaves a wake (§7 2026-09-09).
-- Done: strike-through, with the checked-box spectrum flash (`animate-check`). Won't do: dim only.
+- Done: the completion beat (docs/DESIGN.md §4): the checked-box spectrum flash (`animate-check`) and a strike drawn left to right on the title (`animate-strike`), held for one beat, then the row fades and the rows below close up on a transform (View: All: it slides to its new place). Reduced motion keeps the beat, drops the motion. Won't do: dim only.
+- Focus: the checkbox takes `focus-ring`; the title's outline steps round the checkbox (`focus-ring-notched`).
 
 ### Column Header
 - `type-column-title`; today and Overflow keep full ink, other days recede to muted.

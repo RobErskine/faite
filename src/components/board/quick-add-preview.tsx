@@ -1,7 +1,7 @@
 import type { MouseEvent } from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { edge, tint } from "@/lib/colors";
+import { labelChipStyle } from "@/lib/colors";
 import {
   quickAddNoticeHint,
   unresolvedMentionLabel,
@@ -96,9 +96,9 @@ export function QuickAddPreview({
   return (
     <div className={cn("flex flex-wrap items-center gap-1 px-2 pb-1.5", className)}>
       {chips.map((chip) => {
-        const style = chip.color
-          ? { backgroundColor: tint(chip.color), borderColor: edge(chip.color), color: chip.color }
-          : undefined;
+        // Hue on the tint and edge, a foreground-led ink on the text, so the
+        // chip passes 4.5:1 (EI-395, `labelChipStyle`).
+        const style = chip.color ? labelChipStyle(chip.color) : undefined;
         const classes = cn(
           "inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-2xs font-medium leading-none",
           chip.dashed

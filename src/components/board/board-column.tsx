@@ -31,6 +31,7 @@ import { MentionMenu, useMention, type MentionSource } from "@/components/mentio
 import { createLabel } from "@/lib/store/repositories";
 import type { CivilDate, Label as LabelRecord, List, ReminderPreset, Todo } from "@/lib/schema";
 import type { PlacementContext } from "@/lib/scheduling";
+import type { ConfettiOrigin } from "@/lib/celebrate";
 import {
   InputGroup,
   InputGroupAddon,
@@ -45,6 +46,7 @@ import {
   type QuickAddChip,
 } from "./quick-add-preview";
 import { TodoCard } from "./todo-card";
+import { useCompletionBeat } from "./use-completion-beat";
 import type { TodoContextActions } from "./todo-card-menu";
 import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { ListGroupMenu } from "./list-group-menu";
@@ -176,7 +178,8 @@ interface BoardColumnProps {
   tone?: "urgent";
   /** Rendered in the column header — list rename/delete menus, etc. */
   actions?: React.ReactNode;
-  onToggle: (todo: Todo) => void;
+  /** `origin` is the checkbox's box, for GOOD JOB mode's confetti (`TodoCard`). */
+  onToggle: (todo: Todo, origin?: ConfettiOrigin | null) => void;
   onOpen: (todo: Todo) => void;
   /**
    * Omit to drop the quick-add row entirely. Overflow does: nothing can be
@@ -694,7 +697,25 @@ export function BoardColumn({
    * `[]` on a day column with no lists to group by (`buildBoard`'s degenerate
    * fallback) and in that state the flat `todos` are still the contents.
    */
-  const grouped = groups && groups.length > 0 ? groups : null;
+  /*
+    The completion beat (EI-395, `use-completion-beat.ts`): a row just ticked
+    stays where it was, checked and struck, for one beat before it leaves —
+    so the rows rendered below are the data's rows plus any row still
+    finishing. Counts and "no matches" keep reading the data: a row that is
+    on its way out is not one the column holds.
+  */
+  const {
+    rows: beatRows,
+    groups: beatGroups,
+    leavingIds,
+    onToggle: beatToggle,
+    listRef,
+  } = useCompletionBeat({ todos, groups, onToggle });
+  const grouped = beatGroups && beatGroups.length > 0 ? beatGroups : null;
+  const flatRows = beatRows ?? todos;
+  const shownIds = grouped
+    ? grouped.flatMap((g) => g.todos.map((t) => t.id))
+    : flatRows.map((t) => t.id);
 
   // `todos`/`groups` already arrive pre-filtered (use-board-data.ts), so no
   // structural change is needed here beyond making room for the message row.
@@ -729,7 +750,8 @@ export function BoardColumn({
         // The card reports its own selection size so its menu can say what it
         // will act on; it never learns WHICH other cards those are.
         selectionCount={selectedIds?.size}
-        onToggle={onToggle}
+        onToggle={beatToggle}
+        leaving={leavingIds.has(todo.id)}
         onOpen={onOpen}
         onNavigate={onNavigate}
         missedCount={missedCounts?.get(todo.id)}
@@ -1164,7 +1186,7 @@ export function BoardColumn({
       )}
 
       {!collapsed && (
-        <div className="flex flex-1 flex-col">
+        <div ref={listRef} className="flex flex-1 flex-col">
           {/*
             `groups?.length` rather than `groups`: an empty array is `buildBoard`'s
             degenerate no-lists fallback, where the flat `todos` are still the
@@ -1172,7 +1194,7 @@ export function BoardColumn({
             `[].map(...)` and drop every card on the floor.
           */}
           <SortableContext
-            items={todos.map((t) => t.id)}
+            items={shownIds}
             strategy={grouped ? NO_SORTING : verticalListSortingStrategy}
             disabled={grouped ? CARDS_NOT_DROPPABLE : undefined}
           >
@@ -1198,7 +1220,7 @@ export function BoardColumn({
                 </TodoGroupSection>
               ))
             ) : (
-              renderCards(todos)
+              renderCards(flatRows)
             )}
           </SortableContext>
 
@@ -1488,6 +1510,8 @@ function TodoGroupSection({
   return (
     <div
       ref={setNodeRef}
+      // The completion beat's slide finds groups by this (use-completion-beat.ts).
+      data-todo-group={group.id}
       className={cn(
         "relative",
         /*

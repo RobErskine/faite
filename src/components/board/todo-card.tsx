@@ -21,6 +21,7 @@ import { cardStop, navKeyOf, type NavKey } from "@/lib/column-nav";
 import { placeSettled } from "@/lib/board";
 import { formatCompletionStamp } from "@/lib/event-time";
 import { TITLE_CLAMP_CLASS } from "@/lib/title";
+import { rowTransition } from "@/lib/completion-beat";
 import { rollStateFor } from "@/lib/rollover-events";
 import type { Label as LabelRecord, List, ReminderPreset, Todo } from "@/lib/schema";
 import type { PlacementContext } from "@/lib/scheduling";
@@ -93,6 +94,12 @@ interface TodoCardProps {
    * in layout so the column does not resize under the animation.
    */
   isLanding?: boolean;
+  /**
+   * This row has been completed and is fading out of a view that does not
+   * show finished work (EI-395, `use-completion-beat.ts`). Inert while it
+   * goes, so nothing can be clicked on a row that is no longer there.
+   */
+  leaving?: boolean;
   /**
    * False where the card cannot be dragged — the day sheet's timeline, which
    * renders outside the board's DndContext. Drops the grip and the grab cursor,
@@ -169,6 +176,7 @@ export function TodoCard({
   isAway,
   showInsertionLine,
   isLanding,
+  leaving = false,
   draggable = true,
   onToggle,
   onOpen,
@@ -283,27 +291,32 @@ export function TodoCard({
   }, [todo.title]);
 
   /**
-   * True for one animation cycle right after THIS card is completed — not
+   * True once THIS card has watched its to-do go from open to done — not
    * simply "status is done", which is also true every time an already-done
-   * card remounts (a tab switch, a filter change). `wasDoneRef` is what
-   * tells a fresh completion apart from a card that was already settled
-   * when it mounted, so the flash plays once, at the moment it means
-   * something. Drives `--animate-check` (docs/DESIGN.md §4), one of the
-   * spectrum's four allowed places — the same signal the hairline and the
-   * focus ring use, here for "you just finished this."
+   * card mounts (a tab switch, a filter change, a reload). An animation keys
+   * on a transition, never on a state (docs/DESIGN.md §4), so a card that
+   * mounts done renders the static strike and no flash.
+   *
+   * Render-time, not an effect (the `lastSeen` pattern, `.ai/lessons.md`):
+   * an effect lands a frame after the checked box has already painted, and
+   * the flash would start late. It clears when the strike finishes drawing,
+   * and the row swaps to a plain `line-through` it cannot tell apart (the
+   * drawn line sits where the face's own strike does). Clearing matters:
+   * under View: All the finished row then MOVES, React re-inserts its node,
+   * and a CSS animation still on it would play a second time.
+   *
+   * Drives `--animate-check` on the box (one of the spectrum's four places)
+   * and `--animate-strike` on the title: the completion beat (EI-395). The
+   * column holds the row in place long enough for both to be seen
+   * (`use-completion-beat.ts`).
    */
-  const wasDoneRef = useRef(todo.status === "done");
+  const [seenStatus, setSeenStatus] = useState(todo.status);
   const [justCompleted, setJustCompleted] = useState(false);
-  useEffect(() => {
-    const isDone = todo.status === "done";
-    if (isDone && !wasDoneRef.current) {
-      setJustCompleted(true);
-      const timer = setTimeout(() => setJustCompleted(false), 200);
-      wasDoneRef.current = isDone;
-      return () => clearTimeout(timer);
-    }
-    wasDoneRef.current = isDone;
-  }, [todo.status]);
+  if (todo.status !== seenStatus) {
+    setSeenStatus(todo.status);
+    setJustCompleted(seenStatus === "open" && todo.status === "done");
+  }
+  const settled = todo.status !== "open";
 
   return (
     /*
@@ -327,7 +340,18 @@ export function TodoCard({
     >
     <ContextMenuTrigger
       ref={setNodeRef}
-      style={{ transform: CSS.Translate.toString(transform), transition }}
+      /*
+        `rowTransition` composes dnd-kit's `transition` with the wash and the
+        fade rather than letting it replace them (EI-395): an inline
+        `transition` shorthand overrides the whole class list, so the hover
+        wash used to snap. The two durations are CSS variables, set by the
+        classes below, so `hover:` and `leaving` can still change them.
+      */
+      style={{
+        transform: CSS.Translate.toString(transform),
+        transition: rowTransition(transition),
+      }}
+      inert={leaving || undefined}
       /*
         Mouse and touch drags start anywhere on the row. Only those two
         activators move here — `attributes` (role, tabIndex,
@@ -467,17 +491,19 @@ export function TodoCard({
         draggable && "cursor-grab active:cursor-grabbing",
         "focus-ring",
         // Opacity transitions alongside the background so the row fades in when
-        // a landing completes rather than popping. Hover only changes the
-        // background, so naming both properties loses nothing over
-        // `transition-colors`.
+        // a landing completes rather than popping, and out when a completed
+        // row leaves (EI-395).
         //
         // The wash arrives on `--dur-fast` and leaves on `--dur-base`. The
         // asymmetry is the point: sweeping a pointer down a column fades every
         // row it crosses both in and out, and at one speed that reads as a
         // strobe. Leaving slower turns the rows behind the cursor into a wake
         // instead. Both ends stay inside the budget (docs/DESIGN.md §4).
-        "transition-[background-color,opacity] duration-(--dur-base)",
-        "hover:duration-(--dur-fast)",
+        //
+        // The transition list itself is the inline `rowTransition` above;
+        // these set its two durations.
+        "[--row-wash-dur:var(--dur-base)] [--row-fade-dur:var(--dur-base)]",
+        "hover:[--row-wash-dur:var(--dur-fast)]",
         "hover:bg-foreground/5 focus-within:bg-foreground/5",
         // The dragged row stays in place as a faint ghost so the list does not
         // visibly collapse out from under the cursor.
@@ -494,6 +520,10 @@ export function TodoCard({
         // Last, so it wins over the dragging and away states.
         isLanding && "opacity-0",
         isAway && !isLanding && "opacity-60",
+        // The completion beat's exit: a fade on `--dur-fast`, faster than the
+        // strike it follows. Inert above, so it takes no input while it goes.
+        // Reduced motion never reaches this state; the row leaves in one step.
+        leaving && "pointer-events-none opacity-0 [--row-fade-dur:var(--dur-fast)]",
       )}
     >
       {/*
@@ -522,7 +552,7 @@ export function TodoCard({
         The rail is `aria-hidden`; the level reaches screen readers through the
         title button's name below (`todoRowName`).
       */}
-      <PriorityRail priority={todo.priority} />
+      <PriorityRail priority={todo.priority} settled={settled} />
 
       {/*
         Insertion indicator: a solid line showing exactly where the dragged item
@@ -656,10 +686,16 @@ export function TodoCard({
               `pointer-coarse:top-3.5` keeps the box on the first line of a
               44px row (EI-388), and puts the checkbox's 44px-tall coarse
               `::after` exactly on the row: 14 + 16 + 14.
+
+              `z-[1]`: the title button is `position: relative` now (its
+              notched focus outline is drawn by pseudo-elements, EI-395), and
+              a positioned box later in the DOM paints, and takes clicks, over
+              an earlier one. Without this the title would swallow every
+              click on the checkbox it sits under.
             */
             <span
               ref={checkboxRef}
-              className="absolute left-3 top-2.5 inline-flex pointer-coarse:top-3.5"
+              className="absolute left-3 top-2.5 z-[1] inline-flex pointer-coarse:top-3.5"
             />
           }
         >
@@ -730,7 +766,18 @@ export function TodoCard({
           // Stated rather than inherited: dragging is the primary gesture over
           // the title now, and a click still opens the sheet.
           draggable && "cursor-grab active:cursor-grabbing",
-          "focus-ring rounded",
+          /*
+            The title's focus outline goes around the TITLE, not around the
+            checkbox sitting in its top-left corner (EI-395). A plain outline
+            on this full-width button enclosed the checkbox, so "open" and
+            "complete" read as one control; `focus-ring-notched`
+            (globals.css) draws the same 2px spectrum line around an L that
+            steps round the checkbox, which has its own ring. The hit area is
+            unchanged — only the drawing moved. `--notch-h` is the first
+            line's box: the padding above it plus one line height.
+          */
+          "focus-ring-notched [--notch-h:calc(0.25rem+1lh+2px)]",
+          "pointer-coarse:[--notch-h:calc(0.75rem+1lh+2px)]",
           /*
             Two settled statuses, two different reads — worth the extra branch
             now that the "Marked as won't do" filter can put them side by side.
@@ -738,11 +785,17 @@ export function TodoCard({
             A strike-through means "this got done"; wearing it, `dropped` would
             claim credit for work that was abandoned, which is the exact
             distinction `todoStatusSchema` refuses to collapse. Both dim, since
-            neither is live work; only `done` is struck.
+            neither is live work; only `done` is struck (on the title text
+            below, not the badges).
+
+            One quiet ink for both, `text-foreground/60` (EI-395): the board's
+            "quiet ink that must pass" (docs/DESIGN.md §7, EI-378). It clears
+            4.5:1 on the hover wash, today's card, Overflow and a list's wash
+            in both themes (worst 4.90:1 light, 5.71:1 dark). Won't do used to
+            be muted ink at 70% opacity, 2.71:1 — dim, and unreadable with it.
+            It is still plainly dimmer than an open title (17:1).
           */
-          todo.status !== "open" && "text-muted-foreground",
-          todo.status === "done" && "line-through",
-          todo.status === "dropped" && "opacity-70",
+          settled && "text-foreground/60",
         )}
       >
         {/*
@@ -784,7 +837,28 @@ export function TodoCard({
                   recurrenceSummary={recurrenceSummary}
                   rolledFrom={rolledFrom}
                 />
-                {todo.title}
+                {/*
+                  The strike sits on the title text alone. On the button it
+                  also struck every label chip and badge below, which read as
+                  "this label was removed". A done row that this card watched
+                  being completed draws its strike left to right
+                  (`strike-draw`, `--animate-strike`); one that mounted done
+                  gets the static `line-through`.
+                */}
+                <span
+                  data-todo-title-text
+                  onAnimationEnd={(e) => {
+                    if (e.animationName === "strike") setJustCompleted(false);
+                  }}
+                  className={cn(
+                    todo.status === "done" &&
+                      (justCompleted
+                        ? "strike-draw animate-strike motion-reduce:animate-none"
+                        : "line-through"),
+                  )}
+                >
+                  {todo.title}
+                </span>
               </span>
             }
           />

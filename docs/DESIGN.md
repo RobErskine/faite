@@ -25,19 +25,25 @@ that thing, or it stays achromatic.
 
 | Channel | Means | Implemented by | Where it appears | Never |
 |---|---|---|---|---|
-| **Identity hue** (user-chosen per tab or list, including Tomato) | "belongs to X" | `src/lib/colors.ts`: `wash()` 5%, `tint()` 12%, `edge()` 35%; `effectiveListColor()` | wash behind a run of rows, tint on group and tab headers, edge rule under a column title, label chips, confetti | on `text-2xs` text; on a card body |
+| **Identity hue** (user-chosen per tab or list, including Tomato) | "belongs to X" | `src/lib/colors.ts`: `wash()` 5%, `tint()` 12%, `edge()` 35%; `effectiveListColor()`; `labelInk()` / `labelChipStyle()` for a label chip's text | wash behind a run of rows, tint on group and tab headers, edge rule under a column title, label chips (tint and edge; the text is `labelInk`), confetti | raw hue as text, at any size; on a card body |
 | **Urgent** (`--urgent`, an alias of `--destructive`) | "needs a verdict now" | `--urgent`, `--urgent-foreground`, `--urgent-soft`; `badgeVariants({ variant: "destructive" })`. Red **text** is always `--urgent-foreground` at `text-xs` or larger, on the 10% tint; bare `--urgent` is for rules and outlines only. The Overflow rule is `border-urgent/70`, the alpha that clears 3:1 on `surface-0` in both themes | the Overflow column's edge rule and count (both only while it holds something), missed Deadline, `×N` missed occurrences, N due banner, drop-refused outline | red text at `text-2xs`; a second red anywhere, and the per-card Overflow age ("since Oct 6 · 9 days", EI-390; "In Overflow" is left to the column), which is muted ink: the column already says it once (EI-374). Users may pick Tomato for a list; the app itself adds no other red |
 | **Priority** | importance | `src/lib/priority.ts` `PRIORITY_RAILS` | the card's left rail: P1 5px double, P2 3px solid, P3 2px dashed, P4 2px dotted, all `--foreground` at falling opacity | hue. Line style, thickness and opacity carry all four levels (decision A; styles added 2026-09-10, §7) |
 | **Spectrum** (`--spectrum`, `--spectrum-solid`) | "Faite, here, now" | `hairline-spectrum` utility; `--spectrum-solid` for rings | four places only: the F mark on hover and focus, the today column's top hairline, the checked-box flash, the focus ring | a fill, a text color, a badge, a fifth place |
 | **Status** (`--warning`, `--info`, `--success`, each with `-foreground` and `-soft`) | system state | `bg-warning-soft text-warning-foreground` and siblings | desktop and auth banners, toasts | board content |
-| **Form** (strike-through, dim) | done / dropped | `line-through` on `done`; `opacity-70` on `dropped` (`todo-card.tsx`) | rows | color. `dropped` never gets the strike; a strike says "this got done" |
+| **Form** (strike-through, dim) | done / dropped | both settled statuses in `text-foreground/60`, the quiet ink that passes; `line-through` on a `done` title's text (not its badges); the priority rail at 40% of its opacity on either (`todo-card.tsx`, `SETTLED_RAIL_OPACITY`) | rows | color. `dropped` never gets the strike; a strike says "this got done" |
 
 The identity ladder is a ladder because the gaps are the point: a rule at 35%,
 the header under it at 12%, the field behind the cards at 5%. Wash and tint
 were once 10% and 12%, which is inside the noise. Hue rides borders and fills,
 never text, because a Radix step-9 hue at `text-2xs` fails contrast in one
-theme or the other. Label chips are the one exception: the chip's text takes
-the label's hue, on a tint of the same hue.
+theme or the other. Label chips used to be the one exception, and measured
+1.4–3.9:1 (EI-395). Now the hue keeps the chip's tint and edge, and its text is
+`labelInk`: `color-mix(in oklab, <hue> 30%, var(--foreground))`. The chip
+still reads as its color, and the ink takes its contrast from the foreground,
+which flips with the theme: every preset clears 7.7:1 on its chip, on any
+surface, under the hover wash, in both themes, and so does a pure black or
+white hue (5.2:1). `colors.test.ts` recomputes that number; raise the 30% and
+it says by how much it stopped passing.
 
 The spectrum is peach → rose → lavender → sky at low chroma. It is a hairline
 and a flash. It never covers area. Dia's rule applies: things change color,
@@ -171,6 +177,11 @@ same recessed surface its header trigger button does, so opening it reads as
 the same field growing rather than a handoff to a different component. Every
 button on the board — inside an overlay or out — shares one `focus-ring`
 utility (`ui/button.tsx`), not shadcn's `border-ring ring-3 ring-ring/50`.
+So does the checkbox (`ui/checkbox.tsx`, EI-395): its shadcn halo was the ring
+at 50%, 1.97:1. The to-do title is the one variation, `focus-ring-notched`:
+the same 2px line drawn round an L that steps round the checkbox sitting in
+the title's top-left corner, so "open" and "complete" never read as one
+control. The title's hit area is unchanged; only the drawing moved.
 
 ### Touch targets
 
@@ -223,9 +234,9 @@ for the same section's reason.
 | `--dur-base` | 180 ms | the strike, the check flash, a card scaling in |
 | `--dur-slow` | 260 ms | a drop settling |
 | `--ease-out-soft` | `cubic-bezier(.22, 1, .36, 1)` | anything that lands |
-| `--ease-spring` | `cubic-bezier(.34, 1.56, .64, 1)` | the check flash only |
+| `--ease-spring` | `cubic-bezier(.34, 1.56, .64, 1)` | nothing, since EI-395: the check flash animates `box-shadow`, so it lands on `--ease-out-soft`. Kept for a `transform` that wants a pop |
 | `--ease-spring-travel` | `linear(…)`, 350 ms | something that **travels** between two places |
-| `animate-check` / `animate-strike` / `animate-settle` | `--animate-*` in `@theme` | see `globals.css` |
+| `animate-check` / `animate-strike` / `animate-settle` | `--animate-*` in `@theme` | see `globals.css`. `animate-strike` draws the `strike-draw` line (a background, so a wrapped title draws every line at once) |
 
 Rules:
 
@@ -241,6 +252,32 @@ Rules:
 - Reduced motion drops the **overshoot**, not just the animation: swap the
   spring for `--ease-out-soft`, or `transition-none`. A spring is the one case
   where removing the animation and removing the motion are different edits.
+
+### The completion beat
+
+Ticking a to-do is the one moment the row earns (EI-395). Before it, under
+the default View (open to-dos only) the board dropped the row in the same
+render that marked it done: the card unmounted ~90ms after the click, the
+check flash never played, and the strike was never seen. Now the **column**
+holds the row (`use-completion-beat.ts`, rules in `lib/completion-beat.ts`),
+because the card is the thing that leaves and cannot keep itself rendered.
+
+| From the write landing (~90ms after the click) | What happens |
+|---|---|
+| 0–180ms | The box checks with the spectrum flash (`animate-check`, `box-shadow` on `--ease-out-soft`, never a spring) and the strike draws left to right (`animate-strike` on `strike-draw`) |
+| 180–260ms | The finished row stands still, to be read. The drawn strike swaps for `line-through` at the same height (measured per face: `--strike-y`, `--strike-thickness`) |
+| 260–360ms | Default view: the row fades on `--dur-fast`, inert, and keyboard focus moves to the row that takes its place (else the one above, else the quick-add) |
+| 360–620ms | The row goes; the rows below close the gap on a transform (`--dur-slow`, `--ease-out-soft`, WAAPI, so dnd-kit's inline transform is untouched) |
+
+Under **View: All** the row stays on the board, so instead of fading it is
+held at its old place for the beat and then slides to its new one (settled
+work sinks), with its neighbors, on the same transform. **Reduced motion**
+keeps the beat — the checked, struck row is the confirmation, and it is
+state, not motion — and drops the flash, the draw, the fade and the slide:
+the row is removed in one step at 260ms. **Undo** wins at any point: once
+the data says open again the row renders from the data. A row that was the
+last of its list group brings the group back with it for the beat. A write
+that has not landed 2s after the click stops being held.
 
 ### How an overlay arrives
 
@@ -383,3 +420,4 @@ streak, score, or percentage anywhere in it.
 | 2026-10-15 | **Touch targets reach 44px under `pointer: coarse`, and rows grow to make room** (EI-388). Card rows are 44px on touch (the title fills the row), list-group headers and the quick-add are 44px; the ⚡, the day name and the wordmark extend to 44 without growing. With a mouse the group header gains its missing pixel (23 → 24) and the wordmark a `py-0.5 -my-0.5` pair (20 → 24); nothing else moves. §3 "Touch targets" is the recipe. | Measured on production at 390×844 with touch: title 370×27, quick-add 390×36, ⚡ 34×34, group header 390×23, day name 100×28, wordmark 31×20. At 36px rows a 44px title could only overlap its neighbors, and the later row wins every tap in an overlap, so the row grows instead: 44 is iOS's own list-row floor. After, at the same size: title 349×44 (the checkbox's strip excluded), quick-add 390×44, ⚡ 44×44, group header 390×44, day name 84×44, wordmark 48×44, checkbox 24×44. At 1440×900: rows 35.25 as before. |
 | 2026-10-15 | **The Overflow age says since when and how long, in one string everywhere** (EI-390): "since Oct 6 · 9 days", and "since today" on the day it crosses (`formatOverflowAge`). Board card, Overdrive card, ⌘K row, Settings example and homepage replica all show it; the accessible name and tooltip say "In Overflow since Oct 6, 9 days". Set in `nums`, not `num` — a phrase, not a standalone number (§2). It stays one unit at the 168px floor; the one string too wide for it (a start in another year, in Hyperlegible) breaks between its halves, never inside one. | The age read three ways: "9 days" on the board, "In Overflow 9 days" in ⌘K, and a bare "42 days" under Overdrive's "Scheduled Aug 30" that read as "42 days late". A count alone says how long but not since when; a date alone makes the reader do the arithmetic. EI-387's `overflowWording` variants go: one string needs no switch. |
 | 2026-10-15 | **The date row is where, what, move** (EI-392): History and the range; one "View" menu (statuses, Show weekends, Saved views) beside the day count; ‹ Today › and one "Jump" popover holding Next/Previous week, month and quarter beside the calendar, then Activity. ‹ › step one page and disable rather than vanish; Today disables on today. History, Activity, ‹ and › show their names as tooltips. Phone targets: the N-due banner, the tab name, Archived and the signed-out banner's Sign up reach 44 on touch; two §3 "Touch targets" rules added (neighbors share a gap; an extender stays in its container). | The fourth critique counted ten peer controls in the date row, and "Week › Month › Quarter ›" read as view switches — "Month" looked like a month view and scrolled 28 days. Folding them into Jump keeps every move a click or two away and stops them claiming to be views; Weekends and Saved views are part of what you are viewing, so they went into View. No capability moved more than one click deeper. Measured at 390×844 with touch, before → after: N-due banner 389×26 → 389×44, Keyboard shortcuts 42×44 → 44×44, Sign up 47×29 → 47×45, My Lists 82×24 → 82×44, Archived 36×44 → 44×44, Quick sort 43×42 → 45×44. With a mouse nothing moved. |
+| 2026-10-15 | **The to-do row, polish pass 1** (EI-395): the completion beat (§4) — a ticked row holds checked and struck for one beat, then fades and the rows below close the gap on a transform, or under View: All slides to its new place; the flash lands on `--ease-out-soft`, not a spring. Label chip text is `labelInk` (30% hue into the foreground), retiring §1's one exception. Done and Won't do share `text-foreground/60`; Won't do stays dim-only. The strike is on the title text, not the badges. The Overflow age moves to `text-foreground/60`. A settled row's rail keeps 40% of its opacity. The checkbox takes `focus-ring`; the title's outline steps round it (`focus-ring-notched`). The row's inline `transition` composes dnd-kit's `transform` with the wash and the fade (`rowTransition`). | Measured on the board (light / dark, at rest → under the hover wash): label text 1.6–3.9:1 → 9.7–13.2 / 8.5–10.7; Won't do 2.71 / 3.92 → 5.25 / 6.6 (5.10 / 6.06 hovered); done hovered 4.27 → 5.10 / 6.06; Overflow age hovered 4.1 → 5.02 / 6.46. Under the default View the row used to unmount ~90ms after the click and the confirmation was a toast in the corner. The hover wash never animated at all: the inline `transition: transform 0ms linear` dnd-kit leaves on every row replaced the class's list; it now fades in over 100ms. A struck label chip read as "label removed", and a P1 double rail at full ink was the loudest mark on a finished row. |

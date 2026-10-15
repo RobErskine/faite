@@ -3,7 +3,7 @@ import { badgeVariants } from "@/components/ui/badge";
 // `edge` only — the column accent is a real feature (lists and tabs both have
 // a ColorPicker). `tint` went with the fabricated label colors.
 import { edge } from "@/lib/colors";
-import { priorityRail, railBackgroundImage } from "@/lib/priority";
+import { priorityRail, railBackgroundImage, railOpacity } from "@/lib/priority";
 import { describeOverflowAge, formatOverflowAge } from "@/lib/rollover-events";
 import { formatShortDateAsOf } from "@/lib/scheduling";
 import { STORY_BEATS } from "@/lib/story-beats";
@@ -358,7 +358,7 @@ function DemoCard({ todo }: { todo: DemoTodo }) {
           data-priority-rail={todo.priority}
           style={{
             width: rail.width,
-            opacity: rail.opacity,
+            opacity: railOpacity(rail, Boolean(done)),
             ...(railBackgroundImage(rail)
               ? { backgroundImage: railBackgroundImage(rail)! }
               : { backgroundColor: "var(--foreground)" }),
@@ -375,7 +375,7 @@ function DemoCard({ todo }: { todo: DemoTodo }) {
       <div
         className={cn(
           "block w-full text-left text-sm leading-snug",
-          done && "text-muted-foreground line-through",
+          done && "text-foreground/60 line-through",
         )}
       >
         <span className={cn("indent-6 wrap-break-word", TITLE_CLAMP_CLASS)}>
@@ -435,7 +435,7 @@ function DemoCard({ todo }: { todo: DemoTodo }) {
                   aria-hidden
                   className={cn(
                     badgeVariants({ variant: "outline" }),
-                    "nums text-2xs font-normal text-muted-foreground",
+                    "nums text-2xs font-normal text-foreground/60",
                   )}
                 >
                   {formatOverflowAge(todo.overflow.since, DEMO_TODAY)}

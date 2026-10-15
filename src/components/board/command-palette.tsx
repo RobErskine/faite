@@ -902,15 +902,19 @@ export function CommandPalette({
                         }}
                         className="items-start overflow-hidden py-2 pl-4"
                       >
-                        <PriorityRail priority={todo.priority} />
+                        <PriorityRail
+                          priority={todo.priority}
+                          settled={todo.status !== "open"}
+                        />
                         <span className="min-w-0 flex-1 text-sm leading-snug">
                           <span
                             className={cn(
                               "wrap-break-word",
                               TITLE_CLAMP_CLASS,
-                              todo.status !== "open" && "text-muted-foreground",
+                              // The board row's settled ink (EI-395): one
+                              // quiet ink that passes, Won't do dim-only.
+                              todo.status !== "open" && "text-foreground/60",
                               todo.status === "done" && "line-through",
-                              todo.status === "dropped" && "opacity-70",
                             )}
                           >
                             <TitleMarkers

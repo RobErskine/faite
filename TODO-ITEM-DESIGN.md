@@ -363,7 +363,18 @@ decisions it builds on.
   2px, P4 dotted 2px (`docs/DESIGN.md` §7, 2026-09-10). Hue was dropped so red
   can mean urgency alone — `docs/DESIGN.md` §7, decision A. See
   `src/lib/priority.ts`.
-- `done` is struck through; `dropped` is dimmed only.
+- `done` is struck through; `dropped` is dimmed only. Both are
+  `text-foreground/60` (5.1:1 or better on every surface, hover included —
+  Won't do was muted ink at 70%, 2.71:1), the strike sits on the title text
+  rather than the whole button (it used to strike the label chips too), and
+  the priority rail drops to 40% of its opacity (EI-395).
+- **Completing a row is a beat, not a disappearance** (EI-395,
+  `docs/DESIGN.md` §4 "The completion beat"). The column holds the ticked
+  row checked and struck for 260ms after the write lands, fades it, then
+  closes the gap on a transform; under View: All it slides to its new place.
+  The column does it (`use-completion-beat.ts`), not the card, because the
+  card is what `buildBoard` stops handing over. Keyboard focus moves to the
+  row that takes its place. Undo wins at any moment.
 - The unchecked checkbox uses `border-muted-foreground`, not `border-input`.
   `--input` is `oklch(0.922 0 0)` in the light theme — near-white, fine on a
   plain surface and invisible over a colored group wash. It is square
@@ -405,12 +416,17 @@ because it changes what a card sits on and how completing one feels.
   shadow should carry the same spread, not the bare `0 1px 2px` shape.
 - **The completion check-flash is wired** (`--animate-check`, `todo-
   card.tsx`): a spectrum pulse on the checkbox the instant a to-do is
-  marked done, gated on the actual open→done transition (a `wasDoneRef`
-  guard), not on `status === "done"` alone, so an already-done card
-  remounting (tab switch, filter change) never replays it.
+  marked done, gated on the actual open→done transition, not on
+  `status === "done"` alone, so an already-done card remounting (tab
+  switch, filter change) never replays it. Since EI-395 the gate is the
+  render-time `seenStatus` pattern rather than a `wasDoneRef` effect, it
+  also draws the strike, and the column keeps the row on screen long enough
+  for both to be seen (before, the default view unmounted it first).
 - **Every focus ring, including the checkbox and title button, is one
   `focus-ring` utility** (`globals.css`) now — no more per-component
-  `ring-2`/`outline-2` variants drifting apart.
+  `ring-2`/`outline-2` variants drifting apart. (The checkbox actually kept
+  shadcn's 1.97:1 halo until EI-395. The title's outline is
+  `focus-ring-notched`, the same line stepped round the checkbox.)
 - Overlays (the to-do sheet included) dropped shadcn's default filled
   footer bar and label-sized title for a hairline footer and a real
   heading step — see `docs/DESIGN.md`'s new "Overlays" paragraph in §3.

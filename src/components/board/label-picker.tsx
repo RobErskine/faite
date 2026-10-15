@@ -17,7 +17,7 @@ import {
   useComboboxFilter,
 } from "@/components/ui/combobox";
 import { createLabel } from "@/lib/store/repositories";
-import { edge, tint } from "@/lib/colors";
+import { labelChipStyle } from "@/lib/colors";
 import type { Label as LabelRecord, Todo } from "@/lib/schema";
 
 /** Same sentinel-item trick `LocationField` uses to keep "create new" reachable
@@ -116,11 +116,7 @@ export function LabelPicker({ todo, labels, onToggleLabel }: LabelPickerProps) {
           {appliedLabels.map((label) => (
             <ComboboxChip
               key={label.id}
-              style={
-                label.color
-                  ? { backgroundColor: tint(label.color), borderColor: edge(label.color), color: label.color }
-                  : undefined
-              }
+              style={labelChipStyle(label.color)}
             >
               {label.emoji ? `${label.emoji} ` : ""}
               {label.name}
