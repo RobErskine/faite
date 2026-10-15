@@ -1,5 +1,5 @@
 import type { CivilDate, Priority, ReminderPreset } from "./schema";
-import { addDays, dayOfWeek, formatShortDate, toCivilDate } from "./scheduling";
+import { addDays, dayOfWeek, formatShortDateAsOf, toCivilDate } from "./scheduling";
 
 /**
  * Parses a quick-add string like "buy milk p2 fri 2pm" into a title plus the
@@ -358,20 +358,17 @@ function matchPresetTime(
   return matches.length === 1 ? matches[0] : null;
 }
 
-/** ", 2027" when `date` is not in `today`'s year, else "" — "oct 1" typed on
- * Oct 14 is next year, and a chip reading just "Oct 1" hid that (EI-375). */
-function yearSuffix(date: CivilDate, today: CivilDate): string {
-  return date.slice(0, 4) === today.slice(0, 4) ? "" : `, ${Number(date.slice(0, 4))}`;
-}
-
+/** "Thu Oct 15", or "Fri Oct 1, 2027" — "oct 1" typed on Oct 14 is next
+ * year, and a chip reading just "Oct 1" hid that (EI-375). The year rule is
+ * `formatShortDateAsOf`, shared with the card badges (EI-387). */
 function labelForDate(date: CivilDate, today: CivilDate, prefix = ""): string {
-  return `${prefix}${WEEKDAY_ABBR[dayOfWeek(date)]} ${formatShortDate(date)}${yearSuffix(date, today)}`;
+  return `${prefix}${WEEKDAY_ABBR[dayOfWeek(date)]} ${formatShortDateAsOf(date, today)}`;
 }
 
 /** "Thu, Oct 15", or "Fri, Oct 1, 2027" outside the current year — the date
  * as a quick-add toast names it (`describeQuickAddLanding`). */
 export function formatQuickAddDate(date: CivilDate, today: CivilDate): string {
-  return `${WEEKDAY_ABBR[dayOfWeek(date)]}, ${formatShortDate(date)}${yearSuffix(date, today)}`;
+  return `${WEEKDAY_ABBR[dayOfWeek(date)]}, ${formatShortDateAsOf(date, today)}`;
 }
 
 interface RawMatch {

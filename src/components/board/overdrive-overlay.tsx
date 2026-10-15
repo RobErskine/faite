@@ -43,6 +43,7 @@ import {
 import { civilDateToLocalDate } from "./date-nav";
 import { ListField } from "./list-field";
 import { OverdriveCard } from "./overdrive-card";
+import { outcomeToast } from "./outcome-toast";
 
 /**
  * One stable id, not one per decision — sonner replaces a toast in place
@@ -451,7 +452,7 @@ function OverdriveOverlayContent({
    * render's `session`" — reassigned every render, read only from the
    * toast's `onClick`.
    *
-   * The toast action is a plain callback captured once, at `toast.success`
+   * The toast action is a plain callback captured once, at `outcomeToast`
    * call time, and sonner never re-creates it on its own — closing over
    * `dispatch` directly there would freeze that click on the `session` as it
    * stood in the render that fired the toast. Every subsequent decision (or
@@ -473,7 +474,10 @@ function OverdriveOverlayContent({
       toast.dismiss(OVERDRIVE_TOAST_ID);
       return;
     }
-    toast.success(last.label, {
+    // Won't do wears no check (EI-387): a decision, not an accomplishment.
+    // The other three verdicts each got something done. One id, so the tone
+    // has to be set every time — see `outcomeToast`.
+    outcomeToast(last.verdict.kind === "dropped" ? "neutral" : "success", last.label, {
       id: OVERDRIVE_TOAST_ID,
       duration: Infinity,
       // Bottom-CENTER, not the app's default bottom-right (`<Toaster>` in

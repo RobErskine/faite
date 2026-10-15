@@ -826,3 +826,79 @@ describe("CommandPalette — quick-add never misfiles silently (EI-375)", () => 
     expect(created.scheduledDate).toBe("2027-10-01");
   });
 });
+
+/**
+ * EI-387: a search hit shows what the board card shows about the same to-do —
+ * its roll (↳), its Overflow age, and the year on a date outside this one.
+ * Clock pinned to Wed 2026-10-14; `settings.overflowAfterDays` is 3.
+ */
+describe("CommandPalette — result rows say what the board says (EI-387)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-14T12:00:00.000Z"));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const rowFor = (id: string) => document.body.querySelector<HTMLElement>(`[data-todo-id="${id}"]`)!;
+
+  it("shows the ↳ marker on a rolled to-do, and says the roll in the row's name", () => {
+    // Scheduled Mon Oct 12: rolled to Oct 13 and Oct 14, two of three rolls.
+    renderPalette({ todos: [todo({ id: "r1", title: "Call dentist", scheduledDate: "2026-10-12" })] });
+
+    search("dentist");
+
+    const row = rowFor("r1");
+    expect(row.querySelector("[data-rollover-marker]")).not.toBeNull();
+    expect(row.querySelector("[data-overflow-age]")).toBeNull();
+    expect(
+      screen.getByRole("option", {
+        name: "Call dentist, Rolled from Oct 12, 2 days ago, Overflow in 2 days, Scheduled Oct 12, Unfiled",
+      }),
+    ).toBeTruthy();
+  });
+
+  it("shows an Overflow to-do's age in full — no column around a search hit says Overflow", () => {
+    // Scheduled Oct 1: rolled Oct 2–4, crossed into Overflow Oct 5, nine
+    // calendar days before today.
+    renderPalette({ todos: [todo({ id: "o1", title: "Renew visa", scheduledDate: "2026-10-01" })] });
+
+    search("visa");
+
+    const row = rowFor("o1");
+    expect(row.querySelector("[data-rollover-marker]")).toBeNull();
+    expect(row.querySelector("[data-overflow-age]")?.textContent).toBe("In Overflow 9 days");
+    expect(
+      screen.getByRole("option", { name: "Renew visa, Scheduled Oct 1, In Overflow 9 days, Unfiled" }),
+    ).toBeTruthy();
+  });
+
+  it("shows neither for a to-do that is not due yet", () => {
+    renderPalette({ todos: [todo({ id: "f1", title: "Book flights", scheduledDate: "2026-10-20" })] });
+
+    search("flights");
+
+    const row = rowFor("f1");
+    expect(row.querySelector("[data-rollover-marker]")).toBeNull();
+    expect(row.querySelector("[data-overflow-age]")).toBeNull();
+  });
+
+  it("names the year on a scheduled date in another year, and not in this one", () => {
+    renderPalette({
+      todos: [
+        todo({ id: "y1", title: "Renew passport 2027", scheduledDate: "2027-10-01" }),
+        todo({ id: "y2", title: "Renew passport soon", scheduledDate: "2026-10-30" }),
+      ],
+    });
+
+    search("renew passport");
+
+    expect(rowFor("y1").textContent).toContain("Oct 1, 2027");
+    expect(rowFor("y2").textContent).toContain("Oct 30");
+    expect(rowFor("y2").textContent).not.toContain("2026");
+    expect(
+      screen.getByRole("option", { name: "Renew passport 2027, Scheduled Oct 1, 2027, Unfiled" }),
+    ).toBeTruthy();
+  });
+});

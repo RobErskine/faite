@@ -109,7 +109,7 @@ At root, in render order:
 | --- | --- | --- |
 | **Triage** | Open Overdrive (N) | only while Overflow has cards — then it is the first row of the palette (EI-383). Same command (`view-overdrive`) as the View row below; `groupFor` moves it |
 | | Quick sort Backlog (N) | only while Backlog has open to-dos, after Overdrive (EI-386) — Overflow is overdue, Backlog only unsorted. Same command (`view-quick-sort`) as the disabled View row below; `groupFor` moves it |
-| **To-dos** | up to 8 search hits | only when the query is non-empty; each hit renders like a board card (priority rail, deadline/location/recurrence markers, label and scheduled-date badges — via `todo-row-parts.tsx`) and supports the row actions below |
+| **To-dos** | up to 8 search hits | only when the query is non-empty; each hit renders like a board card (priority rail, deadline/location/recurrence markers, label and scheduled-date badges — via `todo-row-parts.tsx`) and supports the row actions below. Since EI-387 a hit also shows its place in the Faite Loop: ↳ while it is still rolling, and "In Overflow 9 days" once it is in Overflow — from `rollStateFor` (`rollover-events.ts`), the function the board card reads, so search and board cannot disagree. The badge keeps the full "In Overflow" wording here, where the board card shows only the age: a search hit has no Overflow column around it to say the rest (`overflowWording="full"`). The row's accessible name (`todoRowName`) includes both. |
 | **Create** | `Create to-do "<query>"` | only when the query is non-empty; parses quick-add tokens — §5 |
 | | New to-do / list / label / project / tab | New to-do parses quick-add tokens too — §5; the rest enter a plain entry mode |
 | **Tabs** | one row per tab, active marked `current` | hidden when `tabs.length <= 1` |
@@ -197,7 +197,11 @@ rules that came out of it, shared by the column row and both ⌘K creates
 through one helper, `resolveQuickAdd` (`src/lib/quick-add.ts`):
 
 - **The year shows when it isn't this year** — on the chip ("Fri Oct 1,
-  2027") and in the toast.
+  2027") and in the toast. Since EI-387 the same rule, from the same
+  function (`formatShortDateAsOf`, `src/lib/scheduling.ts`), covers the
+  scheduled-date and deadline badges on board cards and on the search result
+  rows below, and the dates in their tooltips and accessible names: "Oct 1,
+  2027", never a bare "Oct 1" that reads as this October.
 - **Every create toasts where it landed**, with Undo: "Added to Thu, Oct 15 ·
   To Read", "Added to Backlog". Backlog is named only when it is the whole
   answer (a dated to-do sits on its day). Built by `describeQuickAddLanding`

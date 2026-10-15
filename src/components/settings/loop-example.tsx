@@ -1,6 +1,6 @@
 "use client";
 
-import { loopExample, rollEventsFor, type LoopExample } from "@/lib/rollover-events";
+import { loopExample, rollStateFor, type LoopExample } from "@/lib/rollover-events";
 import { formatShortDate, type PlacementContext } from "@/lib/scheduling";
 import type { CivilDate, Todo } from "@/lib/schema";
 import { TitleMarkers, TodoMetaBadges } from "@/components/board/todo-row-parts";
@@ -41,7 +41,7 @@ const EXAMPLE_TODO: Todo = {
  * A contextual replacement for the old plain-text worked example: the same
  * fake to-do shown at each of the three moments the Faite Loop can put it
  * in. Each box's icon/badge is rendered by the REAL `TitleMarkers`/
- * `TodoMetaBadges` (`todo-row-parts.tsx`) fed real `rollEventsFor()` output —
+ * `TodoMetaBadges` (`todo-row-parts.tsx`) fed real `rollStateFor()` output —
  * not a lookalike — so hovering behaves exactly as it does on the board,
  * with the same tooltip. Dates come from `loopExample()`, the same primitive
  * `describeLoop`'s sentence is built from, so the two can't disagree.
@@ -57,23 +57,11 @@ export function LoopExampleCards({
 
   const todo: Todo = { ...EXAMPLE_TODO, scheduledDate: missed };
 
-  const rolledOverEvent = lastRollDay
-    ? rollEventsFor(todo, { ...ctx, today: lastRollDay }).at(-1)
+  // The board card's own derivation, at each step's "today" (EI-387).
+  const rolledFrom = lastRollDay
+    ? rollStateFor(todo, { ...ctx, today: lastRollDay }).rolledFrom
     : undefined;
-  const overflowedEvent = rollEventsFor(todo, { ...ctx, today: overflowDay }).at(-1);
-
-  const rolledFrom =
-    rolledOverEvent?.kind === "rolledOver"
-      ? {
-          from: rolledOverEvent.from,
-          rolls: rolledOverEvent.rolls,
-          overflowsIn: rolledOverEvent.overflowsIn,
-        }
-      : undefined;
-  const overflow =
-    overflowedEvent?.kind === "overflowed"
-      ? { from: overflowedEvent.from, since: overflowedEvent.day }
-      : undefined;
+  const overflow = rollStateFor(todo, { ...ctx, today: overflowDay }).overflow;
 
   return (
     <div className={cn("grid gap-2", rolls > 0 ? "grid-cols-3" : "grid-cols-2")}>

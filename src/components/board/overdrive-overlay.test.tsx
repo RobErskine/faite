@@ -11,19 +11,34 @@ interface ToastCallOptions {
   id?: string;
   duration?: number;
   position?: string;
+  icon?: unknown;
   action?: { label: string; onClick: () => void };
 }
-const toastSuccess = vi.fn<(message: string, options?: ToastCallOptions) => string>(
-  () => "toast-id",
-);
+/**
+ * Every toast the overlay raises, in order, with which sonner call raised it:
+ * `toast.success` (the check) or a plain `toast` (no icon) — EI-387 gave
+ * Won't do the plain one.
+ */
+const toastShown = vi.fn<
+  (kind: "success" | "plain", message: string, options?: ToastCallOptions) => string
+>(() => "toast-id");
 const toastDismiss = vi.fn();
-vi.mock("sonner", () => ({ toast: { success: toastSuccess, dismiss: toastDismiss } }));
+vi.mock("sonner", () => ({
+  toast: Object.assign(
+    (message: string, options?: ToastCallOptions) => toastShown("plain", message, options),
+    {
+      success: (message: string, options?: ToastCallOptions) =>
+        toastShown("success", message, options),
+      dismiss: toastDismiss,
+    },
+  ),
+}));
 
 // Dynamic, after the mock and its backing spies above are already in place —
 // a static top-level import here would get hoisted alongside `vi.mock`
 // itself (vitest hoists every `vi.mock` above every static import in the
 // file), reaching `overdrive-overlay.tsx`'s own `import { toast } from
-// "sonner"` before `toastSuccess`/`toastDismiss` have been assigned. Same
+// "sonner"` before `toastShown`/`toastDismiss` have been assigned. Same
 // fix `developer-section.test.tsx` uses for the same reason.
 const { OverdriveOverlay, overdriveReturnFocus } = await import("./overdrive-overlay");
 
@@ -31,7 +46,7 @@ beforeAll(() => {
   Element.prototype.scrollIntoView = () => {};
 });
 beforeEach(() => {
-  toastSuccess.mockClear();
+  toastShown.mockClear();
   toastDismiss.mockClear();
   // Scoped to setTimeout/clearTimeout only — leaves Base UI's own
   // Sheet/Popover open-close machinery (RAF/CSS-transition driven) alone,
@@ -499,8 +514,8 @@ describe("the persistent decision toast (round 2)", () => {
   it("shows a toast with an Undo action after a commit", () => {
     renderOverlay();
     press("ArrowLeft");
-    expect(toastSuccess).toHaveBeenCalledTimes(1);
-    const [message, options] = toastSuccess.mock.calls[0];
+    expect(toastShown).toHaveBeenCalledTimes(1);
+    const [, message, options] = toastShown.mock.calls[0];
     expect(message).toBe("Decided");
     expect(options).toMatchObject({
       duration: Infinity,
@@ -514,11 +529,30 @@ describe("the persistent decision toast (round 2)", () => {
     press("ArrowLeft");
     flushFlick(); // the second press needs the first flick clear to register at all
     press("ArrowUp");
-    expect(toastSuccess).toHaveBeenCalledTimes(2);
-    const [, firstOptions] = toastSuccess.mock.calls[0];
-    const [, secondOptions] = toastSuccess.mock.calls[1];
+    expect(toastShown).toHaveBeenCalledTimes(2);
+    const [, , firstOptions] = toastShown.mock.calls[0];
+    const [, , secondOptions] = toastShown.mock.calls[1];
     expect(firstOptions?.id).toBeDefined();
     expect(firstOptions?.id).toBe(secondOptions?.id);
+  });
+
+  /**
+   * EI-387. Won't do is a decision, not an accomplishment, so it gets no
+   * check — and because every verdict reuses ONE sonner id, and sonner merges
+   * an update into the toast already up, each call has to set the icon
+   * itself: a Done after a Won't do must get its check back.
+   */
+  it("Won't do raises a plain toast with no icon; Done after it raises a success with its check", () => {
+    renderOverlay();
+    press("ArrowLeft"); // Won't do
+    flushFlick();
+    press("ArrowUp"); // Done
+    const [wontDo, done] = toastShown.mock.calls;
+    expect(wontDo[0]).toBe("plain");
+    expect(wontDo[2]).toHaveProperty("icon", null);
+    expect(done[0]).toBe("success");
+    expect(done[2]).toHaveProperty("icon", undefined);
+    expect(wontDo[2]?.id).toBe(done[2]?.id);
   });
 
   it("the toast's own Undo action steps back exactly like ⌫", () => {
@@ -531,7 +565,7 @@ describe("the persistent decision toast (round 2)", () => {
     // so — unlike `press()`, which goes through `fireEvent` and gets `act()`
     // wrapping for free — the resulting `setSession` needs an explicit
     // `act()` here or the update lands a tick after this assertion checks.
-    const [, lastOptions] = toastSuccess.mock.calls.at(-1)!;
+    const [, , lastOptions] = toastShown.mock.calls.at(-1)!;
     act(() => lastOptions?.action?.onClick());
 
     expect(titleHeading("t1")).toBeTruthy();
@@ -571,7 +605,7 @@ describe("the persistent decision toast (round 2)", () => {
     );
     const { rerender } = render(harness(OVERFLOW));
     press("ArrowLeft");
-    expect(toastSuccess).toHaveBeenCalledTimes(1);
+    expect(toastShown).toHaveBeenCalledTimes(1);
     expect(toastDismiss).not.toHaveBeenCalled();
 
     rerender(harness(null));

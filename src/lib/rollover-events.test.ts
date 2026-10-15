@@ -3,6 +3,8 @@ import {
   dailyRollSummaries,
   describeLoop,
   formatOverflowAge,
+  formatOverflowAgeShort,
+  rollStateFor,
   loopExample,
   overflowAgeDays,
   rollEventsFor,
@@ -139,11 +141,48 @@ describe("overflow age (EI-374)", () => {
     expect(ageOf("2026-07-20")).toBe("In Overflow 10 days"); // overflowed Jul 24
   });
 
+  it("has a short form for the card badge: the age alone (EI-387)", () => {
+    expect(formatOverflowAgeShort("2026-08-03", "2026-08-03")).toBe("since today");
+    expect(formatOverflowAgeShort("2026-08-02", "2026-08-03")).toBe("1 day");
+    expect(formatOverflowAgeShort("2026-07-25", "2026-08-03")).toBe("9 days");
+    expect(formatOverflowAgeShort("2026-08-05", "2026-08-03")).toBe("since today");
+  });
+
   it("keeps counting over a weekend even when workdaysOnly stops the rolls", () => {
     // Scheduled Mon Jul 20; rolls Tue–Thu, overflows Fri Jul 24. Ten
     // calendar days to Mon Aug 3, though only six of them were workdays.
     const c = ctx({ workdaysOnly: true });
     expect(ageOf("2026-07-20", c)).toBe("In Overflow 10 days");
+  });
+});
+
+describe("rollStateFor (EI-387)", () => {
+  const open = (scheduledDate: string | null, recurrenceParentId: string | null = null) => ({
+    status: "open" as const,
+    scheduledDate,
+    recurrenceParentId,
+  });
+
+  it("is empty for a todo that has not rolled", () => {
+    expect(rollStateFor(open("2026-08-03"), ctx())).toEqual({});
+    expect(rollStateFor(open(null), ctx())).toEqual({});
+  });
+
+  it("is the ↳ marker's props while still rolling", () => {
+    expect(rollStateFor(open("2026-08-01"), ctx({ overflowAfterDays: 3 }))).toEqual({
+      rolledFrom: { from: "2026-08-01", rolls: 2, overflowsIn: 2 },
+    });
+  });
+
+  it("is the age badge's props once in Overflow — `since` is the day it crossed", () => {
+    expect(rollStateFor(open("2026-07-27"), ctx({ overflowAfterDays: 3 }))).toEqual({
+      overflow: { from: "2026-07-27", since: "2026-07-31" },
+    });
+  });
+
+  it("is empty for a settled or recurring todo, however stale", () => {
+    expect(rollStateFor({ ...open("2026-07-01"), status: "done" }, ctx())).toEqual({});
+    expect(rollStateFor(open("2026-07-01", "series-1"), ctx())).toEqual({});
   });
 });
 

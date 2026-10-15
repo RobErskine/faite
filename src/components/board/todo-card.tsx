@@ -21,7 +21,7 @@ import { cardStop, navKeyOf, type NavKey } from "@/lib/column-nav";
 import { placeSettled } from "@/lib/board";
 import { formatCompletionStamp } from "@/lib/event-time";
 import { TITLE_CLAMP_CLASS } from "@/lib/title";
-import { rollEventsFor } from "@/lib/rollover-events";
+import { rollStateFor } from "@/lib/rollover-events";
 import type { Label as LabelRecord, List, ReminderPreset, Todo } from "@/lib/schema";
 import type { PlacementContext } from "@/lib/scheduling";
 import { originOf, type ConfettiOrigin } from "@/lib/celebrate";
@@ -233,18 +233,11 @@ export function TodoCard({
    * The Faite Loop, made visible: the last roll event tells us whether this
    * card is still rolling (show the marker) or has fallen into Overflow
    * (show the age badge) — never both, they're mutually exclusive states of
-   * the same sequence. `rollEventsFor` already returns `[]` for settled and
-   * recurring todos, so this is a no-op for both.
+   * the same sequence. `rollStateFor` is `{}` for settled and recurring
+   * todos, and it is shared with ⌘K's result rows and the Overdrive card, so
+   * none of them can disagree about it (EI-387).
    */
-  const lastRoll = rollEventsFor(todo, ctx).at(-1);
-  const rolledFrom =
-    lastRoll?.kind === "rolledOver"
-      ? { from: lastRoll.from, rolls: lastRoll.rolls, overflowsIn: lastRoll.overflowsIn }
-      : undefined;
-  const overflowInfo =
-    lastRoll?.kind === "overflowed"
-      ? { from: lastRoll.from, since: lastRoll.day }
-      : undefined;
+  const { rolledFrom, overflow: overflowInfo } = rollStateFor(todo, ctx);
 
   /**
    * Whether the clamp is actually cutting the title off — the gate on the

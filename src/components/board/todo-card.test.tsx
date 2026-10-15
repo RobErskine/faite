@@ -547,6 +547,31 @@ describe("TodoCard — sub-task progress badge (EI-183)", () => {
   });
 });
 
+/**
+ * EI-387: a bare "Oct 1" on a badge reads as this October. ctx.today is
+ * 2026-08-09, so 2026 dates go bare and any other year is named.
+ */
+describe("badge dates name the year when it is not this year", () => {
+  it("leaves the year off a scheduled date in this year", () => {
+    render(<Harness todo={todo({ scheduledDate: "2026-09-30" })} isAway />);
+    expect(badgeRow()?.textContent).toContain("Sep 30");
+    expect(badgeRow()?.textContent).not.toContain("2026");
+    expect(cardName()).toBe("Buy milk, Scheduled Sep 30");
+  });
+
+  it("names the year on a scheduled date in another year, badge and name alike", () => {
+    render(<Harness todo={todo({ scheduledDate: "2027-01-04" })} isAway />);
+    expect(badgeRow()?.textContent).toContain("Jan 4, 2027");
+    expect(cardName()).toBe("Buy milk, Scheduled Jan 4, 2027");
+  });
+
+  it("names the year on a missed deadline from last year", () => {
+    render(<Harness todo={todo({ deadline: "2025-12-30" })} />);
+    expect(badgeRow()?.textContent).toContain("Deadline Dec 30, 2025");
+    expect(cardName()).toBe("Buy milk, Overdue by 222 days: Dec 30, 2025");
+  });
+});
+
 describe("the Faite Loop", () => {
   // ctx.today is 2026-08-09, overflowAfterDays is 3.
 
@@ -575,22 +600,23 @@ describe("the Faite Loop", () => {
     render(<Harness todo={todo({ scheduledDate: "2026-08-05" })} />); // 4 rolls
     expect(row().querySelector("[data-rollover-marker]")).toBeNull();
     // It crossed over today (Aug 6, 7, 8 rolled; Aug 9 overflowed), so its
-    // age is "today", not the roll count that put it there (EI-374).
-    expect(badgeRow()?.textContent).toContain("In Overflow today");
+    // age is "today", not the roll count that put it there (EI-374). The
+    // badge shows only the age; "since today", not a bare "today" (EI-387).
+    expect(row().querySelector("[data-overflow-age]")?.textContent).toBe("since today");
   });
 
   it("ages each card from the day IT overflowed, not by a shared roll count", () => {
     // Every overflowed card used to read "In Overflow 4 days" — the
     // `overflowed` event's `rolls`, always overflowAfterDays + 1 (EI-374).
+    const age = () => row().querySelector("[data-overflow-age]")?.textContent;
     render(<Harness todo={todo({ scheduledDate: "2026-08-01" })} />); // overflowed Aug 5
-    expect(badgeRow()?.textContent).toContain("In Overflow 4 days");
+    expect(age()).toBe("4 days");
     cleanup();
     render(<Harness todo={todo({ scheduledDate: "2026-07-25" })} />); // overflowed Jul 29
-    expect(badgeRow()?.textContent).toContain("In Overflow 11 days");
+    expect(age()).toBe("11 days");
     cleanup();
     render(<Harness todo={todo({ scheduledDate: "2026-08-04" })} />); // overflowed Aug 8
-    expect(badgeRow()?.textContent).toContain("In Overflow 1 day");
-    expect(badgeRow()?.textContent).not.toContain("1 days");
+    expect(age()).toBe("1 day");
   });
 
   it("draws the Overflow age in muted ink, never the urgent red", () => {
@@ -609,7 +635,15 @@ describe("the Faite Loop", () => {
     render(<Harness todo={todo({ scheduledDate: "2026-08-01" })} />); // in Overflow
     const age = row().querySelector("[data-overflow-age]");
     expect(age?.querySelector("svg")).toBeNull();
-    expect(age?.textContent).toBe("In Overflow 4 days");
+    expect(age?.textContent).toBe("4 days");
+  });
+
+  it("shows only the age, and says the whole sentence in the card's name (EI-387)", () => {
+    // On the board the Overflow column says "Overflow"; a screen reader has
+    // no column around the card, so the name keeps the full sentence.
+    render(<Harness todo={todo({ title: "Call dentist", scheduledDate: "2026-08-01" })} />);
+    expect(row().querySelector("[data-overflow-age]")?.textContent).toBe("4 days");
+    expect(cardName()).toBe("Call dentist, In Overflow 4 days");
   });
 
   it("shows neither for a settled todo, however stale", () => {

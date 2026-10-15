@@ -194,9 +194,26 @@ export function dayLabel(day: CivilDate, today: CivilDate): string {
   return formatDay(day).label;
 }
 
-/** Compact form for inline badges: "Aug 4". Year is almost always noise here. */
+/** Compact form for inline badges: "Aug 4". Year is almost always noise here —
+ * but not always: where a date can land in another year, use
+ * `formatShortDateAsOf`. */
 export function formatShortDate(date: CivilDate): string {
   return MONTH_DAY.format(toUtcNoon(date));
+}
+
+/**
+ * "Oct 1" in `today`'s year, "Oct 1, 2027" in any other — the one rule for a
+ * date shown with no other year to read it against (docs/COMMAND-PALETTE.md
+ * §5, "The year shows when it isn't this year").
+ *
+ * EI-375 put the year on quick-add's chip and toast, because "oct 1" typed on
+ * Oct 14 lands next year and a bare "Oct 1" hid that. EI-387 found the same
+ * bare "Oct 1" on the card's scheduled-date and deadline badges and in ⌘K's
+ * result rows, so they share this rather than each keeping a copy.
+ */
+export function formatShortDateAsOf(date: CivilDate, today: CivilDate): string {
+  const short = formatShortDate(date);
+  return date.slice(0, 4) === today.slice(0, 4) ? short : `${short}, ${Number(date.slice(0, 4))}`;
 }
 
 /**
@@ -385,7 +402,8 @@ export function isDeadlineMissed(
 }
 
 /**
- * How a deadline reads on a card's inline marker: "Due in 5 days: Aug 14".
+ * How a deadline reads on a card's inline marker: "Due in 5 days: Aug 14",
+ * with the year when it is not this year (`formatShortDateAsOf`).
  *
  * Kept here rather than in the component because it is date arithmetic with a
  * string on the end, and the plural/today/tomorrow boundaries are exactly the
@@ -393,7 +411,7 @@ export function isDeadlineMissed(
  */
 export function formatDeadlineDue(deadline: CivilDate, today: CivilDate): string {
   const days = daysBetween(today, deadline);
-  const date = formatShortDate(deadline);
+  const date = formatShortDateAsOf(deadline, today);
   if (days === 0) return `Due today: ${date}`;
   if (days === 1) return `Due tomorrow: ${date}`;
   if (days > 1) return `Due in ${days} days: ${date}`;
