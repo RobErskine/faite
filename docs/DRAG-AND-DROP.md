@@ -1364,7 +1364,7 @@ and toasts with an Undo action, the same shape the palette's creates use.
   tooltip triggers inside the title's own trigger; Base UI handles that by walking
   up to the closest enabled trigger and suppressing the ancestor
 - **an upcoming deadline is a `CalendarCheck` marker** in the same inline run,
-  tooltip "Due in 5 days: Aug 14" from `formatDeadlineDue()`. A **missed** deadline
+  tooltip "Deadline Aug 14, due in 5 days" from `formatDeadlineDue()` (EI-391). A **missed** deadline
   gets no marker — it keeps the loud destructive badge it always had, because two
   indicators for one fact is the clutter this redesign is removing. Quiet marker
   ahead of time, loud badge once it is blown

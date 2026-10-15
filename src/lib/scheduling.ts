@@ -402,8 +402,17 @@ export function isDeadlineMissed(
 }
 
 /**
- * How a deadline reads on a card's inline marker: "Due in 5 days: Aug 14",
- * with the year when it is not this year (`formatShortDateAsOf`).
+ * How a deadline reads, as one phrase: "Deadline Aug 14, due in 5 days",
+ * "Deadline Aug 2, overdue by 1 day", with the year when it is not this year
+ * (`formatShortDateAsOf`). The upcoming marker's tooltip and the row's name
+ * (`todoRowName`) both say this.
+ *
+ * It starts with the word and the date a missed deadline's badge shows
+ * ("Deadline Aug 2"), so the name contains the visible label (WCAG 2.5.3,
+ * EI-391): it used to read "Overdue by 1 day: Aug 2", and a voice-control
+ * user saying "Deadline" matched nothing. An upcoming deadline is a bare
+ * glyph with no visible word, and leads with "Deadline" too so the two
+ * states read as one fact.
  *
  * Kept here rather than in the component because it is date arithmetic with a
  * string on the end, and the plural/today/tomorrow boundaries are exactly the
@@ -411,12 +420,12 @@ export function isDeadlineMissed(
  */
 export function formatDeadlineDue(deadline: CivilDate, today: CivilDate): string {
   const days = daysBetween(today, deadline);
-  const date = formatShortDateAsOf(deadline, today);
-  if (days === 0) return `Due today: ${date}`;
-  if (days === 1) return `Due tomorrow: ${date}`;
-  if (days > 1) return `Due in ${days} days: ${date}`;
+  const label = `Deadline ${formatShortDateAsOf(deadline, today)}`;
+  if (days === 0) return `${label}, due today`;
+  if (days === 1) return `${label}, due tomorrow`;
+  if (days > 1) return `${label}, due in ${days} days`;
   const late = -days;
-  return `Overdue by ${late} ${late === 1 ? "day" : "days"}: ${date}`;
+  return `${label}, overdue by ${late} ${late === 1 ? "day" : "days"}`;
 }
 
 /**
