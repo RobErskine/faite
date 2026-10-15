@@ -18,6 +18,7 @@ import { Sparkles, X } from "lucide-react";
 import { DragGrip } from "./drag-grip";
 import { PriorityRail, TitleMarkers, TodoMetaBadges } from "./todo-row-parts";
 import { cardStop, navKeyOf, type NavKey } from "@/lib/column-nav";
+import { placeSettled } from "@/lib/board";
 import { formatCompletionStamp } from "@/lib/event-time";
 import { priorityRail } from "@/lib/priority";
 import { TITLE_CLAMP_CLASS } from "@/lib/title";
@@ -211,8 +212,27 @@ export function TodoCard({
    * an ordinary board. `completedAt` is stamped for `dropped` as well as
    * `done` — the field really means "settled at" — so the wording branches
    * rather than claiming everything was completed.
+   *
+   * Settled work sits on the day it was finished, not the day it was planned
+   * (EI-380), so a rolled or Overflow card ticked today is on today's column
+   * with an older `scheduledDate`. When the card is not on its planned day,
+   * the stamp says so — "· planned Oct 12" — so the plan is still one hover
+   * (or one screen-reader pass) away. Asked of `placeSettled` itself, the
+   * rule that put the card in its column, so the two cannot disagree.
    */
-  const completionStamp = formatCompletionStamp(todo.status, todo.completedAt, timezone);
+  const settledPlacement = todo.status === "open" ? null : placeSettled(todo, ctx, timezone);
+  const plannedFor =
+    settledPlacement?.half === "calendar" &&
+    todo.scheduledDate &&
+    settledPlacement.day !== todo.scheduledDate
+      ? todo.scheduledDate
+      : null;
+  const completionStamp = formatCompletionStamp(
+    todo.status,
+    todo.completedAt,
+    timezone,
+    plannedFor,
+  );
 
   /**
    * The Faite Loop, made visible: the last roll event tells us whether this

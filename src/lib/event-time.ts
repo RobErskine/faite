@@ -8,6 +8,8 @@
  * invariant that file's header sets out.
  */
 
+import { civilDateOf, formatDay, formatShortDate } from "./scheduling";
+
 /** Memoized time-of-day formatters, one per timezone. Mirrors `civilDateOf`. */
 const TIME_FORMATTERS = new Map<string, Intl.DateTimeFormat>();
 
@@ -67,6 +69,14 @@ export function formatEventStamp(instant: string, timezone: string): string {
  * `dropped` separate for in the first place. The UI never says "dropped"
  * (EI-377), so it reads "Marked won’t do Aug 14 · 9:41 AM".
  *
+ * `plannedFor` keeps the plan visible once the card has left it (EI-380):
+ * settled work sits on the day it was FINISHED (`placeSettled`, lib/board.ts),
+ * so a rolled card ticked today is on today's column while its
+ * `scheduledDate` still says Oct 12. The caller passes that date only when
+ * the card sits somewhere else, and it reads
+ * "Completed Oct 14 · 9:41 AM · planned Oct 12". The year is added only when
+ * it differs from the completion's, the same rule `dayLabel` uses.
+ *
  * Takes primitives rather than a `Todo` so this module stays schema-free, the
  * way every other formatter here already is.
  */
@@ -74,6 +84,7 @@ export function formatCompletionStamp(
   status: "open" | "done" | "dropped",
   completedAt: string | null,
   timezone: string,
+  plannedFor: string | null = null,
 ): string | null {
   if (status === "open" || !completedAt) return null;
 
@@ -83,5 +94,13 @@ export function formatCompletionStamp(
   const stamp = formatEventStamp(completedAt, timezone);
   if (!stamp) return null;
 
-  return `${status === "done" ? "Completed" : "Marked won’t do"} ${stamp}`;
+  const settled = `${status === "done" ? "Completed" : "Marked won’t do"} ${stamp}`;
+  if (!plannedFor) return settled;
+
+  const finishedOn = civilDateOf(completedAt, timezone);
+  const planned =
+    finishedOn && finishedOn.slice(0, 4) !== plannedFor.slice(0, 4)
+      ? formatDay(plannedFor).label
+      : formatShortDate(plannedFor);
+  return `${settled} · planned ${planned}`;
 }

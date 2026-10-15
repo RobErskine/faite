@@ -118,21 +118,48 @@ option. Controls: the **View** dropdown in `view-settings.tsx`, mirrored in ⌘K
 
 `placeSettled` in `src/lib/board.ts`, deliberately **not** `deriveColumn`:
 
+- **Finished work sits on the day it was finished, not the day it was
+  planned** (EI-380 — owner decision, 2026-10-14). Faite's people let to-dos
+  roll, so most of what they finish is a rolled or Overflow card, scheduled
+  for a day already behind them; placed by `scheduledDate`, every one vanished
+  the moment it was ticked and today showed none of the day's work. Now
+  `completedAt`, read as a civil day in the user's zone (the zone `ctx.today`
+  came from), wins whenever that day is in the window. The window starts at
+  today, so in practice: **finished today → today**, whether it was planned
+  for last week, today, or next Thursday.
+- **Finished on a past day → off the board.** The window starts at today, so
+  yesterday's finished work leaves the board at midnight and lives in History —
+  even when it was planned for a later day. Finished work never reappears on a
+  future day.
+- **Legacy rows with a null `completedAt`** keep the old rule: `scheduledDate`
+  if it is in the window, otherwise nowhere.
+- **The plan stays visible.** A settled card not on its planned day adds
+  "· planned Oct 12" to its existing completion stamp — the checkbox tooltip
+  and the title's `sr-only` text (`formatCompletionStamp`,
+  `src/lib/event-time.ts`). No badge, no new color. `TodoCard` asks
+  `placeSettled` itself, so the note cannot disagree with the column.
 - **No rollover, never Overflow.** Overflow means "you have put this off too
   long", which is a claim about work you still owe. Filing last week's finished
   errand under it reads as an accusation, and it would push genuinely stale work
-  down the column to make room.
+  down the column to make room. A card ticked *in* Overflow lands on today.
 - **Out of window → renders nowhere.** Specifically *not* the `awayDate`
   fallback, which exists to keep live work reachable. Applying it here would
   pour months of finished cards into the lists.
-- **Unscheduled → its list**, as normal.
+- **Unscheduled → its list**, even when finished today. The planning half is
+  arranged by hand and has no day to be honest about, and moving a ticked
+  grocery item across the board would pull it out from under the click.
+- **Recurring occurrences are unaffected as a series.** A settled occurrence is
+  a real row and is placed like any other; settlement is keyed by the
+  occurrence id's original slot, so finishing next Wednesday's early moves the
+  card to today without leaving a fresh clone on Wednesday.
 
 ### Settled work sinks
 
 `openFirst(...)` in `src/lib/priority.ts` wraps whichever comparator the half
 uses — priority in the calendar half, hand-arranged `position` in the planning
 half. `done` and `dropped` rank *together*: how you dismissed a card changes how
-it reads, not where it sits.
+it reads, not where it sits. That holds wherever the card lands — a card
+finished today out of Overflow still sorts below today's open work.
 
 ### The last status cannot be turned off
 
@@ -385,8 +412,10 @@ because it changes what a card sits on and how completing one feels.
 - **`collapsedGroups` / `expandedWeekends` reset on reload.**
 - **No multi-select drag.** Keyboard drag is unverified end to end; touch is
   untested on a real device. See `docs/DRAG-AND-DROP.md` §7.
-- **Settled work is not reachable outside the window.** There is no history
-  view; `placeSettled` returns null past the horizon by design.
+- **Settled work is not on the board outside the window.** `placeSettled`
+  returns null for anything finished on a past day, by
+  design — the board only goes forward. The past is History (EI-322,
+  `history-sheet.tsx`), read from the event log one day at a time.
 
 ---
 

@@ -75,8 +75,9 @@ t.status === "open")` — from the **unfiltered** `board.days`, matching
 Overflow's own `board.overflow.todos.length` convention, so narrowing a
 day's search can never hide its icon either. The `status === "open"` filter
 is the one thing Overflow's button never needed: `placeSettled`
-(`lib/board.ts`) can put a done/dropped todo back on its own scheduled day
-when `settings.visibleStatuses` includes it, and Overdrive should never
+(`lib/board.ts`) puts a done/dropped todo on a day column — the day it was
+finished, or its scheduled day (EI-380) — when `settings.visibleStatuses`
+includes it, and Overdrive should never
 offer to triage a card that's already settled. The icon's count and the
 overlay's queue (`board.tsx`) both read this **same** memo — if they read
 two different derivations, the icon could say 7 while the session opened
