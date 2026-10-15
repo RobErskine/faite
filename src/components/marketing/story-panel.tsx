@@ -266,18 +266,28 @@ export function StoryPanel({
                       </span>
                     </DemoTooltip>
                     <span data-roll-overflow hidden className="contents">
-                      <DemoTooltip label="Scheduled Wed, Sep 9 · in Overflow since Fri, Sep 11">
-                        {/* Muted, as the board draws it (EI-374). No age:
-                            this card's dates run ahead of the board's
-                            "today", so any count here would contradict it.
-                            Words only: ↳ is the rolled marker's (EI-383). */}
+                      <DemoTooltip
+                        label="Scheduled Wed, Sep 9 · in Overflow since Fri, Sep 11"
+                        sr="In Overflow today: scheduled Wed, Sep 9, in Overflow since Fri, Sep 11"
+                      >
+                        {/* Muted, as the board draws it (EI-374). Words only:
+                            ↳ is the rolled marker's (EI-383). Only the age,
+                            as the board shows it (EI-387), and the only age
+                            this card can honestly give: it appears the moment
+                            the sub-task crosses, beside its own date badge
+                            reading Fri, Sep 11, so in the card's own time it
+                            has been in Overflow since today. A day count
+                            would need a "today" past Sep 11, which the
+                            board's (Sep 7) contradicts. The full sentence is
+                            the `sr` text, as on the board's accessible name. */}
                         <span
+                          aria-hidden
                           className={cn(
                             badgeVariants({ variant: "outline" }),
                             "num text-2xs font-normal text-muted-foreground",
                           )}
                         >
-                          In Overflow
+                          since today
                         </span>
                       </DemoTooltip>
                     </span>

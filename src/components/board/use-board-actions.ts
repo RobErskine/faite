@@ -19,6 +19,7 @@ import {
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { toast } from "sonner";
+import { outcomeToast, toneForStatus } from "./outcome-toast";
 import type { CivilDate, List, Tab, Todo } from "@/lib/schema";
 import type { TodoContextActions } from "./todo-card-menu";
 import { celebrate, type ConfettiOrigin } from "@/lib/celebrate";
@@ -1442,7 +1443,7 @@ export function useBoardActions(
        * `handleSheetStatus` applies just below.
        */
       if (next !== "open") {
-        toast.success(`${STATUS_VERB[next]} “${short(todo.title)}”`, {
+        outcomeToast(toneForStatus(next), `${STATUS_VERB[next]} “${short(todo.title)}”`, {
           duration: 6000,
           action: { label: "Undo", onClick: () => void undoById(entryId) },
         });
@@ -1502,7 +1503,8 @@ export function useBoardActions(
       // Same reasoning as the card checkbox: anything but `open` drops the
       // todo off the board, so there is nothing left on screen to confirm it.
       if (status !== "open") {
-        toast.success(`${STATUS_VERB[status]} “${short(before.title)}”`, {
+        // Done earns the check; Won't do is a decision, so no icon (EI-387).
+        outcomeToast(toneForStatus(status), `${STATUS_VERB[status]} “${short(before.title)}”`, {
           duration: 6000,
           action: { label: "Undo", onClick: () => void undoById(entryId) },
         });
@@ -1653,7 +1655,7 @@ export function useBoardActions(
       // Reopening puts a card back where you can see it, and announcing
       // something already visible is noise.
       if (status !== "open") {
-        toast.success(label, {
+        outcomeToast(toneForStatus(status), label, {
           duration: 6000,
           action: { label: "Undo", onClick: () => void undoById(entryId) },
         });

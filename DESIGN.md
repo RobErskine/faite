@@ -190,7 +190,7 @@ An achromatic ink-on-paper ladder, plus five channels that each mean one thing: 
 - **Spectrum Solid** (`spectrum-solid`): the lavender stop alone, for the focus ring (`--ring`) and the check flash. Darkened in light theme to clear 3:1 on white (§7, 2026-09-05).
 
 ### Tertiary
-- **Urgent** (`urgent`, `urgent-foreground`, `urgent-soft`): "needs a verdict now." An alias of `--destructive`. The Overflow column's edge rule (at 70%, for 3:1 on `surface-0`) and count (only while it holds something), a missed Deadline, `×N` missed occurrences, the N-due banner, a drop-refused outline. Red text is always `urgent-foreground` at `text-xs` or larger; bare `urgent` is for rules and outlines. Never the per-card "In Overflow N days" age, which is muted ink: the column says it once.
+- **Urgent** (`urgent`, `urgent-foreground`, `urgent-soft`): "needs a verdict now." An alias of `--destructive`. The Overflow column's edge rule (at 70%, for 3:1 on `surface-0`) and count (only while it holds something), a missed Deadline, `×N` missed occurrences, the N-due banner, a drop-refused outline. Red text is always `urgent-foreground` at `text-xs` or larger; bare `urgent` is for rules and outlines. Never the per-card Overflow age ("9 days", EI-387), which is muted ink: the column says it once.
 - **Status** (`warning`, `info`, `success`, each with `-foreground` and `-soft`): system state, for desktop and auth banners and toasts.
 - **Identity hue** (user-chosen per tab or list; the ten Radix step-9 presets in `src/lib/colors.ts`): "belongs to X." Applied as a ladder: `edge()` 35% rule under a column title, `tint()` 12% on group and tab headers, `wash()` 5% behind a run of rows.
 

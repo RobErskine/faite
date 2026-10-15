@@ -9,6 +9,7 @@ import {
   daysBetween,
   deriveColumn,
   formatDeadlineDue,
+  formatShortDateAsOf,
   isDeadlineMissed,
   rolloverTarget,
   rollsElapsed,
@@ -304,6 +305,25 @@ describe("formatDeadlineDue", () => {
 
   it("crosses a month boundary without drifting", () => {
     expect(formatDeadlineDue("2026-09-01", today)).toBe("Due in 29 days: Sep 1");
+  });
+
+  it("names the year of a deadline in another year (EI-387)", () => {
+    expect(formatDeadlineDue("2027-10-01", today)).toBe("Due in 424 days: Oct 1, 2027");
+    expect(formatDeadlineDue("2025-12-30", today)).toBe("Overdue by 216 days: Dec 30, 2025");
+  });
+});
+
+describe("formatShortDateAsOf (EI-387)", () => {
+  const today = "2026-10-14";
+
+  it("leaves the year off in the current year", () => {
+    expect(formatShortDateAsOf("2026-10-01", today)).toBe("Oct 1");
+    expect(formatShortDateAsOf("2026-12-31", today)).toBe("Dec 31");
+  });
+
+  it("adds the year in any other year, ahead or behind", () => {
+    expect(formatShortDateAsOf("2027-10-01", today)).toBe("Oct 1, 2027");
+    expect(formatShortDateAsOf("2025-12-30", today)).toBe("Dec 30, 2025");
   });
 });
 

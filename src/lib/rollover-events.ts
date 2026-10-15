@@ -95,12 +95,61 @@ export function overflowAgeDays(since: CivilDate, today: CivilDate): number {
   return Math.max(0, daysBetween(since, today));
 }
 
-/** The per-card Overflow age, as the badge reads it: "In Overflow today" on
- * the day it overflowed, then "In Overflow 1 day", "In Overflow 9 days". */
+/** The per-card Overflow age in full: "In Overflow today" on the day it
+ * overflowed, then "In Overflow 1 day", "In Overflow 9 days". What a card's
+ * accessible name says (`todoRowName`), and what a badge shows wherever no
+ * Overflow column is around it to say the rest (⌘K's result rows). */
 export function formatOverflowAge(since: CivilDate, today: CivilDate): string {
   const days = overflowAgeDays(since, today);
   if (days === 0) return "In Overflow today";
   return `In Overflow ${days} ${days === 1 ? "day" : "days"}`;
+}
+
+/**
+ * The same age with "In Overflow" left to its surroundings — the card badge's
+ * visible text (EI-387): "since today", "1 day", "9 days".
+ *
+ * On a card in the Overflow column, every badge repeating "In Overflow" said
+ * the column's name N times; the number is the only part that differs from
+ * card to card. "since today", not a bare "today": the Overflow column shows
+ * each card's scheduled date beside this badge, and "today" next to "Oct 9"
+ * reads as a date ("due today"), while "since today" reads as the start of a
+ * wait, like "9 days" does. The full sentence stays in the accessible name and
+ * the tooltip says since when.
+ */
+export function formatOverflowAgeShort(since: CivilDate, today: CivilDate): string {
+  const days = overflowAgeDays(since, today);
+  if (days === 0) return "since today";
+  return `${days} ${days === 1 ? "day" : "days"}`;
+}
+
+/** A todo's place in the Faite Loop as a card shows it — see `rollStateFor`. */
+export interface RollState {
+  /** Set only while still rolling (on today, not yet in Overflow): what the
+   * ↳ marker (`TitleMarkers`) reads. */
+  rolledFrom?: { from: CivilDate; rolls: number; overflowsIn: number };
+  /** Set only once it has crossed into Overflow: what the age badge
+   * (`TodoMetaBadges`) reads. `since` is the `overflowed` event's day. */
+  overflow?: { from: CivilDate; since: CivilDate };
+}
+
+/**
+ * The last roll event, as the two card affordances want it — never both, they
+ * are mutually exclusive states of the same sequence. `rollEventsFor` already
+ * returns `[]` for settled and recurring todos, so this is `{}` for both.
+ *
+ * One function for the board card, the Overdrive card and ⌘K's result rows
+ * (EI-387), so a to-do cannot read as rolled in one and not in another.
+ */
+export function rollStateFor(
+  todo: Pick<Todo, "status" | "scheduledDate" | "recurrenceParentId">,
+  ctx: Pick<PlacementContext, "today" | "workdaysOnly" | "workdays" | "overflowAfterDays">,
+): RollState {
+  const last = rollEventsFor(todo, ctx).at(-1);
+  if (!last) return {};
+  return last.kind === "rolledOver"
+    ? { rolledFrom: { from: last.from, rolls: last.rolls, overflowsIn: last.overflowsIn } }
+    : { overflow: { from: last.from, since: last.day } };
 }
 
 export interface RolledTodo {

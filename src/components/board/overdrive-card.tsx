@@ -1,8 +1,8 @@
 "use client";
 
 import type { Label as LabelRecord, List, ReminderPreset, Todo } from "@/lib/schema";
-import { formatShortDate, type PlacementContext } from "@/lib/scheduling";
-import { rollEventsFor } from "@/lib/rollover-events";
+import { formatShortDateAsOf, type PlacementContext } from "@/lib/scheduling";
+import { rollStateFor } from "@/lib/rollover-events";
 import { TodoMetaBadges } from "./todo-row-parts";
 
 /**
@@ -36,11 +36,7 @@ export function OverdriveCard({
   // Reuses the exact same derivation the board card badge does — Overdrive
   // is always looking at a todo that HAS crossed into Overflow, so this is
   // always the `overflowed` branch, never `rolledOver`.
-  const lastRoll = rollEventsFor(todo, ctx).at(-1);
-  const overflowInfo =
-    lastRoll?.kind === "overflowed"
-      ? { from: lastRoll.from, since: lastRoll.day }
-      : undefined;
+  const overflowInfo = rollStateFor(todo, ctx).overflow;
 
   return (
     <div className="flex w-full max-w-xl flex-col gap-3 rounded-lg border border-border bg-background p-6">
@@ -56,7 +52,7 @@ export function OverdriveCard({
 
       <p className="text-sm text-muted-foreground">
         {list ? list.name : "Backlog"}
-        {todo.scheduledDate && <> · Scheduled {formatShortDate(todo.scheduledDate)}</>}
+        {todo.scheduledDate && <> · Scheduled {formatShortDateAsOf(todo.scheduledDate, ctx.today)}</>}
       </p>
 
       <TodoMetaBadges

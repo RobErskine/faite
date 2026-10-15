@@ -150,8 +150,16 @@ no new prop plumbing through `board-column.tsx` or `use-board-data.ts`.
   actual multi-line content needs one wrapping `flex flex-col` span as the
   single flex item, which stacks its own children as a column.
 - **Overflow age badge** — a muted outline badge in `TodoMetaBadges`
-  (`data-overflow-age`), shown only once in Overflow: "In Overflow today" on
-  the day it crosses, then "In Overflow 1 day", "In Overflow N days". `N` is
+  (`data-overflow-age`), shown only once in Overflow. **It shows only the
+  age** (EI-387): "since today" on the day it crosses, then "1 day", "N
+  days" (`formatOverflowAgeShort`). The Overflow column around the card
+  already says "Overflow", and the same words on every card in it said the
+  column's name N times. "since today", not "today": the card also shows its
+  scheduled date, and "today" beside "Oct 9" reads as a date, not a wait.
+  The full sentence — "In Overflow today", "In Overflow 1 day", "In Overflow
+  N days" (`formatOverflowAge`) — is the card's accessible name
+  (`todoRowName`), and ⌘K's result rows show it as the badge, because a
+  search hit has no column around it (`overflowWording="full"`). `N` is
   **calendar days since it entered Overflow** — `overflowAgeDays(since,
   today)` in `rollover-events.ts`, where `since` is the `overflowed` event's
   `day`. Calendar, not eligible, days: a card keeps waiting over a weekend
@@ -163,7 +171,9 @@ no new prop plumbing through `board-column.tsx` or `use-board-data.ts`.
   **Words only, no icon** (EI-383). It used to carry the same ↳
   (`CornerDownRight`) as the rollover marker, so one glyph meant both
   "rolled onto today" and "in Overflow". ↳ is the roll's alone; the
-  homepage replicas (`demo-board.tsx`, `story-panel.tsx`) match.
+  homepage replicas (`demo-board.tsx`, `story-panel.tsx`) match, age only
+  included ("6 days"; the story card's "since today"), with the full
+  sentence in their `sr` text.
   Not red, either (EI-374, `docs/DESIGN.md` §1): the Overflow column's rule
   and count carry the urgency once — and only while the column holds
   something — so the cards in it stay quiet, in the same register as the
@@ -171,6 +181,10 @@ no new prop plumbing through `board-column.tsx` or `use-board-data.ts`.
 
 These are mutually exclusive states of the same sequence — a card never
 shows both, and shows neither for a settled or recurring todo.
+`rollStateFor` (`rollover-events.ts`) turns the last roll event into the
+two props, and the board card, the Overdrive card and ⌘K's result rows all
+call it (EI-387), so search cannot show a to-do as on time while the board
+shows it in Overflow.
 
 ### The day timeline (`day-timeline.ts`, `day-sheet.tsx` — EI-87)
 

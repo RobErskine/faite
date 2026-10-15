@@ -78,7 +78,7 @@ export interface DemoTodo {
    * Both dates, not just a count, because the real badge explains itself with
    * "Scheduled X · in Overflow since Y" — a number on its own says how long
    * without saying since when. `days` is calendar days from `since` to the
-   * demo's today (Sep 7), as `formatOverflowAge` counts them on the board;
+   * demo's today (Sep 7), as `formatOverflowAgeShort` counts them on the board;
    * `from` is `since` minus the default loop's three rolls and one more day.
    */
   overflow?: { from: string; since: string; days: number };
@@ -419,17 +419,22 @@ function DemoCard({ todo }: { todo: DemoTodo }) {
             {todo.overflow && (
               <DemoTooltip
                 label={`Scheduled ${todo.overflow.from} · in Overflow since ${todo.overflow.since}`}
+                sr={`In Overflow ${todo.overflow.days} days: scheduled ${todo.overflow.from}, in Overflow since ${todo.overflow.since}`}
               >
                 {/* Muted, as the board draws it (EI-374): the column's rule
                     and count carry Overflow's red, never each card. Words
-                    only: ↳ is the rolled marker's alone (EI-383). */}
+                    only: ↳ is the rolled marker's alone (EI-383). Only the
+                    age, as the board shows it (EI-387) — the column says
+                    "Overflow" once; the full sentence is the `sr` text, as it
+                    is the board card's accessible name. */}
                 <span
+                  aria-hidden
                   className={cn(
                     badgeVariants({ variant: "outline" }),
                     "num text-2xs font-normal text-muted-foreground",
                   )}
                 >
-                  In Overflow {todo.overflow.days} days
+                  {todo.overflow.days} days
                 </span>
               </DemoTooltip>
             )}

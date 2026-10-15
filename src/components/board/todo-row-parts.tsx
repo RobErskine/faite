@@ -16,9 +16,9 @@ import { cn } from "@/lib/utils";
 import { edge, tint } from "@/lib/colors";
 import { priorityRail, railBackgroundImage } from "@/lib/priority";
 import type { CivilDate, Label as LabelRecord, ReminderPreset, Todo } from "@/lib/schema";
-import { formatDeadlineDue, formatShortDate, isDeadlineMissed } from "@/lib/scheduling";
+import { formatDeadlineDue, formatShortDateAsOf, isDeadlineMissed } from "@/lib/scheduling";
 import { reminderLabelFor } from "@/lib/reminder-presets";
-import { formatOverflowAge } from "@/lib/rollover-events";
+import { formatOverflowAge, formatOverflowAgeShort } from "@/lib/rollover-events";
 
 /**
  * Shared with `command-palette.tsx` — see the note there on why `TodoCard`
@@ -104,8 +104,8 @@ export function PriorityGlyph({ priority }: { priority: Todo["priority"] }) {
  * meant to sit inside a title's inline flow, immediately before the title
  * text. Each glyph is its own tooltip trigger; a missed deadline is NOT
  * included here, it gets the loud badge in `TodoMetaBadges` instead. Neither
- * is an overflowed todo's rollover history — see `TodoMetaBadges`'s "In
- * Overflow" badge for that.
+ * is an overflowed todo's rollover history — see `TodoMetaBadges`'s
+ * Overflow age badge for that.
  *
  * Purely visual: the glyphs carry no hidden text. Their words are in
  * `todoRowName`, which the row sets as its name, so a sentence placed here
@@ -148,7 +148,7 @@ export function TitleMarkers({
               flex item, and stacks its own children as a column. */}
             <span className="flex flex-col text-center">
               <span>
-                Rolled from {formatShortDate(rolledFrom.from)} - {rolledFrom.rolls}{" "}
+                Rolled from {formatShortDateAsOf(rolledFrom.from, today)} - {rolledFrom.rolls}{" "}
                 {rolledFrom.rolls === 1 ? "day" : "days"}
               </span>
               <span>
@@ -285,7 +285,7 @@ export function todoRowName({
   // TitleMarkers, in its order.
   if (rolledFrom) {
     push(
-      `Rolled from ${formatShortDate(rolledFrom.from)}, ${plural(rolledFrom.rolls, "day", "days")} ago`,
+      `Rolled from ${formatShortDateAsOf(rolledFrom.from, today)}, ${plural(rolledFrom.rolls, "day", "days")} ago`,
     );
     push(`Overflow in ${plural(rolledFrom.overflowsIn, "day", "days")}`);
   }
@@ -293,8 +293,12 @@ export function todoRowName({
   if (todo.location) push(`Location: ${todo.location}`);
   if (todo.recurrenceParentId) push(`Repeats: ${recurrenceSummary ?? "part of a repeating series"}`);
 
-  // TodoMetaBadges, in its order.
-  if (showScheduledDate && todo.scheduledDate) push(`Scheduled ${formatShortDate(todo.scheduledDate)}`);
+  // TodoMetaBadges, in its order. The Overflow age is the full sentence here
+  // whichever form the badge shows (`overflowWording`): a screen reader has
+  // no column around the card to supply "In Overflow".
+  if (showScheduledDate && todo.scheduledDate) {
+    push(`Scheduled ${formatShortDateAsOf(todo.scheduledDate, today)}`);
+  }
   if (todo.reminderTime) push(reminderLabelFor(todo.reminderTime, reminderPresets ?? []));
   if (subtaskCount && subtaskCount.total > 0) {
     push(`${subtaskCount.done} of ${subtaskCount.total} sub-tasks done`);
@@ -317,6 +321,9 @@ export function todoRowName({
  * wants it since it has no column to imply the date), an Overflow-age badge,
  * and labels. Renders `null` when there is nothing to show.
  *
+ * Dates carry the year when it is not this year (`formatShortDateAsOf`,
+ * EI-387): "Oct 1, 2027", not a bare "Oct 1" that reads as this October.
+ *
  * Purely visual, like `TitleMarkers`. Each badge's words are in
  * `todoRowName`, so a badge added here must be added there too.
  */
@@ -330,6 +337,7 @@ export function TodoMetaBadges({
   reminderPresets,
   subtaskCount,
   attachmentCount,
+  overflowWording = "age",
 }: {
   todo: Todo;
   labels: LabelRecord[];
@@ -354,6 +362,14 @@ export function TodoMetaBadges({
   /** How many files are attached (EI-242) — see `use-board-data.ts`'s
    * `attachmentCounts`. Undefined or 0 shows no badge. */
   attachmentCount?: number;
+  /**
+   * How the Overflow badge reads (EI-387). `"age"` — "since today", "1 day",
+   * "9 days" — wherever Overflow itself is the surrounding context: the
+   * Overflow column, Overdrive. `"full"` — "In Overflow 9 days" — where
+   * nothing around the row says Overflow: ⌘K's result rows, which have no
+   * column, the same reason they always show the scheduled date.
+   */
+  overflowWording?: "age" | "full";
 }) {
   const deadlineMissed = isDeadlineMissed(todo, { today });
   const todoLabels = labels.filter((l) => todo.labelIds.includes(l.id));
@@ -375,7 +391,7 @@ export function TodoMetaBadges({
       {showScheduledDate && todo.scheduledDate && (
         <Badge variant="outline" className="num gap-1 text-2xs font-normal">
           <CalendarClock className="size-2.5" aria-hidden />
-          {formatShortDate(todo.scheduledDate)}
+          {formatShortDateAsOf(todo.scheduledDate, today)}
         </Badge>
       )}
       {todo.reminderTime && (
@@ -421,8 +437,12 @@ export function TodoMetaBadges({
 
             Words only, no icon (EI-383). It used to carry ↳ too, which made
             one glyph mean two things: "rolled forward onto today" on the
-            title marker, "sitting in Overflow" here. ↳ belongs to the roll;
-            "In Overflow N days" already says the rest.
+            title marker, "sitting in Overflow" here. ↳ belongs to the roll.
+
+            Only the age, on the board (EI-387): "In Overflow" on every card
+            in the Overflow column said the column's name N times. The full
+            sentence is in the row's name (`todoRowName`) and the tooltip
+            says since when. See `formatOverflowAgeShort` for "since today".
           */}
           <TooltipTrigger
             render={
@@ -433,13 +453,15 @@ export function TodoMetaBadges({
                   "num text-2xs font-normal text-muted-foreground",
                 )}
               >
-                {formatOverflowAge(overflow.since, today)}
+                {overflowWording === "full"
+                  ? formatOverflowAge(overflow.since, today)
+                  : formatOverflowAgeShort(overflow.since, today)}
               </span>
             }
           />
           <TooltipContent>
-            Scheduled {formatShortDate(overflow.from)} · in Overflow since{" "}
-            {formatShortDate(overflow.since)}
+            Scheduled {formatShortDateAsOf(overflow.from, today)} · in Overflow since{" "}
+            {formatShortDateAsOf(overflow.since, today)}
           </TooltipContent>
         </Tooltip>
       )}
@@ -450,7 +472,7 @@ export function TodoMetaBadges({
       */}
       {deadlineMissed && todo.deadline && (
         <Badge variant="destructive" className="text-xs font-normal">
-          Deadline <span className="num">{formatShortDate(todo.deadline)}</span>
+          Deadline <span className="num">{formatShortDateAsOf(todo.deadline, today)}</span>
         </Badge>
       )}
       {(missedCount ?? 0) > 1 && (

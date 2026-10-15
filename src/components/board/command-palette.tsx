@@ -25,6 +25,7 @@ import { createUndoStep, pushUndo, undoById } from "@/lib/undo";
 import { deleteListWithUndo } from "./list-actions";
 import { createTabWithUndo, deleteTabWithUndo } from "./tab-actions";
 import { todayIn } from "@/lib/scheduling";
+import { rollStateFor, type RollState } from "@/lib/rollover-events";
 import { effectiveListColor } from "@/lib/colors";
 import {
   describeQuickAddLanding,
@@ -185,6 +186,26 @@ export function CommandPalette({
     () => new Map(lists.map((list) => [list.id, list.name])),
     [lists],
   );
+
+  /**
+   * Each hit's place in the Faite Loop — rolled (↳) or in Overflow and for
+   * how long — from `rollStateFor`, the function the board card reads
+   * (EI-387). Search used to show neither, so a to-do nine days into Overflow
+   * looked exactly like one scheduled for today. Built from the same four
+   * settings `contextFromSettings` puts in the board's `ctx`.
+   */
+  const rollStates = useMemo(() => {
+    const states = new Map<string, RollState>();
+    if (!settings) return states;
+    const ctx = {
+      today,
+      workdaysOnly: settings.workdaysOnly,
+      workdays: settings.workdays,
+      overflowAfterDays: settings.overflowAfterDays,
+    };
+    for (const todo of results) states.set(todo.id, rollStateFor(todo, ctx));
+    return states;
+  }, [results, settings, today]);
 
   /**
    * Quick-add's "@list" mention candidates — color-resolved the same way
@@ -779,79 +800,89 @@ export function CommandPalette({
             {results.length > 0 ? (
               <>
                 <CommandGroup heading="To-dos">
-                  {results.map((todo) => (
-                    <CommandItem
-                      key={todo.id}
-                      /*
-                        Titles repeat ("Follow up"), and cmdk keys its
-                        selection off `value` — so the id rides along to keep
-                        rows distinct. It also scores the value, hence title
-                        first. The description travels as a keyword so
-                        description-only hits survive cmdk's own filter.
-                      */
-                      value={`${todo.title} ${todo.id}`}
-                      keywords={todo.description ? [todo.description] : undefined}
-                      // How the row-action shortcuts (⌘⏎/⌘⌫/⌘⇧⌫) find the
-                      // highlighted to-do without controlling `<Command value>`.
-                      data-todo-id={todo.id}
-                      // The same explicit name the board card uses (EI-381). The
-                      // glyphs and badges carry no hidden text, so a name built
-                      // from content would lose them. The list goes last, as on
-                      // screen.
-                      aria-label={[
-                        todoRowName({
-                          todo,
-                          labels,
-                          today,
-                          recurrenceSummary: todo.recurrenceParentId
-                            ? recurrenceSummaries?.get(todo.recurrenceParentId)
-                            : undefined,
-                          reminderPresets,
-                          showScheduledDate: true,
-                        }),
-                        listNameById.get(todo.listId ?? "") ?? "Unfiled",
-                      ].join(", ")}
-                      onSelect={() => {
-                        onSelectTodo(todo);
-                        close();
-                      }}
-                      className="items-start overflow-hidden py-2 pl-4"
-                    >
-                      <PriorityRail priority={todo.priority} />
-                      <span className="min-w-0 flex-1 text-sm leading-snug">
-                        <span
-                          className={cn(
-                            "wrap-break-word",
-                            TITLE_CLAMP_CLASS,
-                            todo.status !== "open" && "text-muted-foreground",
-                            todo.status === "done" && "line-through",
-                            todo.status === "dropped" && "opacity-70",
-                          )}
-                        >
-                          <TitleMarkers
+                  {results.map((todo) => {
+                    const { rolledFrom, overflow } = rollStates.get(todo.id) ?? {};
+                    return (
+                      <CommandItem
+                        key={todo.id}
+                        /*
+                          Titles repeat ("Follow up"), and cmdk keys its
+                          selection off `value` — so the id rides along to keep
+                          rows distinct. It also scores the value, hence title
+                          first. The description travels as a keyword so
+                          description-only hits survive cmdk's own filter.
+                        */
+                        value={`${todo.title} ${todo.id}`}
+                        keywords={todo.description ? [todo.description] : undefined}
+                        // How the row-action shortcuts (⌘⏎/⌘⌫/⌘⇧⌫) find the
+                        // highlighted to-do without controlling `<Command value>`.
+                        data-todo-id={todo.id}
+                        // The same explicit name the board card uses (EI-381). The
+                        // glyphs and badges carry no hidden text, so a name built
+                        // from content would lose them. The list goes last, as on
+                        // screen.
+                        aria-label={[
+                          todoRowName({
+                            todo,
+                            labels,
+                            today,
+                            recurrenceSummary: todo.recurrenceParentId
+                              ? recurrenceSummaries?.get(todo.recurrenceParentId)
+                              : undefined,
+                            reminderPresets,
+                            showScheduledDate: true,
+                            rolledFrom,
+                            overflow,
+                          }),
+                          listNameById.get(todo.listId ?? "") ?? "Unfiled",
+                        ].join(", ")}
+                        onSelect={() => {
+                          onSelectTodo(todo);
+                          close();
+                        }}
+                        className="items-start overflow-hidden py-2 pl-4"
+                      >
+                        <PriorityRail priority={todo.priority} />
+                        <span className="min-w-0 flex-1 text-sm leading-snug">
+                          <span
+                            className={cn(
+                              "wrap-break-word",
+                              TITLE_CLAMP_CLASS,
+                              todo.status !== "open" && "text-muted-foreground",
+                              todo.status === "done" && "line-through",
+                              todo.status === "dropped" && "opacity-70",
+                            )}
+                          >
+                            <TitleMarkers
+                              todo={todo}
+                              today={today}
+                              recurrenceSummary={
+                                todo.recurrenceParentId
+                                  ? recurrenceSummaries?.get(todo.recurrenceParentId)
+                                  : undefined
+                              }
+                              rolledFrom={rolledFrom}
+                            />
+                            {todo.title}
+                          </span>
+                          <TodoMetaBadges
                             todo={todo}
+                            labels={labels}
+                            reminderPresets={reminderPresets}
                             today={today}
-                            recurrenceSummary={
-                              todo.recurrenceParentId
-                                ? recurrenceSummaries?.get(todo.recurrenceParentId)
-                                : undefined
-                            }
+                            showScheduledDate
+                            overflow={overflow}
+                            // No Overflow column around a search hit to say
+                            // where it is waiting, so the badge says it.
+                            overflowWording="full"
                           />
-                          {todo.title}
                         </span>
-                        <TodoMetaBadges
-                          todo={todo}
-                          labels={labels}
-                          reminderPresets={reminderPresets}
-                          today={today}
-                          showScheduledDate
-                        />
-                      </span>
-                      <span className="ml-auto shrink-0 self-center text-xs text-muted-foreground">
-                        {listNameById.get(todo.listId ?? "") ?? "Unfiled"}
-                      </span>
-                    </CommandItem>
-                  ))}
+                        <span className="ml-auto shrink-0 self-center text-xs text-muted-foreground">
+                          {listNameById.get(todo.listId ?? "") ?? "Unfiled"}
+                        </span>
+                      </CommandItem>
+                    );
+                  })}
                 </CommandGroup>
 
                 <CommandSeparator />
