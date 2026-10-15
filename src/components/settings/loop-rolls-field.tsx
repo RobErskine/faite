@@ -4,6 +4,9 @@ import { cn } from "@/lib/utils";
 
 const ROLL_PRESETS = [0, 1, 2, 3, 5, 7, 14, 30] as const;
 
+/** The `0` preset's label — see the note on `LoopRollsField`. */
+const ROLLS_ZERO_LABEL = "0 · next day";
+
 interface LoopRollsFieldProps {
   value: number;
   onChange: (rolls: number) => void;
@@ -15,6 +18,12 @@ interface LoopRollsFieldProps {
  * thirty-one-item picker. The schema still accepts any value 0-30, so a
  * synced out-of-preset value (an older client, say) round-trips fine even
  * though this control can't select it directly — see docs/FAITE-LOOP.md.
+ *
+ * `0` reads "0 · next day", never "None" (EI-383): zero rolls means a miss
+ * goes to Overflow the very next day, and "None" read as "never overflow" —
+ * the one setting the Loop deliberately does not have. The text is the
+ * button's whole accessible name, so sighted and screen-reader users get
+ * the same words.
  */
 export function LoopRollsField({ value, onChange }: LoopRollsFieldProps) {
   return (
@@ -36,7 +45,7 @@ export function LoopRollsField({ value, onChange }: LoopRollsFieldProps) {
                   : "text-muted-foreground hover:text-foreground",
               )}
             >
-              {rolls === 0 ? "None" : rolls}
+              {rolls === 0 ? ROLLS_ZERO_LABEL : rolls}
             </button>
           );
         })}

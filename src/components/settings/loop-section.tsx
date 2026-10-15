@@ -73,7 +73,7 @@ function PresetChips<T extends number>({
  * settings before this section existed (`overflowAfterDays` only reachable
  * via its DB default of 3) — see docs/FAITE-LOOP.md.
  *
- * Also houses Overdrive's two tunables (EI-103) — entry threshold and
+ * Also houses Overdrive's two tunables (EI-103) — when to show it and
  * auto-confirm delay — rather than a separate "Overdrive" section, since
  * both are just parameters on when/how the Loop hands a todo off to
  * Overdrive. Both shipped deliberately absent from v1 — see
@@ -144,11 +144,14 @@ export function LoopSection({ settings }: SettingsSectionProps) {
       </div>
 
       <fieldset className="space-y-2">
-        <legend className="text-sm font-medium">Entry threshold</legend>
+        {/* Not "Entry threshold" (EI-383) — say what it does. The same
+            number gates Overflow's footer button AND each day column's ⚡
+            (`overdrive-button.tsx`), so the copy names both. */}
+        <legend className="text-sm font-medium">When to show Overdrive</legend>
         <p className="text-sm text-muted-foreground">
-          Overflow needs at least this many to-dos piled up before the{" "}
+          Show the{" "}
           <span className="font-medium text-foreground">Overdrive</span> button
-          appears at the bottom of the column.
+          once Overflow, or a day, holds at least this many open to-dos.
         </p>
         <PresetChips
           value={minTodos}

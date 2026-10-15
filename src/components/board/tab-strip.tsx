@@ -350,6 +350,30 @@ export function TabStrip({
   );
 }
 
+/**
+ * The legend for a pill's bare `4/3/↑8` — one sentence, used verbatim as the
+ * pill's tooltip AND appended (sr-only) to its accessible name, so the words
+ * a sighted user hovers for and the words a screen reader hears are the same.
+ *
+ * One clause per visible number, in the same order, always all three (EI-383)
+ * — the old sentence dropped the third whenever it was 0, so `↑0` had no
+ * words to point at. Comma-separated rather than `·`: a screen reader reads a
+ * comma as a pause and a middle dot, sometimes, as "dot".
+ *
+ * "on the calendar" for the third: those to-dos have LEFT their list column
+ * for the calendar half above (hence the ↑), which is what makes a tab read
+ * `3/0/↑1` while its lists all look empty. See `tabCountsFrom` in
+ * `lib/board.ts` for exactly what each number counts.
+ */
+export function tabCountLabel(count: TabCount): string {
+  const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+  return (
+    `${plural(count.lists, "list", "lists")}, ` +
+    `${plural(count.items, "to-do", "to-dos")} in ${count.lists === 1 ? "it" : "them"}, ` +
+    `${count.assigned} on the calendar`
+  );
+}
+
 interface TabPillProps {
   tab: Tab;
   isActive: boolean;
@@ -389,21 +413,7 @@ function TabPill({
    */
   const isFocusCandidate = (isCardDragActive || isListDragActive) && isOver && !isActive;
 
-  /**
-   * Spells out the bare `3/0/1` badge for the tooltip and for screen readers.
-   * Declared above `pill` because that JSX is built at assignment, not on
-   * render — referencing this below it would be a temporal-dead-zone throw.
-   *
-   * "assigned to a day" rather than "scheduled": the third number exists
-   * precisely because those to-dos have LEFT their list column for the
-   * calendar half, which is what makes a tab read `3/0/1` while its lists
-   * all look empty.
-   */
-  const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-  const countLabel =
-    `${plural(count.lists, "list", "lists")} with ` +
-    `${plural(count.items, "item", "items")}` +
-    (count.assigned > 0 ? `, plus ${plural(count.assigned, "item", "items")} assigned to a day` : "");
+  const countLabel = tabCountLabel(count);
 
   /*
     The pill's own div becomes the context-menu trigger — same reasoning as a
@@ -467,6 +477,13 @@ function TabPill({
         type="button"
         onClick={onSelect}
         aria-current={isActive ? "true" : undefined}
+        // The name, said outright (EI-383): tab name, then the same sentence
+        // the tooltip shows. It was the content plus an sr-only ", …" — but
+        // this button is a flex row, so its children are blockified and the
+        // accessible-name algorithm put a space before that comma ("Work ,
+        // 4 lists"). Starts with the visible name, so voice control's "click
+        // Work" still lands (label in name).
+        aria-label={`${tab.name}, ${countLabel}`}
         className={cn(
           "focus-ring flex max-w-40 min-w-0 items-baseline gap-1 rounded text-xs",
           // 16px of text is a 16px target. `py-1` grows the box to the 24px
@@ -482,8 +499,9 @@ function TabPill({
           `lists/items/assigned`, bare — no parens. Three numbers plus
           brackets is more punctuation than name on a narrow pill, and the
           slashes already group them. Says nothing useful spelled out letter
-          by letter, so `sr-only` below carries the real sentence — the same
-          bargain as the deadline/location markers in todo-row-parts.tsx.
+          by letter, so the button's `aria-label` carries the real sentence
+          (`tabCountLabel`) — the same bargain as the deadline/location
+          markers in todo-row-parts.tsx.
         */}
         {/*
           `text-foreground/60`, not `text-muted-foreground/60` (EI-378). The
@@ -504,7 +522,6 @@ function TabPill({
           <ArrowUp className="inline size-2.5 align-[-0.05em]" aria-hidden />
           {count.assigned}
         </span>
-        <span className="sr-only">, {countLabel}</span>
       </button>
 
       <Button

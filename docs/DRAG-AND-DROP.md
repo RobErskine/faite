@@ -1850,9 +1850,11 @@ rect-based collision logic cannot be meaningfully tested there.
 38. A column with 8+ items shows "Filter N items" in the empty filter input;
     typing replaces it with the value, and the existing "N of M todos" chip
     still appears once a query is active.
-39. Every tab pill shows `(lists/items)`; hovering one reads "N lists with N
-    items" (or singular for exactly 1). A tab with no lists of its own reads
-    `(0/0)`.
+39. Every tab pill shows `lists/items/↑assigned`; hovering or focusing one
+    reads "N lists, N to-dos in them, N on the calendar" (singular for
+    exactly 1; all three clauses always, EI-383), and that sentence follows
+    the tab name in its accessible name. A tab with no lists of its own
+    reads `0/0/↑0`.
 40. Move a list to another tab (§4.10c) or complete/reopen a todo — both
     tabs' counts update live, and Backlog never moves either number.
 41. The "Archived" button shows only the icon and `(N)` inline next to it —

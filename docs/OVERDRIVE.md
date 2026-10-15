@@ -363,9 +363,22 @@ decisions produce a newer `dispatch` closing over a newer `session`.
 enforces) is what lets the toast always reach the *current* `dispatch`
 no matter how old the captured closure is.
 
-**On overlay close**: a `useEffect` cleanup (empty deps, so it only runs on
-unmount — exactly when the overlay closes, regardless of how) dismisses
-`OVERDRIVE_TOAST_ID`.
+**On overlay close**: an effect on `sheetOpen` dismisses
+`OVERDRIVE_TOAST_ID` the moment the overlay starts to close, however it
+closes (EI-383). It used to be an unmount-only cleanup, on the assumption
+that closing unmounts the content — but `useExitRetained` keeps the content
+mounted so it can animate out, and nothing unmounts it afterwards, so the
+`duration: Infinity` toast outlived the overlay indefinitely. The unmount
+cleanup stays as a backstop. The last verdict is still undoable after the
+close: every verdict went through `pushUndo`, so the board's own `⌘Z`
+reverses it.
+
+The same retention bug kept a closed session alive: reopening the **same**
+pile reused the same `key={source}`, so the overlay resumed where it had
+stopped (often on its finish tally) instead of starting over. The gate now
+counts opens and keys on `${source}:${seq}`, bumped only on the way in, so
+the outgoing overlay keeps its content while it animates out and every open
+is a fresh session.
 
 ## 8. Finishing
 
@@ -795,7 +808,7 @@ syncs like anything else.
 | `components/board/use-board-ui-state.ts` | `overdriveSource: OverdriveSource \| null` + `computeModalOpen` |
 | `components/board/use-board-data.ts` | `overdriveDayTodos` — the day queue/count's one shared derivation (EI-253) |
 | `components/board/board-guards.test.ts` | the table-driven test that keeps a future overlay from forgetting the guard wiring above |
-| `components/settings/loop-section.tsx` | Settings → Faite Loop (EI-103) — entry threshold and auto-confirm delay preset chips, alongside the Loop's own settings |
+| `components/settings/loop-section.tsx` | Settings → Faite Loop (EI-103) — "When to show Overdrive" (the entry threshold; renamed from "Entry threshold" in EI-383) and auto-confirm delay preset chips, alongside the Loop's own settings |
 
 **`command-registry.ts` is deliberately untouched by EI-253.** `openOverdrive`
 stays a nullary callback and the `view-overdrive` command still only ever

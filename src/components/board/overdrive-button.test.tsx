@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { OVERDRIVE_MIN_TODOS } from "@/lib/overdrive";
 import { DayOverdriveButton, OverdriveButton, QuickSortButton } from "./overdrive-button";
 
@@ -88,6 +89,26 @@ describe("DayOverdriveButton", () => {
     );
     expect(screen.getByRole("button", { name: /wednesday, aug 13.*7/i })).toBeTruthy();
   });
+
+  it("shows its accessible name as a tooltip on hover — the ⚡ is not left unlabeled (EI-383)", async () => {
+    // In the app's own `TooltipProvider` (delay 0), as `app/layout.tsx` mounts it.
+    render(
+      <TooltipProvider>
+        <DayOverdriveButton count={6} minTodos={5} label="Wednesday, Oct 14" onOpen={vi.fn()} />
+      </TooltipProvider>,
+    );
+    const button = screen.getByRole("button", { name: "Overdrive Wednesday, Oct 14 — 6 to-dos" });
+    fireEvent.mouseEnter(button);
+    expect(await screen.findByText("Overdrive Wednesday, Oct 14 — 6 to-dos")).toBeTruthy();
+  });
+
+  it("and on keyboard focus", async () => {
+    render(
+      <DayOverdriveButton count={6} minTodos={5} label="Wednesday, Oct 14" onOpen={vi.fn()} />,
+    );
+    fireEvent.focus(screen.getByRole("button"));
+    expect(await screen.findByText("Overdrive Wednesday, Oct 14 — 6 to-dos")).toBeTruthy();
+  });
 });
 
 describe("QuickSortButton", () => {
@@ -99,5 +120,15 @@ describe("QuickSortButton", () => {
   it("and in the plural for more", () => {
     render(<QuickSortButton count={2} onOpen={vi.fn()} />);
     expect(screen.getByRole("button", { name: "Quick sort Backlog — 2 to-dos" })).toBeTruthy();
+  });
+
+  it("shows the same words as a tooltip (EI-383)", async () => {
+    render(
+      <TooltipProvider>
+        <QuickSortButton count={2} onOpen={vi.fn()} />
+      </TooltipProvider>,
+    );
+    fireEvent.mouseEnter(screen.getByRole("button"));
+    expect(await screen.findByText("Quick sort Backlog — 2 to-dos")).toBeTruthy();
   });
 });

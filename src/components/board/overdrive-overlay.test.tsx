@@ -544,6 +544,64 @@ describe("the persistent decision toast (round 2)", () => {
     cleanup();
     expect(toastDismiss).toHaveBeenCalled();
   });
+
+  /**
+   * The real close path (EI-383). `useExitRetained` keeps the content mounted
+   * after `source` goes null, so it can animate out — and it never unmounts
+   * on its own after that. The unmount cleanup above therefore never ran on
+   * a real close, and the `duration: Infinity` toast stayed on the board,
+   * offering to undo a decision from a session that was over.
+   */
+  it("dismisses the toast the moment the overlay closes, while it is still mounted to animate out", () => {
+    const harness = (source: OverdriveSource | null) => (
+      <TooltipProvider>
+        <OverdriveOverlay
+          source={source}
+          todos={TODOS}
+          todosById={new Map(TODOS.map((t) => [t.id, t]))}
+          listsById={new Map(LISTS.map((l) => [l.id, l]))}
+          backlogListId="list-backlog"
+          labels={[]}
+          ctx={ctx}
+          onClose={vi.fn()}
+          onVerdict={vi.fn(() => ({ undoId: "undo-1", label: "Decided" }))}
+        />
+      </TooltipProvider>
+    );
+    const { rerender } = render(harness(OVERFLOW));
+    press("ArrowLeft");
+    expect(toastSuccess).toHaveBeenCalledTimes(1);
+    expect(toastDismiss).not.toHaveBeenCalled();
+
+    rerender(harness(null));
+    expect(toastDismiss).toHaveBeenCalledWith("overdrive-last-decision");
+  });
+
+  it("reopening the same pile starts a fresh session, not the one you closed (EI-383)", () => {
+    const harness = (source: OverdriveSource | null) => (
+      <TooltipProvider>
+        <OverdriveOverlay
+          source={source}
+          todos={TODOS}
+          todosById={new Map(TODOS.map((t) => [t.id, t]))}
+          listsById={new Map(LISTS.map((l) => [l.id, l]))}
+          backlogListId="list-backlog"
+          labels={[]}
+          ctx={ctx}
+          onClose={vi.fn()}
+          onVerdict={vi.fn(() => ({ undoId: "undo-1", label: "Decided" }))}
+        />
+      </TooltipProvider>
+    );
+    const { rerender } = render(harness(OVERFLOW));
+    press("ArrowLeft");
+    flushFlick();
+    expect(screen.getByText("2 of 2")).toBeTruthy();
+
+    rerender(harness(null));
+    rerender(harness(OVERFLOW));
+    expect(screen.getByText("1 of 2")).toBeTruthy();
+  });
 });
 
 /**
