@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Dialog,
   DialogContent,
@@ -675,6 +676,13 @@ function OverdriveOverlayContent({
 
   const list = currentTodo?.listId ? (listsById.get(currentTodo.listId) ?? null) : null;
   const tally = summarize(session.decided);
+  /** The `↓` button's label — the one verdict whose text varies by card, so
+   * the one that can truncate (EI-393) and carries a tooltip. */
+  const toListLabel = quickSort
+    ? pickedList
+      ? `Move to ${pickedList.name}`
+      : "Pick a list"
+    : `Back to ${list ? list.name : "Backlog"}`;
 
   return (
     <Dialog
@@ -757,8 +765,15 @@ function OverdriveOverlayContent({
           // variant to be neutralised at all.
           "inset-0 h-dvh w-full max-w-none translate-x-0 translate-y-0 rounded-none sm:max-w-none",
           // Tall enough for a dialog: centered, with the board around it.
-          "tall:inset-auto tall:top-1/2 tall:left-1/2 tall:h-auto tall:max-h-[85dvh]",
-          "tall:w-[calc(100%-2rem)] tall:max-w-2xl tall:sm:max-w-2xl",
+          // A fixed box in both axes (EI-393): a dialog that sized to its
+          // card grew and shrank between cards and, being centered, moved
+          // its buttons by half of every change. The stage takes the slack.
+          // Taller on touch, where the verdicts are three 44px rows, not one
+          // 32px row — at 36rem a two-line title overflowed the box there,
+          // and the scroll moved the buttons by the overflow.
+          "[--overdrive-h:36rem] touch:[--overdrive-h:42rem]",
+          "tall:inset-auto tall:top-1/2 tall:left-1/2 tall:h-[min(85dvh,var(--overdrive-h))]",
+          "tall:w-[calc(100%-2rem)] tall:max-w-3xl tall:sm:max-w-3xl",
           "tall:-translate-x-1/2 tall:-translate-y-1/2 tall:rounded-xl",
         )}
         onKeyDown={handleKeyDown}
@@ -775,15 +790,13 @@ function OverdriveOverlayContent({
         {/*
           `min-h-0` + `overflow-y-auto`: without `min-h-0`, a flex item's
           default `min-height: auto` overrides `flex-1` the moment its own
-          content (card + gap-8 + staged box + button row) is taller than
-          the popup's `max-h-[85dvh]` box — the classic flex overflow trap.
-          Found live on a short landscape phone: this box was silently
-          rendering 100+px taller than the dialog itself, with its TOP
-          pinned in place rather than "centered" — `justify-center` cannot
-          distribute leftover space in a box that has none. `min-h-0` makes
-          this div actually respect the height it's supposed to fill;
-          `overflow-y-auto` means content that still doesn't fit scrolls
-          internally instead of rendering off-canvas.
+          content (card + staged slot + button grid) is taller than the
+          popup's box — the classic flex overflow trap. Found live on a
+          short landscape phone: this box was silently rendering 100+px
+          taller than the dialog itself. `min-h-0` makes this div actually
+          respect the height it's supposed to fill; `overflow-y-auto` means
+          content that still doesn't fit scrolls internally instead of
+          rendering off-canvas.
 
           The bottom padding is the §8b toast fix, and it applies only to
           the full-bleed branch — there the surface reaches the screen's
@@ -792,9 +805,9 @@ function OverdriveOverlayContent({
           that edge and the toast has its own space below, so the same
           padding would just be dead height.
         */}
-        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-8 overflow-y-auto px-6 pt-(--safe-top) pb-[calc(var(--safe-bottom)+6rem)] tall:py-8">
+        <div className="flex min-h-0 flex-1 flex-col items-center gap-8 overflow-y-auto px-6 pt-(--safe-top) pb-[calc(var(--safe-bottom)+6rem)] tall:py-8">
           {done || !currentTodo ? (
-            <div className="flex flex-col items-center gap-3 text-center">
+            <div className="my-auto flex flex-col items-center gap-3 text-center">
               <p className="font-heading text-2xl font-bold">
                 {session.decided.length > 0
                   ? `Cleared ${session.decided.length}`
@@ -829,203 +842,256 @@ function OverdriveOverlayContent({
                 {quickSort ? "Quick sort" : "Overdrive"} · {sourceLabel}
               </p>
               {/*
-                One card, in normal flow — never two at once. While
-                `transitioning`, this IS the outgoing card, flicking away in
-                the verdict's direction; `session` hasn't advanced yet (see
-                `dispatch`), so there is nothing else to show underneath it.
-                Once this card's own `animationend` fires, `transitioning`
-                clears and `session` has already advanced, so this branch
-                swaps straight to the new current card — no overlay, no dual
-                mount, no absolute positioning to get wrong.
-
-                `onAnimationEnd` is the thing that keeps the flick
-                CONSISTENT: the card leaves when its animation is actually
-                over, not when a timer that started at a different moment
-                says it should be (see `FLICK_FALLBACK_MS`). `e.target ===
-                e.currentTarget` so a future animation on anything INSIDE
-                the card can't end the flick early by bubbling up here.
-
-                `fill-mode-forwards` holds the card at its final off-screen
-                position between `animationend` firing and React actually
-                unmounting it. Without it the default `fill-mode: none`
-                snaps the card back to dead center, at full opacity, for
-                however many frames that gap lasts — a flash of the
-                just-decided card reappearing before it vanishes.
+                The stage: `flex-1`, so it takes whatever height the card
+                doesn't, and the card sits centered in it. Everything below it
+                is docked to the bottom of a fixed-height dialog, so a taller
+                or shorter card moves nothing but itself (EI-393). The card is
+                the stage's full width, never its title's.
               */}
               <div
-                ref={cardRef}
-                key={transitioning ? `flick-${transitioning.seq}` : currentId}
-                onAnimationEnd={(e) => {
-                  if (e.target === e.currentTarget) finishFlick();
-                }}
-                className={
-                  transitioning
-                    ? cn(
-                        // Both flick edges land on --dur-slow (260ms), the
-                        // motion budget's own ceiling (globals.css) — this
-                        // used to run 320ms out and 220ms in, two ungoverned
-                        // values that happened to straddle it.
-                        "animate-out fade-out duration-260 ease-in fill-mode-forwards",
-                        FLICK_CLASS[transitioning.direction],
-                      )
-                    : "animate-in fade-in duration-260 ease-out motion-reduce:animate-none"
-                }
+                data-overdrive-stage
+                className="flex w-full flex-1 flex-col items-center justify-center"
               >
-                <OverdriveCard
-                  todo={transitioning ? transitioning.todo : currentTodo}
-                  list={transitioning ? transitioning.list : list}
-                  labels={labels}
-                  reminderPresets={reminderPresets}
-                  ctx={ctx}
-                  index={transitioning ? transitioning.index : session.index}
-                  total={transitioning ? transitioning.total : session.queue.length}
-                />
-              </div>
+                {/*
+                  One card, in normal flow — never two at once. While
+                  `transitioning`, this IS the outgoing card, flicking away in
+                  the verdict's direction; `session` hasn't advanced yet (see
+                  `dispatch`), so there is nothing else to show underneath it.
+                  Once this card's own `animationend` fires, `transitioning`
+                  clears and `session` has already advanced, so this branch
+                  swaps straight to the new current card — no overlay, no dual
+                  mount, no absolute positioning to get wrong.
 
-              {quickSort && currentTodo && !transitioning && (
-                <div className="w-full max-w-sm">
-                  <ListField
-                    key={currentTodo.id}
-                    id={QUICK_SORT_LIST_ID}
-                    aria-label="List to file this to-do in"
-                    openOnFocus
-                    value={pickedListId}
-                    onChange={(listId) => {
-                      setPicks((current) => new Map(current).set(currentTodo.id, listId));
-                      // Hand the keys back to the overlay, so `↓` files it.
-                      popupRef.current?.focus();
-                    }}
-                    lists={lists.filter((l) => !l.isBacklog)}
-                    tabs={tabs}
+                  `onAnimationEnd` is the thing that keeps the flick
+                  CONSISTENT: the card leaves when its animation is actually
+                  over, not when a timer that started at a different moment
+                  says it should be (see `FLICK_FALLBACK_MS`). `e.target ===
+                  e.currentTarget` so a future animation on anything INSIDE
+                  the card can't end the flick early by bubbling up here.
+
+                  `fill-mode-forwards` holds the card at its final off-screen
+                  position between `animationend` firing and React actually
+                  unmounting it. Without it the default `fill-mode: none`
+                  snaps the card back to dead center, at full opacity, for
+                  however many frames that gap lasts — a flash of the
+                  just-decided card reappearing before it vanishes.
+                */}
+                <div
+                  ref={cardRef}
+                  key={transitioning ? `flick-${transitioning.seq}` : currentId}
+                  onAnimationEnd={(e) => {
+                    if (e.target === e.currentTarget) finishFlick();
+                  }}
+                  className={cn(
+                    "w-full",
+                    transitioning
+                      ? cn(
+                          // Both flick edges land on --dur-slow (260ms), the
+                          // motion budget's own ceiling (globals.css) — this
+                          // used to run 320ms out and 220ms in, two ungoverned
+                          // values that happened to straddle it.
+                          "animate-out fade-out duration-260 ease-in fill-mode-forwards",
+                          FLICK_CLASS[transitioning.direction],
+                        )
+                      : "animate-in fade-in duration-260 ease-out motion-reduce:animate-none",
+                  )}
+                >
+                  <OverdriveCard
+                    todo={transitioning ? transitioning.todo : currentTodo}
+                    list={transitioning ? transitioning.list : list}
+                    labels={labels}
+                    reminderPresets={reminderPresets}
+                    ctx={ctx}
+                    index={transitioning ? transitioning.index : session.index}
+                    total={transitioning ? transitioning.total : session.queue.length}
                   />
                 </div>
-              )}
-
-              {staged && !transitioning && (
-                <div className="flex flex-wrap items-center justify-center gap-3 rounded-md border-2 border-primary bg-primary/5 px-4 py-3 shadow-sm">
-                  <span className="text-base">
-                    Schedule for <strong>{rampLabel(staged, ctx.today)}</strong>
-                  </span>
-                  <Button onClick={() => dispatch("confirm")} className="pointer-coarse:min-h-11">
-                    <Check aria-hidden /> Confirm
-                  </Button>
-                  {/* A keyboard hint has nothing to say on a device with no
-                      keyboard — the Confirm button is the whole affordance there. */}
-                  <span className="text-xs text-muted-foreground touch:hidden">
-                    Enter to confirm
-                  </span>
-                  {/* Opt-in only (EI-103) — most sessions never render this,
-                      since `autoConfirmMs` defaults to 0. No live countdown:
-                      a ticking number would need its own re-render cadence
-                      for a value nobody needs to the second, just a heads-up
-                      that stopping here isn't "doing nothing." */}
-                  {autoConfirmMs > 0 && (
-                    <span className="text-xs text-muted-foreground">
-                      Auto-confirms if untouched
-                    </span>
-                  )}
-                </div>
-              )}
+              </div>
 
               {/*
-                Centred, wrapping row on a mouse; a two-column grid on touch
-                (`touch:`, `@media (hover: none)`, globals.css) — a wide row
-                of four+ targets is not reachable one-handed, and a grid
-                anchored near the thumb is. `pointer-coarse:min-h-11` on each
-                button is the same 44px WCAG/HIG floor `ui/button.tsx`'s own
-                small sizes already apply to themselves (`docs/MOBILE.md`).
-
-                `invisible`, not unmounted, while `transitioning` — the row
-                stays in the layout (so nothing above it jumps to re-center)
-                but is neither visible nor reachable; each button is also
-                `disabled` so a held-down key or a queued click can't land on
-                it via focus/Enter instead of a pointer.
+                The controls, docked: picker, staged slot, verdicts, top to
+                bottom, sharing the card's width. `@container` so the grid
+                below can pick its column count from the room it actually
+                has, not the viewport's.
               */}
-              <div
-                className={cn(
-                  "flex flex-wrap items-center justify-center gap-2 touch:grid touch:w-full touch:max-w-md touch:grid-cols-2",
-                  transitioning && "invisible",
-                )}
-              >
-                <Button
-                  variant="outline"
-                  disabled={!!transitioning}
-                  className={cn("pointer-coarse:min-h-11", staged && "opacity-60")}
-                  onClick={() => dispatch("wontDo")}
-                >
-                  <ArrowLeft aria-hidden /> Won’t do
-                </Button>
-                <Button
-                  variant="outline"
-                  disabled={!!transitioning}
-                  className={cn("pointer-coarse:min-h-11", staged && "opacity-60")}
-                  onClick={() => dispatch("toList")}
-                >
-                  <ArrowDown aria-hidden />{" "}
-                  {quickSort
-                    ? pickedList
-                      ? `Move to ${pickedList.name}`
-                      : "Pick a list"
-                    : `Back to ${list ? list.name : "Backlog"}`}
-                </Button>
-                <Button
-                  variant="outline"
-                  disabled={!!transitioning}
-                  className={cn("pointer-coarse:min-h-11", staged && "opacity-60")}
-                  onClick={() => dispatch("done")}
-                >
-                  <ArrowUp aria-hidden /> Done
-                </Button>
-                <Button
-                  variant={staged ? "ghost" : "outline"}
-                  disabled={!!transitioning}
-                  className="pointer-coarse:min-h-11"
-                  onClick={() => dispatch("ramp")}
-                >
-                  <ArrowRight aria-hidden /> Schedule
-                </Button>
-                <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
-                  <PopoverTrigger
-                    aria-label="Pick a date"
-                    disabled={!!transitioning}
-                    render={
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="pointer-coarse:min-h-11 pointer-coarse:min-w-11 touch:col-span-2 touch:w-full"
-                      />
-                    }
-                  >
-                    <CalendarDays aria-hidden />
-                  </PopoverTrigger>
-                  <PopoverContent align="center" className="w-auto p-0">
-                    {/* Deliberately does NOT snap to an eligible day even
-                        with workdaysOnly on — an explicitly chosen Saturday
-                        stays on Saturday (docs/FAITE-LOOP.md §2). Also
-                        deliberately does NOT block picking `source` itself
-                        (EI-253) — unlike the ramp's `min: 1` floor, an
-                        explicit pick is an explicit choice, including the
-                        choice to leave a card where it already is. Only
-                        `defaultMonth` follows the clamped base, so opening
-                        the picker on a day far out doesn't force scrolling
-                        back from today's month. */}
-                    <Calendar
-                      mode="single"
-                      defaultMonth={civilDateToLocalDate(overdriveBase(source, ctx).base)}
-                      disabled={{ before: civilDateToLocalDate(ctx.today) }}
-                      onSelect={(date) => {
-                        if (!date) return;
-                        setSession((s) =>
-                          stageDate(
-                            s,
-                            toCivilDate(date.getFullYear(), date.getMonth() + 1, date.getDate()),
-                          ),
-                        );
-                        setPickerOpen(false);
+              <div data-overdrive-actions className="@container flex w-full flex-col items-center gap-3">
+                {quickSort && currentTodo && (
+                  /*
+                    Kept mounted and `invisible` through the flick, not
+                    unmounted: unmounting it gave its height back to the
+                    stage, and the outgoing card jumped mid-flight. `inert`
+                    so nothing in it can be reached while it's hidden.
+                  */
+                  <div className={cn("w-full max-w-sm", transitioning && "invisible")} inert={!!transitioning}>
+                    <ListField
+                      key={currentTodo.id}
+                      id={QUICK_SORT_LIST_ID}
+                      aria-label="List to file this to-do in"
+                      openOnFocus
+                      value={pickedListId}
+                      onChange={(listId) => {
+                        setPicks((current) => new Map(current).set(currentTodo.id, listId));
+                        // Hand the keys back to the overlay, so `↓` files it.
+                        popupRef.current?.focus();
                       }}
+                      lists={lists.filter((l) => !l.isBacklog)}
+                      tabs={tabs}
                     />
-                  </PopoverContent>
-                </Popover>
+                  </div>
+                )}
+
+                {/*
+                  The staged slot is always there, staged or not (EI-393):
+                  staging used to insert this panel above the buttons and push
+                  them ~60px down, mid-burst, under the pointer. The slot is
+                  the panel's one-line height — 60px, 72px where Confirm grows
+                  to 44px on touch. A panel that wraps (a narrow phone with
+                  auto-confirm on) grows upward into the stage, never down.
+                */}
+                <div
+                  data-overdrive-staged-slot
+                  className="flex min-h-15 w-full items-end justify-center pointer-coarse:min-h-18"
+                >
+                  {staged && !transitioning && (
+                    <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-md border-2 border-primary bg-primary/5 px-4 py-3 shadow-sm">
+                      <span className="text-base">
+                        Schedule for <strong>{rampLabel(staged, ctx.today)}</strong>
+                      </span>
+                      <Button onClick={() => dispatch("confirm")} className="pointer-coarse:min-h-11">
+                        <Check aria-hidden /> Confirm
+                      </Button>
+                      {/* A keyboard hint has nothing to say on a device with no
+                          keyboard — the Confirm button is the whole affordance there. */}
+                      <span className="text-xs text-muted-foreground touch:hidden">
+                        Enter to confirm
+                      </span>
+                      {/* Opt-in only (EI-103) — most sessions never render this,
+                          since `autoConfirmMs` defaults to 0. No live countdown:
+                          a ticking number would need its own re-render cadence
+                          for a value nobody needs to the second, just a heads-up
+                          that stopping here isn't "doing nothing." */}
+                      {autoConfirmMs > 0 && (
+                        <span className="text-xs text-muted-foreground">
+                          Auto-confirms if untouched
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/*
+                  Four equal columns in arrow-key order — ← ↓ ↑ → — plus the
+                  date picker in a fixed 32px column after Schedule (EI-393).
+                  `minmax(0, 1fr)` makes every verdict the same width whatever
+                  its label, so "Back to Brain Dump" and "Back to Backlog" put
+                  Done and Schedule in the same place; a long list name
+                  truncates, and the full name stays the button's text (its
+                  accessible name) and its tooltip.
+
+                  Two columns where four don't fit (`@md`, 28rem of container)
+                  and always on touch (`touch:`, `@media (hover: none)`,
+                  globals.css) — a wide row of five targets is not reachable
+                  one-handed, and a grid anchored near the thumb is.
+                  `pointer-coarse:min-h-11` on each button is the same 44px
+                  WCAG/HIG floor `ui/button.tsx`'s own small sizes already
+                  apply to themselves (`docs/MOBILE.md`).
+
+                  `invisible`, not unmounted, while `transitioning` — the grid
+                  stays in the layout but is neither visible nor reachable;
+                  each button is also `disabled` so a held-down key or a
+                  queued click can't land on it via focus/Enter instead of a
+                  pointer.
+                */}
+                <div
+                  data-overdrive-verdicts
+                  className={cn(
+                    "grid w-full grid-cols-2 gap-2 @md:grid-cols-[repeat(4,minmax(0,1fr))_2rem]",
+                    "touch:max-w-md touch:grid-cols-2",
+                    transitioning && "invisible",
+                  )}
+                >
+                  <Button
+                    variant="outline"
+                    disabled={!!transitioning}
+                    className={cn(VERDICT_CLASS, staged && "opacity-60")}
+                    onClick={() => dispatch("wontDo")}
+                  >
+                    <ArrowLeft aria-hidden /> <span className="truncate">Won’t do</span>
+                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <Button
+                          variant="outline"
+                          disabled={!!transitioning}
+                          className={cn(VERDICT_CLASS, staged && "opacity-60")}
+                          onClick={() => dispatch("toList")}
+                        />
+                      }
+                    >
+                      <ArrowDown aria-hidden /> <span className="truncate">{toListLabel}</span>
+                    </TooltipTrigger>
+                    <TooltipContent>{toListLabel}</TooltipContent>
+                  </Tooltip>
+                  <Button
+                    variant="outline"
+                    disabled={!!transitioning}
+                    className={cn(VERDICT_CLASS, staged && "opacity-60")}
+                    onClick={() => dispatch("done")}
+                  >
+                    <ArrowUp aria-hidden /> <span className="truncate">Done</span>
+                  </Button>
+                  <Button
+                    variant={staged ? "ghost" : "outline"}
+                    disabled={!!transitioning}
+                    className={VERDICT_CLASS}
+                    onClick={() => dispatch("ramp")}
+                  >
+                    <ArrowRight aria-hidden /> <span className="truncate">Schedule</span>
+                  </Button>
+                  <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
+                    <PopoverTrigger
+                      aria-label="Pick a date"
+                      disabled={!!transitioning}
+                      render={
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="col-span-2 w-full pointer-coarse:min-h-11 pointer-coarse:min-w-11 @md:col-span-1 touch:col-span-2"
+                        />
+                      }
+                    >
+                      <CalendarDays aria-hidden />
+                    </PopoverTrigger>
+                    <PopoverContent align="center" className="w-auto p-0">
+                      {/* Deliberately does NOT snap to an eligible day even
+                          with workdaysOnly on — an explicitly chosen Saturday
+                          stays on Saturday (docs/FAITE-LOOP.md §2). Also
+                          deliberately does NOT block picking `source` itself
+                          (EI-253) — unlike the ramp's `min: 1` floor, an
+                          explicit pick is an explicit choice, including the
+                          choice to leave a card where it already is. Only
+                          `defaultMonth` follows the clamped base, so opening
+                          the picker on a day far out doesn't force scrolling
+                          back from today's month. */}
+                      <Calendar
+                        mode="single"
+                        defaultMonth={civilDateToLocalDate(overdriveBase(source, ctx).base)}
+                        disabled={{ before: civilDateToLocalDate(ctx.today) }}
+                        onSelect={(date) => {
+                          if (!date) return;
+                          setSession((s) =>
+                            stageDate(
+                              s,
+                              toCivilDate(date.getFullYear(), date.getMonth() + 1, date.getDate()),
+                            ),
+                          );
+                          setPickerOpen(false);
+                        }}
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
               </div>
             </>
           )}
@@ -1082,6 +1148,13 @@ export function overdriveReturnFocus(
   if (!heading.hasAttribute("tabindex")) heading.tabIndex = -1;
   return heading;
 }
+
+/**
+ * Every verdict button fills its grid cell, whatever its label (EI-393):
+ * `min-w-0` lets the cell, not the text, set the width, and the label's own
+ * `truncate` span gives way first.
+ */
+const VERDICT_CLASS = "w-full min-w-0 pointer-coarse:min-h-11";
 
 /** The Quick sort list picker's input id — `L` focuses it. */
 const QUICK_SORT_LIST_ID = "quick-sort-list";

@@ -202,6 +202,9 @@ exists to avoid. The other three verdict buttons dim to `opacity-60` at the
 same moment, for the same reason in reverse: while something is staged, they
 are not the obvious next action.
 
+The chip fills a slot that is always there (EI-393, §10a). It no longer
+appears *above* the buttons and pushes them down.
+
 > **Shipped, opt-in (EI-103)**: `settings.overdriveAutoConfirmMs`, a
 > per-user delay in milliseconds, `0` (off) by default — the exact behavior
 > above, unchanged, unless a user turns it on from Settings → Faite Loop. A
@@ -694,12 +697,78 @@ anywhere; these are meaningless anywhere but here.
 
 Every verdict button and the date-picker trigger carry `pointer-coarse:
 min-h-11` — the same 44px WCAG/HIG floor `ui/button.tsx`'s own small sizes
-already apply to themselves. The button row switches from a centered,
-wrapping flex row (mouse) to a two-column grid (`touch:`, `@media (hover:
-none)`, `globals.css`) — a wide row of five targets is not reachable
-one-handed, and a grid anchored near the thumb is. The keyboard-only
+already apply to themselves. On `touch:` (`@media (hover: none)`,
+`globals.css`) the verdicts are a two-column grid, with the date picker as a
+full-width row under it: a wide row of five targets is not reachable
+one-handed, and a grid anchored near the thumb is. On a phone that reads
+`← Won't do` `↓ Back to …` / `↑ Done` `→ Schedule`, the same order as the
+keys. The arrow on each button carries the mapping. The keyboard-only
 `"Enter to confirm"` hint hides on `touch:` — it has nothing to say on a
 device with no keyboard.
+
+## 10a. The buttons stay put between cards — EI-393
+
+The fourth board critique watched burst triage and saw the targets move
+under the pointer. There were three causes:
+
+1. **The verdicts were a centered, wrapping flex row.** Each button was as
+   wide as its label, so "Back to Brain Dump" and "Back to To Buy" put Done
+   and Schedule in different places on every card.
+2. **Staging inserted the chip above the buttons**, so `→` pushed them down
+   about 60px.
+3. **The dialog sized to its card.** Its height was `h-auto` and the card's
+   wrapper shrank to fit its content, so a longer title or a description
+   changed the dialog's size. The dialog is centered, so its buttons moved
+   by half of every change.
+
+What it is now (`overdrive-overlay.tsx`):
+
+- **A fixed box.** In `tall:` mode the dialog is
+  `h-[min(85dvh,var(--overdrive-h))]`. `--overdrive-h` is 36rem, or 42rem
+  on `touch:`, where the verdicts are three 44px rows instead of one 32px
+  row. The width is `min(100% - 2rem, 48rem)` (`max-w-3xl`). It was
+  `max-w-2xl`, but four equal columns at that width truncated "Back to Brain
+  Dump", the default list. Below `tall:` the box is the full-bleed `h-dvh`
+  it already was.
+- **A stage and a dock.** The content is the eyebrow, then the stage
+  (`data-overdrive-stage`, `flex-1`, the card centered in it), then the
+  controls column (`data-overdrive-actions`: the Quick sort picker, the
+  staged slot, the verdicts). The stage takes whatever height the card
+  doesn't use, so the controls sit at the bottom of the dialog whatever the
+  card's height. The card is `w-full` of the stage, so a title never sets
+  its width. A long title wraps (`wrap-break-word`).
+- **Four equal columns.** `grid-cols-[repeat(4,minmax(0,1fr))_2rem]`: four
+  equal verdict columns in arrow-key order (← ↓ ↑ →) and a fixed 32px
+  column for the date picker. `minmax(0, …)` and `min-w-0` on each button
+  stop a label from widening its column. The label is a `truncate` span, so
+  a long list name ends in an ellipsis. The full name is still the button's
+  text, which makes it the accessible name, and the `↓` button's tooltip
+  shows it in full. The grid picks its column count from its own container
+  (`@container` on the controls column, `@md:` = 28rem), not from the
+  viewport. Below that width, and always on `touch:`, it is the two-column
+  grid from §10. `touch:` sorts after `@md:` in the compiled CSS, so touch
+  wins.
+- **A reserved staged slot** (`data-overdrive-staged-slot`): `min-h-15`
+  (60px, the chip's one-line height), or `pointer-coarse:min-h-18` where
+  Confirm is 44px. It is empty until something is staged. A chip that wraps
+  (a narrow phone with auto-confirm on) grows the slot upward into the
+  stage. The buttons stay where they are.
+- **The Quick sort picker keeps its place through the flick.** It used to
+  unmount while `transitioning`. That gave its height back to the stage,
+  and the outgoing card jumped mid-flight. It is now `invisible` and `inert`
+  for the flick instead.
+
+Measured at 1440×900 across four cards in two lists ("Back to Brain Dump",
+"Back to To Buy"), each with and without a stage: every button's box stayed
+the same to the pixel. Cards ranged from 180px to 212px tall. A 46-character
+list name truncated in the same 164px cell. At 390×844 on touch, across
+cards from 180px to 264px tall, with and without a stage: same result, and
+every target was at least 44px. Quick sort held too, mid-flick included.
+
+Known limit: content taller than the box still scrolls inside it, and the
+buttons scroll with it. On a phone in Quick sort, that happens with a card
+over about 250px tall. The cap is `85dvh`, so making the box taller has
+nowhere to go.
 
 **Swipe gestures are deliberately out of scope for v1** (EI-104) — the
 button layout should be lived with first; a swipe that fires the wrong
@@ -719,6 +788,11 @@ verdict on a stale to-do is a more annoying mistake than a mis-tap.
   every key and button is inert for the duration, the button row going
   `invisible`/`disabled` and back, a mid-flick click being a no-op, and the
   `prefers-reduced-motion` path never setting `transitioning` at all.
+  "The controls stay put between cards (EI-393)" checks the layout from
+  §10a: the fixed dialog box, the full-width stage, the equal-column grid in
+  arrow order, a long list name truncating while its accessible name and
+  tooltip stay whole, staging filling the same slot node ahead of the same
+  grid node, and Quick sort's picker staying mounted through the flick.
 
   Two helpers, matching the flick's two completion paths (§8a, round 4b).
   `endFlickByAnimation()` fires the `animationend` a real browser would, on
