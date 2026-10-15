@@ -121,10 +121,10 @@ interface BoardColumnProps {
   title: React.ReactNode;
   /**
    * The region's accessible name, when the visible title alone is ambiguous.
-   * Day columns pass "Wednesday, Oct 14": a board shows ~30 days, so a name
-   * of "Wednesday" alone repeats five times in the landmark list (EI-378).
-   * Starts with the title, so a substring selector on the weekday still
-   * matches. Defaults to `title` when it is a string.
+   * Day columns pass `dayRegionLabel`: "Wednesday, Oct 14", and "Today,
+   * Wednesday, Oct 14" for today (EI-378, EI-381). It contains the title, so
+   * a substring selector on the weekday still matches. Defaults to `title`
+   * when it is a string.
    */
   regionLabel?: string;
   subtitle?: React.ReactNode;
@@ -719,6 +719,9 @@ export function BoardColumn({
   return (
     <section
       ref={setNodeRef}
+      // How the skip links find a column without a ref threaded to them
+      // (`skip-links.tsx`). The droppable id, so it matches `addStop(id)`.
+      data-column-id={id}
       aria-label={
         collapsed
           ? `Expand the ${regionLabel ?? (typeof title === "string" ? title : "column")}`

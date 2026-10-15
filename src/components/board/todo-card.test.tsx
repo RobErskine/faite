@@ -152,6 +152,13 @@ const grip = () => screen.getByLabelText(/drag to reschedule/i);
  * `aria-label` ends in the same title.
  */
 const titleButton = () => screen.getByRole("button", { name: "Buy milk" });
+/**
+ * The title button's accessible name. It is an explicit `aria-label`
+ * (EI-381), so it is the same in happy-dom and in Chrome. A name built from
+ * content was not. The EI-381 block below also finds each button by its
+ * exact name through `getByRole`, which runs the full name computation.
+ */
+const cardName = () => title().closest("button")!.getAttribute("aria-label");
 /** The badge row, which only exists when there is a chip left to put in it. */
 const badgeRow = () => row().querySelector(".flex-wrap");
 
@@ -236,14 +243,9 @@ describe("priority", () => {
     expect(document.querySelector("[data-priority-rail]")).toBeTruthy();
   });
 
-  /*
-    textContent rather than getByText: the level is inside the title span, so a
-    substring matcher would also match the span and the button that contain it and
-    fail on "multiple elements".
-  */
   it("says the level out loud instead of showing a chip", () => {
     render(<Harness todo={todo({ priority: 1 })} />);
-    expect(title().textContent).toContain("Priority 1, highest");
+    expect(cardName()).toBe("Buy milk, Priority 1, highest");
     expect(title().textContent).not.toContain("P1");
     expect(badgeRow()).toBeNull();
   });
@@ -253,7 +255,7 @@ describe("location", () => {
   it("shows a pin, not a chip", () => {
     render(<Harness todo={todo({ location: "Grocery Store" })} />);
     expect(document.querySelector("[data-location-pin]")).toBeTruthy();
-    expect(title().textContent).toContain("Location: Grocery Store");
+    expect(cardName()).toContain("Location: Grocery Store");
     // A badge row at all would mean the chip came back.
     expect(badgeRow()).toBeNull();
   });
@@ -277,7 +279,7 @@ describe("deadlines", () => {
     render(<Harness todo={todo({ deadline: "2026-08-14" })} />);
     expect(document.querySelector("[data-deadline-marker]")).toBeTruthy();
     // ctx.today is 2026-08-09.
-    expect(title().textContent).toContain("Due in 5 days: Aug 14");
+    expect(cardName()).toContain("Due in 5 days: Aug 14");
   });
 
   it("renders no marker without a deadline", () => {
@@ -405,21 +407,20 @@ describe("recurrence", () => {
     expect(row().querySelector("[data-recurrence-marker]")).toBeNull();
   });
 
-  it("carries the series summary in the marker's sr-only text when given one", () => {
+  it("carries the series summary in the card's name when given one", () => {
     render(
       <Harness
         todo={todo({ recurrenceParentId: "template-1" })}
         recurrenceSummary="Every week on Fri"
       />,
     );
-    const marker = row().querySelector("[data-recurrence-marker]");
-    expect(marker?.textContent).toContain("Every week on Fri");
+    expect(row().querySelector("[data-recurrence-marker]")).not.toBeNull();
+    expect(cardName()).toBe("Buy milk, Repeats: Every week on Fri");
   });
 
   it("falls back to a generic description with no summary threaded in", () => {
     render(<Harness todo={todo({ recurrenceParentId: "template-1" })} />);
-    const marker = row().querySelector("[data-recurrence-marker]");
-    expect(marker?.textContent).toContain("part of a repeating series");
+    expect(cardName()).toBe("Buy milk, Repeats: part of a repeating series");
   });
 
   it("shows no ×N badge for a single occurrence (missedCount 1)", () => {
@@ -516,7 +517,8 @@ describe("the Faite Loop", () => {
     render(<Harness todo={todo({ scheduledDate: "2026-08-08" })} />); // 1 roll
     const marker = row().querySelector("[data-rollover-marker]");
     expect(marker).not.toBeNull();
-    expect(marker?.textContent).toContain("Rolled from Aug 8");
+    // Title first (EI-381), then the roll: it used to lead the name.
+    expect(cardName()).toBe("Buy milk, Rolled from Aug 8, 1 day ago, Overflow in 3 days");
     expect(badgeRow()).toBeNull();
   });
 
@@ -579,7 +581,7 @@ describe("the Faite Loop", () => {
 /**
  * EI-192. The tooltip popup itself is portalled and hover-gated, so — as with
  * the location pin and the clamped title — these assert the trigger's state
- * and the `sr-only` channel rather than the rendered popup.
+ * and the card's name rather than the rendered popup.
  */
 describe("the completion stamp", () => {
   const checkbox = () => document.querySelector<HTMLElement>('[data-slot="checkbox"]')!;
@@ -589,24 +591,24 @@ describe("the completion stamp", () => {
   it("says nothing on an open to-do", () => {
     render(<Harness />);
     expect(checkbox().hasAttribute("data-completed-at")).toBe(false);
-    expect(title().textContent).not.toContain("Completed");
+    expect(cardName()).not.toContain("Completed");
   });
 
   it("carries the completion time for a done to-do", () => {
     render(<Harness todo={done()} timezone="UTC" />);
     expect(checkbox().getAttribute("data-completed-at")).toBe("2026-08-14T21:41:00.000Z");
-    expect(title().textContent).toContain("Completed Aug 14 · 9:41 PM");
+    expect(cardName()).toContain("Completed Aug 14, 9:41 PM");
   });
 
   it("says won't do, not completed, for a won't-do", () => {
     render(<Harness todo={done({ status: "dropped" })} timezone="UTC" />);
-    expect(title().textContent).toContain("Marked won’t do Aug 14 · 9:41 PM");
-    expect(title().textContent).not.toContain("Completed");
+    expect(cardName()).toContain("Marked won’t do Aug 14, 9:41 PM");
+    expect(cardName()).not.toContain("Completed");
   });
 
   it("renders the stamp in the given timezone", () => {
     render(<Harness todo={done()} timezone="America/Los_Angeles" />);
-    expect(title().textContent).toContain("Completed Aug 14 · 2:41 PM");
+    expect(cardName()).toContain("Completed Aug 14, 2:41 PM");
   });
 
   it("leaves the accessible name alone", () => {
@@ -661,7 +663,7 @@ describe("the completion stamp", () => {
           timezone="UTC"
         />,
       );
-      expect(title().textContent).toContain("Completed Aug 9 · 3:00 PM · planned Aug 5");
+      expect(cardName()).toContain("Completed Aug 9, 3:00 PM, planned Aug 5");
     });
 
     it("says won't do with the planned day for a won't-do", () => {
@@ -671,7 +673,7 @@ describe("the completion stamp", () => {
           timezone="UTC"
         />,
       );
-      expect(title().textContent).toContain("Marked won’t do Aug 9 · 3:00 PM · planned Jul 20");
+      expect(cardName()).toContain("Marked won’t do Aug 9, 3:00 PM, planned Jul 20");
     });
 
     it("says nothing about a plan when it was finished on its planned day", () => {
@@ -681,13 +683,13 @@ describe("the completion stamp", () => {
           timezone="UTC"
         />,
       );
-      expect(title().textContent).toContain("Completed Aug 9 · 3:00 PM");
-      expect(title().textContent).not.toContain("planned");
+      expect(cardName()).toContain("Completed Aug 9, 3:00 PM");
+      expect(cardName()).not.toContain("planned");
     });
 
     it("says nothing about a plan for an unscheduled to-do", () => {
       render(<Harness todo={done({ completedAt: TODAY_STAMP })} timezone="UTC" />);
-      expect(title().textContent).not.toContain("planned");
+      expect(cardName()).not.toContain("planned");
     });
 
     it("reads the finish day in the user's zone", () => {
@@ -699,7 +701,7 @@ describe("the completion stamp", () => {
           timezone="America/Los_Angeles"
         />,
       );
-      expect(title().textContent).toContain("Completed Aug 9 · 11:30 PM · planned Aug 5");
+      expect(cardName()).toContain("Completed Aug 9, 11:30 PM, planned Aug 5");
     });
   });
 
@@ -1073,34 +1075,73 @@ describe("context menu", () => {
   });
 });
 
-describe("the title button's name reads as parts (EI-378)", () => {
+describe("the title button's name (EI-378, EI-381)", () => {
   /*
-    textContent, which includes the visually hidden separators, is the run a
-    screen reader builds the name from. happy-dom has no layout, so it adds
-    none of the whitespace Chrome inserts at a block boundary — what is left
-    is exactly the text this component supplies.
+    Exact strings, via the same name computation a screen reader's browser
+    runs. EI-378 shipped hidden commas and a unit test that checked
+    textContent, which passed while Chrome read "Call grandma , Priority 2 ,
+    10:00 AM": happy-dom has no layout, so it never adds the space Chrome
+    puts at a block boundary. The name is an explicit `aria-label` now, so
+    what this asserts is what Chrome reads.
   */
-  const titleButtonOf = (name: RegExp) =>
-    screen.getAllByRole("button", { name }).find((b) => !b.getAttribute("aria-label"))!;
+  it("reads a plain to-do as its title and nothing else", () => {
+    render(<Harness />);
+    expect(cardName()).toBe("Buy milk");
+    expect(screen.getByRole("button", { name: "Buy milk" })).toBeTruthy();
+    // So every `name: title, exact: true` selector in e2e still matches.
+    expect(titleButton()).toBeTruthy();
+  });
 
-  it("separates the title, the priority and each badge with commas", () => {
+  it("separates the title, the priority and each badge with a comma and one space", () => {
+    render(
+      <Harness
+        todo={todo({ title: "Call grandma", priority: 2, reminderTime: "10:00" })}
+      />,
+    );
+    expect(cardName()).toBe("Call grandma, Priority 2, 10:00 AM");
+    expect(screen.getByRole("button", { name: "Call grandma, Priority 2, 10:00 AM" })).toBeTruthy();
+  });
+
+  it("says what a glyph-only badge means", () => {
     render(
       <Harness
         todo={todo({ title: "Call dentist", priority: 2, reminderTime: "10:00" })}
         subtaskCount={{ done: 1, total: 3 }}
       />,
     );
-    const text = titleButtonOf(/^Call dentist/).textContent!;
-    expect(text).toMatch(/^Call dentist, Priority 2, /);
-    // No information lost, and no part runs into the next.
-    expect(text).toContain(", 10:00");
-    expect(text).toContain(", 1/3");
-    expect(text).not.toContain("—");
+    expect(cardName()).toBe("Call dentist, Priority 2, 10:00 AM, 1 of 3 sub-tasks done");
+    expect(screen.getByRole("button", { name: "Call dentist, Priority 2, 10:00 AM, 1 of 3 sub-tasks done" })).toBeTruthy();
   });
 
-  it("adds nothing to a plain to-do, so exact-name selectors still match", () => {
-    render(<Harness />);
-    expect(titleButton().textContent).toBe("Buy milk");
+  it("starts with the title on a rolled card, with the roll after it", () => {
+    // Rolled from Aug 6, today Aug 9: the marker sits before the title on
+    // screen, but its words come after the title.
+    render(<Harness todo={todo({ title: "Call dentist", scheduledDate: "2026-08-06" })} />);
+    expect(document.querySelector("[data-rollover-marker]")).not.toBeNull();
+    expect(cardName()).toBe("Call dentist, Rolled from Aug 6, 3 days ago, Overflow in 1 day");
+    expect(screen.getByRole("button", { name: "Call dentist, Rolled from Aug 6, 3 days ago, Overflow in 1 day" })).toBeTruthy();
+  });
+
+  it("starts with the title in Overflow, with its age after it", () => {
+    render(<Harness todo={todo({ title: "Call dentist", scheduledDate: "2026-08-05" })} />);
+    expect(cardName()).toBe("Call dentist, In Overflow today");
+    expect(screen.getByRole("button", { name: "Call dentist, In Overflow today" })).toBeTruthy();
+  });
+
+  it("starts with the title on a finished card, with the stamp and plan after it", () => {
+    render(
+      <Harness
+        todo={todo({
+          title: "Call dentist",
+          status: "done",
+          scheduledDate: "2026-08-05",
+          completedAt: "2026-08-09T15:00:00.000Z",
+        })}
+        timezone="UTC"
+      />,
+    );
+    expect(cardName()).toBe("Call dentist, Completed Aug 9, 3:00 PM, planned Aug 5");
+    expect(screen.getByRole("button", { name: "Call dentist, Completed Aug 9, 3:00 PM, planned Aug 5" })).toBeTruthy();
   });
 
   it("keeps a one-line title at the 24px target without moving the row", () => {

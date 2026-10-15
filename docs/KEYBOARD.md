@@ -430,6 +430,15 @@ Component-level tests only for wiring pure functions cannot reach, using the
 - **Do not bind single printable characters globally** — screen readers use them
   for quick-nav in browse mode. (`?` in §8 is the standard exception, and needs
   `allowInTextEntry: false` so typing a question mark still works.)
+- **Skip links** (EI-381) — "Skip to today" and "Skip to Backlog" are the
+  first two Tab stops on `/board`, ahead of the header in both shells
+  (`skip-links.tsx`). They stay above the viewport until focused. Today
+  lands on its first card, so the arrow keys (§11) work from there, or on
+  its quick-add when it has no cards. Backlog lands on its quick-add. Each
+  first undoes whatever hides its column (a collapsed half or rail, or the
+  other phone page), then focuses with `preventScroll` and scrolls the way
+  §11.4 does. They are links, not shortcuts, so they are not in
+  `shortcuts.ts`.
 - Announce results rather than relying on visual change alone. The "Undone"
   toast does this today.
 - **dnd-kit drag announcements** (EI-84) — `DndContext`'s `accessibility.announcements`

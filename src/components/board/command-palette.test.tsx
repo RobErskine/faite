@@ -271,6 +271,18 @@ describe("CommandPalette", () => {
     expect(selected).toEqual(["t1"]);
   });
 
+  it("names a to-do row title first, then its list, comma-separated (EI-381)", () => {
+    renderPalette({
+      todos: [todo({ id: "t1", title: "Buy oat milk", listId: "l2", priority: 2 })],
+    });
+
+    search("milk");
+
+    expect(
+      screen.getByRole("option", { name: "Buy oat milk, Priority 2, Grocery List" }),
+    ).toBeTruthy();
+  });
+
   it("offers to create the query as a to-do when nothing matches", () => {
     renderPalette();
 

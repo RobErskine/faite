@@ -1337,13 +1337,14 @@ and toasts with an Undo action, the same shape the palette's creates use.
   (`border-box`), mitre against `border-b` into a colored wedge, shift where the
   insertion line starts (its position is load bearing, below), and fuse a run of
   same-priority cards into one continuous stripe instead of per-card ticks. The
-  level reaches screen readers as `sr-only` text inside the title button
+  level reaches screen readers through the title button's `aria-label`
+  (`todoRowName`, EI-381)
 - **location is a pin, not a chip** — a 12px `MapPin` inline at the head of the
-  title, with the location in a hover tooltip and in `sr-only` text. The tooltip
+  title, with the location in a hover tooltip and in the title button's name. The tooltip
   trigger renders as a `span` so it stays non-interactive content inside the
   title `<button>`; Base UI adds no role or tabIndex of its own. That also means
   it is never focusable and `focusin` bubbles the wrong way, so the tooltip is a
-  pointer nicety and the `sr-only` text is the real channel. These are **nested**
+  pointer nicety and the name is the real channel. These are **nested**
   tooltip triggers inside the title's own trigger; Base UI handles that by walking
   up to the closest enabled trigger and suppressing the ancestor
 - **an upcoming deadline is a `CalendarCheck` marker** in the same inline run,

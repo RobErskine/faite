@@ -5,7 +5,8 @@ import { StickyNote } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { effectiveListColor } from "@/lib/colors";
 import { NAV_LOAD_MORE, navKeyOf } from "@/lib/column-nav";
-import { formatDay, formatShortDate, OVERFLOW } from "@/lib/scheduling";
+import { dayColumnId } from "@/lib/board";
+import { dayRegionLabel, formatDay, formatShortDate, OVERFLOW } from "@/lib/scheduling";
 import { OVERDRIVE_MIN_TODOS } from "@/lib/overdrive";
 import { LOCAL_OWNER_ID } from "@/lib/store/repositories";
 import { mutateSettings } from "@/lib/store/mutate";
@@ -27,6 +28,7 @@ import { SplitHandle } from "./split-handle";
 import { SplitStrip } from "./split-strip";
 import { TabStrip } from "./tab-strip";
 import { WeekendColumn } from "./weekend-column";
+import { SkipLinks } from "./skip-links";
 import type { BoardData } from "./use-board-data";
 import type { BoardUiState } from "./use-board-ui-state";
 import type { useBoardActions } from "./use-board-actions";
@@ -213,6 +215,33 @@ export function DesktopBoard({
         splitRatio != null ? ({ "--split-top": String(splitRatio) } as CSSProperties) : undefined
       }
     >
+      {/* First in the DOM, so they are the first Tab stops (EI-381). */}
+      <SkipLinks
+        today={{
+          columnId: dayColumnId(ctx.today),
+          prefer: "card",
+          // Also reopens a collapsed calendar half (`board.tsx`). Today is
+          // always rendered (it is day 0), so the jump only moves the track.
+          prepare: jumpToToday,
+          reveal: jumpToToday,
+        }}
+        backlog={
+          backlogColumn
+            ? {
+                columnId: backlogColumn.id,
+                prefer: "add",
+                prepare: () => {
+                  if (splitCollapsed !== "planning" && !backlogCollapsed) return;
+                  void mutateSettings(LOCAL_OWNER_ID, {
+                    ...(splitCollapsed === "planning" && { splitCollapsed: "none" }),
+                    ...(backlogCollapsed && { backlogCollapsed: false }),
+                  });
+                },
+              }
+            : null
+        }
+      />
+
       {/* Both render null in a browser tab. The update bar sits above the
           sign-in one because "this build no longer syncs" outranks "this
           board is device-only" — see docs/DESKTOP.md §12. */}
@@ -417,10 +446,9 @@ export function DesktopBoard({
                     listDayDrop?.day === column.day && listDayDrop.count > 0
                   }
                   title={weekday}
-                  // The region's name carries the date (EI-378): ~30 day
-                  // columns named by weekday alone read "Wednesday" five
-                  // times over in a screen reader's landmark list.
-                  regionLabel={`${weekday}, ${formatShortDate(column.day)}`}
+                  // "Today, Wednesday, Oct 14": the date (EI-378) and, on
+                  // today, the word (EI-381). See `dayRegionLabel`.
+                  regionLabel={dayRegionLabel(column.day, ctx.today)}
                   // `subtitle` also carries prose on other columns, so the
                   // numeral face is applied here rather than in BoardColumn.
                   //

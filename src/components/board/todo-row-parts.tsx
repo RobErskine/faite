@@ -106,6 +106,10 @@ export function PriorityGlyph({ priority }: { priority: Todo["priority"] }) {
  * included here, it gets the loud badge in `TodoMetaBadges` instead. Neither
  * is an overflowed todo's rollover history — see `TodoMetaBadges`'s "In
  * Overflow" badge for that.
+ *
+ * Purely visual: the glyphs carry no hidden text. Their words are in
+ * `todoRowName`, which the row sets as its name, so a sentence placed here
+ * cannot jump ahead of the title (EI-381).
  */
 export function TitleMarkers({
   todo,
@@ -135,11 +139,6 @@ export function TitleMarkers({
                 className="mr-1 inline-block align-[-0.1875em] text-muted-foreground"
               >
                 <CornerDownRight className="size-3" aria-hidden />
-                <span className="sr-only">
-                  Rolled from {formatShortDate(rolledFrom.from)},{" "}
-                  {rolledFrom.rolls} {rolledFrom.rolls === 1 ? "day" : "days"} ago. Overflow in{" "}
-                  {rolledFrom.overflowsIn} {rolledFrom.overflowsIn === 1 ? "day" : "days"}.{" "}
-                </span>
               </span>
             }
           />
@@ -168,9 +167,6 @@ export function TitleMarkers({
                 className="mr-1 inline-block align-[-0.1875em] text-muted-foreground"
               >
                 <CalendarCheck className="size-3" aria-hidden />
-                <span className="sr-only">
-                  {formatDeadlineDue(dueAhead, today)}.{" "}
-                </span>
               </span>
             }
           />
@@ -191,7 +187,6 @@ export function TitleMarkers({
                 className="mr-1 inline-block align-[-0.1875em] text-muted-foreground"
               >
                 <MapPin className="size-3" aria-hidden />
-                <span className="sr-only">Location: {todo.location}. </span>
               </span>
             }
           />
@@ -207,9 +202,6 @@ export function TitleMarkers({
                 className="mr-1 inline-block align-[-0.1875em] text-muted-foreground"
               >
                 <Repeat className="size-3" aria-hidden />
-                <span className="sr-only">
-                  Repeats: {recurrenceSummary ?? "part of a repeating series"}.{" "}
-                </span>
               </span>
             }
           />
@@ -222,15 +214,101 @@ export function TitleMarkers({
   );
 }
 
+export interface TodoRowNameInput {
+  todo: Todo;
+  labels: LabelRecord[];
+  today: CivilDate;
+  recurrenceSummary?: string;
+  rolledFrom?: { from: CivilDate; rolls: number; overflowsIn: number };
+  showScheduledDate?: boolean;
+  missedCount?: number | null;
+  overflow?: { from: CivilDate; since: CivilDate };
+  reminderPresets?: ReminderPreset[];
+  subtaskCount?: { done: number; total: number } | null;
+  attachmentCount?: number;
+  /** "Completed Oct 14, 3:12 PM · planned Oct 12" — `formatCompletionStamp`. */
+  completionStamp?: string | null;
+}
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
 /**
- * Opens every badge in the row (EI-378). The badges sit inside the card's
- * title button, so they are part of its accessible name, and with nothing
- * between them a name read "Call dentist, Priority 2 10:00 AM Work". A
- * visually hidden comma makes each badge its own clause and costs no pixels.
- * Inside the badge rather than between them, so the row's `gap-1` is the only
- * thing the flex layout sees.
+ * Everything `TitleMarkers` and `TodoMetaBadges` show, as one spoken string.
+ * The caller sets it as the row's `aria-label` (EI-381). This exists because
+ * a name built from the row's DOM read badly in Chrome.
+ *
+ * EI-378 gave each part a visually hidden comma, and production read "Call
+ * grandma , Priority 2 , 10:00 AM". The stray spaces came from Chrome, not
+ * from the markup: when it builds a name from content, it adds a space at
+ * every block-level boundary, and the title (`-webkit-box`), each badge (a
+ * flex item) and every `sr-only` span (absolutely positioned, so blockified)
+ * is one. No hidden-text trick can attach a comma to the text before it. The
+ * DOM also put the glyphs' sentences first ("Rolled from Oct 11, … Call
+ * dentist"), so the name did not start with the title. happy-dom has no
+ * layout, so none of this showed up in a unit test.
+ *
+ * An explicit name has no layout to depend on. It always starts with the
+ * title (WCAG 2.5.3, and every `name: title` selector), and it reads the same
+ * in every browser and in a test. The glyphs and badges carry no hidden text
+ * of their own any more; this is the one place their words live, so a new
+ * badge must be added here as well, or it is visible but silent.
+ *
+ * Clauses follow the screen order: title, priority, settled stamp, then the
+ * title glyphs, then the badges. A badge whose glyph is not self-explanatory
+ * ("1/3", a paperclip and "2", "×3") reads as its tooltip text.
  */
-const SEP = <span className="sr-only">, </span>;
+export function todoRowName({
+  todo,
+  labels,
+  today,
+  recurrenceSummary,
+  rolledFrom,
+  showScheduledDate,
+  missedCount,
+  overflow,
+  reminderPresets,
+  subtaskCount,
+  attachmentCount,
+  completionStamp,
+}: TodoRowNameInput): string {
+  const deadlineMissed = isDeadlineMissed(todo, { today });
+  const parts: string[] = [todo.title];
+  const push = (part: string | null | undefined | false) => {
+    if (part) parts.push(part);
+  };
+
+  push(priorityRail(todo.priority)?.label);
+  // "Completed Oct 14 · 3:12 PM · planned Oct 12": the dots are visual
+  // punctuation, so the spoken form uses the same commas as everything else.
+  push(completionStamp?.split(" · ").join(", "));
+
+  // TitleMarkers, in its order.
+  if (rolledFrom) {
+    push(
+      `Rolled from ${formatShortDate(rolledFrom.from)}, ${plural(rolledFrom.rolls, "day", "days")} ago`,
+    );
+    push(`Overflow in ${plural(rolledFrom.overflowsIn, "day", "days")}`);
+  }
+  if (todo.deadline && !deadlineMissed) push(formatDeadlineDue(todo.deadline, today));
+  if (todo.location) push(`Location: ${todo.location}`);
+  if (todo.recurrenceParentId) push(`Repeats: ${recurrenceSummary ?? "part of a repeating series"}`);
+
+  // TodoMetaBadges, in its order.
+  if (showScheduledDate && todo.scheduledDate) push(`Scheduled ${formatShortDate(todo.scheduledDate)}`);
+  if (todo.reminderTime) push(reminderLabelFor(todo.reminderTime, reminderPresets ?? []));
+  if (subtaskCount && subtaskCount.total > 0) {
+    push(`${subtaskCount.done} of ${subtaskCount.total} sub-tasks done`);
+  }
+  if ((attachmentCount ?? 0) > 0) push(plural(attachmentCount!, "attachment", "attachments"));
+  if (overflow) push(formatOverflowAge(overflow.since, today));
+  if (deadlineMissed && todo.deadline) push(formatDeadlineDue(todo.deadline, today));
+  if ((missedCount ?? 0) > 1) push(`Missed ${missedCount} times in a row`);
+  for (const label of labels) {
+    if (todo.labelIds.includes(label.id)) push(label.emoji ? `${label.emoji} ${label.name}` : label.name);
+  }
+
+  return parts.join(", ");
+}
 
 /**
  * The badge row: a missed deadline, an outstanding-occurrences count, a
@@ -238,6 +316,9 @@ const SEP = <span className="sr-only">, </span>;
  * board card only wants this away from its own column, the palette always
  * wants it since it has no column to imply the date), an Overflow-age badge,
  * and labels. Renders `null` when there is nothing to show.
+ *
+ * Purely visual, like `TitleMarkers`. Each badge's words are in
+ * `todoRowName`, so a badge added here must be added there too.
  */
 export function TodoMetaBadges({
   todo,
@@ -293,14 +374,12 @@ export function TodoMetaBadges({
     <span className="mt-1.5 flex flex-wrap items-center gap-1">
       {showScheduledDate && todo.scheduledDate && (
         <Badge variant="outline" className="num gap-1 text-2xs font-normal">
-          {SEP}
           <CalendarClock className="size-2.5" aria-hidden />
           {formatShortDate(todo.scheduledDate)}
         </Badge>
       )}
       {todo.reminderTime && (
         <Badge variant="outline" className="num gap-1 text-2xs font-normal">
-          {SEP}
           <Bell className="size-2.5" aria-hidden />
           {reminderLabelFor(todo.reminderTime, reminderPresets ?? [])}
         </Badge>
@@ -311,7 +390,6 @@ export function TodoMetaBadges({
           className="num gap-1 text-2xs font-normal"
           title={`${subtaskCount.done} of ${subtaskCount.total} sub-tasks done`}
         >
-          {SEP}
           <ListChecks className="size-2.5" aria-hidden />
           {subtaskCount.done}/{subtaskCount.total}
         </Badge>
@@ -322,7 +400,6 @@ export function TodoMetaBadges({
           className="num gap-1 text-2xs font-normal"
           title={`${attachmentCount} ${attachmentCount === 1 ? "attachment" : "attachments"}`}
         >
-          {SEP}
           <Paperclip className="size-2.5" aria-hidden />
           {attachmentCount}
         </Badge>
@@ -351,8 +428,7 @@ export function TodoMetaBadges({
                   "num gap-1 text-2xs font-normal text-muted-foreground",
                 )}
               >
-                {SEP}
-                <CornerDownRight className="size-2.5" aria-hidden />
+                      <CornerDownRight className="size-2.5" aria-hidden />
                 {formatOverflowAge(overflow.since, today)}
               </span>
             }
@@ -365,7 +441,6 @@ export function TodoMetaBadges({
       )}
       {deadlineMissed && todo.deadline && (
         <Badge variant="destructive" className="text-2xs font-normal">
-          {SEP}
           Deadline <span className="num">{formatShortDate(todo.deadline)}</span>
         </Badge>
       )}
@@ -375,7 +450,6 @@ export function TodoMetaBadges({
           className="num gap-1 text-2xs font-normal"
           title={`Missed ${missedCount} times in a row`}
         >
-          {SEP}
           <Repeat className="size-2.5" aria-hidden />×{missedCount}
         </Badge>
       )}
@@ -395,7 +469,6 @@ export function TodoMetaBadges({
               : undefined
           }
         >
-          {SEP}
           {label.emoji ? `${label.emoji} ` : ""}
           {label.name}
         </Badge>

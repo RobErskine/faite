@@ -8,7 +8,7 @@ import { dayGroupId, type TodoGroup } from "@/lib/board";
 import { cardStop, groupStop } from "@/lib/column-nav";
 import type { List, Todo } from "@/lib/schema";
 import { ListColumnMenu } from "./list-column-menu";
-import type { PlacementContext } from "@/lib/scheduling";
+import { dayRegionLabel, type PlacementContext } from "@/lib/scheduling";
 
 /**
  * Grouped rendering, which `column-nav.test.tsx` does not reach — it covers the
@@ -894,6 +894,19 @@ describe("accessibility floor (EI-378)", () => {
     // a board renders ~30 days, so "Sunday" by itself repeats.
     expect(screen.getByRole("region", { name: "Sunday, Aug 9" })).toBeTruthy();
     expect(screen.queryByRole("region", { name: "Sunday" })).toBeNull();
+  });
+
+  it("names today's region \"Today\" as well, keeping the weekday findable (EI-381)", () => {
+    render(<Harness regionLabel={dayRegionLabel(ctx.today, ctx.today)} />);
+    expect(screen.getByRole("region", { name: "Today, Sunday, Aug 9" })).toBeTruthy();
+    // e2e selects day regions by weekday substring; today must still match.
+    expect(screen.getByRole("region", { name: /Sunday, Aug 9/ })).toBeTruthy();
+  });
+
+  it("tags the section with its column id, for the skip links (EI-381)", () => {
+    render(<Harness />);
+    const region = screen.getByRole("region", { name: "Sunday" });
+    expect(region.getAttribute("data-column-id")).toBe("day:2026-08-09");
   });
 
   it("falls back to the title when no region label is given", () => {

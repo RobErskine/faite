@@ -43,7 +43,7 @@ import {
   type PaletteCommandCtx,
   type PaletteEntryMode,
 } from "@/lib/command-registry";
-import { PriorityRail, TitleMarkers, TodoMetaBadges } from "./todo-row-parts";
+import { PriorityRail, TitleMarkers, TodoMetaBadges, todoRowName } from "./todo-row-parts";
 import { TITLE_CLAMP_CLASS } from "@/lib/title";
 import type {
   Label as LabelRecord,
@@ -772,6 +772,23 @@ export function CommandPalette({
                       // How the row-action shortcuts (⌘⏎/⌘⌫/⌘⇧⌫) find the
                       // highlighted to-do without controlling `<Command value>`.
                       data-todo-id={todo.id}
+                      // The same explicit name the board card uses (EI-381). The
+                      // glyphs and badges carry no hidden text, so a name built
+                      // from content would lose them. The list goes last, as on
+                      // screen.
+                      aria-label={[
+                        todoRowName({
+                          todo,
+                          labels,
+                          today,
+                          recurrenceSummary: todo.recurrenceParentId
+                            ? recurrenceSummaries?.get(todo.recurrenceParentId)
+                            : undefined,
+                          reminderPresets,
+                          showScheduledDate: true,
+                        }),
+                        listNameById.get(todo.listId ?? "") ?? "Unfiled",
+                      ].join(", ")}
                       onSelect={() => {
                         onSelectTodo(todo);
                         close();

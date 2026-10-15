@@ -135,7 +135,7 @@ option. Controls: the **View** dropdown in `view-settings.tsx`, mirrored in ⌘K
   if it is in the window, otherwise nowhere.
 - **The plan stays visible.** A settled card not on its planned day adds
   "· planned Oct 12" to its existing completion stamp — the checkbox tooltip
-  and the title's `sr-only` text (`formatCompletionStamp`,
+  and the title button's name (`formatCompletionStamp`,
   `src/lib/event-time.ts`). No badge, no new color. `TodoCard` asks
   `placeSettled` itself, so the note cannot disagree with the column.
 - **No rollover, never Overflow.** Overflow means "you have put this off too
@@ -367,6 +367,17 @@ decisions it builds on.
   `--input` is `oklch(0.922 0 0)` in the light theme — near-white, fine on a
   plain surface and invisible over a colored group wash. It is square
   (`rounded-none`): a 4px radius on a 16px box is mostly lost anyway.
+- **The title button's name is explicit, and starts with the title**
+  (EI-381). `todoRowName` (`todo-row-parts.tsx`) builds it as
+  `aria-label`: the title, then the priority, the completion stamp, the
+  title glyphs and the badges, joined by ", ", for example "Call grandma,
+  Priority 2, 10:00 AM" or "Call dentist, Rolled from Oct 11, 3 days ago,
+  Overflow in 1 day". The glyphs and badges carry no hidden text of their
+  own. Chrome adds a space at every block boundary (the clamped title, each
+  flex badge, every `sr-only` span), so the name built from content read
+  "Call grandma , Priority 2 , 10:00 AM" and put the roll sentence before
+  the title. **A new badge or glyph needs a clause in `todoRowName`**, or it
+  is visible but silent. The ⌘K palette's to-do rows use the same function.
 - The three color alphas in `src/lib/colors.ts` are a **ladder**, and the gaps
   are the point: rule 35% / header 12% / card field 5%. Wash and tint were once
   10% and 12%, which is inside the noise — the header and the run below it read

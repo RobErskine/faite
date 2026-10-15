@@ -193,9 +193,9 @@ test("the due banner opens the day sheet to an unscheduled due item", async ({ p
   const sheet = openSheet(page);
   await expect(sheet).toBeVisible();
   await expect(sheet.getByRole("heading", { name: "1 due" })).toBeVisible();
-  // Not `exact: true`: the card's own upcoming-deadline marker
-  // (todo-row-parts.tsx) prepends "Due in N days: <date>." to its accessible
-  // name, so the title is a substring, not the whole name.
+  // Not `exact: true`: the card's upcoming deadline is part of its accessible
+  // name ("<title>, Due in N days: <date>", `todoRowName` in
+  // todo-row-parts.tsx), so the title is a prefix, not the whole name.
   await expect(sheet.getByRole("button", { name: new RegExp(title) })).toBeVisible();
   await expect(sheet.getByText(/^Created /)).toBeVisible();
   await expect(sheet.getByText(/Not scheduled yet$/)).toBeVisible();
