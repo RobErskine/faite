@@ -338,6 +338,16 @@ describe("the urgent tone", () => {
     expect(urgentRule()).toBeNull();
     expect(document.querySelector("[class*='text-urgent']")).toBeNull();
   });
+
+  it("draws the rule at 70%, the alpha that clears 3:1 on the rail's surface", () => {
+    // EI-382: /40 measured 2.09:1 light and 1.98:1 dark on `surface-0`;
+    // /70 is 3.51:1 and 3.68:1.
+    render(<Harness tone="urgent" todos={[todo("o1")]} />);
+    const cls = urgentRule()!.className.split(/\s+/);
+    expect(cls).toContain("border-b-2");
+    expect(cls).toContain("border-urgent/70");
+    expect(cls).not.toContain("border-urgent/40");
+  });
 });
 
 describe("due banner", () => {
@@ -383,6 +393,19 @@ describe("due banner", () => {
     const el = banner()!;
     expect(el.tagName).toBe("DIV");
     expect(el.getAttribute("data-due-banner")).toBe("3");
+  });
+
+  it("speaks in the urgent channel's text ink, off the smallest size, in both forms", () => {
+    // EI-382: `--urgent` at `text-2xs` on the banner's tint failed 4.5:1.
+    for (const onOpenInfo of [vi.fn(), undefined]) {
+      cleanup();
+      render(<Harness dueCount={3} onOpenInfo={onOpenInfo} />);
+      const cls = banner()!.className.split(/\s+/);
+      expect(cls).toContain("text-urgent-foreground");
+      expect(cls).not.toContain("text-urgent");
+      expect(cls).toContain("text-xs");
+      expect(cls).not.toContain("text-2xs");
+    }
   });
 
   it("never renders when the column is collapsed", () => {

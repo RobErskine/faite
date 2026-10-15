@@ -439,15 +439,20 @@ export function TodoMetaBadges({
           </TooltipContent>
         </Tooltip>
       )}
+      {/*
+        The two red badges sit one step up, at `text-xs`, while their
+        neighbors stay at `text-2xs`: colored text never at the smallest size
+        (PRODUCT.md). The variant supplies `--urgent-foreground` ink (EI-382).
+      */}
       {deadlineMissed && todo.deadline && (
-        <Badge variant="destructive" className="text-2xs font-normal">
+        <Badge variant="destructive" className="text-xs font-normal">
           Deadline <span className="num">{formatShortDate(todo.deadline)}</span>
         </Badge>
       )}
       {(missedCount ?? 0) > 1 && (
         <Badge
           variant="destructive"
-          className="num gap-1 text-2xs font-normal"
+          className="num gap-1 text-xs font-normal"
           title={`Missed ${missedCount} times in a row`}
         >
           <Repeat className="size-2.5" aria-hidden />×{missedCount}

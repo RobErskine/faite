@@ -74,10 +74,15 @@ const CARDS_NOT_DROPPABLE = { draggable: false, droppable: true } as const;
 /**
  * Shared between the due banner's button and inert-text branches below, so
  * the two visual treatments can't drift apart from each other over time.
+ *
+ * Red text, so `text-xs` in `--urgent-foreground` (EI-382), like Overflow's
+ * count: `--urgent` at `text-2xs` on this tint failed 4.5:1 in light, and
+ * colored text never sits at the smallest size. 9.1:1 light, 8.8:1 dark
+ * with the hover wash under it.
  */
 const DUE_BANNER = cn(
   "flex items-center gap-1 border-b border-urgent/20 bg-urgent/10 px-3",
-  "py-1 text-2xs font-medium text-urgent",
+  "py-1 text-xs font-medium text-urgent-foreground",
 );
 
 /**
@@ -848,7 +853,10 @@ export function BoardColumn({
           // pressure. Same 2px as a tab accent, different meaning. Gated on
           // the count exactly like the count chip below (EI-374): an empty
           // Overflow has nothing waiting on a verdict, so it gets no red.
-          tone === "urgent" && todos.length > 0 && !collapsed && "border-b-2 border-urgent/40",
+          // At 70%, not 40% (EI-382): a rule that carries meaning is
+          // non-text content and needs 3:1 against the rail's `surface-0`.
+          // /40 measured 2.09:1 light, 1.98:1 dark; /70 is 3.51:1 and 3.68:1.
+          tone === "urgent" && todos.length > 0 && !collapsed && "border-b-2 border-urgent/70",
           // Today: the spectrum's one hairline on the board (docs/DESIGN.md
           // §1). On the header, not the section, so the section's rounded
           // corners and outline states stay untouched.

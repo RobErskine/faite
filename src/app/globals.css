@@ -68,8 +68,14 @@
   --font-mono: var(--app-mono);
   --font-numeric: var(--app-numeric);
 
-  /* 10px. Names the size the board already uses; not a resize. */
-  --text-2xs: 0.625rem;
+  /*
+    10px under Editorial, 11px under Hyperlegible (EI-382). Routed through
+    --app-text-2xs, like the type roles above, because this block is
+    `@theme inline`: `text-2xs` inlines whatever this resolves to, so only a
+    var() reaches the pairing blocks below. The line height stays 14px in
+    both, so no row, badge or eyebrow changes height.
+  */
+  --text-2xs: var(--app-text-2xs);
   --text-2xs--line-height: 0.875rem;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
@@ -659,13 +665,20 @@
   --app-heading: var(--font-source-serif), ui-serif, Georgia, serif;
   --app-mono: var(--font-plex-mono), ui-monospace, monospace;
   --app-numeric: var(--app-mono);
+  --app-text-2xs: 0.625rem;
 }
 
+/*
+  Hyperlegible exists for low-vision readers (PRODUCT.md), and 10px was the
+  one size it did not touch. 11px, not 12px: 12px is `text-xs`, and the step
+  between the two is what keeps an eyebrow quieter than the title under it.
+*/
 [data-font="hyperlegible"] {
   --app-sans: var(--font-atkinson), ui-sans-serif, system-ui, sans-serif;
   --app-heading: var(--app-sans);
   --app-mono: var(--font-atkinson-mono), ui-monospace, monospace;
   --app-numeric: var(--app-mono);
+  --app-text-2xs: 0.6875rem;
 }
 
 /*

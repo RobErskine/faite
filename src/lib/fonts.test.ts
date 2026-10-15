@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_FONT_PAIRING,
@@ -49,5 +50,32 @@ describe("settingsSchema.fontPairing", () => {
     expect(parsed.success).toBe(true);
     if (!parsed.success) throw new Error("expected ok");
     expect(parsed.data.fontPairing).toBe(DEFAULT_FONT_PAIRING);
+  });
+});
+
+/*
+  EI-382. Hyperlegible exists for low-vision readers, and `--text-2xs` (10px)
+  was the one size it left alone. The theme block is `@theme inline`, so
+  `text-2xs` inlines whatever `--text-2xs` resolves to: the per-pairing value
+  only reaches the utility through a var(). Asserted on source, since jsdom
+  computes no Tailwind.
+*/
+describe("the 2xs size follows the pairing", () => {
+  const css = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
+  const block = (selector: string) => {
+    const start = css.indexOf(`${selector} {`);
+    expect(start).toBeGreaterThan(-1);
+    return css.slice(start, css.indexOf("}", start));
+  };
+  const size = (selector: string) =>
+    Number(/--app-text-2xs:\s*([\d.]+)rem/.exec(block(selector))?.[1]);
+
+  it("routes the theme token through the pairing variable", () => {
+    expect(css).toMatch(/--text-2xs:\s*var\(--app-text-2xs\);/);
+  });
+
+  it("keeps Editorial at 10px and lifts Hyperlegible above it", () => {
+    expect(size('[data-font="editorial"]') * 16).toBe(10);
+    expect(size('[data-font="hyperlegible"]') * 16).toBe(11);
   });
 });

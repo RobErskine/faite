@@ -220,6 +220,26 @@ describe("the grip", () => {
     // back over the whole grip — a click meant for the grip would toggle done.
     expect(checkbox.className).toContain("after:-inset-x-1");
   });
+
+  it("gives the checkbox a full 24px-wide target without moving its left edge", () => {
+    /*
+     * EI-382. The `::after` is placed from the padding box, inside the 1px
+     * border, so `-inset-x-1` alone spans 14 + 8 = 22px — Lighthouse measured
+     * 22×30. `w-6` sets 24px; with `left` and `width` both set, `right` is
+     * dropped, so the left edge stays 4px out (clear of the grip) and the
+     * extra 2px grow toward the title. jsdom has no layout, so the geometry
+     * is asserted as classes; the browser measurement is in the commit.
+     */
+    render(<Harness />);
+    const checkbox = document.querySelector<HTMLElement>('[data-slot="checkbox"]')!;
+    const cls = checkbox.className.split(/\s+/);
+    expect(cls).toContain("after:w-6");
+    expect(cls).toContain("after:-inset-x-1");
+    expect(cls).toContain("pointer-coarse:after:-inset-x-1");
+    // The base's wider expansions must be merged away, not left to source order.
+    expect(cls).not.toContain("after:-inset-x-3");
+    expect(cls).not.toContain("pointer-coarse:after:-inset-x-3.5");
+  });
 });
 
 describe("priority", () => {
@@ -296,6 +316,19 @@ describe("deadlines", () => {
     render(<Harness todo={todo({ deadline: "2026-08-01" })} />);
     expect(document.querySelector("[data-deadline-marker]")).toBeNull();
     expect(badgeRow()?.textContent).toContain("Deadline");
+  });
+
+  it("draws the missed-deadline badge in the urgent channel's text ink, off the smallest size", () => {
+    // EI-382: `--urgent` at `text-2xs` on its own tint measured 3.97:1.
+    render(<Harness todo={todo({ deadline: "2026-08-01" })} />);
+    const badge = [...badgeRow()!.querySelectorAll<HTMLElement>("[data-slot='badge'], span")].find(
+      (el) => el.textContent?.startsWith("Deadline"),
+    )!;
+    const cls = badge.className.split(/\s+/);
+    expect(cls).toContain("text-urgent-foreground");
+    expect(cls).not.toContain("text-urgent");
+    expect(cls).toContain("text-xs");
+    expect(cls).not.toContain("text-2xs");
   });
 });
 
@@ -436,6 +469,16 @@ describe("recurrence", () => {
   it("shows the ×N badge once more than one occurrence has accrued", () => {
     render(<Harness missedCount={3} />);
     expect(badgeRow()?.textContent).toContain("×3");
+  });
+
+  it("draws the ×N badge in urgent-foreground ink at text-xs, never red at 2xs", () => {
+    render(<Harness missedCount={3} />);
+    const badge = badgeRow()!.querySelector<HTMLElement>("[title^='Missed']")!;
+    const cls = badge.className.split(/\s+/);
+    expect(cls).toContain("text-urgent-foreground");
+    expect(cls).not.toContain("text-urgent");
+    expect(cls).toContain("text-xs");
+    expect(cls).not.toContain("text-2xs");
   });
 });
 
