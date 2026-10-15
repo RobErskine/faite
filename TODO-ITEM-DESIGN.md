@@ -379,6 +379,10 @@ decisions it builds on.
   "Call grandma , Priority 2 , 10:00 AM" and put the roll sentence before
   the title. **A new badge or glyph needs a clause in `todoRowName`**, or it
   is visible but silent. The ⌘K palette's to-do rows use the same function.
+  A clause for a badge with words **starts with those words** (WCAG 2.5.3,
+  EI-391): the missed-deadline badge "Deadline Oct 13" is named "Deadline
+  Oct 13, overdue by 2 days", not "Overdue by 2 days: Oct 13", which a
+  voice-control user saying "Deadline" could not match.
 - The three color alphas in `src/lib/colors.ts` are a **ladder**, and the gaps
   are the point: rule 35% / header 12% / card field 5%. Wash and tint were once
   10% and 12%, which is inside the noise — the header and the run below it read

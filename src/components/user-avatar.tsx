@@ -13,7 +13,8 @@ interface UserAvatarProps {
    * Hide the initials/emoji from assistive tech. Set where the avatar sits
    * inside a control that names itself ("Account" in the header): the
    * initials are then visible text the name does not contain, a WCAG 2.5.3
-   * Label-in-Name mismatch (EI-377).
+   * Label-in-Name mismatch (EI-377). The glyph is then drawn as generated
+   * content rather than text (EI-391).
    */
   decorative?: boolean;
 }
@@ -33,6 +34,8 @@ export function UserAvatar({ settings, className, decorative }: UserAvatarProps)
   const identity = useIdentity();
   const avatar = resolveAvatar(settings, identity);
 
+  const glyph = avatar.kind === "emoji" && avatar.emoji ? avatar.emoji : avatar.initials;
+
   return (
     <Avatar className={cn(className)} aria-hidden={decorative || undefined}>
       {avatar.kind === "image" && avatar.imageSrc ? (
@@ -42,9 +45,20 @@ export function UserAvatar({ settings, className, decorative }: UserAvatarProps)
         `text-foreground/60` over the fallback's `bg-muted` (EI-378): the
         shared muted ink measured 4.35:1 there, just under 4.5:1 for 12px
         initials. 5.11:1 light, 6.15:1 dark.
+
+        Decorative, the glyph is drawn by CSS, not written as text (EI-391).
+        `aria-hidden` alone was not enough: axe's (and so Lighthouse's)
+        `label-content-name-mismatch` takes "visible text" from what is on
+        screen, not from what assistive tech gets, so "LU" inside an
+        "Account" trigger still failed WCAG 2.5.3. Generated content is not a
+        text node, so it is not a label to match; `aria-hidden` stays for
+        browsers that would otherwise read it.
       */}
-      <AvatarFallback className="text-foreground/60">
-        {avatar.kind === "emoji" && avatar.emoji ? avatar.emoji : avatar.initials}
+      <AvatarFallback
+        className={cn("text-foreground/60", decorative && "before:content-[attr(data-glyph)]")}
+        data-glyph={decorative ? glyph : undefined}
+      >
+        {decorative ? null : glyph}
       </AvatarFallback>
     </Avatar>
   );

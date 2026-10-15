@@ -299,7 +299,7 @@ describe("deadlines", () => {
     render(<Harness todo={todo({ deadline: "2026-08-14" })} />);
     expect(document.querySelector("[data-deadline-marker]")).toBeTruthy();
     // ctx.today is 2026-08-09.
-    expect(cardName()).toContain("Due in 5 days: Aug 14");
+    expect(cardName()).toBe("Buy milk, Deadline Aug 14, due in 5 days");
   });
 
   it("renders no marker without a deadline", () => {
@@ -316,6 +316,21 @@ describe("deadlines", () => {
     render(<Harness todo={todo({ deadline: "2026-08-01" })} />);
     expect(document.querySelector("[data-deadline-marker]")).toBeNull();
     expect(badgeRow()?.textContent).toContain("Deadline");
+  });
+
+  /*
+    WCAG 2.5.3 (EI-391): the badge's visible words are in the name, in order,
+    so a voice-control user who says "Click Deadline" finds the card. The name
+    used to read "Overdue by 8 days: Aug 1", which has no "Deadline" in it.
+  */
+  it("names a missed deadline starting with the badge's own words", () => {
+    render(<Harness todo={todo({ deadline: "2026-08-01" })} />);
+    const badge = [...badgeRow()!.querySelectorAll("*")].find((el) =>
+      el.textContent?.startsWith("Deadline"),
+    )!;
+    expect(badge.textContent).toBe("Deadline Aug 1");
+    expect(cardName()).toBe("Buy milk, Deadline Aug 1, overdue by 8 days");
+    expect(cardName()).toContain(badge.textContent!);
   });
 
   it("draws the missed-deadline badge in the urgent channel's text ink, off the smallest size", () => {
@@ -568,7 +583,7 @@ describe("badge dates name the year when it is not this year", () => {
   it("names the year on a missed deadline from last year", () => {
     render(<Harness todo={todo({ deadline: "2025-12-30" })} />);
     expect(badgeRow()?.textContent).toContain("Deadline Dec 30, 2025");
-    expect(cardName()).toBe("Buy milk, Overdue by 222 days: Dec 30, 2025");
+    expect(cardName()).toBe("Buy milk, Deadline Dec 30, 2025, overdue by 222 days");
   });
 });
 

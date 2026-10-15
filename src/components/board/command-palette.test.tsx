@@ -992,3 +992,85 @@ describe("CommandPalette — result rows say what the board says (EI-387)", () =
     ).toBeTruthy();
   });
 });
+
+/**
+ * EI-391: a search hit's name says what state the to-do is in and when, and
+ * a deadline clause starts with the words its badge shows. Clock pinned to
+ * Wed 2026-10-14, noon UTC; the settings' timezone is UTC.
+ */
+describe("CommandPalette — result names speak their state (EI-391)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-14T12:00:00.000Z"));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("names a done hit with its completion stamp, and keeps the planned date as Scheduled", () => {
+    renderPalette({
+      todos: [
+        todo({
+          id: "d1",
+          title: "Pick up dry cleaning",
+          status: "done",
+          scheduledDate: "2026-10-12",
+          completedAt: "2026-10-14T00:30:00.000Z",
+        }),
+      ],
+    });
+
+    search("dry cleaning");
+
+    expect(
+      screen.getByRole("option", {
+        name: "Pick up dry cleaning, Completed Oct 14, 12:30 AM, Scheduled Oct 12, Unfiled",
+      }),
+    ).toBeTruthy();
+  });
+
+  it("names a Won't do hit with its stamp — the name is the only place the word is", () => {
+    renderPalette({
+      todos: [
+        todo({
+          id: "w1",
+          title: "Pick up dry cleaning",
+          status: "dropped",
+          scheduledDate: "2026-10-14",
+          completedAt: "2026-10-14T00:30:00.000Z",
+        }),
+      ],
+    });
+
+    search("dry cleaning");
+
+    expect(
+      screen.getByRole("option", {
+        name: "Pick up dry cleaning, Marked won’t do Oct 14, 12:30 AM, Scheduled Oct 14, Unfiled",
+      }),
+    ).toBeTruthy();
+    // Dim only, no visible word (owner decision 2026-10-15).
+    expect(document.body.querySelector('[data-todo-id="w1"]')!.textContent).not.toMatch(/won.t do/i);
+  });
+
+  it("starts a missed deadline's clause with the badge's visible words", () => {
+    renderPalette({ todos: [todo({ id: "m1", title: "File taxes", deadline: "2026-10-12" })] });
+
+    search("taxes");
+
+    expect(document.body.querySelector('[data-todo-id="m1"]')!.textContent).toContain("Deadline Oct 12");
+    expect(
+      screen.getByRole("option", { name: "File taxes, Deadline Oct 12, overdue by 2 days, Unfiled" }),
+    ).toBeTruthy();
+  });
+
+  it("starts an upcoming deadline's clause with Deadline too", () => {
+    renderPalette({ todos: [todo({ id: "u1", title: "File taxes", deadline: "2026-10-19" })] });
+
+    search("taxes");
+
+    expect(
+      screen.getByRole("option", { name: "File taxes, Deadline Oct 19, due in 5 days, Unfiled" }),
+    ).toBeTruthy();
+  });
+});

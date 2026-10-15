@@ -290,26 +290,26 @@ describe("formatDeadlineDue", () => {
   const today = "2026-08-03";
 
   it("names today and tomorrow rather than counting them", () => {
-    expect(formatDeadlineDue("2026-08-03", today)).toBe("Due today: Aug 3");
-    expect(formatDeadlineDue("2026-08-04", today)).toBe("Due tomorrow: Aug 4");
+    expect(formatDeadlineDue("2026-08-03", today)).toBe("Deadline Aug 3, due today");
+    expect(formatDeadlineDue("2026-08-04", today)).toBe("Deadline Aug 4, due tomorrow");
   });
 
   it("counts days ahead", () => {
-    expect(formatDeadlineDue("2026-08-08", today)).toBe("Due in 5 days: Aug 8");
+    expect(formatDeadlineDue("2026-08-08", today)).toBe("Deadline Aug 8, due in 5 days");
   });
 
   it("counts days late, and gets the singular right", () => {
-    expect(formatDeadlineDue("2026-08-02", today)).toBe("Overdue by 1 day: Aug 2");
-    expect(formatDeadlineDue("2026-07-31", today)).toBe("Overdue by 3 days: Jul 31");
+    expect(formatDeadlineDue("2026-08-02", today)).toBe("Deadline Aug 2, overdue by 1 day");
+    expect(formatDeadlineDue("2026-07-31", today)).toBe("Deadline Jul 31, overdue by 3 days");
   });
 
   it("crosses a month boundary without drifting", () => {
-    expect(formatDeadlineDue("2026-09-01", today)).toBe("Due in 29 days: Sep 1");
+    expect(formatDeadlineDue("2026-09-01", today)).toBe("Deadline Sep 1, due in 29 days");
   });
 
   it("names the year of a deadline in another year (EI-387)", () => {
-    expect(formatDeadlineDue("2027-10-01", today)).toBe("Due in 424 days: Oct 1, 2027");
-    expect(formatDeadlineDue("2025-12-30", today)).toBe("Overdue by 216 days: Dec 30, 2025");
+    expect(formatDeadlineDue("2027-10-01", today)).toBe("Deadline Oct 1, 2027, due in 424 days");
+    expect(formatDeadlineDue("2025-12-30", today)).toBe("Deadline Dec 30, 2025, overdue by 216 days");
   });
 });
 

@@ -27,6 +27,7 @@ import { deleteListWithUndo } from "./list-actions";
 import { createTabWithUndo, deleteTabWithUndo } from "./tab-actions";
 import { todayIn } from "@/lib/scheduling";
 import { rollStateFor, type RollState } from "@/lib/rollover-events";
+import { formatCompletionStamp } from "@/lib/event-time";
 import { effectiveListColor } from "@/lib/colors";
 import {
   describeQuickAddLanding,
@@ -861,6 +862,20 @@ export function CommandPalette({
                         // glyphs and badges carry no hidden text, so a name built
                         // from content would lose them. The list goes last, as on
                         // screen.
+                        //
+                        // A done or Won't do hit says so, with when — the card's
+                        // completion stamp (EI-391). Without it the row read
+                        // "…, Scheduled Oct 14, To Buy", as if still open: the
+                        // strike and the dimming are its only other signs. No
+                        // "planned Oct 12" here, unlike the card: the row's
+                        // "Scheduled" clause already names the plan.
+                        //
+                        // Dates (EI-391): a row shows the stored plan, always.
+                        // Search has no column, so it never moves a hit to the
+                        // day the board shows it on; where the two differ, a
+                        // clause says why — the stamp for settled work (on the
+                        // board on the day it was finished), ↳ "Rolled from
+                        // Oct 12" for a roll (on Today).
                         aria-label={[
                           todoRowName({
                             todo,
@@ -873,6 +888,11 @@ export function CommandPalette({
                             showScheduledDate: true,
                             rolledFrom,
                             overflow,
+                            completionStamp: formatCompletionStamp(
+                              todo.status,
+                              todo.completedAt,
+                              settings?.timezone ?? "UTC",
+                            ),
                           }),
                           listNameById.get(todo.listId ?? "") ?? "Unfiled",
                         ].join(", ")}

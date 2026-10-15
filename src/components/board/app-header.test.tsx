@@ -155,6 +155,15 @@ describe("AppHeader", () => {
     expect(trigger?.textContent).toContain("⌘K");
   });
 
+  /*
+    The trigger's initials are CSS-generated content, not text (EI-391): a
+    text "LU" inside an "Account" button is a Label-in-Name mismatch to
+    Lighthouse even when hidden from assistive tech. So they are read off the
+    attribute the CSS draws, not found by text.
+  */
+  const avatarGlyph = () =>
+    screen.getByLabelText("Account").querySelector<HTMLElement>("[data-glyph]")?.dataset.glyph;
+
   it("renders the account avatar with placeholder initials when there is no settings row", () => {
     render(
       <AppHeader
@@ -166,7 +175,7 @@ describe("AppHeader", () => {
     );
 
     expect(screen.getByLabelText("Account")).toBeTruthy();
-    expect(screen.getByText("LU")).toBeTruthy();
+    expect(avatarGlyph()).toBe("LU");
   });
 
   it("renders a custom display name and initials", () => {
@@ -181,7 +190,7 @@ describe("AppHeader", () => {
 
     fireEvent.click(screen.getByLabelText("Account"));
 
-    expect(screen.getByText("RE")).toBeTruthy();
+    expect(avatarGlyph()).toBe("RE");
     expect(screen.getByText("Rob Erskine")).toBeTruthy();
   });
 
@@ -363,7 +372,7 @@ describe("AppHeader", () => {
     );
 
     // Initials render on the closed trigger; the name needs the menu open.
-    expect(screen.getByText("RE")).toBeTruthy();
+    expect(avatarGlyph()).toBe("RE");
     fireEvent.click(screen.getByLabelText("Account"));
     expect(screen.getByText("Rob Erskine")).toBeTruthy();
     expect(screen.queryByText("Local User")).toBeNull();
