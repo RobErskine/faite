@@ -103,9 +103,14 @@ export interface PaletteCommand {
   groupFor?: (ctx: PaletteCommandCtx) => PaletteCommandGroup;
   label: (ctx: PaletteCommandCtx) => string;
   /** Overrides cmdk's default match value (which falls back to the rendered
-   * label) — only the create-from-query fallback needs this, so its value
-   * stays anchored to the raw query rather than the quoted preview text. */
+   * label) — only the create-from-query fallback sets one. It is that row's
+   * selection key, not its rank: a `fallback` row is never scored on it. */
   value?: (ctx: PaletteCommandCtx) => string;
+  /** The row Enter should reach only when nothing real matches (EI-389).
+   * The palette never scores it against the query and renders it last, in a
+   * group of its own, so every command and to-do that matches sits above
+   * it; with none, it is the only row. */
+  fallback?: boolean;
   shortcut?: (ctx: PaletteCommandCtx) => string | undefined;
   /** Omit to always show. */
   when?: (ctx: PaletteCommandCtx) => boolean;
@@ -130,6 +135,7 @@ const CREATE_COMMANDS: PaletteCommand[] = [
     id: "create-from-query",
     group: "Create",
     when: (ctx) => ctx.hasQuery,
+    fallback: true,
     value: (ctx) => `Create to-do ${ctx.query}`,
     label: (ctx) => `Create to-do “${ctx.quickAddTitle}”`,
     run: (ctx) => ctx.createFromQuery(),

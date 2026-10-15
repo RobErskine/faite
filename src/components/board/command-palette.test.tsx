@@ -256,13 +256,12 @@ describe("CommandPalette", () => {
     const onOpenChange = vi.fn();
     renderPalette({ onOpenSettings, onOpenChange });
 
-    // "sett" used to find nothing better than "Show 7 days". The
-    // create-from-query fallback always leads a query (§6.3); the commands
-    // are next.
+    // "sett" used to find nothing better than "Show 7 days". Since EI-389
+    // the create-from-query fallback follows the commands that match.
     search("sett");
     const names = screen.getAllByRole("option").map((o) => o.textContent);
-    expect(names[0]).toBe("Create to-do “sett”");
-    expect(names.slice(1, 4)).toEqual(["Open settings", "Faite Loop settings", "Design settings"]);
+    expect(names.slice(0, 3)).toEqual(["Open settings", "Faite Loop settings", "Design settings"]);
+    expect(names.at(-1)).toBe("Create to-do “sett”");
 
     fireEvent.click(screen.getByRole("option", { name: "Faite Loop settings" }));
     expect(onOpenSettings).toHaveBeenCalledWith("loop");
@@ -374,6 +373,95 @@ describe("CommandPalette", () => {
     renderPalette({ open: false });
 
     expect(screen.queryByText("New to-do")).toBeNull();
+  });
+});
+
+/**
+ * EI-389. The fallback's value contains the query verbatim, so cmdk scored it
+ * near the top of every search: "loop" + Enter filed a to-do called "loop".
+ * It now ranks below every real match, and leads only when there is none.
+ */
+describe("CommandPalette — Create to-do ranks below real matches (EI-389)", () => {
+  const optionNames = () => screen.getAllByRole("option").map((o) => o.textContent);
+  const selectedName = () =>
+    document.body.querySelector('[cmdk-item][aria-selected="true"]')?.textContent;
+  const pressEnter = () =>
+    fireEvent.keyDown(screen.getByPlaceholderText(PLACEHOLDER), { key: "Enter" });
+
+  it("“sett” highlights Open settings, not Create", () => {
+    renderPalette();
+    search("sett");
+    expect(optionNames()[0]).toBe("Open settings");
+    expect(selectedName()).toBe("Open settings");
+  });
+
+  it("“loop” + Enter opens Faite Loop settings and creates nothing", async () => {
+    const onOpenSettings = vi.fn();
+    renderPalette({ onOpenSettings });
+    search("loop");
+    expect(optionNames()[0]).toBe("Faite Loop settings");
+
+    pressEnter();
+    expect(onOpenSettings).toHaveBeenCalledWith("loop");
+    expect(await getDb().todos.count()).toBe(0);
+  });
+
+  it("“overdrive” leads with Open Overdrive", () => {
+    renderPalette({ overflowCount: 8 });
+    search("overdrive");
+    expect(selectedName()).toBe("Open Overdrive (8)");
+    expect(optionNames().at(-1)).toBe("Create to-do “overdrive”");
+  });
+
+  it("puts a to-do hit above Create", () => {
+    renderPalette();
+    search("milk");
+    const rows = screen.getAllByRole("option");
+    expect(rows[0].getAttribute("data-todo-id")).toBe("t1");
+    expect(rows[0].getAttribute("aria-selected")).toBe("true");
+    expect(rows.at(-1)!.textContent).toBe("Create to-do “milk”");
+  });
+
+  it("stays below a match in another group even when a Create sibling matches too", () => {
+    // "New tab" leads the Create group; the fallback must not ride along
+    // with it past the Tabs and Delete rows that also match.
+    renderPalette();
+    search("tab");
+    const names = optionNames();
+    expect(names).toContain("Delete a tab…");
+    expect(names.at(-1)).toBe("Create to-do “tab”");
+  });
+
+  it("a scattered, coincidental match does not take Enter from a capture", () => {
+    // cmdk's subsequence scorer finds r…e…a…d in "Show items marked as
+    // won't do" (0.02). Under the palette's match threshold, it is dropped.
+    renderPalette();
+    search("read");
+    expect(screen.queryByRole("option", { name: "Show items marked as won't do" })).toBeNull();
+    expect(optionNames()).toEqual(["Create to-do “read”"]);
+  });
+
+  it("keeps Create once a folded date leaves a trailing space in the search", () => {
+    // The search is "buy milk " — which the row's value, built from the
+    // trimmed query, cannot match. The row is not scored, so it stays.
+    renderPalette();
+    search("buy milk tomorrow ");
+    expect(screen.getByPlaceholderText(PLACEHOLDER)).toHaveProperty("value", "buy milk ");
+    expect(selectedName()).toBe("Create to-do “buy milk”");
+  });
+
+  it("with no other match, Create leads and Enter files it, chips and all", async () => {
+    renderPalette();
+    search("buy milk tomorrow");
+    expect(optionNames()[0]).toBe("Create to-do “buy milk”");
+    expect(selectedName()).toBe("Create to-do “buy milk”");
+    expect(screen.getByRole("button", { name: "Keep “tomorrow” in the title" })).toBeTruthy();
+
+    pressEnter();
+    await waitFor(async () => expect(await getDb().todos.count()).toBe(1));
+    const [created] = await getDb().todos.toArray();
+    expect(created.title).toBe("buy milk");
+    expect(created.scheduledDate).not.toBeNull();
   });
 });
 
