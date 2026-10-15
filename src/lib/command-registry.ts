@@ -86,11 +86,12 @@ export interface PaletteCommandCtx {
  * - **Delete** last. "Delete a list…" and "Delete a tab…" used to rank 5th
  *   and 6th, ahead of everything a planning session actually reaches for. A
  *   destructive command belongs where the eye arrives last, not where an
- *   arrow key lands early.
+ *   arrow key lands early — and since EI-392, only once a query is typed.
  *
  * Ids never change with the group (`manage-delete-list` is still its id), and
  * the label is the cmdk match value, so search finds every command exactly
- * as before; only the empty-query order moved.
+ * as before; only the empty-query order moved (and, EI-392, the empty-query
+ * Delete group went).
  */
 export const COMMAND_GROUPS = ["Triage", "Create", "Manage", "View", "Delete"] as const;
 export type PaletteCommandGroup = (typeof COMMAND_GROUPS)[number];
@@ -224,17 +225,25 @@ const MANAGE_COMMANDS: PaletteCommand[] = [
 ];
 
 /** Last in the palette (EI-383) — see `COMMAND_GROUPS`. The `manage-` ids
- * predate the move and are kept so nothing keyed on them breaks. */
+ * predate the move and are kept so nothing keyed on them breaks.
+ *
+ * Only once something is typed (EI-392). With an empty query the root is a
+ * menu you read, and a destructive verb in it is a suggestion; typed, it is
+ * a request — "delete", "del", "remove a tab"'s "tab" all still find them,
+ * because the palette's own scorer decides from there. */
+const searchedFor = (ctx: PaletteCommandCtx) => ctx.query.length > 0;
 const DELETE_COMMANDS: PaletteCommand[] = [
   {
     id: "manage-delete-list",
     group: "Delete",
+    when: searchedFor,
     label: () => "Delete a list…",
     run: (ctx) => ctx.enterMode("delete-list"),
   },
   {
     id: "manage-delete-tab",
     group: "Delete",
+    when: searchedFor,
     label: () => "Delete a tab…",
     run: (ctx) => ctx.enterMode("delete-tab"),
   },

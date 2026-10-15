@@ -52,7 +52,7 @@ handle mid-drag.
 | `src/lib/board.ts` | Id codecs, `preferPreciseTarget()`, and every pure drop planner — `planListDrop`, `planTabDrop`, `planListTabDrop`, `planListDayDrop` (§4.10e), `selectedTodosInBoardOrder`/`rangeSelectionIds` (§4.14). Plus `TodoGroup`, `listSortKey`, `byListGroup`, `dayGroupId` — the calendar half's computed grouping (§4.13) |
 | `src/components/board/create-list-column.tsx` | End-of-track "Create list" slot. Column-sized, deliberately **not** a droppable (§5.6) |
 | `src/components/board/use-day-track.ts` | Pure scroll-position/jump math for the day track (anchor index, jump clamping) — not itself drag-and-drop, but shares the track dnd-kit measures |
-| `src/components/board/date-nav.tsx` | Week/Month/Quarter jump buttons + calendar date picker above the day track |
+| `src/components/board/date-nav.tsx` | The bar above the day track: ‹ Today › page steps and the Jump popover (week/month/quarter steps + calendar; EI-392) |
 | `src/components/board/use-rail-resize.ts` | Pure resize/collapse math (§4.12) plus the pointer/keyboard hook for a pinned panel's handle; disabled during any drag so it cannot race dnd-kit's cached rects |
 | `src/components/board/rail-handle.tsx` | The draggable seam on a pinned panel's right edge — one per rail, resizing independently (§4.12) |
 | `src/lib/rail.ts` | `RAIL_MIN`/`RAIL_MAX`/`RAIL_COLLAPSE_THRESHOLD`/etc. — shared so `schema.ts` can bound the stored width without importing a component |
@@ -1074,7 +1074,7 @@ that sizes the default view).
 Growth is always an explicit user action, never silent: a "Load N more days"
 tile sits at the end of the track (mirroring `create-list-column.tsx`'s slot
 at the end of the planning track) for as long as `cap` has not been reached,
-and the `Week`/`Month`/`Quarter` jump buttons extend the horizon on demand
+and the Jump popover's week/month/quarter steps extend the horizon on demand
 when a jump target lands past what is currently rendered — but stay bounded
 by `cap` themselves, same as the tile. The calendar-icon date picker is the
 one exception: it has no upper bound at all, so picking a day past `cap`

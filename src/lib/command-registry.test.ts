@@ -196,7 +196,7 @@ describe("commandsByGroup", () => {
   });
 
   it("puts the destructive Delete commands last, under their old ids (EI-383)", () => {
-    const groups = commandsByGroup(makeCtx({ overflowCount: 3 }));
+    const groups = commandsByGroup(makeCtx({ overflowCount: 3, query: "del", hasQuery: true }));
     expect([...groups.keys()].at(-1)).toBe("Delete");
     expect(groups.get("Delete")!.map((c) => c.id)).toEqual(["manage-delete-list", "manage-delete-tab"]);
     expect(groups.get("Manage")!.some((c) => c.id.startsWith("manage-delete"))).toBe(false);
@@ -204,11 +204,19 @@ describe("commandsByGroup", () => {
     expect(ROOT_COMMANDS.slice(-2).map((c) => c.id)).toEqual(["manage-delete-list", "manage-delete-tab"]);
   });
 
+  it("offers Delete only once something is typed (EI-392)", () => {
+    expect(commandsByGroup(makeCtx()).get("Delete")).toEqual([]);
+    // A folded chip with an empty search box is not a search for "delete".
+    expect(commandsByGroup(makeCtx({ hasQuery: true })).get("Delete")).toEqual([]);
+    const typed = commandsByGroup(makeCtx({ query: "d", hasQuery: true }));
+    expect(typed.get("Delete")!.map((c) => c.id)).toEqual(["manage-delete-list", "manage-delete-tab"]);
+  });
+
   it("routes Manage and Delete entries to enterMode/openHelp+close", () => {
     const enterMode = vi.fn();
     const openHelp = vi.fn();
     const close = vi.fn();
-    const ctx = makeCtx({ enterMode, openHelp, close });
+    const ctx = makeCtx({ enterMode, openHelp, close, query: "delete", hasQuery: true });
     const groups = commandsByGroup(ctx);
     const manage = groups.get("Manage")!;
 

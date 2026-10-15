@@ -1067,3 +1067,23 @@ describe("touch targets (EI-388)", () => {
     expect(classes(screen.getByText("Sunday").closest("h2")!)).toContain("truncate");
   });
 });
+
+/**
+ * EI-392. The "N due" banner was 26px tall on a phone. A real height on
+ * touch, since the day name above and the first card below are already 44px
+ * targets that fill their space.
+ */
+describe("the due banner's touch target (EI-392)", () => {
+  it("is 44px tall on touch when it is a button", () => {
+    render(<Harness dueCount={1} onOpenInfo={vi.fn()} />);
+    const cls = document.querySelector("[data-due-banner]")!.className.split(/\s+/);
+    expect(cls).toContain("pointer-coarse:min-h-11");
+    // The mouse height is untouched.
+    expect(cls).toContain("py-1");
+  });
+
+  it("leaves the inert banner alone — it is not a target", () => {
+    render(<Harness dueCount={1} />);
+    expect(document.querySelector("[data-due-banner]")!.className).not.toContain("pointer-coarse:");
+  });
+});

@@ -148,26 +148,41 @@ describe("ViewSettings — day count", () => {
   });
 });
 
-describe("ViewSettings — weekends", () => {
-  /**
-   * The label states what you are LOOKING AT, not what the click does — it sits
-   * between two dropdowns that both report the current view, and an action
-   * label there reads as a claim about the board.
-   */
-  it("says 'Weekends' when they are showing, and toggles them off", () => {
+/**
+ * EI-392. Weekends were a toggle button of their own in the date row; they
+ * are a checkbox in the View menu now, worded like ⌘K's "Show weekends".
+ */
+describe("ViewSettings — weekends, in the View menu", () => {
+  it("is checked while weekends show, and unchecking collapses them", async () => {
     render(<ViewSettings settings={settings()} />);
-    const button = screen.getByRole("button", { name: "Weekends" });
-    expect(button.getAttribute("aria-pressed")).toBe("false");
-    fireEvent.click(button);
+    expect(screen.queryByRole("button", { name: /^weekends/i })).toBeNull();
+    openMenu(/which statuses/i);
+    const item = await screen.findByRole("menuitemcheckbox", { name: "Show weekends" });
+    expect(item.getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(item);
     expect(lastPatch()).toEqual({ showWeekends: false });
   });
 
-  it("says 'Weekends hidden' when they are not, and toggles them back", () => {
+  it("is unchecked while they are collapsed, and checking brings them back", async () => {
     render(<ViewSettings settings={settings({ showWeekends: false })} />);
-    const button = screen.getByRole("button", { name: "Weekends hidden" });
-    expect(button.getAttribute("aria-pressed")).toBe("true");
-    fireEvent.click(button);
+    openMenu(/which statuses/i);
+    const item = await screen.findByRole("menuitemcheckbox", { name: "Show weekends" });
+    expect(item.getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(item);
     expect(lastPatch()).toEqual({ showWeekends: true });
+  });
+});
+
+describe("ViewSettings — saved views, in the View menu (EI-392)", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("holds the saved-views section under its own label", async () => {
+    render(<ViewSettings settings={settings()} />);
+    expect(screen.queryByRole("button", { name: "Saved views" })).toBeNull();
+    openMenu(/which statuses/i);
+    expect(await screen.findByText("Saved views")).toBeTruthy();
+    expect(screen.getByText("No saved views yet")).toBeTruthy();
+    expect(screen.getByRole("textbox", { name: "New saved view name" })).toBeTruthy();
   });
 });
 
@@ -181,7 +196,6 @@ describe("ViewSettings — before Dexie resolves", () => {
     render(<ViewSettings settings={undefined} />);
     expect(triggerText(/which statuses/i)).toContain("View: To-do");
     expect(triggerText(/how many day columns/i)).toContain("7 days");
-    expect(screen.getByRole("button", { name: "Weekends" })).toBeTruthy();
   });
 
   /*

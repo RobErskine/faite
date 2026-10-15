@@ -291,6 +291,10 @@ Quiet and tactile; the board has no loud fills.
 - `type-column-title`; today and Overflow keep full ink, other days recede to muted.
 - Today: spectrum hairline. Overflow: 2px urgent edge rule at 70%, only while it holds something. A colored list or tab: 2px `edge()` rule. Day eyebrows read "Sep 5", no year.
 
+### Date Row
+- Three groups, not ten peers (docs/DESIGN.md §3, §7 2026-10-15 EI-392): **where** (History, range title), **what** ("View: …" with statuses, Show weekends and Saved views; the day count), **move** (‹ Today › Jump, Activity).
+- ‹ › step one page and disable at the ends rather than vanish; Today disables on today. "Jump" is one popover: Next/Previous week, month, quarter beside the calendar. A move never looks like a view switch.
+
 ### Overlays (dialog, sheet, alert-dialog, command palette)
 - Popover surface, `rounded.3xl`, `p-5`, `--shadow-overlay`; heading-weight titles; footers are a `border-line-faint` hairline, never a filled bar.
 - A dialog scales in place from 0.95 above 640px and rises from the bottom below it; a sheet slides its own width and never overshoots. Exits are shorter and unsprung (§4).
@@ -318,6 +322,7 @@ Quiet and tactile; the board has no loud fills.
 - **Don't** give a column a border or background, or divide rows with rules; Overflow and Backlog's `surface-0` is the only exception (§3).
 - **Don't** fill an overlay footer with `bg-muted` (§3).
 - **Don't** let an edge-anchored surface overshoot (§4).
+- **Don't** let two touch extenders overlap, or one run out of its container: the later element wins every tap in the overlap (§3 Touch targets, EI-392).
 - **Don't** add streaks, counters, or progress gamification (§4; docs/RESEARCH.md §2.9, §4).
 - **Don't** let the board read as a generic shadcn/SaaS app: no stock ring trio, no gray card on gray, no default component left unstyled.
 - **Don't** borrow from habit apps: no streak flames, badges, or scores, and no celebration unless the user opted in.

@@ -87,6 +87,19 @@ export function DayOverdriveButton({
 }
 
 /**
+ * Quick sort's fit in the PHONE Backlog header (EI-392; it measured 42 tall).
+ * That header has no eyebrow, so it is only 42px: the base extender's top
+ * met the list nav above and its bottom 2px sat under the first card's
+ * title. `-my-1` (in place of the base −10px) makes the button's margin box
+ * 26px, which grows the header to 44, and the extender shifts to fit it
+ * exactly — 6px up, 4px down. 10px left rather than 8: the base's 2px on
+ * the right end at the screen's edge, where the last pixel does not
+ * register, so the left makes it up. Measured: 45×44, inside the header.
+ */
+export const QUICK_SORT_PHONE_HEADER =
+  "pointer-coarse:-my-1 pointer-coarse:after:-top-1.5 pointer-coarse:after:-bottom-1 pointer-coarse:after:-left-2.5";
+
+/**
  * Backlog's entry point into Quick sort (EI-370) — Overdrive over the
  * Backlog, with a list picker on each card. Same shape as
  * `DayOverdriveButton`, but shown from the first open to-do: Backlog is

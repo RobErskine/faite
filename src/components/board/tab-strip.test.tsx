@@ -169,6 +169,13 @@ describe("scroll track", () => {
 });
 
 describe("archived button", () => {
+  it("is 44px wide on touch, not just 44 tall (EI-392)", () => {
+    render(<Harness tabs={[]} activeTabId="none" archivedCount={0} />);
+    const cls = screen.getByRole("button", { name: "Archived" }).className.split(/\s+/);
+    expect(cls).toContain("pointer-coarse:min-w-11");
+    expect(cls).toContain("pointer-coarse:min-h-11");
+  });
+
   it("renders icon-only, with the count inline in parens, not the word 'Archived'", () => {
     render(<Harness tabs={[]} activeTabId="none" archivedCount={3} />);
     const button = screen.getByRole("button", { name: "Archived" });
@@ -249,5 +256,13 @@ describe("accessibility floor (EI-378)", () => {
     const cls = screen.getByRole("button", { name: /^Work\b/ }).className.split(/\s+/);
     expect(cls).toContain("py-1");
     expect(cls).toContain("-my-1");
+  });
+
+  it("fills the 44px pill on touch, both halves of the pair (EI-392)", () => {
+    render(<Harness tabs={[tab("t1", "Work")]} activeTabId="t1" />);
+    const cls = screen.getByRole("button", { name: /^Work\b/ }).className.split(/\s+/);
+    // 16px of text + 2×14 = 44, the pill's own coarse floor; it measured 24.
+    expect(cls).toContain("pointer-coarse:py-3.5");
+    expect(cls).toContain("pointer-coarse:-my-3.5");
   });
 });

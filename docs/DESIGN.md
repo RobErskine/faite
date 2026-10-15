@@ -130,6 +130,16 @@ that changes. Measured at 1440×900 (track 1174px): Today plus five days, and
 and phone keep equal columns. The range title ends at the last day at least a
 third on screen. Arithmetic: `src/components/board/day-track-widths.ts`.
 
+**The date row is three groups, not a row of peers** (desktop and tablet,
+EI-392): *where* — History and the range title; *what* — "View: …" (statuses,
+Show weekends, Saved views) and the day count; *move* — ‹ Today › Jump and
+Activity. ‹ and › step one page and are disabled, not hidden, at the ends, so
+the cluster never shifts under the pointer; Today is always there and
+disabled on today. Jump is one popover: Next/Previous week, month and
+quarter beside the calendar. A control that moves the board never looks like
+a control that changes the view. The phone bar keeps its own short set
+(Overflow peek, History, range, Today, the date picker, Activity).
+
 Overflow and Backlog are the two exceptions to "columns are air": both carry
 `bg-surface-0` even though neither is `emphasis`. Both are resizable rails
 (`RailHandle`), and with no fill at all their whole region — not just the
@@ -186,6 +196,19 @@ preference:
    from them: card rows (36px → 44px on touch), list-group headers (24 → 44),
    the quick-add (36 → 44). This is the one that changes phone density, and
    it is the iOS list-row height.
+
+Two more rules, both from EI-392:
+
+- **Neighbors' extenders share the gap between them, never more.** Two
+  extenders that overlap give every tap in the overlap to the later element,
+  so the earlier one measures short. The header's Keyboard shortcuts button
+  (6px each side) and the avatar (8px) asked for 14px of a 12px `gap-3`, and
+  shortcuts measured 42 wide; the avatar now takes 6 left and 10 right.
+- **An extender stays inside its container's box.** Past it, it lands on a
+  neighbor that is a target itself. Phone Backlog's header is 42px, so Quick
+  sort's 44px extender ran 2px under the first card's title; its coarse
+  margin is trimmed so the header grows to 44, and the extender shifts to fit
+  it exactly (6 up, 4 down).
 
 Exempt by design: the card and column **grips** are 12×24. On touch they are
 affordances, not targets — a long press anywhere on the row or header drags
@@ -359,3 +382,4 @@ streak, score, or percentage anywhere in it.
 | 2026-10-14 | **Today gets room** (EI-384): on desktop, Today is `--column-today-ratio` (1.5×) its neighbor. The other days on Today's first page narrow to share the track (`--column-near`); later pages keep N equal columns; every width keeps the 168px floor. Tablet and phone are unchanged. The range title names every day at least a third on screen. | Today absorbs rolled cards, "Schedule for Today" and finished work, so it is the busiest column, and at 168px it showed under half of 13 to-dos beside near-empty days. 1.5× is a ratio, so it ports to SwiftUI as a frame multiplier. At 1440 the floor binds and seven days already scrolled (track 1174px vs 1248 needed), so no factor could make a week fit there. 1.5× costs the half-column of Tuesday that showed before (Today + 5 days + 10px). At 1280: Today + 4 days + 30px, and Week still steps 6. At 1920 the week still fits: 316px Today, 211px days. The old title rounded, so a column a little under half visible showed on screen but not in "Oct 14 – Oct 19". |
 | 2026-10-15 | **Touch targets reach 44px under `pointer: coarse`, and rows grow to make room** (EI-388). Card rows are 44px on touch (the title fills the row), list-group headers and the quick-add are 44px; the ⚡, the day name and the wordmark extend to 44 without growing. With a mouse the group header gains its missing pixel (23 → 24) and the wordmark a `py-0.5 -my-0.5` pair (20 → 24); nothing else moves. §3 "Touch targets" is the recipe. | Measured on production at 390×844 with touch: title 370×27, quick-add 390×36, ⚡ 34×34, group header 390×23, day name 100×28, wordmark 31×20. At 36px rows a 44px title could only overlap its neighbors, and the later row wins every tap in an overlap, so the row grows instead: 44 is iOS's own list-row floor. After, at the same size: title 349×44 (the checkbox's strip excluded), quick-add 390×44, ⚡ 44×44, group header 390×44, day name 84×44, wordmark 48×44, checkbox 24×44. At 1440×900: rows 35.25 as before. |
 | 2026-10-15 | **The Overflow age says since when and how long, in one string everywhere** (EI-390): "since Oct 6 · 9 days", and "since today" on the day it crosses (`formatOverflowAge`). Board card, Overdrive card, ⌘K row, Settings example and homepage replica all show it; the accessible name and tooltip say "In Overflow since Oct 6, 9 days". Set in `nums`, not `num` — a phrase, not a standalone number (§2). It stays one unit at the 168px floor; the one string too wide for it (a start in another year, in Hyperlegible) breaks between its halves, never inside one. | The age read three ways: "9 days" on the board, "In Overflow 9 days" in ⌘K, and a bare "42 days" under Overdrive's "Scheduled Aug 30" that read as "42 days late". A count alone says how long but not since when; a date alone makes the reader do the arithmetic. EI-387's `overflowWording` variants go: one string needs no switch. |
+| 2026-10-15 | **The date row is where, what, move** (EI-392): History and the range; one "View" menu (statuses, Show weekends, Saved views) beside the day count; ‹ Today › and one "Jump" popover holding Next/Previous week, month and quarter beside the calendar, then Activity. ‹ › step one page and disable rather than vanish; Today disables on today. History, Activity, ‹ and › show their names as tooltips. Phone targets: the N-due banner, the tab name, Archived and the signed-out banner's Sign up reach 44 on touch; two §3 "Touch targets" rules added (neighbors share a gap; an extender stays in its container). | The fourth critique counted ten peer controls in the date row, and "Week › Month › Quarter ›" read as view switches — "Month" looked like a month view and scrolled 28 days. Folding them into Jump keeps every move a click or two away and stops them claiming to be views; Weekends and Saved views are part of what you are viewing, so they went into View. No capability moved more than one click deeper. Measured at 390×844 with touch, before → after: N-due banner 389×26 → 389×44, Keyboard shortcuts 42×44 → 44×44, Sign up 47×29 → 47×45, My Lists 82×24 → 82×44, Archived 36×44 → 44×44, Quick sort 43×42 → 45×44. With a mouse nothing moved. |

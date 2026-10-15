@@ -3,7 +3,12 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { OVERDRIVE_MIN_TODOS } from "@/lib/overdrive";
-import { DayOverdriveButton, OverdriveButton, QuickSortButton } from "./overdrive-button";
+import {
+  DayOverdriveButton,
+  OverdriveButton,
+  QUICK_SORT_PHONE_HEADER,
+  QuickSortButton,
+} from "./overdrive-button";
 
 afterEach(cleanup);
 
@@ -155,5 +160,31 @@ describe("header icon touch target (EI-388)", () => {
     // The padding pair that makes the 34px box is unchanged.
     expect(cls).toContain("pointer-coarse:p-2.5");
     expect(cls).toContain("pointer-coarse:-m-2.5");
+  });
+});
+
+/**
+ * EI-392. In the phone Backlog header Quick sort measured 42 tall: the header
+ * is 42px and the extender ran 2px under the first card's title. The phone's
+ * class trims the coarse margin so the header grows to 44, then fits the
+ * extender inside it: 6 up, 4 down, 10 left. The base classes must survive
+ * the merge — only the axes it restates may change.
+ */
+describe("Quick sort in the phone Backlog header (EI-392)", () => {
+  it("merges over the base without dropping it", () => {
+    render(
+      <TooltipProvider>
+        <QuickSortButton count={2} onOpen={vi.fn()} className={QUICK_SORT_PHONE_HEADER} />
+      </TooltipProvider>,
+    );
+    const cls = screen.getByRole("button").className.split(/\s+/);
+    expect(cls).toContain("pointer-coarse:-my-1");
+    expect(cls).toContain("pointer-coarse:-m-2.5");
+    expect(cls).toContain("pointer-coarse:p-2.5");
+    expect(cls).toContain("pointer-coarse:after:-top-1.5");
+    expect(cls).toContain("pointer-coarse:after:-bottom-1");
+    expect(cls).toContain("pointer-coarse:after:-left-2.5");
+    expect(cls).not.toContain("pointer-coarse:after:-left-2");
+    expect(cls).toContain("pointer-coarse:after:-right-0.5");
   });
 });

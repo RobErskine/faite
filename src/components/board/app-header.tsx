@@ -70,8 +70,16 @@ interface AppHeaderProps {
  */
 const HEADER_TOUCH_TARGET =
   "pointer-coarse:after:absolute pointer-coarse:after:-inset-1.5 pointer-coarse:after:content-['']";
+/**
+ * The avatar is 28px, so it needs 16px more each way. Lopsided on purpose
+ * (EI-392): an even 8px reached 2px over the Keyboard shortcuts button's own
+ * 6px extender — `gap-3` is 12px and the two asked for 14 — and the later
+ * element wins a tap in an overlap, so that button measured 42 wide. 6px
+ * left meets its extender exactly; the other 10px go right, into the
+ * header's `px-4`.
+ */
 const AVATAR_TOUCH_TARGET =
-  "pointer-coarse:after:absolute pointer-coarse:after:-inset-2 pointer-coarse:after:content-['']";
+  "pointer-coarse:after:absolute pointer-coarse:after:-inset-y-2 pointer-coarse:after:-left-1.5 pointer-coarse:after:-right-2.5 pointer-coarse:after:content-['']";
 /** The wordmark is 31×24 (EI-388): 8px each side makes 47 wide, 10px 44 tall. */
 const BRAND_TOUCH_TARGET =
   "pointer-coarse:after:absolute pointer-coarse:after:-inset-x-2 pointer-coarse:after:-inset-y-2.5 pointer-coarse:after:content-['']";

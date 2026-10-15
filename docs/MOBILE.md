@@ -104,6 +104,17 @@ stealing taps — a `py-*/-my-*` pair, an `::after` extender, or a real
 card rows, list-group headers and the quick-add are 44px tall on touch,
 36/24/36 with a mouse.
 
+EI-392 closed the last six under 44 at 390×844 (touch), before → after: the
+N-due banner 26 → 44 tall (a real height), the tab name 24 → 44 tall (a
+`py-3.5 -my-3.5` pair filling the 44px pill), Archived 36 → 44 wide
+(`min-w-11`), the signed-out banner's Sign up 29 → 45 tall (its extender),
+Keyboard shortcuts 42 → 44 wide, and Quick sort 42 → 44 tall. The last two
+were not too small — a neighbor's extender overlapped them (the avatar's) or
+theirs ran out of the header into the first card (Quick sort's in Backlog,
+`QUICK_SORT_PHONE_HEADER`), and the later element wins every tap in an
+overlap. Both rules are in `docs/DESIGN.md` §3. With a mouse nothing moved;
+the N-due banner is the one visible change on touch, 18px taller.
+
 **One tailwind-merge caveat, inherited from `drag-grip.tsx`'s own comment on
 this exact class family:** `tailwind-merge` does not recognize that
 `-inset-3` (shorthand) and `-inset-x-3`/`-inset-y-2` (axis-specific) target
@@ -325,6 +336,11 @@ infer is the one that is not a day. Only on today's page because it is the
 one page next to Overflow, later days already offer `Today`, and at 375px
 there is no width for both. Muted ink, no rule: Overflow's red stays on its
 column (EI-374). Tests: `date-nav.test.tsx`.
+
+The desktop date row's EI-392 redesign (‹ Today › Jump; Weekends and Saved
+views folded into View) does not reach the phone bar: it keeps the peek,
+History, the range, Today, the calendar-only date picker and Activity,
+because a swipe is already the page step and the pager shows one day.
 
 **The Lists page's twin: a strip of list names (EI-385).** The Lists pager
 opens on Backlog, and the active tab's other lists sat to its right behind
