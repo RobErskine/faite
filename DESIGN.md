@@ -120,7 +120,7 @@ components:
     backgroundColor: "{colors.muted}"
   badge-urgent:
     backgroundColor: "oklch(0.577 0.245 27.325 / 10%)"
-    textColor: "{colors.urgent}"
+    textColor: "{colors.urgent-foreground}"
     rounded: "{rounded.4xl}"
     height: "20px"
     padding: "2px 8px"
@@ -190,7 +190,7 @@ An achromatic ink-on-paper ladder, plus five channels that each mean one thing: 
 - **Spectrum Solid** (`spectrum-solid`): the lavender stop alone, for the focus ring (`--ring`) and the check flash. Darkened in light theme to clear 3:1 on white (§7, 2026-09-05).
 
 ### Tertiary
-- **Urgent** (`urgent`, `urgent-foreground`, `urgent-soft`): "needs a verdict now." An alias of `--destructive`. The Overflow column's edge rule and count (only while it holds something), a missed Deadline, `×N` missed occurrences, the N-due banner, a drop-refused outline. Never the per-card "In Overflow N days" age, which is muted ink: the column says it once.
+- **Urgent** (`urgent`, `urgent-foreground`, `urgent-soft`): "needs a verdict now." An alias of `--destructive`. The Overflow column's edge rule (at 70%, for 3:1 on `surface-0`) and count (only while it holds something), a missed Deadline, `×N` missed occurrences, the N-due banner, a drop-refused outline. Red text is always `urgent-foreground` at `text-xs` or larger; bare `urgent` is for rules and outlines. Never the per-card "In Overflow N days" age, which is muted ink: the column says it once.
 - **Status** (`warning`, `info`, `success`, each with `-foreground` and `-soft`): system state, for desktop and auth banners and toasts.
 - **Identity hue** (user-chosen per tab or list; the ten Radix step-9 presets in `src/lib/colors.ts`): "belongs to X." Applied as a ladder: `edge()` 35% rule under a column title, `tint()` 12% on group and tab headers, `wash()` 5% behind a run of rows.
 
@@ -231,7 +231,7 @@ An achromatic ink-on-paper ladder, plus five channels that each mean one thing: 
 - **Title** (`type-column-title`: heading face, 700, uppercase, -0.025em): column titles, strips, the create-list tile. Size stays at the call site (`text-lg` on a column, `text-sm` on a strip).
 - **Body** (400, 0.875rem, 1.375): to-do titles and board text.
 - **Label** (500, 0.875rem): buttons and tab triggers.
-- **Eyebrow** (`type-eyebrow`: 500, 0.625rem, uppercase, 0.05em, muted): subtitles, group headers, timeline day labels.
+- **Eyebrow** (`type-eyebrow`: 500, 0.625rem, uppercase, 0.05em, muted): subtitles, group headers, timeline day labels. `text-2xs` is 0.6875rem (11px) under Hyperlegible, same line height (§2).
 - **Numeric** (`num`: mono face, tabular, slashed zero, lining): a number that stands alone, such as a date, a count, a time. `nums` keeps the family and only fixes figures, for a number inside a sentence.
 
 ### Named Rules
@@ -274,7 +274,7 @@ Quiet and tactile; the board has no loud fills.
 - **Hover / Focus:** every button shares the `focus-ring` utility (2px `--ring` outline, -2px offset), not shadcn's ring trio (§3). Press nudges down 1px.
 
 ### Badges
-- **Urgent** (`destructive` variant, read through `--urgent`): urgent at 10% behind urgent text, pill shape. The only red badge (§1).
+- **Urgent** (`destructive` variant, read through `--urgent`): urgent at 10% behind `urgent-foreground` text, at `text-xs`, pill shape. The only red badge (§1).
 
 ### Inputs
 - **Style:** 32px, `rounded.lg`, `--input` border, transparent fill.
@@ -288,7 +288,7 @@ Quiet and tactile; the board has no loud fills.
 
 ### Column Header
 - `type-column-title`; today and Overflow keep full ink, other days recede to muted.
-- Today: spectrum hairline. Overflow: 2px urgent edge rule, only while it holds something. A colored list or tab: 2px `edge()` rule. Day eyebrows read "Sep 5", no year.
+- Today: spectrum hairline. Overflow: 2px urgent edge rule at 70%, only while it holds something. A colored list or tab: 2px `edge()` rule. Day eyebrows read "Sep 5", no year.
 
 ### Overlays (dialog, sheet, alert-dialog, command palette)
 - Popover surface, `rounded.3xl`, `p-5`, `--shadow-overlay`; heading-weight titles; footers are a `border-line-faint` hairline, never a filled bar.

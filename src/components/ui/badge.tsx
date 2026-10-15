@@ -15,8 +15,12 @@ const badgeVariants = cva(
         // Reads through `--urgent` (docs/DESIGN.md §1): on the board this
         // variant means "needs a verdict now", and the token says so. Same
         // red — `--urgent` aliases `--destructive` — different name.
+        // The ink is `--urgent-foreground`, the channel's text token (EI-382):
+        // `--urgent` on its own 10% tint measured 3.97:1 in light, and 3.46:1
+        // under the hover wash. This is 8.76:1 light and 7.50:1 dark on every
+        // board surface, hover included.
         destructive:
-          "bg-urgent/10 text-urgent focus-visible:ring-urgent/20 dark:bg-urgent/20 dark:focus-visible:ring-urgent/40 [a]:hover:bg-urgent/20",
+          "bg-urgent/10 text-urgent-foreground focus-visible:ring-urgent/20 dark:bg-urgent/20 dark:focus-visible:ring-urgent/40 [a]:hover:bg-urgent/20",
         outline:
           "border-border text-foreground [a]:hover:bg-muted [a]:hover:text-muted-foreground",
         ghost:

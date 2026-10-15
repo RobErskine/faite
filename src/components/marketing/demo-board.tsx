@@ -440,7 +440,7 @@ function DemoCard({ todo }: { todo: DemoTodo }) {
               // whole reason it is loud.
               <DemoTooltip label={`Deadline was ${todo.deadlineMissed} — now past`}>
                 <span
-                  className={cn(badgeVariants({ variant: "destructive" }), "text-2xs font-normal")}
+                  className={cn(badgeVariants({ variant: "destructive" }), "text-xs font-normal")}
                 >
                   Deadline <span className="num">{todo.deadlineMissed}</span>
                 </span>
@@ -485,7 +485,8 @@ function DemoColumnView({ column, dayTrack }: { column: DemoColumn; dayTrack?: b
         className={cn(
           "relative flex items-start justify-between gap-2 px-3 pt-2.5 pb-2",
           column.accentColor && "border-b-2",
-          column.tone === "urgent" && "border-b-2 border-urgent/40",
+          // Same 70% as the board's rule (EI-382): /40 failed 3:1 on surface-0.
+          column.tone === "urgent" && "border-b-2 border-urgent/70",
           dayTrack && column.emphasis && "hairline-spectrum",
         )}
         style={column.accentColor ? { borderColor: edge(column.accentColor) } : undefined}
@@ -512,7 +513,9 @@ function DemoColumnView({ column, dayTrack }: { column: DemoColumn; dayTrack?: b
             {column.tone === "urgent" && column.todos.length > 0 && (
               <span
                 aria-hidden
-                className="num shrink-0 rounded-4xl bg-urgent/10 px-1.5 text-2xs font-medium text-urgent"
+                // The board's count chip, as EI-378 left it: `text-xs` in
+                // `--urgent-foreground`, never red at the smallest size.
+                className="num shrink-0 rounded-4xl bg-urgent/10 px-1.5 text-xs font-medium text-urgent-foreground"
               >
                 {column.todos.length}
               </span>

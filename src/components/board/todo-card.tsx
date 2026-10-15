@@ -596,9 +596,17 @@ export function TodoCard({
 
         `after:-inset-x-1` narrows the shadcn base's 12px horizontal hit
         expansion to 4px. Left at 12px it would reach back to x=0 and cover the
-        grip entirely, so a click meant for the grip would toggle done. At 4px the
-        target is still 24px wide — the WCAG 2.2 minimum — and stops clear of the
-        grip's glyph, which is painted between x≈4.5 and x≈7.5.
+        grip entirely, so a click meant for the grip would toggle done. At 4px
+        it stops clear of the grip's glyph, which is painted between x≈4.5 and
+        x≈7.5: the target starts at x=9.
+
+        `after:w-6` is what makes it 24px wide, the WCAG 2.2 minimum (EI-382).
+        An absolute box is placed from its parent's PADDING box, inside the
+        1px border, so `-inset-x-1` alone spanned 14 + 2×4 = 22px, and
+        Lighthouse measured 22×30. With `left`, `right` and `width` all set,
+        CSS drops `right` (in LTR), so the left edge holds at x=9 and the
+        extra 2px grow rightward, toward the title's 36px first-line indent
+        and away from the grip: x=9 to x=33.
 
         `pointer-coarse:after:-inset-x-1` restates the same narrowing under
         `ui/checkbox.tsx`'s own `pointer-coarse:` hit-area growth (P1) —
@@ -653,7 +661,7 @@ export function TodoCard({
             // drag surface. It still drags if you pull from it; it just should not
             // advertise that over being a checkbox.
             className={cn(
-              "cursor-pointer after:-inset-x-1 pointer-coarse:after:-inset-x-1",
+              "cursor-pointer after:-inset-x-1 after:w-6 pointer-coarse:after:-inset-x-1",
               justCompleted && "animate-check motion-reduce:animate-none",
             )}
           />

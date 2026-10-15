@@ -26,7 +26,7 @@ that thing, or it stays achromatic.
 | Channel | Means | Implemented by | Where it appears | Never |
 |---|---|---|---|---|
 | **Identity hue** (user-chosen per tab or list, including Tomato) | "belongs to X" | `src/lib/colors.ts`: `wash()` 5%, `tint()` 12%, `edge()` 35%; `effectiveListColor()` | wash behind a run of rows, tint on group and tab headers, edge rule under a column title, label chips, confetti | on `text-2xs` text; on a card body |
-| **Urgent** (`--urgent`, an alias of `--destructive`) | "needs a verdict now" | `--urgent`, `--urgent-foreground`, `--urgent-soft`; `badgeVariants({ variant: "destructive" })` | the Overflow column's edge rule and count (both only while it holds something), missed Deadline, `×N` missed occurrences, N due banner, drop-refused outline | a second red anywhere, and the per-card "In Overflow N days" age, which is muted ink: the column already says it once (EI-374). Users may pick Tomato for a list; the app itself adds no other red |
+| **Urgent** (`--urgent`, an alias of `--destructive`) | "needs a verdict now" | `--urgent`, `--urgent-foreground`, `--urgent-soft`; `badgeVariants({ variant: "destructive" })`. Red **text** is always `--urgent-foreground` at `text-xs` or larger, on the 10% tint; bare `--urgent` is for rules and outlines only. The Overflow rule is `border-urgent/70`, the alpha that clears 3:1 on `surface-0` in both themes | the Overflow column's edge rule and count (both only while it holds something), missed Deadline, `×N` missed occurrences, N due banner, drop-refused outline | red text at `text-2xs`; a second red anywhere, and the per-card "In Overflow N days" age, which is muted ink: the column already says it once (EI-374). Users may pick Tomato for a list; the app itself adds no other red |
 | **Priority** | importance | `src/lib/priority.ts` `PRIORITY_RAILS` | the card's left rail: P1 5px double, P2 3px solid, P3 2px dashed, P4 2px dotted, all `--foreground` at falling opacity | hue. Line style, thickness and opacity carry all four levels (decision A; styles added 2026-09-10, §7) |
 | **Spectrum** (`--spectrum`, `--spectrum-solid`) | "Faite, here, now" | `hairline-spectrum` utility; `--spectrum-solid` for rings | four places only: the F mark on hover and focus, the today column's top hairline, the checked-box flash, the focus ring | a fill, a text color, a badge, a fifth place |
 | **Status** (`--warning`, `--info`, `--success`, each with `-foreground` and `-soft`) | system state | `bg-warning-soft text-warning-foreground` and siblings | desktop and auth banners, toasts | board content |
@@ -56,6 +56,13 @@ Components reference roles, never families.
 | `nums` | utility, tabular figures only | a number inside a sentence |
 | `type-column-title` | utility: heading face, bold, uppercase, tight tracking | column titles, strips, the create-list tile. Size stays at the call site (`text-lg` on a column, `text-sm` on a strip) so the utility never fights a size class |
 | `type-eyebrow` | utility: `text-2xs`, medium, uppercase, wide tracking, muted | subtitles, group headers, timeline day labels |
+
+`text-2xs` is 10px under Editorial and **11px under Hyperlegible**, with the
+same 14px line height in both, so no row changes height. It resolves through
+`--app-text-2xs`, set per pairing next to the families: the theme block is
+`@theme inline`, so only a `var()` lets the utility follow `data-font`. Not
+12px, because that is `text-xs`, and the step between the two is what keeps
+an eyebrow quieter than what it labels.
 
 Two pairings, selected by `data-font` on `<html>`:
 
@@ -102,7 +109,7 @@ not rules.
 
 **Today is the board's only card**: `--surface-1` + `shadow-card` + the
 spectrum hairline, and no border — the shadow carries the edge (in dark, via
-its inset hairline). Overflow carries an `--urgent` edge rule and its count,
+its inset hairline). Overflow carries an `--urgent` edge rule (at 70%) and its count,
 so it reads as a queue with pressure. Backlog carries an eyebrow, no accent,
 and the one always-visible quick-add placeholder, so it reads as quiet
 intake. The titles of days that are not today sit in `--muted-foreground`;
@@ -303,3 +310,4 @@ streak, score, or percentage anywhere in it.
 | 2026-10-14 | **The North Star is "The Forgiving Page".** Six words, held as three pairs: calm and plain, exact and fast, kind and forgiving. Anti-references: generic shadcn/SaaS, a gamified habit app, a corporate project tool. | Chosen by the owner during `/impeccable document`, to match the positioning in `PRODUCT.md` (forgiveness and honest endings). It names what the existing rules already do — the rolled-card marker is muted, Won't do dims instead of striking, red means a verdict is due — so it adds no new token. |
 | 2026-10-14 | **Overflow's red lives on the column, not the cards.** The per-card "In Overflow N days" age is a muted outline badge, and the column's urgent rule, like its count, draws only when the column holds something. Subtitle: "Waiting for an ending". | Every card in Overflow wore the same red pill, so the column read as a wall of red repeating one fact N times, and red at `text-2xs` broke PRODUCT.md's "colored text never at the smallest size". The No-Shame Rule wants the age told quietly, like the rolled-over marker; urgency is said once, by the column (EI-374). |
 | 2026-10-14 | **Quiet ink that must pass is `text-foreground/60`, and every control clears 24px** (EI-378). Tab counts, the header search label and avatar initials moved off `text-muted-foreground` (or its alphas); grips and small icon controls moved off `/30`–`/70` to full `text-muted-foreground`. Small targets grow by an `::after` extender or a `py-1 -my-1` pair, never by visual size; header icons extend to 44px under `pointer: coarse`. The quick-add takes `focus-ring`. Overflow's red count is `text-xs` in `--urgent-foreground`. | Measured on production: tab counts 2.3:1, the sunken search label 4.16:1, initials 4.35:1, grips 1.47:1; `--urgent` text on its own 10% tint, 3.83:1. Muted ink is 4.73:1 on the page but drops under 4.5:1 on any of the board's tinted surfaces (sunken, hover wash, a tab's 12% tint); foreground at 60% clears all of them in both themes and reads as the same gray. A target grown by padding-with-negative-margin or a pseudo-element changes no row height, so density holds. |
+| 2026-10-14 | **Small and thin red passes contrast** (EI-382). The missed-deadline and `×N` badges and the N-due banner take `--urgent-foreground` at `text-xs`, like Overflow's count; the `destructive` badge variant itself now inks in `--urgent-foreground`. Overflow's rule is `border-urgent/70`. Under Hyperlegible `text-2xs` is 11px. The to-do checkbox's target is a full 24px wide (`after:w-6`). | Measured on production: `--urgent` at 10px on its tint, 3.97:1 (3.46:1 under the hover wash); the rule at /40, 2.09:1 light and 1.98:1 dark on `surface-0`, under the 3:1 non-text floor. Now the red text is 8.76:1 light and 7.50:1 dark at worst, and the rule 3.51:1 and 3.68:1. Hyperlegible exists for low-vision readers and left the smallest size alone. The checkbox's `::after` is placed from inside its 1px border, so `-inset-x-1` gave 22px; `w-6` makes it 24 and keeps the left edge clear of the grip (DRAG-AND-DROP §5.4). |
