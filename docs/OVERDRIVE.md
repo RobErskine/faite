@@ -400,6 +400,21 @@ any point, and whatever wasn't decided simply stays in Overflow — no nag, no
 confirmation dialog. The whole thesis of the Faite Loop, and of Overdrive, is
 that it's okay to stop.
 
+**Where focus goes afterward (EI-386).** Back to the button that opened the
+session, when it still exists — Base UI's default. Often it does not:
+clearing the pile hides Overflow's footer button (and a day's ⚡ under its
+threshold, and Quick sort's at zero), and a session opened from ⌘K was
+opened by a palette that has since unmounted. Base UI then fell back to the
+last element it had seen focused anywhere, which was "Skip to today" at the
+top of the page. `overdriveReturnFocus` (`overdrive-overlay.tsx`, passed as
+the popup's `finalFocus`) sends it to the triaged column instead: its
+heading, focusable on request (`tabIndex = -1`, so never a Tab stop), or the
+heading's own button on a day column, or a collapsed rail itself. Tab from
+there carries on into the column — on an emptied Overflow, its empty state.
+An opener that was `<body>` (Safari does not focus a clicked button) stays
+with the default, and so does focus the user already moved out of the
+dialog.
+
 ## 8a. The flick — round 3
 
 **A genuinely blocking transition, not a decorative overlay.** Rounds 1–2

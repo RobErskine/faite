@@ -172,6 +172,9 @@ const MAC_KEY_LABEL: Record<string, string> = {
   slash: "/",
   comma: ",",
   period: ".",
+  // The Menu key's `KeyboardEvent.key` is "ContextMenu". Printed raw, the
+  // help sheet showed a lowercase "contextmenu" (EI-386).
+  contextmenu: "Menu key",
 };
 const OTHER_KEY_LABEL: Record<string, string> = {
   escape: "Esc",
@@ -187,6 +190,9 @@ const OTHER_KEY_LABEL: Record<string, string> = {
   slash: "/",
   comma: ",",
   period: ".",
+  // The Menu key's `KeyboardEvent.key` is "ContextMenu". Printed raw, the
+  // help sheet showed a lowercase "contextmenu" (EI-386).
+  contextmenu: "Menu key",
 };
 
 /** Render a combo for display, e.g. "mod+shift+z" → "⇧⌘Z" on macOS. */

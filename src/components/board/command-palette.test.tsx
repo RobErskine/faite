@@ -154,10 +154,8 @@ const TODOS = [
 
 const PLACEHOLDER = "Search to-dos or run a command…";
 
-function renderPalette(
-  overrides: Partial<React.ComponentProps<typeof CommandPalette>> = {},
-) {
-  const props = {
+function renderPaletteDefaults() {
+  return {
     open: true,
     onOpenChange: () => {},
     lists: LISTS,
@@ -179,9 +177,14 @@ function renderPalette(
     onOpenHistory: () => {},
     duplicateCount: 0,
     onOpenDuplicates: () => {},
-    ...overrides,
+    onOpenSettings: () => {},
   };
-  return render(<CommandPalette {...props} />);
+}
+
+function renderPalette(
+  overrides: Partial<React.ComponentProps<typeof CommandPalette>> = {},
+) {
+  return render(<CommandPalette {...renderPaletteDefaults()} {...overrides} />);
 }
 
 /** Types into the palette input, which is what drives both filters. */
@@ -236,6 +239,52 @@ describe("CommandPalette", () => {
     expect(screen.queryByText("Triage")).toBeNull();
     const overdrive = screen.getByRole("option", { name: "Overdrive — Overflow is empty" });
     expect(overdrive.getAttribute("aria-disabled")).toBe("true");
+  });
+
+  it("follows Overdrive with Quick sort in Triage while Backlog has cards (EI-386)", () => {
+    renderPalette({ overflowCount: 8, backlogCount: 3 });
+
+    const options = screen.getAllByRole("option").map((o) => o.textContent);
+    expect(options.slice(0, 2)).toEqual(["Open Overdrive (8)", "Quick sort Backlog (3)"]);
+
+    search("quick sort");
+    expect(screen.getByRole("option", { name: "Quick sort Backlog (3)" })).toBeTruthy();
+  });
+
+  it("finds Settings, and opens a section directly (EI-386)", () => {
+    const onOpenSettings = vi.fn();
+    const onOpenChange = vi.fn();
+    renderPalette({ onOpenSettings, onOpenChange });
+
+    // "sett" used to find nothing better than "Show 7 days". The
+    // create-from-query fallback always leads a query (§6.3); the commands
+    // are next.
+    search("sett");
+    const names = screen.getAllByRole("option").map((o) => o.textContent);
+    expect(names[0]).toBe("Create to-do “sett”");
+    expect(names.slice(1, 4)).toEqual(["Open settings", "Faite Loop settings", "Design settings"]);
+
+    fireEvent.click(screen.getByRole("option", { name: "Faite Loop settings" }));
+    expect(onOpenSettings).toHaveBeenCalledWith("loop");
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  it("names itself only while open — no stray heading on a closed palette (EI-386)", () => {
+    const { rerender } = renderPalette({ open: false });
+    expect(screen.queryByRole("heading", { name: "Command palette" })).toBeNull();
+    expect(screen.queryByText("Create and manage to-dos, lists, and labels")).toBeNull();
+
+    rerender(
+      <CommandPalette
+        {...({
+          ...renderPaletteDefaults(),
+          open: true,
+        } as React.ComponentProps<typeof CommandPalette>)}
+      />,
+    );
+    const dialog = screen.getByRole("dialog", { name: "Command palette" });
+    const heading = screen.getByRole("heading", { name: "Command palette" });
+    expect(dialog.contains(heading)).toBe(true);
   });
 
   it("still finds the moved commands by searching (EI-383)", () => {

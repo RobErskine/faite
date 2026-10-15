@@ -40,6 +40,13 @@ describe("HelpSheet", () => {
     expect(screen.getByText("Undo the last action")).toBeTruthy();
   });
 
+  it("shows the context menu's key by name, not as \"contextmenu\" (EI-386)", () => {
+    render(<HelpSheet open onOpenChange={() => {}} hotkeys={HOTKEYS} />);
+    const keys = [...document.querySelectorAll('[data-slot="kbd"]')].map((k) => k.textContent);
+    expect(keys).toContain("Menu key");
+    expect(keys.some((k) => /contextmenu/i.test(k ?? ""))).toBe(false);
+  });
+
   it("renders a representative local shortcut under its own scope heading", () => {
     render(<HelpSheet open onOpenChange={() => {}} hotkeys={HOTKEYS} />);
     expect(screen.getByText("Overdrive")).toBeTruthy();

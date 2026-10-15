@@ -58,6 +58,7 @@ function makeCtx(overrides: Partial<PaletteCommandCtx> = {}): PaletteCommandCtx 
     openActivity: vi.fn(),
     openHistory: vi.fn(),
     openDuplicates: vi.fn(),
+    openSettings: vi.fn(),
     close: vi.fn(),
     setVisibleDays: vi.fn(),
     setVisibleStatuses: vi.fn(),
@@ -152,6 +153,39 @@ describe("commandsByGroup", () => {
     const empty = commandsByGroup(makeCtx({ overflowCount: 0 }));
     expect(empty.get("Triage")).toEqual([]);
     expect(empty.get("View")!.some((c) => c.id === "view-overdrive")).toBe(true);
+  });
+
+  it("files Quick sort under Triage while Backlog has open to-dos, after Overdrive (EI-386)", () => {
+    const both = commandsByGroup(makeCtx({ overflowCount: 3, backlogCount: 4 }));
+    expect(both.get("Triage")!.map((c) => c.id)).toEqual(["view-overdrive", "view-quick-sort"]);
+    expect(both.get("View")!.some((c) => c.id === "view-quick-sort")).toBe(false);
+
+    const backlogOnly = makeCtx({ backlogCount: 4 });
+    const triage = commandsByGroup(backlogOnly).get("Triage")!;
+    expect(triage.map((c) => c.id)).toEqual(["view-quick-sort"]);
+    expect(triage[0].label(backlogOnly)).toBe("Quick sort Backlog (4)");
+
+    // Nothing to sort: back under View, disabled, same id.
+    const empty = makeCtx({ backlogCount: 0 });
+    const view = commandsByGroup(empty).get("View")!.find((c) => c.id === "view-quick-sort")!;
+    expect(view.disabled?.(empty)).toBe(true);
+    expect(commandsByGroup(empty).get("Triage")).toEqual([]);
+  });
+
+  it("opens Settings, and its Faite Loop and Design sections directly (EI-386)", () => {
+    const openSettings = vi.fn();
+    const close = vi.fn();
+    const ctx = makeCtx({ openSettings, close });
+    const manage = commandsByGroup(ctx).get("Manage")!;
+    const byLabel = (label: string) => manage.find((c) => c.label(ctx) === label)!;
+
+    byLabel("Open settings").run(ctx);
+    expect(openSettings).toHaveBeenLastCalledWith();
+    byLabel("Faite Loop settings").run(ctx);
+    expect(openSettings).toHaveBeenLastCalledWith("loop");
+    byLabel("Design settings").run(ctx);
+    expect(openSettings).toHaveBeenLastCalledWith("design");
+    expect(close).toHaveBeenCalledTimes(3);
   });
 
   it("puts the destructive Delete commands last, under their old ids (EI-383)", () => {

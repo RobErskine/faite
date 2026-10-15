@@ -65,6 +65,9 @@ export interface PaletteCommandCtx {
   openActivity: () => void;
   openHistory: () => void;
   openDuplicates: () => void;
+  /** Opens the settings sheet, on `section` (a `SETTINGS_SECTIONS` id) when
+   * given, else on its first section (EI-386). */
+  openSettings: (section?: string) => void;
   close: () => void;
   setVisibleDays: (days: number) => void | Promise<void>;
   setVisibleStatuses: (next: TodoStatus[]) => void | Promise<void>;
@@ -77,7 +80,9 @@ export interface PaletteCommandCtx {
  *
  * - **Triage** first, and only while there is triage to do. Overdrive used to
  *   sit 19th, under View, the day Overflow had cards in it — the one moment
- *   it is the most useful command in the list.
+ *   it is the most useful command in the list. Quick sort joins it while
+ *   Backlog has open to-dos (EI-386), after Overdrive: Overflow is the pile
+ *   that is overdue, Backlog the one that is merely unsorted.
  * - **Delete** last. "Delete a list…" and "Delete a tab…" used to rank 5th
  *   and 6th, ahead of everything a planning session actually reaches for. A
  *   destructive command belongs where the eye arrives last, not where an
@@ -164,6 +169,37 @@ const MANAGE_COMMANDS: PaletteCommand[] = [
     label: () => "History",
     run: (ctx) => {
       ctx.openHistory();
+      ctx.close();
+    },
+  },
+  {
+    // EI-386: ⌘K had no way into Settings — "sett" found "Show 7 days". No
+    // shortcut, because the app binds none (the header's account menu is
+    // the pointer route). The two sections below are the ones a board
+    // session reaches for: the rollover rules, and the look.
+    id: "manage-settings",
+    group: "Manage",
+    label: () => "Open settings",
+    run: (ctx) => {
+      ctx.openSettings();
+      ctx.close();
+    },
+  },
+  {
+    id: "manage-settings-loop",
+    group: "Manage",
+    label: () => "Faite Loop settings",
+    run: (ctx) => {
+      ctx.openSettings("loop");
+      ctx.close();
+    },
+  },
+  {
+    id: "manage-settings-design",
+    group: "Manage",
+    label: () => "Design settings",
+    run: (ctx) => {
+      ctx.openSettings("design");
       ctx.close();
     },
   },
@@ -261,9 +297,12 @@ const VIEW_MISC_COMMANDS: PaletteCommand[] = [
     },
   },
   {
-    // Overdrive over Backlog, with a list picker per card (EI-370).
+    // Overdrive over Backlog, with a list picker per card (EI-370). Triage
+    // while Backlog has open to-dos (EI-386), like Overdrive above; the
+    // `view-` id predates the move and is kept.
     id: "view-quick-sort",
     group: "View",
+    groupFor: (ctx) => (ctx.backlogCount > 0 ? "Triage" : "View"),
     label: (ctx) =>
       ctx.backlogCount > 0 ? `Quick sort Backlog (${ctx.backlogCount})` : "Quick sort — Backlog is empty",
     disabled: (ctx) => ctx.backlogCount === 0,

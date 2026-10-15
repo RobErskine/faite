@@ -28,7 +28,7 @@ import { SplitHandle } from "./split-handle";
 import { SplitStrip } from "./split-strip";
 import { TabStrip } from "./tab-strip";
 import { WeekendColumn } from "./weekend-column";
-import { SkipLinks } from "./skip-links";
+import { SKIP_TARGET_IDS, SkipLinks } from "./skip-links";
 import { DAY_COLUMN_WIDTH_CLASS, dayColumnWidth, dayTrackStyle } from "./day-track-widths";
 import type { BoardData } from "./use-board-data";
 import type { BoardUiState } from "./use-board-ui-state";
@@ -223,7 +223,10 @@ export function DesktopBoard({
         splitRatio != null ? ({ "--split-top": String(splitRatio) } as CSSProperties) : undefined
       }
     >
-      {/* First in the DOM, so they are the first Tab stops (EI-381). */}
+      {/* First in the DOM, so they are the first Tab stops (EI-381). Their
+          `href`s name `SKIP_TARGET_IDS` (EI-386), which this shell places on
+          today's column and Backlog's, or on the strip standing in for a
+          collapsed half — exactly one element each. */}
       <SkipLinks
         today={{
           columnId: dayColumnId(ctx.today),
@@ -311,6 +314,7 @@ export function DesktopBoard({
       */}
       {splitCollapsed === "calendar" ? (
         <SplitStrip
+          id={SKIP_TARGET_IDS.today}
           label="Calendar"
           count={calendarCount}
           direction="down"
@@ -427,6 +431,12 @@ export function DesktopBoard({
                   <WeekendColumn
                     key={slot.id}
                     id={slot.id}
+                    // Weekends hidden and today is one: the strip is today.
+                    anchorId={
+                      slot.columns.some((c) => c.day === ctx.today)
+                        ? SKIP_TARGET_IDS.today
+                        : undefined
+                    }
                     columns={slot.columns}
                     isDragActive={!!activeTodo}
                     onExpand={() => expandWeekend(slot.id)}
@@ -441,6 +451,7 @@ export function DesktopBoard({
                 <BoardColumn
                   key={column.id}
                   id={column.id}
+                  anchorId={isToday ? SKIP_TARGET_IDS.today : undefined}
                   // Marks this as a full-width day column for `measurePitch`
                   // in use-day-track.ts, which must not measure a 40px
                   // weekend strip that happens to sort first.
@@ -608,6 +619,7 @@ export function DesktopBoard({
       {/* Planning half */}
       {splitCollapsed === "planning" ? (
         <SplitStrip
+          id={backlogColumn ? SKIP_TARGET_IDS.backlog : undefined}
           label="Lists"
           count={planningCount}
           direction="up"
@@ -633,6 +645,7 @@ export function DesktopBoard({
           >
             <BoardColumn
               id={filteredBacklogColumn.id}
+              anchorId={SKIP_TARGET_IDS.backlog}
               title={filteredBacklogColumn.list.name}
               // Same reasoning as Overflow's className: a resizable rail
               // needs its region to register at a glance.

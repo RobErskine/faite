@@ -194,7 +194,20 @@ export function useBoardUiState() {
   /** The tab whose settings dialog is open, if any. */
   const [infoTabId, setInfoTabId] = useState<string | null>(null);
   const [archivedOpen, setArchivedOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpenState] = useState(false);
+  /** The section the settings sheet opens on — set by ⌘K's "Faite Loop
+   * settings" and "Design settings" (EI-386); undefined is the first. */
+  const [settingsSection, setSettingsSection] = useState<string | undefined>(undefined);
+  /** Every existing opener (the account menu, the phone header) means "the
+   * sheet", so a plain open forgets any section a palette command asked for. */
+  const setSettingsOpen = useCallback((open: boolean) => {
+    if (open) setSettingsSection(undefined);
+    setSettingsOpenState(open);
+  }, []);
+  const openSettings = useCallback((section?: string) => {
+    setSettingsSection(section);
+    setSettingsOpenState(true);
+  }, []);
   /** The day whose details sheet is open, if any. Same lazy-initializer
    * reasoning as `openTodoId` above — see `readDeepLinkParams`. */
   const [openDay, setOpenDay] = useState<CivilDate | null>(() => readDeepLinkParams().day);
@@ -575,6 +588,8 @@ export function useBoardUiState() {
     setArchivedOpen,
     settingsOpen,
     setSettingsOpen,
+    settingsSection,
+    openSettings,
     openDay,
     setOpenDay,
     overdriveSource,

@@ -35,6 +35,10 @@ interface SettingsSheetProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   settings: Settings | undefined;
+  /** A `SETTINGS_SECTIONS` id to open on — ⌘K's "Faite Loop settings" and
+   * "Design settings" (EI-386). Read each time the sheet opens; an unknown
+   * or hidden id falls back to the first section. */
+  initialSection?: string;
 }
 
 /**
@@ -42,10 +46,26 @@ interface SettingsSheetProps {
  * so it reads like a page without the cost of one. See SettingsSection in
  * ./types for how to add a section.
  */
-export function SettingsSheet({ open, onOpenChange, settings }: SettingsSheetProps) {
+export function SettingsSheet({ open, onOpenChange, settings, initialSection }: SettingsSheetProps) {
   const showDevTools = useIsLocalDev();
   const sections = SETTINGS_SECTIONS.filter((section) => !section.devOnly || showDevTools);
-  const [sectionId, setSectionId] = useState(SETTINGS_SECTIONS[0].id);
+  const openingSection = () =>
+    sections.some((section) => section.id === initialSection)
+      ? initialSection!
+      : SETTINGS_SECTIONS[0].id;
+  const [sectionId, setSectionId] = useState(openingSection);
+
+  /**
+   * Lands on `initialSection` each time the sheet opens. Adjusted during
+   * render on the closed→open edge — React's documented pattern for state
+   * derived from a prop change, and the reason this is not an effect (same
+   * rule as `handleOpenChange` below).
+   */
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) setSectionId(openingSection());
+  }
 
   /**
    * Reset to the first section on dismissal, in the change handler rather

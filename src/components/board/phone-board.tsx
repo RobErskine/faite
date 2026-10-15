@@ -24,7 +24,7 @@ import { OverflowEmptyState } from "./overflow-empty-state";
 import { TabStrip } from "./tab-strip";
 import { PhoneBottomBar } from "./phone-bottom-bar";
 import { PhoneListNav } from "./phone-list-nav";
-import { findSkipTarget, SkipLinks } from "./skip-links";
+import { findSkipTarget, SKIP_TARGET_IDS, SkipLinks } from "./skip-links";
 import type { BoardUiState } from "./use-board-ui-state";
 import type { useBoardActions } from "./use-board-actions";
 import type { NavigateFn } from "./use-column-nav";
@@ -171,7 +171,9 @@ export function PhoneBoard({
     <div className="flex h-dvh flex-col overscroll-none">
       {/* First in the DOM, so they are the first Tab stops (EI-381). Each
           switches to the page its column lives on first; the Lists pager
-          opens on Backlog, its first page. */}
+          opens on Backlog, its first page. Their `href`s (EI-386) name the
+          column on the page that is showing, and the bottom bar's tab for
+          the page that is not. */}
       <SkipLinks
         today={{
           columnId: dayColumnId(ctx.today),
@@ -302,6 +304,7 @@ export function PhoneBoard({
                   key={column.id}
                   className="pager-column"
                   id={column.id}
+                  anchorId={isToday ? SKIP_TARGET_IDS.today : undefined}
                   dayTrackColumn
                   // EI-193: a list dragged over this day will schedule its
                   // unscheduled to-dos onto it. Reuses the column-drag chrome
@@ -447,6 +450,7 @@ export function PhoneBoard({
                 <BoardColumn
                   className="pager-column"
                   id={filteredBacklogColumn.id}
+                  anchorId={SKIP_TARGET_IDS.backlog}
                   title={filteredBacklogColumn.list.name}
                   todos={filteredBacklogColumn.todos}
                   labels={labels}
@@ -564,7 +568,15 @@ export function PhoneBoard({
 
       </main>
 
-      <PhoneBottomBar view={phoneView} onSelectView={setPhoneView} />
+      <PhoneBottomBar
+        view={phoneView}
+        onSelectView={setPhoneView}
+        tabIds={
+          phoneView === "days"
+            ? { lists: backlogColumn ? SKIP_TARGET_IDS.backlog : undefined }
+            : { days: SKIP_TARGET_IDS.today }
+        }
+      />
     </div>
   );
 }

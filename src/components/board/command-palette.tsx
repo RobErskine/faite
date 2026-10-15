@@ -103,6 +103,8 @@ interface CommandPaletteProps {
   /** Probable duplicates waiting for review (EI-346). */
   duplicateCount: number;
   onOpenDuplicates: () => void;
+  /** Opens the settings sheet, on one section when given (EI-386). */
+  onOpenSettings: (section?: string) => void;
 }
 
 /** `PaletteEntryMode` (command-registry.ts) plus the always-present root. */
@@ -139,6 +141,7 @@ export function CommandPalette({
   onOpenHistory,
   duplicateCount,
   onOpenDuplicates,
+  onOpenSettings,
 }: CommandPaletteProps) {
   const platform = usePlatform();
   const [mode, setMode] = useState<Mode>({ kind: "root" });
@@ -497,6 +500,7 @@ export function CommandPalette({
     openActivity: onOpenActivity,
     openHistory: onOpenHistory,
     openDuplicates: onOpenDuplicates,
+    openSettings: onOpenSettings,
     close,
     setVisibleDays: async (days) => {
       await mutateSettings(LOCAL_OWNER_ID, { visibleDays: days });

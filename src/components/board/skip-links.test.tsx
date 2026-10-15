@@ -5,7 +5,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { addStop, cardStop } from "@/lib/column-nav";
-import { SkipLinks, findSkipTarget, type SkipLinkTarget } from "./skip-links";
+import { SKIP_TARGET_IDS, SkipLinks, findSkipTarget, type SkipLinkTarget } from "./skip-links";
 
 /**
  * EI-381. The shells are too heavy to mount here (see `landmarks.test.ts`), so
@@ -70,6 +70,17 @@ describe("skip links (EI-381)", () => {
     for (const link of links) {
       expect(link.compareDocumentPosition(header) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     }
+  });
+
+  it("point at real ids, not at fragments nothing carries (EI-386)", () => {
+    render(<Board />);
+    expect(screen.getByRole("link", { name: "Skip to today" }).getAttribute("href")).toBe(
+      `#${SKIP_TARGET_IDS.today}`,
+    );
+    expect(screen.getByRole("link", { name: "Skip to Backlog" }).getAttribute("href")).toBe(
+      `#${SKIP_TARGET_IDS.backlog}`,
+    );
+    expect(SKIP_TARGET_IDS.today).not.toBe(SKIP_TARGET_IDS.backlog);
   });
 
   it("are hidden until focused, then shown with the shared focus ring on a surface", () => {
@@ -154,4 +165,37 @@ describe("both shells mount them first (EI-381)", () => {
       expect(at).toBeLessThan(src.indexOf("<SignedOutBanner"));
     });
   }
+});
+
+/**
+ * EI-386. The links' targets are placed by the shells, which are too heavy to
+ * mount (above), so this reads them: every state a target can be in has an
+ * element carrying its id, and the conditions keep it to one at a time.
+ */
+describe("both shells place the skip links' targets (EI-386)", () => {
+  const read = (file: string) =>
+    readFileSync(join(process.cwd(), "src/components/board", file), "utf8");
+
+  it("desktop: today's column, or the weekend strip or collapsed half standing in for it", () => {
+    const src = read("desktop-board.tsx");
+    expect(src).toContain("anchorId={isToday ? SKIP_TARGET_IDS.today : undefined}");
+    expect(src).toMatch(/slot\.columns\.some\(\(c\) => c\.day === ctx\.today\)\s*\?\s*SKIP_TARGET_IDS\.today/);
+    expect(src).toMatch(/<SplitStrip\s+id=\{SKIP_TARGET_IDS\.today\}\s+label="Calendar"/);
+  });
+
+  it("desktop: Backlog's column, or the collapsed Lists half", () => {
+    const src = read("desktop-board.tsx");
+    expect(src).toContain("anchorId={SKIP_TARGET_IDS.backlog}");
+    expect(src).toMatch(
+      /<SplitStrip\s+id=\{backlogColumn \? SKIP_TARGET_IDS\.backlog : undefined\}\s+label="Lists"/,
+    );
+  });
+
+  it("phone: the column on the page that is showing, the other page's tab otherwise", () => {
+    const src = read("phone-board.tsx");
+    expect(src).toContain("anchorId={isToday ? SKIP_TARGET_IDS.today : undefined}");
+    expect(src).toContain("anchorId={SKIP_TARGET_IDS.backlog}");
+    expect(src).toContain('{ lists: backlogColumn ? SKIP_TARGET_IDS.backlog : undefined }');
+    expect(src).toContain("{ days: SKIP_TARGET_IDS.today }");
+  });
 });

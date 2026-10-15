@@ -132,7 +132,7 @@ export const LOCAL_SHORTCUTS: ShortcutEntry[] = [
   {
     id: "context-menu",
     combo: "contextmenu",
-    label: "Open the focused to-do's context menu (also right-click)",
+    label: "Open the focused to-do's context menu (also right-click; Shift+F10 on Windows)",
     scope: "To-do card",
     // Not bound by this app: the platform turns the Menu key into a
     // `contextmenu` event and Base UI's trigger answers it. Listed anyway,

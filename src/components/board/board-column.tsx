@@ -133,6 +133,13 @@ interface BoardColumnProps {
    * when it is a string.
    */
   regionLabel?: string;
+  /**
+   * A DOM `id` for the section, so a same-page link can name it — the skip
+   * links' targets (EI-386, `SKIP_TARGET_IDS`). Separate from `id`, which is
+   * the droppable id (`day:2026-10-14`) and already lives on
+   * `data-column-id`.
+   */
+  anchorId?: string;
   subtitle?: React.ReactNode;
   todos: Todo[];
   labels: LabelRecord[];
@@ -389,6 +396,7 @@ export function BoardColumn({
   id,
   title,
   regionLabel,
+  anchorId,
   subtitle,
   todos,
   labels,
@@ -742,6 +750,7 @@ export function BoardColumn({
       // How the skip links find a column without a ref threaded to them
       // (`skip-links.tsx`). The droppable id, so it matches `addStop(id)`.
       data-column-id={id}
+      id={anchorId}
       aria-label={
         collapsed
           ? `Expand the ${regionLabel ?? (typeof title === "string" ? title : "column")}`
@@ -950,7 +959,11 @@ export function BoardColumn({
                 */}
                 <h2
                   className={cn(
-                    "min-w-0 truncate type-column-title",
+                    // `focus-ring`: Overdrive can hand focus to this heading
+                    // when its own trigger is gone (EI-386,
+                    // `overdriveReturnFocus`); without it the focus would land
+                    // with nothing on screen to show where.
+                    "min-w-0 truncate type-column-title focus-ring",
                     // Days are the stage, lists are containers: today text-xl,
                     // other days and the rails text-lg, list columns text-base.
                     dayTrackColumn && emphasis ? "text-xl" : dayTrackColumn || pinned ? "text-lg" : "text-base",

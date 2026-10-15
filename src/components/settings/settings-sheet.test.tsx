@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SettingsSheet } from "./settings-sheet";
 import { SETTINGS_SECTIONS } from "./sections";
+import { ROOT_COMMANDS, type PaletteCommandCtx } from "@/lib/command-registry";
 import { FONT_PAIRINGS } from "@/lib/fonts";
 import type { Settings } from "@/lib/schema";
 
@@ -288,5 +289,51 @@ describe("SettingsSheet", () => {
       .map((el) => el.textContent?.trim());
     expect(pressed).toContain("5");
     expect(pressed).toContain("Off");
+  });
+
+  describe("opening on a section (EI-386)", () => {
+    const selectedTab = () =>
+      screen.getAllByRole("tab").find((t) => t.getAttribute("aria-selected") === "true")
+        ?.textContent;
+
+    it("opens on initialSection, and on it again each time it reopens", () => {
+      const { rerender } = render(
+        <SettingsSheet open onOpenChange={() => {}} settings={undefined} initialSection="loop" />,
+      );
+      expect(selectedTab()).toBe("Faite Loop");
+
+      rerender(
+        <SettingsSheet open={false} onOpenChange={() => {}} settings={undefined} initialSection="design" />,
+      );
+      rerender(
+        <SettingsSheet open onOpenChange={() => {}} settings={undefined} initialSection="design" />,
+      );
+      expect(selectedTab()).toBe("Design");
+    });
+
+    it("falls back to the first section for an id it does not show", () => {
+      dev.isLocal = false;
+      render(
+        <SettingsSheet open onOpenChange={() => {}} settings={undefined} initialSection="developer" />,
+      );
+      expect(selectedTab()).toBe(SETTINGS_SECTIONS[0].label);
+    });
+
+    /** ⌘K names sections by id (`command-registry.ts`); a renamed id here
+     * would quietly open the first section instead. */
+    it("knows every section a palette command opens", () => {
+      const asked: (string | undefined)[] = [];
+      const ctx = {
+        openSettings: (section?: string) => asked.push(section),
+        close: () => {},
+      } as unknown as PaletteCommandCtx;
+      for (const command of ROOT_COMMANDS.filter((c) => c.id.startsWith("manage-settings"))) {
+        void command.run(ctx);
+      }
+      const ids = asked.filter((id): id is string => id !== undefined);
+      expect(ids).toEqual(["loop", "design"]);
+      const known = new Set(SETTINGS_SECTIONS.map((section) => section.id));
+      for (const id of ids) expect(known.has(id)).toBe(true);
+    });
   });
 });
