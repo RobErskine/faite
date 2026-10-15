@@ -36,6 +36,8 @@ import { backlogMembership } from "./backlog";
 import { OVERFLOW, buildWindow } from "./scheduling";
 import type { List, Tab, Todo } from "./schema";
 import { positionsBetween } from "./ordering";
+import { defaultRule, occurrenceId, serializeRule } from "./recurrence";
+import { expandRecurrences } from "./recurrence-expand";
 
 const TODAY = "2026-08-03";
 
@@ -908,7 +910,7 @@ describe("buildBoard status filtering", () => {
     expect(board.awayTodoIds.size).toBe(0);
   });
 
-  it("keeps a settled todo on the day it was scheduled for", () => {
+  it("keeps a settled todo with no completedAt on the day it was scheduled for", () => {
     const board = buildBoard(
       [todo({ id: "d", scheduledDate: "2026-08-06", status: "done" })],
       LISTS,
@@ -961,6 +963,189 @@ describe("buildBoard status filtering", () => {
     expect(
       board.lists.find((c) => c.list.id === "groceries")!.todos.map((t) => t.id),
     ).toEqual(["open", "done"]);
+  });
+});
+
+/**
+ * EI-380 (owner decision 2026-10-14): finished work shows on the day it was
+ * FINISHED, not the day it was planned. TODAY is 2026-08-03 and the window
+ * runs through 2026-08-09, so "inside the window" means today or later.
+ */
+describe("settled work sits on the day it was finished (EI-380)", () => {
+  const SHOW_SETTLED = { visibleStatuses: ["open", "done", "dropped"] as const };
+  const DONE_TODAY = "2026-08-03T15:00:00.000Z";
+  const DONE_YESTERDAY = "2026-08-02T15:00:00.000Z";
+
+  const dayIds = (board: ReturnType<typeof buildBoard>, day: string) =>
+    board.days.find((d) => d.day === day)!.todos.map((t) => t.id);
+  const everywhere = (board: ReturnType<typeof buildBoard>) => [
+    ...board.days.flatMap((d) => d.todos.map((t) => t.id)),
+    ...board.overflow.todos.map((t) => t.id),
+    ...board.lists.flatMap((c) => c.todos.map((t) => t.id)),
+  ];
+  const build = (todos: Todo[], timezone = "UTC") =>
+    buildBoard(todos, LISTS, ctx, [], { ...SHOW_SETTLED, timezone });
+
+  it("puts a rolled to-do finished today on today", () => {
+    // Scheduled two days back: as an open card it rolled onto today.
+    const rolled = todo({
+      id: "rolled",
+      scheduledDate: "2026-08-01",
+      status: "done",
+      completedAt: DONE_TODAY,
+    });
+    expect(everywhere(build([rolled]))).toEqual(["rolled"]);
+    expect(dayIds(build([rolled]), TODAY)).toEqual(["rolled"]);
+  });
+
+  it("puts an Overflow to-do finished today on today, never back in Overflow", () => {
+    // Ten days back, far past `overflowAfterDays: 3` — it was ticked IN Overflow.
+    const stale = todo({
+      id: "stale",
+      scheduledDate: "2026-07-24",
+      status: "done",
+      completedAt: DONE_TODAY,
+    });
+    const board = build([stale]);
+    expect(board.overflow.todos).toHaveLength(0);
+    expect(dayIds(board, TODAY)).toEqual(["stale"]);
+  });
+
+  it("keeps a to-do scheduled for today and finished today on today", () => {
+    const board = build([
+      todo({ id: "d", scheduledDate: TODAY, status: "done", completedAt: DONE_TODAY }),
+    ]);
+    expect(dayIds(board, TODAY)).toEqual(["d"]);
+  });
+
+  it("moves a to-do scheduled for next week and finished early to today", () => {
+    const board = build([
+      todo({ id: "early", scheduledDate: "2026-08-08", status: "done", completedAt: DONE_TODAY }),
+    ]);
+    expect(dayIds(board, TODAY)).toEqual(["early"]);
+    expect(dayIds(board, "2026-08-08")).toEqual([]);
+  });
+
+  it("treats Won't do exactly like done", () => {
+    const board = build([
+      todo({ id: "wont", scheduledDate: "2026-07-24", status: "dropped", completedAt: DONE_TODAY }),
+      todo({ id: "early", scheduledDate: "2026-08-08", status: "dropped", completedAt: DONE_TODAY }),
+    ]);
+    expect(dayIds(board, TODAY).sort()).toEqual(["early", "wont"]);
+    expect(board.overflow.todos).toHaveLength(0);
+  });
+
+  it("falls back to scheduledDate for a legacy row with no completedAt", () => {
+    const board = build([
+      todo({ id: "ahead", scheduledDate: "2026-08-06", status: "done", completedAt: null }),
+      todo({ id: "past", scheduledDate: "2026-07-24", status: "done", completedAt: null }),
+    ]);
+    expect(dayIds(board, "2026-08-06")).toEqual(["ahead"]);
+    expect(everywhere(board)).toEqual(["ahead"]);
+  });
+
+  it("renders nothing for work finished on a day before the window", () => {
+    // Finished yesterday, planned for yesterday or before: History, not the board.
+    const board = build([
+      todo({ id: "y", scheduledDate: "2026-08-02", status: "done", completedAt: DONE_YESTERDAY }),
+      todo({ id: "r", scheduledDate: "2026-07-30", status: "dropped", completedAt: DONE_YESTERDAY }),
+    ]);
+    expect(everywhere(board)).toEqual([]);
+    expect(board.awayTodoIds.size).toBe(0);
+  });
+
+  it("keeps work finished on a past day but planned ahead on its planned day", () => {
+    // The completion day is outside a window that starts today, so the
+    // scheduledDate rule answers — unchanged from before EI-380.
+    const board = build([
+      todo({ id: "a", scheduledDate: "2026-08-07", status: "done", completedAt: DONE_YESTERDAY }),
+    ]);
+    expect(dayIds(board, "2026-08-07")).toEqual(["a"]);
+  });
+
+  it("leaves an unscheduled to-do in its list even when finished today", () => {
+    const board = build([
+      todo({ id: "milk", listId: "groceries", status: "done", completedAt: DONE_TODAY }),
+    ]);
+    expect(board.lists.find((c) => c.list.id === "groceries")!.todos.map((t) => t.id)).toEqual([
+      "milk",
+    ]);
+    expect(board.days.flatMap((d) => d.todos)).toHaveLength(0);
+  });
+
+  it("reads the finish day in the user's zone, not UTC, near midnight", () => {
+    // 06:30Z on the 4th is 11:30 PM on the 3rd in Los Angeles: finished TODAY
+    // there, tomorrow in UTC.
+    const lateEvening = todo({
+      id: "late",
+      scheduledDate: "2026-07-31",
+      status: "done",
+      completedAt: "2026-08-04T06:30:00.000Z",
+    });
+    expect(dayIds(build([lateEvening], "America/Los_Angeles"), TODAY)).toEqual(["late"]);
+    expect(dayIds(build([lateEvening], "UTC"), "2026-08-04")).toEqual(["late"]);
+
+    // And the other way: 05:00Z on the 3rd is still the 2nd in Los Angeles —
+    // yesterday there, so it leaves the board; today in UTC.
+    const lastNight = todo({
+      id: "night",
+      scheduledDate: "2026-07-31",
+      status: "done",
+      completedAt: "2026-08-03T05:00:00.000Z",
+    });
+    expect(everywhere(build([lastNight], "America/Los_Angeles"))).toEqual([]);
+    expect(dayIds(build([lastNight], "UTC"), TODAY)).toEqual(["night"]);
+  });
+
+  it("still sinks finished work below open work on the day it lands", () => {
+    const board = build([
+      todo({ id: "done-p1", scheduledDate: "2026-07-24", status: "done", priority: 1, completedAt: DONE_TODAY }),
+      todo({ id: "open-p4", scheduledDate: TODAY, priority: 4 }),
+      todo({ id: "wont-p1", scheduledDate: "2026-08-08", status: "dropped", priority: 1, completedAt: DONE_TODAY }),
+    ]);
+    const ids = dayIds(board, TODAY);
+    expect(ids[0]).toBe("open-p4");
+    expect(ids.slice(1).sort()).toEqual(["done-p1", "wont-p1"]);
+  });
+
+  it("puts a recurring occurrence finished today on today without disturbing the series", () => {
+    // 2026-08-03 is a Monday; a weekly-on-Wednesday series started a week ago.
+    const tmpl = todo({
+      id: "tmpl",
+      title: "Timesheets",
+      scheduledDate: "2026-07-29",
+      recurrenceRule: serializeRule({ ...defaultRule("2026-07-29"), byDay: [3] }),
+    });
+    // Two settled occurrences, materialized as real rows: last Wednesday's,
+    // finished late (today), and this Wednesday's, finished early (today).
+    const missed = todo({
+      id: occurrenceId(tmpl.id, "2026-07-29"),
+      recurrenceParentId: tmpl.id,
+      scheduledDate: "2026-07-29",
+      status: "done",
+      completedAt: DONE_TODAY,
+    });
+    const early = todo({
+      id: occurrenceId(tmpl.id, "2026-08-05"),
+      recurrenceParentId: tmpl.id,
+      scheduledDate: "2026-08-05",
+      status: "done",
+      completedAt: DONE_TODAY,
+    });
+    const expansion = expandRecurrences([tmpl], [missed, early], ctx);
+    // Settled occurrences never ride `forceOverflow` — that is the live one only.
+    expect(expansion.forceOverflow).toEqual([]);
+
+    const board = buildBoard(expansion.todos, LISTS, ctx, [], {
+      ...SHOW_SETTLED,
+      forceOverflow: expansion.forceOverflow,
+      timezone: "UTC",
+    });
+    expect(dayIds(board, TODAY).sort()).toEqual([missed.id, early.id].sort());
+    expect(board.overflow.todos).toHaveLength(0);
+    // Finishing Aug 5 early does not leave a fresh clone on Aug 5: the slot
+    // is settled even though its card now sits on today.
+    expect(dayIds(board, "2026-08-05")).toEqual([]);
   });
 });
 

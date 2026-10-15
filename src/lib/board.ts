@@ -6,6 +6,7 @@ import { matchesQuery, normalizeQuery } from "@/lib/search";
 import {
   OVERFLOW,
   PLANNING,
+  civilDateOf,
   daysBetween,
   deriveColumn,
   type Placement,
@@ -796,21 +797,73 @@ const DEFAULT_VISIBLE_STATUSES: readonly TodoStatus[] = ["open"];
  * long" reads as an accusation, and it would push genuinely stale work down
  * the column to make room.
  *
- * So the rule here is the simple one — a settled todo sits on the day it was
- * scheduled for, or in its list if it never was.
+ * FINISHED WORK SITS ON THE DAY IT WAS FINISHED (EI-380, owner decision
+ * 2026-10-14), not the day it was planned. Faite's people let to-dos roll, so
+ * most of what they finish is a rolled card or an Overflow card — both
+ * scheduled for a day already behind them. Placed by `scheduledDate`, every one
+ * of those vanished the moment it was ticked, and today showed none of the work
+ * actually done today. In order:
+ *
+ * 1. Unscheduled -> its list, whenever it was finished. The planning half is
+ *    arranged by hand and has no day to be honest about; pulling a ticked
+ *    grocery item out of the column it was ticked in, across the board into
+ *    today, would move the card out from under the click.
+ * 2. `completedAt`, read as a civil day in `timezone`, inside the window -> that
+ *    day. The window starts at today and the board never looks back, so in
+ *    practice this means "finished today -> today": a to-do scheduled for next
+ *    Thursday and finished early this morning is today's work, and saying so
+ *    is the honest answer. (A completion stamped after today only comes from
+ *    a device with a skewed clock; it lands on the day the record names.)
+ * 3. Otherwise, `scheduledDate` inside the window -> that day, else null. This
+ *    catches a completion on a PAST day — outside a window that starts at
+ *    today — and legacy rows whose `completedAt` is null, which predate
+ *    central stamping (`statusPatch`). For anything scheduled in the past that
+ *    means null, so yesterday's finished work leaves the board at midnight and
+ *    lives in History. The one case that still renders: scheduled ahead,
+ *    finished on an earlier day — it sits on its planned day, as it always did.
+ *
+ * Never Overflow, by any path above — and the card the user ticked IN
+ * Overflow now lands on today, which is where it was done.
+ *
+ * `timezone` must be the zone `ctx.today` was computed in (`settings.timezone`
+ * via `contextFromSettings`): an 11:30pm completion in Los Angeles is already
+ * tomorrow in UTC, and reading it in the wrong zone would file it on a day
+ * that has not started yet.
+ *
+ * A settled recurring occurrence is a real row (`materializeOccurrence`) and
+ * comes through here like any other. Only the LIVE occurrence bypasses this
+ * function, via `forceOverflow`, and a live occurrence is open by definition
+ * (`expandRecurrences`). Moving a settled occurrence's card to the day it was
+ * finished does not touch the series: settlement is keyed by the occurrence
+ * id's ORIGINAL slot, never by where the card sits.
  *
  * Out-of-window settled work returns null rather than the planning half's
  * `awayDate` treatment. That fallback exists to keep a todo you still have to
  * do reachable; applying it here would pour months of finished cards into the
  * lists, which is the one place they would drown live work.
+ *
+ * Exported for `TodoCard`, which compares the answer with `scheduledDate` to
+ * say "planned Oct 12" on a card that no longer sits on its planned day — one
+ * rule, so the card can never disagree with the column it is in.
  */
-function placeSettled(
-  todo: Pick<Todo, "scheduledDate">,
+export function placeSettled(
+  todo: Pick<Todo, "scheduledDate" | "completedAt">,
   ctx: PlacementContext,
+  timezone: string,
 ): Placement | null {
+  const inWindow = (day: CivilDate) => {
+    const offset = daysBetween(ctx.today, day);
+    return offset >= 0 && offset < ctx.visibleWindow.length;
+  };
+
+  // Rule 1: an unscheduled card stays in its list even when it was finished
+  // today.
   if (!todo.scheduledDate) return { half: PLANNING, awayDate: null };
-  const offset = daysBetween(ctx.today, todo.scheduledDate);
-  if (offset < 0 || offset >= ctx.visibleWindow.length) return null;
+
+  const finishedOn = todo.completedAt ? civilDateOf(todo.completedAt, timezone) : null;
+  if (finishedOn && inWindow(finishedOn)) return { half: "calendar", day: finishedOn };
+
+  if (!inWindow(todo.scheduledDate)) return null;
   return { half: "calendar", day: todo.scheduledDate };
 }
 
@@ -834,6 +887,14 @@ export interface BuildBoardOptions {
    * alphabetically, the behavior this had before tabs entered the sort.
    */
   tabsById?: ReadonlyMap<string, Pick<Tab, "color" | "position">>;
+  /**
+   * IANA zone `ctx.today` was computed in — `settings.timezone`. Reads a
+   * settled todo's `completedAt` as a civil day (see `placeSettled`). A
+   * separate option rather than a field on `PlacementContext` for the reason
+   * `TodoCard`'s `timezone` prop gives: that type carries civil dates only.
+   * Omitted defaults to UTC, which only tests should rely on.
+   */
+  timezone?: string;
 }
 
 /**
@@ -870,6 +931,7 @@ export function buildBoard(
     visibleStatuses = DEFAULT_VISIBLE_STATUSES,
     forceOverflow = [],
     tabsById = new Map(),
+    timezone = "UTC",
   }: BuildBoardOptions = {},
 ): BoardModel {
   const shown = new Set(visibleStatuses);
@@ -902,7 +964,9 @@ export function buildBoard(
 
   for (const todo of visible) {
     const placement =
-      todo.status === "open" ? deriveColumn(todo, ctx) : placeSettled(todo, ctx);
+      todo.status === "open"
+        ? deriveColumn(todo, ctx)
+        : placeSettled(todo, ctx, timezone);
 
     if (placement === null) continue;
 

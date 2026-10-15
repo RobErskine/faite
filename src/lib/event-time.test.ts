@@ -55,6 +55,33 @@ describe("formatCompletionStamp", () => {
     expect(stamp).toBe("Completed Aug 14 · 11:30 PM");
   });
 
+  it("names the planned day when the card sits elsewhere (EI-380)", () => {
+    expect(formatCompletionStamp("done", instant, "UTC", "2026-08-12")).toBe(
+      "Completed Aug 14 · 9:41 PM · planned Aug 12",
+    );
+    expect(formatCompletionStamp("dropped", instant, "UTC", "2026-08-21")).toBe(
+      "Marked won’t do Aug 14 · 9:41 PM · planned Aug 21",
+    );
+  });
+
+  it("adds the planned year only when it is not the completion's year", () => {
+    expect(formatCompletionStamp("done", "2026-01-02T15:00:00.000Z", "UTC", "2025-12-29")).toBe(
+      "Completed Jan 2 · 3:00 PM · planned Dec 29, 2025",
+    );
+  });
+
+  it("compares years in the user's zone, across New Year's Eve", () => {
+    // 03:00Z on Jan 1 is still Dec 31 in New York — the same year as Dec 29.
+    expect(
+      formatCompletionStamp("done", "2027-01-01T03:00:00.000Z", "America/New_York", "2026-12-29"),
+    ).toBe("Completed Dec 31 · 10:00 PM · planned Dec 29");
+  });
+
+  it("says nothing about a plan when there is no stamp to hang it on", () => {
+    expect(formatCompletionStamp("done", null, "UTC", "2026-08-12")).toBeNull();
+    expect(formatCompletionStamp("open", null, "UTC", "2026-08-12")).toBeNull();
+  });
+
   it("falls back to UTC for a garbage timezone rather than throwing", () => {
     expect(formatCompletionStamp("done", instant, "Not/AZone")).toBe("Completed Aug 14 · 9:41 PM");
     expect(formatEventTime(instant, "Not/AZone")).toBe("9:41 PM");

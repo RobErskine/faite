@@ -459,10 +459,26 @@ export function useBoardData(params: UseBoardDataParams) {
             tabLists,
             ctx,
             hiddenLists,
-            { visibleStatuses, forceOverflow: recurrenceExpansion?.forceOverflow, tabsById },
+            {
+              visibleStatuses,
+              forceOverflow: recurrenceExpansion?.forceOverflow,
+              tabsById,
+              // The zone `ctx.today` came from, so a settled card's finish
+              // day is read on the same calendar (EI-380, `placeSettled`).
+              timezone: settings?.timezone,
+            },
           )
         : null,
-    [recurrenceExpansion, nonTemplateTodos, tabLists, ctx, hiddenLists, visibleStatuses, tabsById],
+    [
+      recurrenceExpansion,
+      nonTemplateTodos,
+      tabLists,
+      ctx,
+      hiddenLists,
+      visibleStatuses,
+      tabsById,
+      settings?.timezone,
+    ],
   );
 
   /**
@@ -472,10 +488,10 @@ export function useBoardData(params: UseBoardDataParams) {
    * `board.overflow.todos.length`'s own unfiltered convention: narrowing a
    * day's search can never hide its Overdrive icon.
    *
-   * Open-only, unlike Overflow: `placeSettled` (lib/board.ts) can put a
-   * done/dropped todo back on its scheduled day when `settings.visibleStatuses`
-   * includes it, and Overdrive should never offer to triage a card that's
-   * already settled.
+   * Open-only, unlike Overflow: `placeSettled` (lib/board.ts) puts a
+   * done/dropped todo on a day column — the day it was finished, or its
+   * scheduled day (EI-380) — when `settings.visibleStatuses` includes it, and
+   * Overdrive should never offer to triage a card that's already settled.
    */
   const overdriveDayTodos = useMemo(() => {
     const map = new Map<CivilDate, Todo[]>();

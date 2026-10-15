@@ -645,6 +645,64 @@ describe("the completion stamp", () => {
     expect(wrapper.className).toContain("absolute left-3 top-2");
   });
 
+  /*
+   * EI-380: settled work sits on the day it was finished, so a rolled card
+   * ticked today is in today's column with an older `scheduledDate`. The
+   * plan stays one hover — or one screen-reader pass — away. `ctx.today` is
+   * Aug 9 here.
+   */
+  describe("when the card is not on its planned day (EI-380)", () => {
+    const TODAY_STAMP = "2026-08-09T15:00:00.000Z";
+
+    it("adds the planned day to a rolled to-do finished today", () => {
+      render(
+        <Harness
+          todo={done({ scheduledDate: "2026-08-05", completedAt: TODAY_STAMP })}
+          timezone="UTC"
+        />,
+      );
+      expect(title().textContent).toContain("Completed Aug 9 · 3:00 PM · planned Aug 5");
+    });
+
+    it("says won't do with the planned day for a won't-do", () => {
+      render(
+        <Harness
+          todo={done({ status: "dropped", scheduledDate: "2026-07-20", completedAt: TODAY_STAMP })}
+          timezone="UTC"
+        />,
+      );
+      expect(title().textContent).toContain("Marked won’t do Aug 9 · 3:00 PM · planned Jul 20");
+    });
+
+    it("says nothing about a plan when it was finished on its planned day", () => {
+      render(
+        <Harness
+          todo={done({ scheduledDate: "2026-08-09", completedAt: TODAY_STAMP })}
+          timezone="UTC"
+        />,
+      );
+      expect(title().textContent).toContain("Completed Aug 9 · 3:00 PM");
+      expect(title().textContent).not.toContain("planned");
+    });
+
+    it("says nothing about a plan for an unscheduled to-do", () => {
+      render(<Harness todo={done({ completedAt: TODAY_STAMP })} timezone="UTC" />);
+      expect(title().textContent).not.toContain("planned");
+    });
+
+    it("reads the finish day in the user's zone", () => {
+      // 06:30Z on Aug 10 is 11:30 PM on Aug 9 in Los Angeles — today there,
+      // so the card is on today and the Aug 5 plan is worth naming.
+      render(
+        <Harness
+          todo={done({ scheduledDate: "2026-08-05", completedAt: "2026-08-10T06:30:00.000Z" })}
+          timezone="America/Los_Angeles"
+        />,
+      );
+      expect(title().textContent).toContain("Completed Aug 9 · 11:30 PM · planned Aug 5");
+    });
+  });
+
   it("triggers the tooltip from a plain span, never from the Checkbox itself", () => {
     /*
      * The regression this file exists to prevent (EI-196): `TooltipTrigger
