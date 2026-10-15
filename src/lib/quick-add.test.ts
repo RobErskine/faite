@@ -10,6 +10,7 @@ import {
   quickAddDraftToString,
   resolveQuickAdd,
   restoreFoldedMatch,
+  settleQuickAddDraft,
 } from "./quick-add";
 import type { ReminderPreset } from "./schema";
 
@@ -41,11 +42,12 @@ describe("parseQuickAdd", () => {
     expect(result.matches).toEqual([]);
   });
 
-  it("does not treat a leading date word as a token (leading run is priority-only)", () => {
+  it("does not apply a leading word-only date — but says so (EI-379)", () => {
     const result = parseQuickAdd("today I need to call mom", TODAY);
     expect(result.title).toBe("today I need to call mom");
     expect(result.scheduledDate).toBeNull();
     expect(result.matches).toEqual([]);
+    expect(result.notices).toEqual([{ raw: "today", kind: "leading-date", label: "today · not used" }]);
   });
 
   it("does not parse a bare number as a time", () => {
@@ -327,11 +329,21 @@ describe("foldQuickAddDraft", () => {
     expect(result.confirmed.map((m) => m.kind)).toEqual(["priority", "date"]);
   });
 
-  it("folding a second match of an already-confirmed kind replaces it, not stacks it", () => {
+  it("folding a second priority or time replaces the confirmed one, not stacks it", () => {
+    const first = foldQuickAddDraft("buy milk p1 ", [], TODAY);
+    const second = foldQuickAddDraft(`${first.text}p2 `, first.confirmed, TODAY);
+    expect(second.confirmed).toHaveLength(1);
+    expect(second.confirmed[0]).toMatchObject({ kind: "priority", raw: "p2" });
+  });
+
+  it("a second DATE does not replace the confirmed one — both go back in the text (EI-379)", () => {
     const first = foldQuickAddDraft("buy milk tomorrow ", [], TODAY);
     const second = foldQuickAddDraft(`${first.text}fri `, first.confirmed, TODAY);
-    expect(second.confirmed).toHaveLength(1);
-    expect(second.confirmed[0]).toMatchObject({ kind: "date", raw: "fri" });
+    expect(second).toEqual({ text: "buy milk tomorrow fri ", confirmed: [] });
+    const parsed = parseQuickAdd(quickAddDraftToString(second.text, second.confirmed), TODAY);
+    expect(parsed.scheduledDate).toBe("2026-08-13");
+    expect(parsed.title).toBe("buy milk fri");
+    expect(parsed.notices.map((n) => n.label)).toEqual(["fri · not used"]);
   });
 
   it("leaves an unrelated already-confirmed kind untouched", () => {
@@ -638,6 +650,206 @@ describe("EI-375: quick-add never misfiles silently", () => {
       ).toBe(
         "No list is called @novels, so it stayed in the title. @to matches 2 lists, so it stayed in the title.",
       );
+    });
+  });
+});
+
+/**
+ * EI-379 — one date wins, and no date word is removed without a chip.
+ * Fixed clock: Wed 2026-10-14, the day both cases were verified.
+ */
+describe("EI-379: quick-add never drops a date word silently", () => {
+  const OCT_14 = "2026-10-14"; // a Wednesday
+  const unused = (raw: string) => ({ raw, kind: "unused-date", label: `${raw} · not used` });
+  const leadingNotice = (raw: string) => ({ raw, kind: "leading-date", label: `${raw} · not used` });
+
+  describe("two dates in one sentence", () => {
+    it("the earliest applies; the other stays in the title with a 'not used' notice", () => {
+      const result = parseQuickAdd("Call about Thursday oct 1", OCT_14);
+      expect(result.title).toBe("Call about oct 1");
+      expect(result.scheduledDate).toBe("2026-10-15");
+      expect(result.matches).toEqual([{ raw: "Thursday", kind: "date", label: "Thu Oct 15" }]);
+      expect(result.notices).toEqual([unused("oct 1")]);
+    });
+
+    it("in the other order, the other one wins — position decides, not the kind of date", () => {
+      const result = parseQuickAdd("Call oct 1 Thursday", OCT_14);
+      expect(result.title).toBe("Call Thursday");
+      expect(result.scheduledDate).toBe("2027-10-01");
+      expect(result.notices).toEqual([unused("Thursday")]);
+    });
+
+    it("every extra date is kept, in place, each with its own notice", () => {
+      const result = parseQuickAdd("Plan trip mon fri oct 20", OCT_14);
+      expect(result.title).toBe("Plan trip fri oct 20");
+      expect(result.scheduledDate).toBe("2026-10-19");
+      expect(result.notices).toEqual([unused("fri"), unused("oct 20")]);
+    });
+
+    it("dismissing the winner hands the date to the next one, which gets its own chip", () => {
+      const result = parseQuickAdd("Call about Thursday oct 1", OCT_14, [], { literals: ["Thursday"] });
+      expect(result.title).toBe("Call about Thursday");
+      expect(result.scheduledDate).toBe("2027-10-01");
+      expect(result.matches).toEqual([{ raw: "oct 1", kind: "date", label: "Fri Oct 1, 2027" }]);
+      expect(result.notices).toEqual([]);
+    });
+
+    it("dismissing both leaves both in the title and nothing scheduled", () => {
+      const result = parseQuickAdd("Call about Thursday oct 1", OCT_14, [], {
+        literals: ["Thursday", "oct 1"],
+      });
+      expect(result.title).toBe("Call about Thursday oct 1");
+      expect(result.scheduledDate).toBeNull();
+      expect(result.notices).toEqual([]);
+    });
+  });
+
+  describe("deadlines and times", () => {
+    it("a date and a `!` deadline are different kinds — both apply, nothing is 'not used'", () => {
+      const result = parseQuickAdd("file taxes fri !oct 20", OCT_14);
+      expect(result.title).toBe("file taxes");
+      expect(result.scheduledDate).toBe("2026-10-16");
+      expect(result.deadline).toBe("2026-10-20");
+      expect(result.notices).toEqual([]);
+    });
+
+    it("two deadlines: the first applies, the second stays in the title", () => {
+      const result = parseQuickAdd("file taxes !fri !oct 20", OCT_14);
+      expect(result.title).toBe("file taxes !oct 20");
+      expect(result.deadline).toBe("2026-10-16");
+      expect(result.notices).toEqual([unused("!oct 20")]);
+    });
+
+    it("a time is not a second date", () => {
+      const result = parseQuickAdd("standup oct 20 10am", OCT_14);
+      expect(result.title).toBe("standup");
+      expect(result.scheduledDate).toBe("2026-10-20");
+      expect(result.reminderTime).toBe("10:00");
+      expect(result.notices).toEqual([]);
+    });
+
+    it("a time between two dates still applies", () => {
+      const result = parseQuickAdd("standup 10am fri oct 20", OCT_14);
+      expect(result.title).toBe("standup oct 20");
+      expect(result.scheduledDate).toBe("2026-10-16");
+      expect(result.reminderTime).toBe("10:00");
+      expect(result.notices).toEqual([unused("oct 20")]);
+    });
+  });
+
+  describe("a date at the start", () => {
+    it("parses like the same date at the end", () => {
+      const leading = parseQuickAdd("oct 1 renew passport", OCT_14);
+      const trailing = parseQuickAdd("renew passport oct 1", OCT_14);
+      expect(leading.title).toBe("renew passport");
+      expect(leading.scheduledDate).toBe("2027-10-01");
+      expect(leading.matches).toEqual([{ raw: "oct 1", kind: "date", label: "Fri Oct 1, 2027" }]);
+      expect(leading.notices).toEqual([]);
+      expect(trailing).toEqual(leading);
+    });
+
+    it("reads every form that carries a digit, and a `!` deadline", () => {
+      expect(parseQuickAdd("10/20 dentist", OCT_14).scheduledDate).toBe("2026-10-20");
+      expect(parseQuickAdd("2026-11-02 dentist", OCT_14).scheduledDate).toBe("2026-11-02");
+      const deadline = parseQuickAdd("!fri pay rent", OCT_14);
+      expect(deadline.deadline).toBe("2026-10-16");
+      expect(deadline.title).toBe("pay rent");
+    });
+
+    it("takes a leading priority and a leading date together", () => {
+      const result = parseQuickAdd("p1 oct 20 renew passport", OCT_14);
+      expect(result.title).toBe("renew passport");
+      expect(result.priority).toBe(1);
+      expect(result.scheduledDate).toBe("2026-10-20");
+    });
+
+    it("competes with a trailing date like any other: the earliest wins", () => {
+      const result = parseQuickAdd("oct 20 renew passport fri", OCT_14);
+      expect(result.title).toBe("renew passport fri");
+      expect(result.scheduledDate).toBe("2026-10-20");
+      expect(result.notices).toEqual([unused("fri")]);
+    });
+
+    it.each(["May the force be with you", "March madness bracket", "Sept issue of the magazine"])(
+      "a bare month word is not a date: %s",
+      (input) => {
+        const result = parseQuickAdd(input, OCT_14);
+        expect(result.title).toBe(input);
+        expect(result.scheduledDate).toBeNull();
+        expect(result.notices).toEqual([]);
+      },
+    );
+
+    it.each([
+      ["Tom called back", "Tom"],
+      ["Sun cream for the trip", "Sun"],
+      ["Wednesday anchor", "Wednesday"],
+      ["next fri standup", "next fri"],
+    ])("a word-only date is title text, with a notice: %s", (input, raw) => {
+      const result = parseQuickAdd(input, OCT_14);
+      expect(result.title).toBe(input);
+      expect(result.scheduledDate).toBeNull();
+      expect(result.notices).toEqual([leadingNotice(raw)]);
+    });
+
+    it("a word-only date at the start does not stop a date at the end", () => {
+      const result = parseQuickAdd("today call mom fri", OCT_14);
+      expect(result.title).toBe("today call mom");
+      expect(result.scheduledDate).toBe("2026-10-16");
+      expect(result.notices).toEqual([leadingNotice("today")]);
+    });
+
+    it("dismissed, it is plain title text with no notice", () => {
+      const result = parseQuickAdd("oct 1 renew passport", OCT_14, [], { literals: ["oct 1"] });
+      expect(result.title).toBe("oct 1 renew passport");
+      expect(result.scheduledDate).toBeNull();
+      expect(result.notices).toEqual([]);
+    });
+
+    it("is off with `leadingDates: false` — the to-do sheet re-parsing an old title", () => {
+      const result = parseQuickAdd("10/1 invoice", OCT_14, [], { leadingDates: false });
+      expect(result.title).toBe("10/1 invoice");
+      expect(result.scheduledDate).toBeNull();
+      expect(result.notices).toEqual([]);
+    });
+
+    it("folds out of the field and goes back to the start when dismissed", () => {
+      const folded = foldQuickAddDraft("oct 20 renew ", [], OCT_14);
+      expect(folded.text).toBe("renew ");
+      expect(folded.confirmed).toEqual([
+        { raw: "oct 20", kind: "date", label: "Tue Oct 20", at: 0 },
+      ]);
+      expect(restoreFoldedMatch("renew passport", folded.confirmed[0])).toBe("oct 20 renew passport");
+    });
+  });
+
+  describe("typing it live agrees with pasting it", () => {
+    it("a pasted pair does not fold — folding the winner out would hand the loser the win", () => {
+      expect(foldQuickAddDraft("Call about Thursday oct 1 ", [], OCT_14)).toEqual({
+        text: "Call about Thursday oct 1 ",
+        confirmed: [],
+      });
+    });
+
+    it("a second date typed after one folded puts the first back where it was", () => {
+      const first = foldQuickAddDraft("Call about Thursday ", [], OCT_14);
+      expect(first.text).toBe("Call about ");
+      const second = foldQuickAddDraft(`${first.text}oct 1 `, first.confirmed, OCT_14);
+      expect(second).toEqual({ text: "Call about Thursday oct 1 ", confirmed: [] });
+      const parsed = parseQuickAdd(quickAddDraftToString(second.text, second.confirmed), OCT_14);
+      expect(parsed).toEqual(parseQuickAdd("Call about Thursday oct 1", OCT_14));
+    });
+
+    it("settles the same way when Enter comes before the space", () => {
+      const first = foldQuickAddDraft("Call about Thursday ", [], OCT_14);
+      const settled = settleQuickAddDraft(`${first.text}oct 1`, first.confirmed, OCT_14);
+      expect(settled).toEqual({ text: "Call about Thursday oct 1", confirmed: [] });
+    });
+
+    it("leaves a folded date alone when the text has no date of that kind", () => {
+      const first = foldQuickAddDraft("Call about Thursday ", [], OCT_14);
+      const settled = settleQuickAddDraft(`${first.text}!oct 20`, first.confirmed, OCT_14);
+      expect(settled).toEqual({ text: "Call about !oct 20", confirmed: first.confirmed });
     });
   });
 });
