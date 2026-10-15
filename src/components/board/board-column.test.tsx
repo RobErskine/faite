@@ -1026,3 +1026,44 @@ describe("accessibility floor (EI-378)", () => {
     expect(count.className).not.toContain("text-2xs");
   });
 });
+
+/**
+ * EI-388. happy-dom has no layout, so the geometry is asserted as classes;
+ * the browser measurements (390×844 coarse, 1440×900 fine) are in the commit.
+ * Each pair is asserted together: a grown box without its negative margin
+ * moves the layout, and a negative margin without the padding shrinks it.
+ */
+describe("touch targets (EI-388)", () => {
+  const classes = (el: Element) => el.className.split(/\s+/);
+
+  it("floors a group header at 24px for a mouse and 44px on touch", () => {
+    render(<Harness groups={[ADMIN]} />);
+    const cls = classes(header("Admin, 2 to-dos"));
+    expect(cls).toContain("min-h-6");
+    expect(cls).toContain("pointer-coarse:min-h-11");
+  });
+
+  it("makes the quick-add 44px tall on touch only", () => {
+    render(<Harness />);
+    const cls = classes(screen.getByRole("textbox", { name: "Add a to-do to Sunday" }));
+    expect(cls).toContain("pointer-coarse:min-h-11");
+    expect(cls).toContain("py-2");
+  });
+
+  it("grows the day-name button to 44px on touch without growing the header", () => {
+    render(<Harness onOpenInfo={vi.fn()} />);
+    const button = screen.getByRole("button", { name: "Sunday" });
+    const cls = classes(button);
+    expect(cls).toContain("pointer-coarse:py-2");
+    expect(cls).toContain("pointer-coarse:-my-2");
+    expect(cls).toContain("truncate");
+    // `overflow: hidden` on the heading would clip the padding out of hit
+    // testing, so the heading leaves truncation to the button.
+    expect(classes(button.closest("h2")!)).not.toContain("truncate");
+  });
+
+  it("still truncates a heading that has no button", () => {
+    render(<Harness />);
+    expect(classes(screen.getByText("Sunday").closest("h2")!)).toContain("truncate");
+  });
+});

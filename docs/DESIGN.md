@@ -104,7 +104,7 @@ paper under both halves. Whitespace is the only column separator — a 12px
 `gap-3` (mirrored by `DAY_GAP_PX` in desktop-board.tsx, which the rigid
 column-width calc must keep in step with) — and a column is held together by
 its own header and left alignment edge. Rows inside a column have **no
-dividers** — separation is spacing (36px rhythm, `py-2`) and the hover wash,
+dividers** — separation is spacing (36px rhythm, `py-2`; 44px under `pointer: coarse`, see Touch targets below) and the hover wash,
 not rules.
 
 **Today is the board's only card**: `--surface-1` + `shadow-card` + the
@@ -161,6 +161,36 @@ same recessed surface its header trigger button does, so opening it reads as
 the same field growing rather than a handoff to a different component. Every
 button on the board — inside an overlay or out — shares one `focus-ring`
 utility (`ui/button.tsx`), not shadcn's `border-ring ring-3 ring-ring/50`.
+
+### Touch targets
+
+Every control is at least **24×24 with a mouse** (WCAG 2.2 Target Size,
+Minimum) and **44×44 under `pointer: coarse`** (the iOS floor). The visible
+mark does not grow; the target does, by one of three means, in this order of
+preference:
+
+1. **A `py-* -my-*` pair** — padding grows the box, the negative margin gives
+   the same space back, so nothing moves. Use it on anything that carries
+   tooltips inside it (the card title): a pseudo-element on top would swallow
+   their hover. It is clipped by any `overflow: hidden` ancestor, hit testing
+   included, so a truncating parent must hand truncation to the control (the
+   day name).
+2. **An `::after` extender** (`relative` + `after:absolute after:-inset-*`),
+   stated per axis, when there is free space around the mark that belongs to
+   nothing else — header icons, the wordmark, the ⚡. Lopsided insets are
+   fine; the ⚡ takes 8px left and 2px right because the column edge is 2px
+   away. A pseudo-element is placed from the **padding box**, so on a
+   bordered control (the checkbox) every inset is 1px short of what it says.
+3. **A real height**, `pointer-coarse:min-h-11`, when the neighbors are
+   themselves targets that fill their space and an extender could only steal
+   from them: card rows (36px → 44px on touch), list-group headers (24 → 44),
+   the quick-add (36 → 44). This is the one that changes phone density, and
+   it is the iOS list-row height.
+
+Exempt by design: the card and column **grips** are 12×24. On touch they are
+affordances, not targets — a long press anywhere on the row or header drags
+(`docs/DRAG-AND-DROP.md` §5.4). The card checkbox is **24×44**, not 44 wide,
+for the same section's reason.
 
 ## 4. Motion policy
 
@@ -327,3 +357,4 @@ streak, score, or percentage anywhere in it.
 | 2026-10-14 | **Small and thin red passes contrast** (EI-382). The missed-deadline and `×N` badges and the N-due banner take `--urgent-foreground` at `text-xs`, like Overflow's count; the `destructive` badge variant itself now inks in `--urgent-foreground`. Overflow's rule is `border-urgent/70`. Under Hyperlegible `text-2xs` is 11px. The to-do checkbox's target is a full 24px wide (`after:w-6`). | Measured on production: `--urgent` at 10px on its tint, 3.97:1 (3.46:1 under the hover wash); the rule at /40, 2.09:1 light and 1.98:1 dark on `surface-0`, under the 3:1 non-text floor. Now the red text is 8.76:1 light and 7.50:1 dark at worst, and the rule 3.51:1 and 3.68:1. Hyperlegible exists for low-vision readers and left the smallest size alone. The checkbox's `::after` is placed from inside its 1px border, so `-inset-x-1` gave 22px; `w-6` makes it 24 and keeps the left edge clear of the grip (DRAG-AND-DROP §5.4). |
 | 2026-10-14 | **One meaning per icon, and no number without its words** (EI-383). ↳ (`CornerDownRight`) marks a rolled to-do and nothing else; the Overflow age badge is words only. Every icon-only header button (the day ⚡, Quick sort) shows its accessible name as a tooltip, and a tab's `4/3/↑8` tooltip names all three numbers, in order, in the same words its accessible name uses. | The second critique found ↳ on both the rolled marker and the Overflow age, an unlabeled ⚡ beside a labeled "Overdrive · N", and tab counts nobody could read without already knowing them. A glyph that means two things means neither. |
 | 2026-10-14 | **Today gets room** (EI-384): on desktop, Today is `--column-today-ratio` (1.5×) its neighbor. The other days on Today's first page narrow to share the track (`--column-near`); later pages keep N equal columns; every width keeps the 168px floor. Tablet and phone are unchanged. The range title names every day at least a third on screen. | Today absorbs rolled cards, "Schedule for Today" and finished work, so it is the busiest column, and at 168px it showed under half of 13 to-dos beside near-empty days. 1.5× is a ratio, so it ports to SwiftUI as a frame multiplier. At 1440 the floor binds and seven days already scrolled (track 1174px vs 1248 needed), so no factor could make a week fit there. 1.5× costs the half-column of Tuesday that showed before (Today + 5 days + 10px). At 1280: Today + 4 days + 30px, and Week still steps 6. At 1920 the week still fits: 316px Today, 211px days. The old title rounded, so a column a little under half visible showed on screen but not in "Oct 14 – Oct 19". |
+| 2026-10-15 | **Touch targets reach 44px under `pointer: coarse`, and rows grow to make room** (EI-388). Card rows are 44px on touch (the title fills the row), list-group headers and the quick-add are 44px; the ⚡, the day name and the wordmark extend to 44 without growing. With a mouse the group header gains its missing pixel (23 → 24) and the wordmark a `py-0.5 -my-0.5` pair (20 → 24); nothing else moves. §3 "Touch targets" is the recipe. | Measured on production at 390×844 with touch: title 370×27, quick-add 390×36, ⚡ 34×34, group header 390×23, day name 100×28, wordmark 31×20. At 36px rows a 44px title could only overlap its neighbors, and the later row wins every tap in an overlap, so the row grows instead: 44 is iOS's own list-row floor. After, at the same size: title 349×44 (the checkbox's strip excluded), quick-add 390×44, ⚡ 44×44, group header 390×44, day name 84×44, wordmark 48×44, checkbox 24×44. At 1440×900: rows 35.25 as before. |

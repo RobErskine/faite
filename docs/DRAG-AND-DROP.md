@@ -1249,6 +1249,22 @@ Three rules, and each has a failure mode if changed:
   press anywhere is the touch target (§4.8), so the grip is the keyboard route
   and the affordance, not the primary hit area.
 
+**On touch, the grip stays 12×24 and the card checkbox stays 24 wide** (EI-388,
+decided rather than missed). The row's left gutter is 36px before the title's
+first letter: grip box x=0–12, checkbox box x=12–28, text from x=36. A 44px-wide
+checkbox would need x≈0–44, covering the grip (a tap on the visible grip would
+complete the to-do) and the title's first ~8px (a tap on the first letter would
+complete rather than open). An accidental completion is the costliest mistap the
+row has, so the checkbox grows in the one direction that is free: it is **44
+tall**, exactly the coarse row's height (`ui/checkbox.tsx`, 15px each way —
+the `::after` is placed inside the 1px border, so 14px made 42). It clears WCAG
+2.2's 24px floor by width alone. The grip needs nothing: a tap on it does
+nothing at all (it carries no click handler), and a long press on it is a long
+press on the row, which is the touch drag (§4.8). It is the keyboard activator
+and the visible "this moves" mark; the column grip is the same, with the header
+as its long-press surface. Growing either would only take taps from the
+controls beside it.
+
 Hover is a color change, not a background fill — a filled box around a 12px
 icon undoes the point of making the mark small.
 

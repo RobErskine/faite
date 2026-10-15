@@ -497,3 +497,24 @@ describe("AppHeader", () => {
     expect(screen.queryByText("Sign up")).toBeNull();
   });
 });
+
+/**
+ * EI-388. The wordmark measured 31×20 — under 24 even with a mouse. A
+ * `py-0.5 -my-0.5` pair makes it 24 tall without moving it, and a coarse-only
+ * `::after` takes it to 47×44. Classes, since happy-dom has no layout.
+ */
+describe("the wordmark's target (EI-388)", () => {
+  it("is 24px for a mouse and extends to 44px on touch", () => {
+    render(
+      <AppHeader onOpenPalette={noop} onOpenSettings={noop} onOpenHelp={noop} settings={undefined} />,
+    );
+    const cls = screen.getByRole("link", { name: "Faite" }).className.split(/\s+/);
+    expect(cls).toContain("py-0.5");
+    expect(cls).toContain("-my-0.5");
+    expect(cls).toContain("relative");
+    expect(cls).toContain("pointer-coarse:after:absolute");
+    expect(cls).toContain("pointer-coarse:after:-inset-x-2");
+    expect(cls).toContain("pointer-coarse:after:-inset-y-2.5");
+    expect(cls).toContain("pointer-coarse:after:content-['']");
+  });
+});
