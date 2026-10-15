@@ -947,7 +947,7 @@ describe("CommandPalette — result rows say what the board says (EI-387)", () =
     ).toBeTruthy();
   });
 
-  it("shows an Overflow to-do's age in full — no column around a search hit says Overflow", () => {
+  it("shows an Overflow to-do's age as the board does, and names Overflow in the row's name (EI-390)", () => {
     // Scheduled Oct 1: rolled Oct 2–4, crossed into Overflow Oct 5, nine
     // calendar days before today.
     renderPalette({ todos: [todo({ id: "o1", title: "Renew visa", scheduledDate: "2026-10-01" })] });
@@ -956,9 +956,11 @@ describe("CommandPalette — result rows say what the board says (EI-387)", () =
 
     const row = rowFor("o1");
     expect(row.querySelector("[data-rollover-marker]")).toBeNull();
-    expect(row.querySelector("[data-overflow-age]")?.textContent).toBe("In Overflow 9 days");
+    expect(row.querySelector("[data-overflow-age]")?.textContent).toBe("since Oct 5 · 9 days");
     expect(
-      screen.getByRole("option", { name: "Renew visa, Scheduled Oct 1, In Overflow 9 days, Unfiled" }),
+      screen.getByRole("option", {
+        name: "Renew visa, Scheduled Oct 1, In Overflow since Oct 5, 9 days, Unfiled",
+      }),
     ).toBeTruthy();
   });
 

@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   dailyRollSummaries,
   describeLoop,
+  describeOverflowAge,
   formatOverflowAge,
-  formatOverflowAgeShort,
   rollStateFor,
   loopExample,
   overflowAgeDays,
@@ -121,38 +121,38 @@ describe("overflow age (EI-374)", () => {
     return formatOverflowAge(last!.day, c.today);
   };
 
-  it("reads 'today' on the day a todo overflows, never '0 days'", () => {
-    expect(formatOverflowAge("2026-08-03", "2026-08-03")).toBe("In Overflow today");
-  });
-
-  it("counts calendar days since it overflowed, singular at 1", () => {
-    expect(formatOverflowAge("2026-08-02", "2026-08-03")).toBe("In Overflow 1 day");
-    expect(formatOverflowAge("2026-07-24", "2026-08-03")).toBe("In Overflow 10 days");
-  });
-
-  it("never goes negative", () => {
+  it("reads 'since today' on the day a todo overflows, never '0 days'", () => {
+    expect(formatOverflowAge("2026-08-03", "2026-08-03")).toBe("since today");
+    expect(describeOverflowAge("2026-08-03", "2026-08-03")).toBe("In Overflow since today");
+    // Clock skew clamps to the same reading, never a negative age.
     expect(overflowAgeDays("2026-08-05", "2026-08-03")).toBe(0);
+    expect(formatOverflowAge("2026-08-05", "2026-08-03")).toBe("since today");
   });
 
-  it("gives two todos that overflowed on different days different ages", () => {
-    // today Aug 3, overflowAfterDays 3: scheduled X overflows on X + 4.
-    expect(ageOf("2026-07-30")).toBe("In Overflow today"); // overflowed Aug 3
-    expect(ageOf("2026-07-27")).toBe("In Overflow 3 days"); // overflowed Jul 31
-    expect(ageOf("2026-07-20")).toBe("In Overflow 10 days"); // overflowed Jul 24
+  it("says since when and how long, singular at 1 (EI-390)", () => {
+    expect(formatOverflowAge("2026-08-02", "2026-08-03")).toBe("since Aug 2 · 1 day");
+    expect(formatOverflowAge("2026-07-25", "2026-08-03")).toBe("since Jul 25 · 9 days");
+    expect(ageOf("2026-07-27")).toBe("since Jul 31 · 3 days"); // overflowed Jul 31
+    expect(ageOf("2026-07-20")).toBe("since Jul 24 · 10 days"); // overflowed Jul 24
   });
 
-  it("has a short form for the card badge: the age alone (EI-387)", () => {
-    expect(formatOverflowAgeShort("2026-08-03", "2026-08-03")).toBe("since today");
-    expect(formatOverflowAgeShort("2026-08-02", "2026-08-03")).toBe("1 day");
-    expect(formatOverflowAgeShort("2026-07-25", "2026-08-03")).toBe("9 days");
-    expect(formatOverflowAgeShort("2026-08-05", "2026-08-03")).toBe("since today");
+  it("puts the year on a start that is not this year", () => {
+    expect(formatOverflowAge("2025-12-30", "2026-01-04")).toBe("since Dec 30, 2025 · 5 days");
+    expect(describeOverflowAge("2025-12-30", "2026-01-04")).toBe(
+      "In Overflow since Dec 30, 2025, 5 days",
+    );
+  });
+
+  it("has a sentence form that keeps 'In Overflow' for names and tooltips", () => {
+    expect(describeOverflowAge("2026-08-02", "2026-08-03")).toBe("In Overflow since Aug 2, 1 day");
+    expect(describeOverflowAge("2026-07-25", "2026-08-03")).toBe("In Overflow since Jul 25, 9 days");
   });
 
   it("keeps counting over a weekend even when workdaysOnly stops the rolls", () => {
     // Scheduled Mon Jul 20; rolls Tue–Thu, overflows Fri Jul 24. Ten
     // calendar days to Mon Aug 3, though only six of them were workdays.
     const c = ctx({ workdaysOnly: true });
-    expect(ageOf("2026-07-20", c)).toBe("In Overflow 10 days");
+    expect(ageOf("2026-07-20", c)).toBe("since Jul 24 · 10 days");
   });
 });
 

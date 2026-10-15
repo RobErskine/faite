@@ -3,6 +3,7 @@ import {
   type PlacementContext,
   daysBetween,
   formatShortDate,
+  formatShortDateAsOf,
   rollsElapsed,
   rolloverTarget,
 } from "./scheduling";
@@ -95,32 +96,38 @@ export function overflowAgeDays(since: CivilDate, today: CivilDate): number {
   return Math.max(0, daysBetween(since, today));
 }
 
-/** The per-card Overflow age in full: "In Overflow today" on the day it
- * overflowed, then "In Overflow 1 day", "In Overflow 9 days". What a card's
- * accessible name says (`todoRowName`), and what a badge shows wherever no
- * Overflow column is around it to say the rest (⌘K's result rows). */
+/**
+ * The Overflow age, as every badge shows it (EI-390): "since Oct 6 · 9 days",
+ * "since Oct 14 · 1 day", and "since today" on the day it overflowed.
+ *
+ * Both halves, because each alone misread. A bare "9 days" (EI-387) under
+ * Overdrive's "Scheduled Aug 30" read as "9 days late"; a bare start date says
+ * since when but makes the reader do the arithmetic. The start carries the
+ * year when it is not this year (`formatShortDateAsOf`). "since today", not a
+ * bare "today": beside a card's scheduled date, "today" reads as a date ("due
+ * today"), "since today" as the start of a wait.
+ *
+ * One string for the board card, the Overdrive card, ⌘K's result rows and the
+ * Settings loop example — "In Overflow" is left out because the column (or
+ * the surface's own heading) already says it. Wherever there is no such
+ * context, the full sentence is `describeOverflowAge`.
+ */
 export function formatOverflowAge(since: CivilDate, today: CivilDate): string {
-  const days = overflowAgeDays(since, today);
-  if (days === 0) return "In Overflow today";
-  return `In Overflow ${days} ${days === 1 ? "day" : "days"}`;
+  return overflowAgeParts(since, today).join(" · ");
 }
 
-/**
- * The same age with "In Overflow" left to its surroundings — the card badge's
- * visible text (EI-387): "since today", "1 day", "9 days".
- *
- * On a card in the Overflow column, every badge repeating "In Overflow" said
- * the column's name N times; the number is the only part that differs from
- * card to card. "since today", not a bare "today": the Overflow column shows
- * each card's scheduled date beside this badge, and "today" next to "Oct 9"
- * reads as a date ("due today"), while "since today" reads as the start of a
- * wait, like "9 days" does. The full sentence stays in the accessible name and
- * the tooltip says since when.
- */
-export function formatOverflowAgeShort(since: CivilDate, today: CivilDate): string {
+/** The same age as a sentence: "In Overflow since Oct 6, 9 days", "In
+ * Overflow since today". A card's accessible name (`todoRowName`) and the
+ * badge's tooltip — a screen reader has no column around the card to supply
+ * "In Overflow", so the name says it. */
+export function describeOverflowAge(since: CivilDate, today: CivilDate): string {
+  return `In Overflow ${overflowAgeParts(since, today).join(", ")}`;
+}
+
+function overflowAgeParts(since: CivilDate, today: CivilDate): string[] {
   const days = overflowAgeDays(since, today);
-  if (days === 0) return "since today";
-  return `${days} ${days === 1 ? "day" : "days"}`;
+  if (days === 0) return ["since today"];
+  return [`since ${formatShortDateAsOf(since, today)}`, `${days} ${days === 1 ? "day" : "days"}`];
 }
 
 /** A todo's place in the Faite Loop as a card shows it — see `rollStateFor`. */

@@ -1,7 +1,7 @@
 "use client";
 
 import { loopExample, rollStateFor, type LoopExample } from "@/lib/rollover-events";
-import { formatShortDate, type PlacementContext } from "@/lib/scheduling";
+import { addDays, formatShortDate, type PlacementContext } from "@/lib/scheduling";
 import type { CivilDate, Todo } from "@/lib/schema";
 import { TitleMarkers, TodoMetaBadges } from "@/components/board/todo-row-parts";
 import { cn } from "@/lib/utils";
@@ -37,6 +37,9 @@ const EXAMPLE_TODO: Todo = {
   suggestedListId: null,
 };
 
+/** Calendar days after the crossing that the Overflow box is drawn on. */
+const OVERFLOW_SHOWN_AFTER = 2;
+
 /**
  * A contextual replacement for the old plain-text worked example: the same
  * fake to-do shown at each of the three moments the Faite Loop can put it
@@ -45,6 +48,10 @@ const EXAMPLE_TODO: Todo = {
  * not a lookalike — so hovering behaves exactly as it does on the board,
  * with the same tooltip. Dates come from `loopExample()`, the same primitive
  * `describeLoop`'s sentence is built from, so the two can't disagree.
+ *
+ * Each caption is "On <day>": the day that box is drawn as of, its "today".
+ * The example starts on the reader's real today, so every later box is a day
+ * in the future, and saying so is what keeps a badge's "since …" readable.
  */
 export function LoopExampleCards({
   ctx,
@@ -61,25 +68,31 @@ export function LoopExampleCards({
   const rolledFrom = lastRollDay
     ? rollStateFor(todo, { ...ctx, today: lastRollDay }).rolledFrom
     : undefined;
-  const overflow = rollStateFor(todo, { ...ctx, today: overflowDay }).overflow;
+  // The Overflow box is drawn two days AFTER the crossing, not on it (EI-390).
+  // On the crossing day the badge can only say "since today", and under a
+  // date that is not the reader's today that read as a contradiction. Two
+  // days on, the badge shows its whole form — "since Oct 19 · 2 days" —
+  // and the caption names the box's own day, so the two agree.
+  const overflowShownOn = addDays(overflowDay, OVERFLOW_SHOWN_AFTER);
+  const overflow = rollStateFor(todo, { ...ctx, today: overflowShownOn }).overflow;
 
   return (
     <div className={cn("grid gap-2", rolls > 0 ? "grid-cols-3" : "grid-cols-2")}>
-      <ExampleStep label="Scheduled" caption={formatShortDate(missed)}>
+      <ExampleStep label="Scheduled" caption={`On ${formatShortDate(missed)}`}>
         <ExampleCard todo={todo} today={missed} />
       </ExampleStep>
 
       {rolls > 0 && lastRollDay && (
         <ExampleStep
           label="Rolled over"
-          caption={`${formatShortDate(lastRollDay)} · ${rolls} ${rolls === 1 ? "day" : "days"}`}
+          caption={`On ${formatShortDate(lastRollDay)} · ${rolls} ${rolls === 1 ? "day" : "days"}`}
         >
           <ExampleCard todo={todo} today={lastRollDay} rolledFrom={rolledFrom} />
         </ExampleStep>
       )}
 
-      <ExampleStep label="Overflow" caption={formatShortDate(overflowDay)}>
-        <ExampleCard todo={todo} today={overflowDay} overflow={overflow} />
+      <ExampleStep label="Overflow" caption={`On ${formatShortDate(overflowShownOn)}`}>
+        <ExampleCard todo={todo} today={overflowShownOn} overflow={overflow} />
       </ExampleStep>
     </div>
   );
@@ -100,7 +113,7 @@ function ExampleStep({
         {label}
       </p>
       {children}
-      <p className="num text-2xs text-muted-foreground">{caption}</p>
+      <p data-loop-caption className="nums text-2xs text-muted-foreground">{caption}</p>
     </div>
   );
 }

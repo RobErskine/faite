@@ -600,8 +600,8 @@ describe("the Faite Loop", () => {
     render(<Harness todo={todo({ scheduledDate: "2026-08-05" })} />); // 4 rolls
     expect(row().querySelector("[data-rollover-marker]")).toBeNull();
     // It crossed over today (Aug 6, 7, 8 rolled; Aug 9 overflowed), so its
-    // age is "today", not the roll count that put it there (EI-374). The
-    // badge shows only the age; "since today", not a bare "today" (EI-387).
+    // age is "today", not the roll count that put it there (EI-374):
+    // "since today", not a bare "today" (EI-387), and no count (EI-390).
     expect(row().querySelector("[data-overflow-age]")?.textContent).toBe("since today");
   });
 
@@ -610,13 +610,13 @@ describe("the Faite Loop", () => {
     // `overflowed` event's `rolls`, always overflowAfterDays + 1 (EI-374).
     const age = () => row().querySelector("[data-overflow-age]")?.textContent;
     render(<Harness todo={todo({ scheduledDate: "2026-08-01" })} />); // overflowed Aug 5
-    expect(age()).toBe("4 days");
+    expect(age()).toBe("since Aug 5 · 4 days");
     cleanup();
     render(<Harness todo={todo({ scheduledDate: "2026-07-25" })} />); // overflowed Jul 29
-    expect(age()).toBe("11 days");
+    expect(age()).toBe("since Jul 29 · 11 days");
     cleanup();
     render(<Harness todo={todo({ scheduledDate: "2026-08-04" })} />); // overflowed Aug 8
-    expect(age()).toBe("1 day");
+    expect(age()).toBe("since Aug 8 · 1 day");
   });
 
   it("draws the Overflow age in muted ink, never the urgent red", () => {
@@ -635,15 +635,20 @@ describe("the Faite Loop", () => {
     render(<Harness todo={todo({ scheduledDate: "2026-08-01" })} />); // in Overflow
     const age = row().querySelector("[data-overflow-age]");
     expect(age?.querySelector("svg")).toBeNull();
-    expect(age?.textContent).toBe("4 days");
+    expect(age?.textContent).toBe("since Aug 5 · 4 days");
   });
 
-  it("shows only the age, and says the whole sentence in the card's name (EI-387)", () => {
+  it("shows the start and the count, and says the whole sentence in the card's name (EI-390)", () => {
     // On the board the Overflow column says "Overflow"; a screen reader has
     // no column around the card, so the name keeps the full sentence.
     render(<Harness todo={todo({ title: "Call dentist", scheduledDate: "2026-08-01" })} />);
-    expect(row().querySelector("[data-overflow-age]")?.textContent).toBe("4 days");
-    expect(cardName()).toBe("Call dentist, In Overflow 4 days");
+    expect(row().querySelector("[data-overflow-age]")?.textContent).toBe("since Aug 5 · 4 days");
+    expect(cardName()).toBe("Call dentist, In Overflow since Aug 5, 4 days");
+    // Two unbreakable halves: too wide for its row (a start in another year,
+    // in Hyperlegible, at the 168px floor), the badge breaks between them.
+    const halves = [...row().querySelector("[data-overflow-age]")!.children];
+    expect(halves.map((h) => h.textContent)).toEqual(["since Aug 5", " · 4 days"]);
+    expect(halves.every((h) => h.className.includes("whitespace-nowrap"))).toBe(true);
   });
 
   it("shows neither for a settled todo, however stale", () => {
@@ -1212,8 +1217,8 @@ describe("the title button's name (EI-378, EI-381)", () => {
 
   it("starts with the title in Overflow, with its age after it", () => {
     render(<Harness todo={todo({ title: "Call dentist", scheduledDate: "2026-08-05" })} />);
-    expect(cardName()).toBe("Call dentist, In Overflow today");
-    expect(screen.getByRole("button", { name: "Call dentist, In Overflow today" })).toBeTruthy();
+    expect(cardName()).toBe("Call dentist, In Overflow since today");
+    expect(screen.getByRole("button", { name: "Call dentist, In Overflow since today" })).toBeTruthy();
   });
 
   it("starts with the title on a finished card, with the stamp and plan after it", () => {
