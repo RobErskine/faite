@@ -319,6 +319,28 @@ one page next to Overflow, later days already offer `Today`, and at 375px
 there is no width for both. Muted ink, no rule: Overflow's red stays on its
 column (EI-374). Tests: `date-nav.test.tsx`.
 
+**The Lists page's twin: a strip of list names (EI-385).** The Lists pager
+opens on Backlog, and the active tab's other lists sat to its right behind
+a swipe nothing pointed at. `PhoneListNav` (`phone-list-nav.tsx`) is a
+`<nav aria-label="Lists">` between the tab strip and the pager: one button
+per page, in pager order (Backlog, then the tab's lists), the visible one
+`aria-current="page"`. A strip, not a "Brain Dump ›" peek: a tab usually
+holds more than two lists and a peek reaches only the next one, while the
+strip reaches any list in one tap. Quiet: `text-xs`, muted ink, the current
+name in foreground ink with an underline (no weight change, so the strip
+never reflows mid-swipe), no list color (that stays on the column), no
+surface, hidden scrollbar. `h-8`, `pointer-coarse:h-11` — the tab pills'
+44px floor. Swipe sync reads the pager's own `scroll` event and derives the
+page from `scrollLeft` / measured pitch (`computeAnchorIndex`, as the day
+track does); the "create list" page past the last list marks nothing, and
+the strip scrolls itself to keep the marked name in view. A tap scrolls the
+pager there (`scrollTo`, smooth unless reduced motion) and focuses the
+list's first card, or the column itself when it is empty — never the
+quick-add, which would raise the on-screen keyboard over the list just
+asked for. Hidden when the tab has only Backlog: one name would just repeat
+the column heading. Phone only; desktop/tablet show every list side by
+side. Tests: `phone-list-nav.test.tsx`.
+
 **Bug found and fixed: `useEffect`/`useLayoutEffect` deps don't see a ref
 attach.** A `React.RefObject`'s `.current` going from `null` to an element
 does not itself re-trigger effects with an empty/unrelated dep array — and

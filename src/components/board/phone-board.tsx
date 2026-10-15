@@ -23,6 +23,7 @@ import { BACKLOG } from "@/lib/overdrive";
 import { OverflowEmptyState } from "./overflow-empty-state";
 import { TabStrip } from "./tab-strip";
 import { PhoneBottomBar } from "./phone-bottom-bar";
+import { PhoneListNav } from "./phone-list-nav";
 import { findSkipTarget, SkipLinks } from "./skip-links";
 import type { BoardUiState } from "./use-board-ui-state";
 import type { useBoardActions } from "./use-board-actions";
@@ -424,6 +425,19 @@ export function PhoneBoard({
               onOpenArchive={() => setArchivedOpen(true)}
             />
             <Separator />
+            {/* Which lists the pager holds, and the one you are on (EI-385).
+                Not for a lone Backlog: one name is the column's own heading. */}
+            {(filteredBacklogColumn ? 1 : 0) + filteredListColumns.length > 1 && (
+              <PhoneListNav
+                trackRef={listTrackRef}
+                lists={[
+                  ...(filteredBacklogColumn
+                    ? [{ columnId: filteredBacklogColumn.id, name: filteredBacklogColumn.list.name }]
+                    : []),
+                  ...filteredListColumns.map((c) => ({ columnId: c.id, name: c.list.name })),
+                ]}
+              />
+            )}
             <div
               ref={listTrackRef}
               data-dragging={dragging ? "" : undefined}
