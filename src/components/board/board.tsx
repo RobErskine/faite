@@ -186,6 +186,14 @@ export function Board() {
   const splitCollapsed = settings?.splitCollapsed ?? "none";
 
   /**
+   * Today's column is wider than the other days (EI-384) on `desktop` only.
+   * `tablet` renders the same `DesktopBoard` but keeps equal columns: at
+   * 640–1023px the track holds two or three columns, and a 1.5x Today would
+   * leave room for little else (docs/MOBILE.md keeps tablet as-is).
+   */
+  const wideToday = layout === "desktop";
+
+  /**
    * Re-shows a collapsed calendar before a `DateNav`/hotkey/palette jump —
    * jumping to a date you can't see is meaningless. Wrapped here, once,
    * rather than in `DateNav` itself, so every caller of `jumpBy`/
@@ -200,6 +208,7 @@ export function Board() {
   const {
     anchorIndex,
     visibleCount,
+    visibleThrough,
     canJumpBack,
     canJumpForward,
     jumpBy: jumpByRaw,
@@ -230,6 +239,10 @@ export function Board() {
     // — desktop-board.tsx sizes columns off `visibleDays`, which changes
     // pitch without changing the track's own width. See use-day-track.ts.
     pitchKey: settings?.visibleDays,
+    // EI-384: on desktop Today is wide and the rest of its first page
+    // narrower (day-track-widths.ts) — the scroll math has to know where
+    // that page ends.
+    leadColumns: wideToday ? (settings?.visibleDays ?? 7) - 1 : 0,
   });
 
   const jumpBy = useCallback(
@@ -256,7 +269,7 @@ export function Board() {
     dayIds,
     dragging: ui.dragging,
     anchorIndex,
-    visibleCount,
+    visibleThrough,
     jumpToIndex,
   });
 
@@ -381,6 +394,7 @@ export function Board() {
           dayTrackRef={dayTrackRef}
           anchorIndex={anchorIndex}
           visibleCount={visibleCount}
+          visibleThrough={visibleThrough}
           canJumpBack={canJumpBack}
           canJumpForward={canJumpForward}
           jumpBy={jumpBy}
@@ -399,6 +413,8 @@ export function Board() {
           dayTrackRef={dayTrackRef}
           anchorIndex={anchorIndex}
           visibleCount={visibleCount}
+          visibleThrough={visibleThrough}
+          wideToday={wideToday}
           canJumpBack={canJumpBack}
           canJumpForward={canJumpForward}
           jumpBy={jumpBy}

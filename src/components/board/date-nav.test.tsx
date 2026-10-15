@@ -88,6 +88,7 @@ const baseProps = {
   today: "2026-08-10" as const,
   anchorIndex: 0,
   visibleCount: 7,
+  visibleThrough: 6,
   canJumpBack: () => false,
   canJumpForward: () => false,
   onJump: () => {},
@@ -176,21 +177,21 @@ describe("DateNav on the phone's Overflow page", () => {
   afterEach(cleanup);
 
   it("titles the page Overflow, not yesterday", () => {
-    render(<DateNav {...baseProps} compact anchorIndex={-1} visibleCount={1} onOpenActivity={() => {}} />);
+    render(<DateNav {...baseProps} compact anchorIndex={-1} visibleCount={1} visibleThrough={0} onOpenActivity={() => {}} />);
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Overflow");
   });
 
   it("offers Today as the way back", () => {
     const onToday = vi.fn();
     render(
-      <DateNav {...baseProps} compact anchorIndex={-1} visibleCount={1} onToday={onToday} onOpenActivity={() => {}} />,
+      <DateNav {...baseProps} compact anchorIndex={-1} visibleCount={1} visibleThrough={0} onToday={onToday} onOpenActivity={() => {}} />,
     );
     fireEvent.click(screen.getByRole("button", { name: "Today" }));
     expect(onToday).toHaveBeenCalledOnce();
   });
 
   it("still titles today's page with today's date", () => {
-    render(<DateNav {...baseProps} compact anchorIndex={0} visibleCount={1} onOpenActivity={() => {}} />);
+    render(<DateNav {...baseProps} compact anchorIndex={0} visibleCount={1} visibleThrough={0} onOpenActivity={() => {}} />);
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Aug 10");
     expect(screen.queryByRole("button", { name: "Today" })).toBeNull();
   });
@@ -199,7 +200,7 @@ describe("DateNav on the phone's Overflow page", () => {
 describe("DateNav's Overflow peek — the phone pager's page indicator (EI-383)", () => {
   afterEach(cleanup);
 
-  const peekProps = { ...baseProps, compact: true, visibleCount: 1, onOpenActivity: () => {} };
+  const peekProps = { ...baseProps, compact: true, visibleCount: 1, visibleThrough: 0, onOpenActivity: () => {} };
 
   it("shows '‹ Overflow 8' on today's page, named for what it does", () => {
     render(<DateNav {...peekProps} anchorIndex={0} overflowPeek={{ count: 8, onShow: () => {} }} />);
@@ -246,5 +247,27 @@ describe("DateNav's Overflow peek — the phone pager's page indicator (EI-383)"
     const peek = screen.getByRole("button", { name: /show overflow/i });
     expect(peek.className).toContain("text-muted-foreground");
     expect(peek.innerHTML).not.toMatch(/urgent|spectrum/);
+  });
+});
+
+/**
+ * EI-384. The title ends at the last day actually on screen
+ * (`visibleThrough`), not at `anchor + visibleCount - 1`: with a wide Today
+ * the first page shows six days while the page size (what Week steps by)
+ * is still seven.
+ */
+describe("DateNav range title", () => {
+  afterEach(cleanup);
+
+  it("ends at visibleThrough, independent of the page size", () => {
+    render(<DateNav {...baseProps} visibleCount={7} visibleThrough={5} onOpenActivity={() => {}} />);
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Aug 10 – Aug 15");
+  });
+
+  it("starts at the anchor on a later page", () => {
+    render(
+      <DateNav {...baseProps} anchorIndex={7} visibleCount={7} visibleThrough={13} onOpenActivity={() => {}} />,
+    );
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Aug 17 – Aug 23");
   });
 });

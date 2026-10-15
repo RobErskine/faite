@@ -239,7 +239,7 @@ An achromatic ink-on-paper ladder, plus five channels that each mean one thing: 
 
 ## Layout
 
-Two halves on one paper: a calendar track (one column per day plus Overflow) over a planning track (lists, plus Backlog). Columns flex between `--column-floor` (10.5rem, 168px; the widest floor that fits a seven-day week on a 1440pt laptop) and `--column-max` (18rem); list columns run 50px wider (`--list-column-min`). Overflow and Backlog are pinned rails outside the scroll track. The vertical split defaults to 56% for the calendar (`--split-top`).
+Two halves on one paper: a calendar track (one column per day plus Overflow) over a planning track (lists, plus Backlog). Columns flex between `--column-floor` (10.5rem, 168px; chosen as the widest floor that fit a seven-day week on a 1440pt laptop, though a week has scrolled there since Overflow became a 242px pinned rail) and `--column-max` (18rem); list columns run 50px wider (`--list-column-min`). On desktop Today is `--column-today-ratio` (1.5) times its neighbor; the other days on its first page narrow to share the track (`--column-near`), and later pages keep N equal columns, all floored at 168px. At 1440 that is a 252px Today, five 168px days, and 10px of the next one. Tablet and phone keep equal columns (docs/DESIGN.md §3, §7 2026-10-14 EI-384). Overflow and Backlog are pinned rails outside the scroll track. The vertical split defaults to 56% for the calendar (`--split-top`).
 
 Layout classes come from `resolveLayout()` in `src/lib/use-viewport.ts`: under 640px is the phone pager (one column per page, native scroll-snap); 640px and up renders `DesktopBoard` (tablet below 1024px, desktop above). Safe-area insets are named tokens (`--safe-top` and siblings).
 

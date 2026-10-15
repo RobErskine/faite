@@ -94,28 +94,70 @@ test.describe("desktop board layout", () => {
     await page.getByRole("button", { name: "How many day columns to show" }).click();
     await page.getByRole("menuitemradio", { name: "3 days" }).click();
 
-    // Frozen on a Tuesday (support/fixtures.ts), so this is still the
+    // Frozen on a Tuesday (support/fixtures.ts), so Today is still the
     // leftmost day column after the resize.
-    const column = page.getByRole("region", { name: "Tuesday" }).first();
+    const today = page.getByRole("region", { name: "Tuesday" }).first();
+    const tomorrow = page.getByRole("region", { name: "Wednesday" }).first();
+    const laterPage = page.getByRole("region", { name: "Friday" }).first();
 
-    // 3 columns + 2 12px `gap-3` gaps fill the track exactly (the gap IS
-    // the column separator since the Air pass — keep this in step with
-    // DAY_GAP_PX in desktop-board.tsx). `expect.poll` rather than a single
-    // `boundingBox()` read: the column carries `transition-all`
-    // (board-column.tsx), so a read straight after the click can catch the
-    // width mid-animation from the old 7-day size.
-    const expectedWidth = (trackBox!.width - 2 * 12) / 3;
+    // EI-384: Today is 1.5x its neighbors (`--column-today-ratio`), and
+    // Today + 2 neighbors + 2 12px `gap-3` gaps still fill the track exactly
+    // (keep in step with DAY_GAP_PX in day-track-widths.ts). `expect.poll`
+    // rather than a single `boundingBox()` read: the column carries
+    // `transition-all` (board-column.tsx), so a read straight after the click
+    // can catch the width mid-animation from the old 7-day size.
+    const near = (trackBox!.width - 2 * 12) / 3.5;
     await expect
-      .poll(async () => (await column.boundingBox())?.width)
-      .toBeGreaterThan(expectedWidth - 5);
-    const columnBox = await column.boundingBox();
-    expect(columnBox!.width).toBeLessThan(expectedWidth + 5);
+      .poll(async () => (await today.boundingBox())?.width)
+      .toBeGreaterThan(1.5 * near - 5);
+    const todayBox = await today.boundingBox();
+    expect(todayBox!.width).toBeLessThan(1.5 * near + 5);
+    const tomorrowBox = await tomorrow.boundingBox();
+    expect(Math.abs(tomorrowBox!.width - near)).toBeLessThan(5);
+
+    // Past Today's page every column is equal again: 3 of them fill the
+    // track, exactly as before EI-384.
+    const laterBox = await laterPage.boundingBox();
+    expect(Math.abs(laterBox!.width - (trackBox!.width - 2 * 12) / 3)).toBeLessThan(5);
 
     // More than 3 days are still rendered (DEFAULT_RENDERED_DAYS), so the
     // track now scrolls instead of shrinking to fit them all.
     const scrollWidth = await track.evaluate((el) => el.scrollWidth);
     const clientWidth = await track.evaluate((el) => el.clientWidth);
     expect(scrollWidth).toBeGreaterThan(clientWidth);
+  });
+
+  /**
+   * EI-384: Today gets room. At 1440 the floor binds (the track is 1174px and
+   * seven 168px days need 1248), so Today is 252px and every other day keeps
+   * the floor — and the range title ends at the last day actually shown
+   * rather than counting the 10px of the next one.
+   */
+  test("gives Today 1.5x a day column in the default week, and titles what is shown", async ({
+    page,
+  }) => {
+    const today = await page.getByRole("region", { name: "Tuesday" }).first().boundingBox();
+    const tomorrow = await page.getByRole("region", { name: "Wednesday" }).first().boundingBox();
+    const later = await page.getByRole("region", { name: "Saturday" }).first().boundingBox();
+    expect(Math.abs(tomorrow!.width - 168)).toBeLessThan(1);
+    expect(Math.abs(later!.width - 168)).toBeLessThan(1);
+    expect(Math.abs(today!.width - 1.5 * 168)).toBeLessThan(1);
+
+    // Today + five days; the sixth (Monday) shows 10px, so the title stops
+    // at Sunday — five days after the frozen Tuesday.
+    const title = await page.getByRole("heading", { level: 1 }).textContent();
+    expect(title).toMatch(/^\w{3} \d{1,2} – \w{3} \d{1,2}$/);
+    const track = page.locator(".column-track").filter({ has: page.locator("[data-day-column]") });
+    const trackBox = await track.boundingBox();
+    const sunday = await page.getByRole("region", { name: "Sunday" }).first().boundingBox();
+    const monday = await page.getByRole("region", { name: "Monday" }).first().boundingBox();
+    expect(sunday!.x + sunday!.width).toBeLessThanOrEqual(trackBox!.x + trackBox!.width + 1);
+    expect(trackBox!.x + trackBox!.width - monday!.x).toBeLessThan(168 / 3);
+    const sundayLabel = (await page
+      .getByRole("region", { name: "Sunday" })
+      .first()
+      .getAttribute("aria-label"))!;
+    expect(title!.endsWith(sundayLabel.split(", ").at(-1)!)).toBe(true);
   });
 
   test("opens the todo sheet as a right-side panel", async ({ page }) => {

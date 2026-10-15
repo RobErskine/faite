@@ -80,7 +80,7 @@ function Harness() {
     dayIds: [],
     dragging: false,
     anchorIndex: 0,
-    visibleCount: 1,
+    visibleThrough: 0,
     jumpToIndex: () => {},
   });
 
@@ -217,7 +217,7 @@ describe("a pre-filtered column", () => {
       dayIds: [],
       dragging: false,
       anchorIndex: 0,
-      visibleCount: 1,
+      visibleThrough: 0,
       jumpToIndex: () => {},
     });
 

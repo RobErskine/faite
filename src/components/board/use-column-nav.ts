@@ -21,7 +21,8 @@ interface UseColumnNavOptions {
   dragging: boolean;
   /** From `useDayTrack`, so the day track keeps its own scroll arithmetic. */
   anchorIndex: number;
-  visibleCount: number;
+  /** The last day index actually on screen (`useDayTrack`'s `visibleThrough`). */
+  visibleThrough: number;
   jumpToIndex: (target: number) => void;
 }
 
@@ -33,7 +34,7 @@ export function useColumnNav({
   dayIds,
   dragging,
   anchorIndex,
-  visibleCount,
+  visibleThrough,
   jumpToIndex,
 }: UseColumnNavOptions): NavigateFn {
   /*
@@ -73,12 +74,12 @@ export function useColumnNav({
 
       const dayIndex = at ? dayIds.indexOf(at.columnKey) : -1;
       const offScreen =
-        dayIndex >= 0 && (dayIndex < anchorIndex || dayIndex >= anchorIndex + visibleCount);
+        dayIndex >= 0 && (dayIndex < anchorIndex || dayIndex > visibleThrough);
       if (offScreen) jumpToIndex(dayIndex);
       else el.scrollIntoView({ block: "nearest", inline: "nearest" });
 
       return true;
     },
-    [grid, dayIds, dragging, anchorIndex, visibleCount, jumpToIndex],
+    [grid, dayIds, dragging, anchorIndex, visibleThrough, jumpToIndex],
   );
 }
