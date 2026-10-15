@@ -1054,13 +1054,13 @@ describe("settled work sits on the day it was finished (EI-380)", () => {
     expect(board.awayTodoIds.size).toBe(0);
   });
 
-  it("keeps work finished on a past day but planned ahead on its planned day", () => {
-    // The completion day is outside a window that starts today, so the
-    // scheduledDate rule answers — unchanged from before EI-380.
+  it("takes work finished on a past day off the board, even when it was planned ahead", () => {
+    // Finished work lives on the day it was finished; that day has passed, so
+    // it is History now. It must not reappear on its later planned day.
     const board = build([
       todo({ id: "a", scheduledDate: "2026-08-07", status: "done", completedAt: DONE_YESTERDAY }),
     ]);
-    expect(dayIds(board, "2026-08-07")).toEqual(["a"]);
+    expect(dayIds(board, "2026-08-07")).toEqual([]);
   });
 
   it("leaves an unscheduled to-do in its list even when finished today", () => {

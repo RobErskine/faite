@@ -127,11 +127,12 @@ option. Controls: the **View** dropdown in `view-settings.tsx`, mirrored in ⌘K
   came from), wins whenever that day is in the window. The window starts at
   today, so in practice: **finished today → today**, whether it was planned
   for last week, today, or next Thursday.
-- **Otherwise, `scheduledDate`** — a completion on a past day (outside a window
-  that starts at today) and legacy rows with a null `completedAt` both fall
-  back to the old rule. Planned in the past means it renders nowhere, so
-  yesterday's finished work leaves the board at midnight and lives in History;
-  planned ahead and finished on an earlier day means it sits on its planned day.
+- **Finished on a past day → off the board.** The window starts at today, so
+  yesterday's finished work leaves the board at midnight and lives in History —
+  even when it was planned for a later day. Finished work never reappears on a
+  future day.
+- **Legacy rows with a null `completedAt`** keep the old rule: `scheduledDate`
+  if it is in the window, otherwise nowhere.
 - **The plan stays visible.** A settled card not on its planned day adds
   "· planned Oct 12" to its existing completion stamp — the checkbox tooltip
   and the title's `sr-only` text (`formatCompletionStamp`,
@@ -412,7 +413,7 @@ because it changes what a card sits on and how completing one feels.
 - **No multi-select drag.** Keyboard drag is unverified end to end; touch is
   untested on a real device. See `docs/DRAG-AND-DROP.md` §7.
 - **Settled work is not on the board outside the window.** `placeSettled`
-  returns null for anything finished on a past day and planned in the past, by
+  returns null for anything finished on a past day, by
   design — the board only goes forward. The past is History (EI-322,
   `history-sheet.tsx`), read from the event log one day at a time.
 

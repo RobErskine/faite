@@ -814,13 +814,12 @@ const DEFAULT_VISIBLE_STATUSES: readonly TodoStatus[] = ["open"];
  *    Thursday and finished early this morning is today's work, and saying so
  *    is the honest answer. (A completion stamped after today only comes from
  *    a device with a skewed clock; it lands on the day the record names.)
- * 3. Otherwise, `scheduledDate` inside the window -> that day, else null. This
- *    catches a completion on a PAST day — outside a window that starts at
- *    today — and legacy rows whose `completedAt` is null, which predate
- *    central stamping (`statusPatch`). For anything scheduled in the past that
- *    means null, so yesterday's finished work leaves the board at midnight and
- *    lives in History. The one case that still renders: scheduled ahead,
- *    finished on an earlier day — it sits on its planned day, as it always did.
+ *    A completion on a PAST day (outside a window that starts at today) is
+ *    null: yesterday's finished work leaves the board at midnight and lives in
+ *    History, even when it was planned for a later day. Finished work never
+ *    reappears on a future day.
+ * 3. Legacy rows whose `completedAt` is null (they predate central stamping,
+ *    `statusPatch`): `scheduledDate` inside the window -> that day, else null.
  *
  * Never Overflow, by any path above — and the card the user ticked IN
  * Overflow now lands on today, which is where it was done.
@@ -860,9 +859,14 @@ export function placeSettled(
   // today.
   if (!todo.scheduledDate) return { half: PLANNING, awayDate: null };
 
+  // Rule 2: finished work lives on the day it was finished. When that day has
+  // passed (the window starts at today), the card leaves the board for
+  // History — it never reappears on a later planned day as "finished future
+  // work".
   const finishedOn = todo.completedAt ? civilDateOf(todo.completedAt, timezone) : null;
-  if (finishedOn && inWindow(finishedOn)) return { half: "calendar", day: finishedOn };
+  if (finishedOn) return inWindow(finishedOn) ? { half: "calendar", day: finishedOn } : null;
 
+  // Rule 3: legacy settled rows with no completedAt keep the old rule.
   if (!inWindow(todo.scheduledDate)) return null;
   return { half: "calendar", day: todo.scheduledDate };
 }
