@@ -836,14 +836,14 @@ a floor, `--column-floor` in globals.css), so exactly that many columns fill
 the track and the rest sit past the fold. Picking a smaller count widens the
 remaining columns rather than rendering fewer of them; `renderedDays` (still
 `horizon`/`cap`-driven, as above) is how many columns *exist* in the DOM, a
-number that only ever grows. The Week/Month/Quarter jump buttons
-(`pageAlignedJump` in `date-nav.tsx`) then step in whole multiples of the
-MEASURED page size (`useDayTrack`'s `visibleCount`), so a jump always lands
+number that only ever grows. The ‹ › steps and the Jump popover's
+week/month/quarter steps (`pageAlignedJump` in `date-nav.tsx`; one control
+since EI-392) then step in whole multiples of the MEASURED page size (`useDayTrack`'s `visibleCount`), so a jump always lands
 on the same weekday grid the current view established — "Month" is 28 days
 in the default 7-day view, not the raw 30, and 30 in a 5-day view.
 
 `cap` is a floor, not a hard ceiling: it bounds ordinary scrolling and the
-Week/Month/Quarter buttons, but the date picker in `date-nav.tsx` has no
+page and week/month/quarter steps, but the date picker in `date-nav.tsx` has no
 upper bound of its own. Picking a day past `cap` — a reminder eighteen months
 out, say — grows `cap` (and the rendered window with it) to reach it, rather
 than the picker silently refusing the date. `cap` only ever grows and is
@@ -967,8 +967,9 @@ help sheet (EI-75), and dnd-kit screen-reader announcements (EI-84).
 **Saved views (EI-65) is a named snapshot of four existing settings fields**
 (`activeTabId`, `visibleStatuses`, `visibleDays`, `showWeekends` — the same
 fields `ViewSettings`/`TabStrip`, EI-90, already write live), switchable from
-`SavedViewsMenu` (`components/board/saved-views-menu.tsx`) next to
-`ViewSettings` in `DateNav`. Deliberately **not** a saved search or a label/
+`SavedViewsSection` (`components/board/saved-views-section.tsx`), the last
+section of `ViewSettings`'s View menu in `DateNav` (a menu of its own beside
+View until EI-392). Deliberately **not** a saved search or a label/
 list filter — neither exists as a persisted, reusable concept elsewhere in the
 app yet (column text filters are explicitly ephemeral, and there is no
 label-based board filtering at all), so building either into a "view" would

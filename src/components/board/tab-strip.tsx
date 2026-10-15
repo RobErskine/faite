@@ -329,7 +329,10 @@ export function TabStrip({
             <Button
               variant="ghost"
               size="sm"
-              className="shrink-0 gap-1 text-muted-foreground"
+              // 36px wide as an icon with no count; 44 on touch (EI-392). A
+              // real width: it is the strip's last item, with nothing to
+              // its right to borrow from but the bar's own padding.
+              className="shrink-0 gap-1 text-muted-foreground pointer-coarse:min-w-11"
               onClick={onOpenArchive}
               aria-label="Archived"
             >
@@ -491,6 +494,11 @@ function TabPill({
           // height and the strip's density are untouched (EI-378). The pill's
           // own `py-1.5` is the room it grows into.
           "-my-1 py-1",
+          // On touch the pill is 44px (`pointer-coarse:min-h-11` above) and
+          // the same pair at 14px fills it: 16 + 28 = 44 (EI-392). It ends
+          // at the pill's own edges, so the strip's `overflow-y: hidden`
+          // clips none of it.
+          "pointer-coarse:-my-3.5 pointer-coarse:py-3.5",
           isActive ? "font-semibold" : "text-muted-foreground",
         )}
       >

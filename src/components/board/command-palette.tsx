@@ -999,10 +999,17 @@ export function CommandPalette({
             */}
             <CommandGroup heading="View">{commandGroups.get("View")!.map(renderCommand)}</CommandGroup>
 
-            <CommandSeparator />
-
-            {/* Destructive commands last (EI-383) — see `COMMAND_GROUPS`. */}
-            <CommandGroup heading="Delete">{commandGroups.get("Delete")!.map(renderCommand)}</CommandGroup>
+            {/*
+              Destructive commands last (EI-383), and only for a typed query
+              (EI-392) — see `DELETE_COMMANDS`. Absent otherwise, like
+              Triage, so an empty group never renders a heading.
+            */}
+            {commandGroups.get("Delete")!.length > 0 ? (
+              <>
+                <CommandSeparator />
+                <CommandGroup heading="Delete">{commandGroups.get("Delete")!.map(renderCommand)}</CommandGroup>
+              </>
+            ) : null}
 
             {/*
               The fallback the whole search exists for: nothing matched what

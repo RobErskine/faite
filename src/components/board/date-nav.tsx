@@ -1,16 +1,23 @@
 "use client";
 
 import { useState } from "react";
-import { CalendarDays, ChevronLeft, ChevronRight, History, ListClock } from "lucide-react";
+import {
+  CalendarDays,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  History,
+  ListClock,
+} from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { civilDateToLocalDate } from "@/components/ui/date-picker-field";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { CivilDate, Settings } from "@/lib/schema";
 import { addDays, formatShortDate } from "@/lib/scheduling";
 import { ViewSettings } from "./view-settings";
-import { SavedViewsMenu } from "./saved-views-menu";
 
 const WEEK = 7;
 const MONTH = 30;
@@ -30,7 +37,7 @@ const QUARTER = 90;
  * Rigid columns (desktop-board.tsx sets --column-min == --column-max) bound
  * `visibleCount` at roughly the view's day count — inflated a little by
  * collapsed weekend strips — so Week/Month/Quarter can never quantize to the
- * same distance.
+ * same distance. The ‹ and › steps are one page: `pageAlignedJump(1, page)`.
  */
 export function pageAlignedJump(base: number, page: number): number {
   const p = Math.max(1, page);
@@ -44,8 +51,9 @@ interface DateNavProps {
   /** Day index at the track's left edge, from useDayTrack. */
   anchorIndex: number;
   /**
-   * The page size the jump buttons quantize to (far-width columns that fit),
-   * from useDayTrack. Not the title's span — see `visibleThrough`.
+   * The page size ‹ and › step by and the Jump menu's steps quantize to
+   * (far-width columns that fit), from useDayTrack. Not the title's span —
+   * see `visibleThrough`.
    */
   visibleCount: number;
   /**
@@ -78,11 +86,11 @@ interface DateNavProps {
   /**
    * The phone shell's context bar (`phone-board.tsx`, mobile plan M3). Drops
    * `ViewSettings` (the day-count toggle is moot — the pager always shows
-   * one), `SavedViewsMenu` (a saved view snapshots `visibleDays` among other
-   * fields, so it's moot for the same reason), and the Quarter/Month/Week
-   * jump buttons, which don't fit at phone width and duplicate what a swipe
-   * already does faster. Range label, Today, and the date picker survive:
-   * swipe has no equivalent for "jump to a specific far-out date."
+   * one; saved views snapshot `visibleDays` among other fields, so they are
+   * moot for the same reason), the ‹ › steps and the Jump menu's
+   * week/month/quarter steps, which a swipe already does faster. Range label,
+   * Today, and the date picker survive: swipe has no equivalent for "jump to
+   * a specific far-out date."
    */
   compact?: boolean;
   /**
@@ -100,19 +108,29 @@ interface DateNavProps {
 }
 
 /**
- * Jump controls for the day track, sitting directly above it — mirrors the
- * "My Lists / Archived" bar above the planning track so the two halves stay
- * visually symmetric.
+ * The bar above the day track: where you are, how the board is filtered, and
+ * how to move. Mirrors the "My Lists / Archived" bar above the planning track
+ * so the two halves stay visually symmetric.
  *
- * Deltas are 7/30/90 CALENDAR days, not `addMonths`/`addQuarters`: the board
- * is day-indexed throughout (see lib/scheduling.ts), and there is deliberately
+ * Three groups, read left to right (EI-392): **where** (History, the range),
+ * **what** (View, day count), **move** (‹ Today › Jump, Activity). It used to
+ * be ten peers — ‹ Quarter ‹ Month ‹ Week Today Week › Month › Quarter ›
+ * beside View, the day count, Weekends, Saved views, a date picker, Activity
+ * and History — and the jump buttons read as view switches ("Month" looked
+ * like a month view; it scrolled 28 days). Now:
+ *
+ * - ‹ and › step one page, the move you make most. Disabled at the ends
+ *   rather than hidden, so the cluster never shifts under the pointer.
+ * - "Today" is always there, disabled while you are on it.
+ * - "Jump" holds the week/month/quarter steps, both ways, beside the
+ *   calendar: every far move in one popover, one click away.
+ * - Weekends and Saved views live in the View menu (`view-settings.tsx`).
+ *
+ * Deltas are CALENDAR days, not `addMonths`/`addQuarters`: the board is
+ * day-indexed throughout (see lib/scheduling.ts), and there is deliberately
  * no month-aware arithmetic there. "Month" reads correctly as a scroll
  * distance, and it keeps applicability below uniform across all three.
- *
- * Every button only renders when the jump it performs is actually possible —
- * `‹ Week` is absent three days into the window, `Week ›` is absent at the
- * cap. `Today` fills the gap that leaves: it is the only way back once every
- * back button is hidden.
+ * A jump step only renders when the jump it performs is possible.
  */
 export function DateNav({
   settings,
@@ -148,9 +166,22 @@ export function DateNav({
   // Computed once and reused for both the availability check and the click
   // handler below — canJumpBack/Forward must see the SAME quantized value
   // the click will actually jump by, or a button can render and then no-op.
+  const page = pageAlignedJump(1, visibleCount);
   const weekStep = pageAlignedJump(WEEK, visibleCount);
   const monthStep = pageAlignedJump(MONTH, visibleCount);
   const quarterStep = pageAlignedJump(QUARTER, visibleCount);
+  const jumpSteps: JumpStep[] = [
+    { label: "Next week", delta: weekStep },
+    { label: "Next month", delta: monthStep },
+    { label: "Next quarter", delta: quarterStep },
+    { label: "Previous week", delta: -weekStep },
+    { label: "Previous month", delta: -monthStep },
+    { label: "Previous quarter", delta: -quarterStep },
+  ].filter(({ delta }) => (delta > 0 ? canJumpForward(delta) : canJumpBack(-delta)));
+  // ‹ never strands you between pages: a step longer than the distance back
+  // to today lands on today (a date pick can leave the anchor mid-page).
+  const backStep = Math.min(page, anchorIndex);
+  const pageLabel = (n: number) => `${n} day${n === 1 ? "" : "s"}`;
 
   if (compact) {
     return (
@@ -181,11 +212,9 @@ export function DateNav({
     /*
       Three tracks rather than the old `[label][ml-auto cluster]`, so the view
       controls sit centered on the BAR rather than centered on whatever the range
-      label and the jump cluster leave over. `flex-1` on the outer two is what
-      does it: they claim equal space regardless of their content, which is why
-      the middle stays put as jump buttons appear and disappear (they render
-      conditionally — see the comment above this component). `min-w-0` lets the
-      label truncate instead of pushing the center off-axis.
+      label and the move cluster leave over. `flex-1` on the outer two is what
+      does it: they claim equal space regardless of their content. `min-w-0`
+      lets the label truncate instead of pushing the center off-axis.
     */
     <div className="flex items-center gap-2 px-4 py-2">
       {/*
@@ -205,37 +234,31 @@ export function DateNav({
 
       <div className="flex items-center gap-0.5 rounded-lg border border-line/60 bg-surface-0 p-0.5">
         <ViewSettings settings={settings} />
-        <SavedViewsMenu settings={settings} />
       </div>
 
       <div className="flex min-w-0 flex-1 items-center justify-end gap-1">
-        {canJumpBack(quarterStep) && (
-          <JumpButton label="Quarter" direction="back" onClick={() => onJump(-quarterStep)} />
-        )}
-        {canJumpBack(monthStep) && (
-          <JumpButton label="Month" direction="back" onClick={() => onJump(-monthStep)} />
-        )}
-        {canJumpBack(weekStep) && (
-          <JumpButton label="Week" direction="back" onClick={() => onJump(-weekStep)} />
-        )}
-
-        {anchorIndex > 0 && (
-          <Button variant="ghost" size="xs" className="text-muted-foreground" onClick={onToday}>
-            Today
-          </Button>
-        )}
-
-        {canJumpForward(weekStep) && (
-          <JumpButton label="Week" direction="forward" onClick={() => onJump(weekStep)} />
-        )}
-        {canJumpForward(monthStep) && (
-          <JumpButton label="Month" direction="forward" onClick={() => onJump(monthStep)} />
-        )}
-        {canJumpForward(quarterStep) && (
-          <JumpButton label="Quarter" direction="forward" onClick={() => onJump(quarterStep)} />
-        )}
-
-        <JumpToDatePicker today={today} onSelect={onJumpToDate} />
+        <StepButton
+          direction="back"
+          label={`Back ${pageLabel(backStep || page)}`}
+          disabled={anchorIndex <= 0}
+          onClick={() => onJump(-backStep)}
+        />
+        <Button
+          variant="ghost"
+          size="xs"
+          className="text-muted-foreground"
+          disabled={anchorIndex === 0}
+          onClick={onToday}
+        >
+          Today
+        </Button>
+        <StepButton
+          direction="forward"
+          label={`Forward ${pageLabel(page)}`}
+          disabled={!canJumpForward(page)}
+          onClick={() => onJump(page)}
+        />
+        <JumpMenu today={today} steps={jumpSteps} onJump={onJump} onSelectDate={onJumpToDate} />
         <ActivityTrigger onClick={onOpenActivity} />
       </div>
     </div>
@@ -269,61 +292,83 @@ function OverflowPeek({ count, onShow }: { count: number; onShow: () => void }) 
   );
 }
 
+/**
+ * An icon-only control with its accessible name as a tooltip (EI-383's rule:
+ * a sighted mouse user is owed the same words a screen reader hears).
+ */
+function IconButton({
+  label,
+  onClick,
+  disabled,
+  className,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            className={cn("text-muted-foreground", className)}
+            onClick={onClick}
+            disabled={disabled}
+            aria-label={label}
+          >
+            {children}
+          </Button>
+        }
+      />
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 function HistoryTrigger({ onClick }: { onClick: () => void }) {
   return (
-    <Button
-      variant="ghost"
-      size="icon-xs"
-      className="shrink-0 text-muted-foreground"
-      onClick={onClick}
-      aria-label="Open history"
-    >
+    <IconButton label="Open history" onClick={onClick} className="shrink-0">
       <History aria-hidden />
-    </Button>
+    </IconButton>
   );
 }
 
 function ActivityTrigger({ onClick }: { onClick: () => void }) {
   return (
-    <Button
-      variant="ghost"
-      size="icon-xs"
-      className="text-muted-foreground"
-      onClick={onClick}
-      aria-label="Open activity feed"
-    >
+    <IconButton label="Open activity feed" onClick={onClick}>
       <ListClock aria-hidden />
-    </Button>
+    </IconButton>
   );
 }
 
-function JumpButton({
-  label,
+/** ‹ and ›, named for the distance they move ("Forward 6 days"). */
+function StepButton({
   direction,
+  label,
+  disabled,
   onClick,
 }: {
-  label: string;
   direction: "back" | "forward";
+  label: string;
+  disabled: boolean;
   onClick: () => void;
 }) {
-  const icon =
-    direction === "back" ? (
-      <ChevronLeft aria-hidden />
-    ) : (
-      <ChevronRight aria-hidden />
-    );
   return (
-    <Button
-      variant="ghost"
-      size="xs"
-      className={cn("text-muted-foreground", direction === "forward" && "flex-row-reverse")}
-      onClick={onClick}
-      aria-label={direction === "back" ? `Previous ${label.toLowerCase()}` : `Next ${label.toLowerCase()}`}
-    >
-      {icon}
-      {label}
-    </Button>
+    <IconButton label={label} onClick={onClick} disabled={disabled}>
+      {direction === "back" ? <ChevronLeft aria-hidden /> : <ChevronRight aria-hidden />}
+    </IconButton>
   );
+}
+
+interface JumpStep {
+  label: string;
+  /** Calendar days, already page-aligned; negative is back. */
+  delta: number;
 }
 
 /**
@@ -350,6 +395,36 @@ export function daysBetweenLocalDates(from: Date, to: Date): number {
   return Math.round((to.getTime() - from.getTime()) / msPerDay);
 }
 
+/**
+ * The calendar the date picker and the Jump menu share. No upper bound:
+ * picking any future date — a reminder a year and a half out, say — is meant
+ * to work; `onSelect` (wired to `jumpToIndex` in useDayTrack) grows the
+ * rendered window and the jump ceiling to reach it rather than the picker
+ * refusing the date outright. Past dates stay disabled — the board never
+ * scrolls before today.
+ */
+function JumpCalendar({
+  today,
+  onSelect,
+}: {
+  today: CivilDate;
+  onSelect: (target: number) => void;
+}) {
+  const todayLocal = civilDateToLocalDate(today);
+  return (
+    <Calendar
+      mode="single"
+      defaultMonth={todayLocal}
+      disabled={{ before: todayLocal }}
+      onSelect={(date) => {
+        if (!date) return;
+        onSelect(daysBetweenLocalDates(todayLocal, date));
+      }}
+    />
+  );
+}
+
+/** The phone bar's date picker: the calendar alone, behind its icon. */
 function JumpToDatePicker({
   today,
   onSelect,
@@ -358,7 +433,6 @@ function JumpToDatePicker({
   onSelect: (target: number) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const todayLocal = civilDateToLocalDate(today);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -369,20 +443,84 @@ function JumpToDatePicker({
         <CalendarDays aria-hidden />
       </PopoverTrigger>
       <PopoverContent align="end" className="w-auto p-0">
-        {/*
-          No upper bound. Picking any future date — a reminder a year and a
-          half out, say — is meant to work; `onSelect` (wired to `jumpToIndex`
-          in useDayTrack) grows the rendered window and the jump ceiling to
-          reach it rather than the picker refusing the date outright. Past
-          dates stay disabled — the board never scrolls before today.
-        */}
-        <Calendar
-          mode="single"
-          defaultMonth={todayLocal}
-          disabled={{ before: todayLocal }}
-          onSelect={(date) => {
-            if (!date) return;
-            onSelect(daysBetweenLocalDates(todayLocal, date));
+        <JumpCalendar
+          today={today}
+          onSelect={(target) => {
+            onSelect(target);
+            setOpen(false);
+          }}
+        />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/**
+ * "Jump" (EI-392): every move longer than a page, in one place. The steps
+ * sit in a column beside the calendar, so "next month" and "the 14th" are
+ * the same click away and read as what they are — places to go, not views.
+ * A popover rather than a menu because a calendar grid is not a menu item.
+ *
+ * The visible word is the whole accessible name, so voice control can say
+ * "click Jump" (EI-377); the calendar icon keeps the glyph the old date
+ * picker used, so the control a returning user reached for is still there.
+ */
+function JumpMenu({
+  today,
+  steps,
+  onJump,
+  onSelectDate,
+}: {
+  today: CivilDate;
+  steps: JumpStep[];
+  onJump: (delta: number) => void;
+  onSelectDate: (target: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const forward = steps.filter((s) => s.delta > 0);
+  const back = steps.filter((s) => s.delta < 0);
+  const stepButton = ({ label, delta }: JumpStep) => (
+    <Button
+      key={label}
+      variant="ghost"
+      size="sm"
+      className="w-full justify-start"
+      onClick={() => {
+        onJump(delta);
+        setOpen(false);
+      }}
+    >
+      {label}
+    </Button>
+  );
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        className={cn(buttonVariants({ variant: "ghost", size: "xs" }), "text-muted-foreground")}
+      >
+        <CalendarDays aria-hidden />
+        Jump
+        <ChevronDown aria-hidden />
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-auto flex-row gap-0 p-0">
+        {steps.length > 0 && (
+          <div
+            role="group"
+            aria-label="Jump by"
+            className="flex w-36 flex-col gap-0.5 border-r border-line/60 p-1.5"
+          >
+            {forward.map(stepButton)}
+            {forward.length > 0 && back.length > 0 && (
+              <div role="separator" className="my-1 h-px bg-border" />
+            )}
+            {back.map(stepButton)}
+          </div>
+        )}
+        <JumpCalendar
+          today={today}
+          onSelect={(target) => {
+            onSelectDate(target);
             setOpen(false);
           }}
         />

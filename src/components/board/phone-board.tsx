@@ -18,7 +18,12 @@ import { TabPillMenu } from "./tab-pill-menu";
 import { BoardEmptyBanner } from "./board-empty-banner";
 import { CreateListColumn } from "./create-list-column";
 import { DateNav } from "./date-nav";
-import { DayOverdriveButton, OverdriveButton, QuickSortButton } from "./overdrive-button";
+import {
+  DayOverdriveButton,
+  OverdriveButton,
+  QUICK_SORT_PHONE_HEADER,
+  QuickSortButton,
+} from "./overdrive-button";
 import { BACKLOG } from "@/lib/overdrive";
 import { OverflowEmptyState } from "./overflow-empty-state";
 import { TabStrip } from "./tab-strip";
@@ -497,6 +502,7 @@ export function PhoneBoard({
                     <QuickSortButton
                       count={quickSortTodos.length}
                       onOpen={() => setOverdriveSource(BACKLOG)}
+                      className={QUICK_SORT_PHONE_HEADER}
                     />
                   }
                 />

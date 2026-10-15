@@ -1,14 +1,16 @@
 "use client";
 
-import { CalendarOff, CalendarRange, ChevronDown } from "lucide-react";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { ChevronDown } from "lucide-react";
+import { buttonVariants } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuGroup,
+  DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 // Straight from `owner.ts` rather than re-exported through `repositories.ts`:
@@ -17,14 +19,21 @@ import { LOCAL_OWNER_ID } from "@/lib/store/owner";
 import { mutateSettings } from "@/lib/store/mutate";
 import { VISIBLE_DAY_OPTIONS, type Settings, type TodoStatus } from "@/lib/schema";
 import { cn } from "@/lib/utils";
+import { SavedViewsSection } from "./saved-views-section";
 
 /**
  * What the calendar half shows, as controls rather than settings-sheet fields.
  *
- * These three sit in the day track's own nav rather than in Settings because
- * they are things you change WHILE looking at the board — "hide what I've
+ * These sit in the day track's own nav rather than in Settings because they
+ * are things you change WHILE looking at the board — "hide what I've
  * finished", "just show me this week" — and a preference you reach for that
  * often stops being a preference. Settings holds the ones you set once.
+ *
+ * Two triggers (EI-392). "View: …" holds which statuses show, whether
+ * weekends get full columns, and saved views; the day count keeps its own,
+ * because it is the one you change most and its label is the state. Weekends
+ * and Saved views used to be two more peers in the date row — a toggle and a
+ * bare bookmark icon — and both are part of what you are viewing.
  *
  * Every write goes straight to the store; `useSettings` in board.tsx re-renders
  * from Dexie. Nothing here holds local state, so two of these open at once (or
@@ -88,7 +97,7 @@ export function ViewSettings({ settings }: ViewSettingsProps) {
           for screen readers.
         */}
         <DropdownMenuTrigger
-          aria-label={`View: ${statusLabel} — which statuses to show`}
+          aria-label={`View: ${statusLabel} — which statuses to show, weekends, saved views`}
           className={cn(
             buttonVariants({ variant: "ghost", size: "xs" }),
             "max-w-56 text-muted-foreground",
@@ -97,8 +106,9 @@ export function ViewSettings({ settings }: ViewSettingsProps) {
           <span className="truncate">View: {statusLabel}</span>
           <ChevronDown aria-hidden />
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="center" className="w-52">
+        <DropdownMenuContent align="center" className="w-64">
           <DropdownMenuGroup>
+            <DropdownMenuLabel>Show</DropdownMenuLabel>
             {STATUS_OPTIONS.map((option) => (
               <DropdownMenuCheckboxItem
                 key={option.value}
@@ -113,6 +123,26 @@ export function ViewSettings({ settings }: ViewSettingsProps) {
               </DropdownMenuCheckboxItem>
             ))}
           </DropdownMenuGroup>
+          <DropdownMenuSeparator />
+          {/*
+            Checked means weekends get full columns; off collapses each
+            weekend into a strip. Same words as ⌘K's "Show weekends" /
+            "Hide weekends" (command-registry.ts) — one wording for one
+            setting. Stays open on click, like the statuses above.
+          */}
+          <DropdownMenuGroup>
+            <DropdownMenuCheckboxItem
+              checked={showWeekends}
+              closeOnClick={false}
+              onCheckedChange={(checked) =>
+                void mutateSettings(LOCAL_OWNER_ID, { showWeekends: checked })
+              }
+            >
+              Show weekends
+            </DropdownMenuCheckboxItem>
+          </DropdownMenuGroup>
+          <DropdownMenuSeparator />
+          <SavedViewsSection settings={settings} />
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -144,36 +174,6 @@ export function ViewSettings({ settings }: ViewSettingsProps) {
           </DropdownMenuRadioGroup>
         </DropdownMenuContent>
       </DropdownMenu>
-
-      {/*
-        Labelled with the STATE, not the action — "Hide weekends" next to two
-        dropdowns that both report what you are looking at read as a claim
-        about the board rather than a button, and there is no way to tell at a
-        glance whether you are seeing the weekend or about to stop.
-
-        So: "Weekends" (calendar intact) when they are there, "Weekends hidden"
-        (calendar struck through) when they are not. Icon and label say the
-        same thing twice on purpose; the icon is what carries at a glance.
-
-        `CalendarRange` rather than `CalendarDays`, which would be the more
-        literal week glyph: the date picker at the other end of this same bar
-        already uses `CalendarDays`, and two identical icons a few hundred
-        pixels apart doing unrelated things is worse than a slightly less
-        literal one. The range bar also reads as "a span of days", which is
-        what the strip covers.
-      */}
-      <Button
-        variant="ghost"
-        size="xs"
-        aria-pressed={!showWeekends}
-        className={cn(!showWeekends ? "bg-muted" : "text-muted-foreground")}
-        onClick={() =>
-          void mutateSettings(LOCAL_OWNER_ID, { showWeekends: !showWeekends })
-        }
-      >
-        {showWeekends ? <CalendarRange aria-hidden /> : <CalendarOff aria-hidden />}
-        {showWeekends ? "Weekends" : "Weekends hidden"}
-      </Button>
     </div>
   );
 }

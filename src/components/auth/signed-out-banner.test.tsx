@@ -63,6 +63,12 @@ describe("SignedOutBanner (EI-376)", () => {
     expect(classes).toContain("after:-inset-y-1.5");
   });
 
+  it("reaches 44px tall on touch, inside the banner's own row (EI-392)", () => {
+    render(<SignedOutBanner hasUserData />);
+    // 17.5px of line + 2×14 = 45.5; it measured 47×29 before.
+    expect(screen.getByText("Sign up").className.split(/\s+/)).toContain("pointer-coarse:after:-inset-y-3.5");
+  });
+
   it("stays dismissed on this device across visits", () => {
     const first = render(<SignedOutBanner hasUserData />);
     fireEvent.click(screen.getByLabelText("Dismiss"));

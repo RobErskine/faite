@@ -135,37 +135,149 @@ describe("DateNav history trigger (EI-322)", () => {
   }
 });
 
-describe("DateNav jump buttons — page-aligned steps", () => {
+/**
+ * EI-392. The desktop bar was ten peers; it is now where (History, range),
+ * what (View, day count) and move (‹ Today › Jump, Activity). Every
+ * capability the old row had is still one or two clicks away.
+ */
+describe("DateNav's calmer desktop row (EI-392)", () => {
   afterEach(cleanup);
 
-  it("steps Month by 28 (not the raw 30) in the default 7-day view", () => {
+  const barNames = () =>
+    screen
+      .getAllByRole("button")
+      .map((b) => b.getAttribute("aria-label") ?? b.textContent!.trim());
+
+  it("renders the reduced set, in reading order", () => {
+    render(<DateNav {...baseProps} canJumpForward={() => true} onOpenActivity={() => {}} />);
+    expect(barNames()).toEqual([
+      "Open history",
+      "View: To-do — which statuses to show, weekends, saved views",
+      "7 days — how many day columns to show",
+      "Back 7 days",
+      "Today",
+      "Forward 7 days",
+      "Jump",
+      "Open activity feed",
+    ]);
+  });
+
+  it("has no Week/Month/Quarter, Weekends or Saved views peers left in the bar", () => {
+    render(
+      <DateNav {...baseProps} anchorIndex={30} canJumpBack={() => true} canJumpForward={() => true} onOpenActivity={() => {}} />,
+    );
+    for (const name of [
+      /^(next|previous) (week|month|quarter)$/i,
+      /^(week|month|quarter)$/i,
+      /^weekends( hidden)?$/i,
+      /^saved views$/i,
+      /^jump to date$/i,
+    ]) {
+      expect(screen.queryByRole("button", { name })).toBeNull();
+    }
+  });
+
+  it("steps one page with › and disables ‹ and Today on today", () => {
     const onJump = vi.fn();
     render(
-      <DateNav
-        {...baseProps}
-        visibleCount={7}
-        canJumpForward={() => true}
-        onJump={onJump}
-        onOpenActivity={() => {}}
-      />,
+      <DateNav {...baseProps} visibleCount={3} canJumpForward={() => true} onJump={onJump} onOpenActivity={() => {}} />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Next month" }));
+    expect(screen.getByRole("button", { name: "Back 3 days" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "Today" }).hasAttribute("disabled")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Forward 3 days" }));
+    expect(onJump).toHaveBeenCalledWith(3);
+  });
+
+  it("‹ lands on today rather than refusing when today is less than a page back", () => {
+    const onJump = vi.fn();
+    render(
+      <DateNav {...baseProps} anchorIndex={2} visibleCount={7} canJumpForward={() => true} onJump={onJump} onOpenActivity={() => {}} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Back 2 days" }));
+    expect(onJump).toHaveBeenCalledWith(-2);
+  });
+
+  it("goes back to today from a later page", () => {
+    const onToday = vi.fn();
+    render(<DateNav {...baseProps} anchorIndex={14} onToday={onToday} onOpenActivity={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: "Today" }));
+    expect(onToday).toHaveBeenCalledOnce();
+  });
+
+  it("disables › at the cap", () => {
+    render(<DateNav {...baseProps} canJumpForward={() => false} onOpenActivity={() => {}} />);
+    expect(screen.getByRole("button", { name: "Forward 7 days" }).hasAttribute("disabled")).toBe(true);
+  });
+});
+
+describe("DateNav's Jump popover — page-aligned steps and the calendar (EI-392)", () => {
+  afterEach(() => {
+    cleanup();
+    document.body.replaceChildren();
+  });
+
+  const openJump = () => fireEvent.click(screen.getByRole("button", { name: "Jump" }));
+
+  it("steps Month by 28 (not the raw 30) in the default 7-day view, and closes", async () => {
+    const onJump = vi.fn();
+    render(
+      <DateNav {...baseProps} visibleCount={7} canJumpForward={() => true} onJump={onJump} onOpenActivity={() => {}} />,
+    );
+    openJump();
+    fireEvent.click(await screen.findByRole("button", { name: "Next month" }));
     expect(onJump).toHaveBeenCalledWith(28);
   });
 
-  it("steps Month by the raw 30 in a 3-day view", () => {
+  it("steps Month by the raw 30 in a 3-day view", async () => {
+    const onJump = vi.fn();
+    render(
+      <DateNav {...baseProps} visibleCount={3} canJumpForward={() => true} onJump={onJump} onOpenActivity={() => {}} />,
+    );
+    openJump();
+    fireEvent.click(await screen.findByRole("button", { name: "Next month" }));
+    expect(onJump).toHaveBeenCalledWith(30);
+  });
+
+  it("holds all three forward steps and the calendar on today", async () => {
+    render(<DateNav {...baseProps} canJumpForward={() => true} onOpenActivity={() => {}} />);
+    openJump();
+    const group = await screen.findByRole("group", { name: "Jump by" });
+    const steps = Array.from(group.querySelectorAll("button")).map((b) => b.textContent);
+    // Nothing behind today, so no Previous steps.
+    expect(steps).toEqual(["Next week", "Next month", "Next quarter"]);
+    expect(screen.getByRole("grid")).toBeTruthy();
+  });
+
+  it("offers the Previous steps that are possible, back by the same quantized step", async () => {
     const onJump = vi.fn();
     render(
       <DateNav
         {...baseProps}
-        visibleCount={3}
+        anchorIndex={35}
+        canJumpBack={(delta) => delta <= 35}
         canJumpForward={() => true}
         onJump={onJump}
         onOpenActivity={() => {}}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Next month" }));
-    expect(onJump).toHaveBeenCalledWith(30);
+    openJump();
+    const group = await screen.findByRole("group", { name: "Jump by" });
+    const steps = Array.from(group.querySelectorAll("button")).map((b) => b.textContent);
+    expect(steps).toEqual(["Next week", "Next month", "Next quarter", "Previous week", "Previous month"]);
+    fireEvent.click(screen.getByRole("button", { name: "Previous month" }));
+    expect(onJump).toHaveBeenCalledWith(-28);
+  });
+});
+
+describe("DateNav's phone bar keeps its own controls (EI-392)", () => {
+  afterEach(cleanup);
+
+  it("keeps the calendar-only date picker and adds no ‹ › or Jump", () => {
+    render(<DateNav {...baseProps} compact anchorIndex={3} visibleCount={1} visibleThrough={3} onOpenActivity={() => {}} />);
+    expect(screen.getByRole("button", { name: "Jump to date" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Jump" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^(Back|Forward) / })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^View:/ })).toBeNull();
   });
 });
 

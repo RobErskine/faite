@@ -19,9 +19,14 @@ interface SignedOutBannerProps {
  * line box alone does not give a `text-xs`/`text-sm` word. The `::after`
  * grows the target without growing the banner (same technique as
  * `ui/checkbox.tsx`).
+ *
+ * On touch it reaches 44 tall (EI-392; it measured 47×29 at 390×844). The
+ * phone banner's row is already 44px — the Dismiss button's coarse floor
+ * sets it — and the 17.5px line sits centered in it, so 14px each way makes
+ * 45.5, inside the banner's own padding and clear of the header below.
  */
 const SIGN_UP_LINK =
-  "focus-ring relative rounded-sm font-medium underline underline-offset-2 after:absolute after:-inset-x-1 after:-inset-y-1.5";
+  "focus-ring relative rounded-sm font-medium underline underline-offset-2 after:absolute after:-inset-x-1 after:-inset-y-1.5 pointer-coarse:after:-inset-y-3.5";
 
 /**
  * "This device only" notice. Gated on `hasUserData` rather than always shown

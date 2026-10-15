@@ -119,7 +119,7 @@ At root, in render order:
 | | Roll over on workdays only ⇄ every day | writes `settings.workdaysOnly` — same setting also lives in Settings → Faite Loop (`loop-section.tsx`, EI-96), which additionally exposes `overflowAfterDays`; see [FAITE-LOOP.md](FAITE-LOOP.md) |
 | | Overdrive — Overflow is empty | the View row only while Overflow is empty, disabled; with cards it moves to **Triage**, top of the list (EI-383). Opens the same full-screen triage overlay as the button at the foot of the Overflow column (EI-97) — see [OVERDRIVE.md](OVERDRIVE.md). Overflow-only, deliberately: a day column's own Overdrive entry (EI-253) is a header icon, not a palette command — see OVERDRIVE.md §12 |
 | | Quick sort — Backlog is empty | the View row only while Backlog is empty, disabled; with open to-dos it moves to **Triage** (EI-386). Opens Overdrive over Backlog with a list picker per card (EI-370) — see OVERDRIVE.md §13 |
-| **Delete** | Delete a list… / Delete a tab… | each enters a picker mode. Last on purpose (EI-383): they used to rank 5th–6th, under Manage, ahead of everything a planning session reaches for. Ids are still `manage-delete-list`/`manage-delete-tab` |
+| **Delete** | Delete a list… / Delete a tab… | **only once a query is typed** (EI-392) — absent from the empty root, heading and all; "delete", "del" or "tab" find them. Each enters a picker mode. Last on purpose (EI-383): they used to rank 5th–6th, under Manage, ahead of everything a planning session reaches for. Ids are still `manage-delete-list`/`manage-delete-tab` |
 | **Create** (again) | `Create to-do "<query>"` | only when the query is non-empty; parses quick-add tokens — §5. The registry's one `fallback` row: last, in a group of its own, so every real match is above it and Enter runs the best one; with none it is the only row and Enter captures (EI-389, §6.3). Same `create-from-query` id, still `group: "Create"` in the registry |
 
 **Why this order (EI-383).** The second board critique counted: with
@@ -128,7 +128,17 @@ the 5th. The palette's empty-query order is advice about what matters now,
 so the most useful command for a full Overflow leads, and the destructive
 ones close the list. Search is unaffected — a command's label is still its
 cmdk match value, so typing "delete" or "overdrive" finds the same rows as
-before. With a query, cmdk sorts the rows *within* each group by score, but
+before.
+
+**Delete only when searched for (EI-392).** The fourth critique still found
+"Delete a list…" and "Delete a tab…" in the empty root, last but present. An
+empty root is a menu you read, and a destructive verb in it is a
+suggestion; typed, it is a request. So both carry `when: ctx.query.length >
+0` in the registry — `query`, not `hasQuery`, because a folded quick-add
+chip with an empty box is not a search for "delete" — and the palette renders
+the group (and the separator above it) only when it has rows, as it does
+Triage. Ids, labels and scoring are unchanged, and EI-389's fallback still
+follows every real match: "delete" lists both, then `Create to-do "delete"`. With a query, cmdk sorts the rows *within* each group by score, but
 **the groups keep this render order** — §10 has why — so the table's order is
 also the order matches appear in.
 
@@ -560,8 +570,9 @@ Three layers, all required:
   (current-day marker, last-status-can't-turn-off guard, status-toggle
   ordering, Overdrive's count/disabled state), and the group order —
   Overdrive in Triage only while Overflow has cards, Quick sort after it
-  only while Backlog has open to-dos (EI-386), Delete last (EI-383).
-  `command-palette.test.tsx` asserts the same order on the rendered options.
+  only while Backlog has open to-dos (EI-386), Delete last (EI-383) and
+  only for a typed query (EI-392). `command-palette.test.tsx` asserts the
+  same order on the rendered options, and that "delete" finds both.
 - **`src/lib/search.test.ts`** — pure matcher. Node environment, no DOM. Tier
   ordering, status ordering, recency tiebreak, soft-delete exclusion, limit.
 - **`src/lib/quick-add.test.ts`** / **`src/lib/mention.test.ts`** — pure,

@@ -1059,6 +1059,13 @@ export function BoardColumn({
             className={cn(
               DUE_BANNER,
               "w-full cursor-pointer text-left hover:bg-urgent/15",
+              /*
+                26px for a mouse, 44px on touch (EI-392). A real height, not
+                an extender: the header's day name sits right above and the
+                first card's title right below, both already 44px targets
+                that fill their space, so there is nothing to borrow.
+              */
+              "pointer-coarse:min-h-11",
               "focus-ring",
             )}
           >

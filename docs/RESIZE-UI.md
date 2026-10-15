@@ -19,7 +19,7 @@ draggable:
   40px strip instead of clamping — same VS Code gesture the rails already use.
 - **Only one half can be collapsed at a time** — collapsing one always leaves
   the other filling the screen.
-- **Using `DateNav`** (Week/Month/Quarter/Today/date picker) while the
+- **Using `DateNav`** (‹ Today ›, the Jump popover) while the
   calendar is collapsed re-expands it and completes the jump in one gesture,
   rather than requiring a separate click first.
 - The split ratio and collapse state **sync across devices** — the one place

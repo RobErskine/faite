@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { SavedViewsMenu } from "./saved-views-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { SavedViewsSection } from "./saved-views-section";
 import type { Settings } from "@/lib/schema";
 
 const mutateSettings = vi.fn();
@@ -50,8 +51,20 @@ const settings = (over: Partial<Settings> = {}): Settings => ({
 
 const lastPatch = () => mutateSettings.mock.calls.at(-1)?.[1];
 
+/** The section renders inside a menu its caller owns (the View menu). */
+function SavedViewsMenu({ settings }: { settings: Settings }) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger>Open</DropdownMenuTrigger>
+      <DropdownMenuContent>
+        <SavedViewsSection settings={settings} />
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 function openMenu() {
-  fireEvent.click(screen.getByRole("button", { name: "Saved views" }));
+  fireEvent.click(screen.getByRole("button", { name: "Open" }));
 }
 
 beforeEach(() => {
@@ -63,7 +76,7 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
-describe("SavedViewsMenu — empty state", () => {
+describe("SavedViewsSection — empty state", () => {
   it("says there are no saved views yet", () => {
     render(<SavedViewsMenu settings={settings()} />);
     openMenu();
@@ -71,7 +84,7 @@ describe("SavedViewsMenu — empty state", () => {
   });
 });
 
-describe("SavedViewsMenu — saving", () => {
+describe("SavedViewsSection — saving", () => {
   it("captures the current settings under the typed name", async () => {
     render(<SavedViewsMenu settings={settings({ visibleDays: 3, showWeekends: false })} />);
     openMenu();
@@ -101,7 +114,7 @@ describe("SavedViewsMenu — saving", () => {
   });
 });
 
-describe("SavedViewsMenu — applying", () => {
+describe("SavedViewsSection — applying", () => {
   it("writes the saved view's patch to settings when clicked", async () => {
     localStorage.setItem(
       "faite:saved-views",
@@ -130,7 +143,7 @@ describe("SavedViewsMenu — applying", () => {
   });
 });
 
-describe("SavedViewsMenu — deleting", () => {
+describe("SavedViewsSection — deleting", () => {
   it("removes a view without applying it", async () => {
     localStorage.setItem(
       "faite:saved-views",
@@ -153,5 +166,33 @@ describe("SavedViewsMenu — deleting", () => {
     expect(mutateSettings).not.toHaveBeenCalled();
     expect(screen.getByText("No saved views yet")).toBeTruthy();
     expect(localStorage.getItem("faite:saved-views")).toBe("[]");
+  });
+});
+
+describe("SavedViewsSection — typing in the name field (EI-392)", () => {
+  /**
+   * The field shares the View menu with checkbox items, and the menu's own
+   * React keydown handlers (typeahead, arrow roving) sit above it. A React
+   * `onKeyDown` above the section stands in for them.
+   */
+  it("keeps the menu's typeahead from taking the keys, but not Escape", () => {
+    const menuSaw = vi.fn();
+    render(
+      <DropdownMenu>
+        <DropdownMenuTrigger>Open</DropdownMenuTrigger>
+        <DropdownMenuContent>
+          <div onKeyDown={(e) => menuSaw(e.key)}>
+            <SavedViewsSection settings={settings()} />
+          </div>
+        </DropdownMenuContent>
+      </DropdownMenu>,
+    );
+    openMenu();
+    const input = screen.getByRole("textbox", { name: "New saved view name" });
+    fireEvent.keyDown(input, { key: "C" });
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    expect(menuSaw).not.toHaveBeenCalled();
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(menuSaw).toHaveBeenCalledWith("Escape");
   });
 });

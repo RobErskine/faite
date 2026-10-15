@@ -527,3 +527,26 @@ describe("the wordmark's target (EI-388)", () => {
     expect(cls).toContain("pointer-coarse:after:content-['']");
   });
 });
+
+/**
+ * EI-392. Keyboard shortcuts measured 42 wide at 390×844: its 6px extender
+ * and the avatar's 8px one asked for 14px of a 12px `gap-3`, and the later
+ * element wins a tap in an overlap. The avatar now takes 6px left (meeting
+ * the help button's extender exactly) and 10px right, into `px-4`.
+ */
+describe("header touch targets do not overlap (EI-392)", () => {
+  it("gives the avatar a lopsided extender that stops where the help button's starts", () => {
+    render(
+      <AppHeader onOpenPalette={noop} onOpenSettings={noop} onOpenHelp={noop} settings={undefined} />,
+    );
+    const avatar = screen.getByRole("button", { name: "Account" }).className.split(/\s+/);
+    expect(avatar).toContain("pointer-coarse:after:-left-1.5");
+    expect(avatar).toContain("pointer-coarse:after:-right-2.5");
+    expect(avatar).toContain("pointer-coarse:after:-inset-y-2");
+    expect(avatar).not.toContain("pointer-coarse:after:-inset-2");
+    // 6px + 6px is the header's whole 12px gap, and not a pixel more.
+    const help = screen.getByRole("button", { name: "Keyboard shortcuts" }).className.split(/\s+/);
+    expect(help).toContain("pointer-coarse:after:-inset-1.5");
+    expect(screen.getByRole("banner").className).toContain("gap-3");
+  });
+});

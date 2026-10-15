@@ -217,16 +217,31 @@ describe("CommandPalette", () => {
     expect(screen.getByText("New to-do")).toBeTruthy();
     expect(screen.getByText("New list")).toBeTruthy();
     expect(screen.getByText("New tab")).toBeTruthy();
-    expect(screen.getByText("Delete a list…")).toBeTruthy();
-    expect(screen.getByText("Delete a tab…")).toBeTruthy();
   });
 
-  it("leads with Overdrive while Overflow has cards, and ends with Delete (EI-383)", () => {
+  /**
+   * EI-392. The empty root is a menu you read, and a destructive verb in it
+   * is a suggestion; typed, it is a request.
+   */
+  it("keeps Delete out of the empty root, and finds both when searched (EI-392)", () => {
+    renderPalette();
+    expect(screen.queryByText("Delete a list…")).toBeNull();
+    expect(screen.queryByText("Delete a tab…")).toBeNull();
+    expect(screen.queryByText("Delete")).toBeNull();
+
+    search("delete");
+    const names = screen.getAllByRole("option").map((o) => o.textContent);
+    expect(names.slice(0, 2)).toEqual(["Delete a list…", "Delete a tab…"]);
+    // EI-389's fallback still follows every real match.
+    expect(names.at(-1)).toBe("Create to-do “delete”");
+  });
+
+  it("leads with Overdrive while Overflow has cards, and ends with View (EI-383, EI-392)", () => {
     renderPalette({ overflowCount: 8 });
 
     const options = screen.getAllByRole("option").map((o) => o.textContent);
     expect(options[0]).toBe("Open Overdrive (8)");
-    expect(options.slice(-2)).toEqual(["Delete a list…", "Delete a tab…"]);
+    expect(options.at(-1)).toBe("Quick sort — Backlog is empty");
     expect(screen.getByText("Triage")).toBeTruthy();
   });
 
@@ -235,7 +250,7 @@ describe("CommandPalette", () => {
 
     const options = screen.getAllByRole("option");
     expect(options[0].textContent).toBe("New to-do");
-    expect(options.slice(-2).map((o) => o.textContent)).toEqual(["Delete a list…", "Delete a tab…"]);
+    expect(options.map((o) => o.textContent)).not.toContain("Delete a list…");
     expect(screen.queryByText("Triage")).toBeNull();
     const overdrive = screen.getByRole("option", { name: "Overdrive — Overflow is empty" });
     expect(overdrive.getAttribute("aria-disabled")).toBe("true");
