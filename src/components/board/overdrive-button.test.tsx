@@ -132,3 +132,28 @@ describe("QuickSortButton", () => {
     expect(await screen.findByText("Quick sort Backlog — 2 to-dos")).toBeTruthy();
   });
 });
+
+/**
+ * EI-388. The ⚡ was 34×34 on a phone. Under a coarse pointer an `::after`
+ * makes it 44×44: 5px top and bottom, 8px left, and only 2px right, because
+ * the box already ends 2px short of the column's right edge. Classes, since
+ * happy-dom has no layout.
+ */
+describe("header icon touch target (EI-388)", () => {
+  it.each([
+    ["DayOverdriveButton", <DayOverdriveButton key="d" count={6} label="Wednesday, Oct 14" onOpen={vi.fn()} />],
+    ["QuickSortButton", <QuickSortButton key="q" count={2} onOpen={vi.fn()} />],
+  ])("%s extends to 44px on touch without moving", (_name, element) => {
+    render(<TooltipProvider>{element}</TooltipProvider>);
+    const cls = screen.getByRole("button").className.split(/\s+/);
+    expect(cls).toContain("relative");
+    expect(cls).toContain("pointer-coarse:after:absolute");
+    expect(cls).toContain("pointer-coarse:after:content-['']");
+    expect(cls).toContain("pointer-coarse:after:-inset-y-[5px]");
+    expect(cls).toContain("pointer-coarse:after:-left-2");
+    expect(cls).toContain("pointer-coarse:after:-right-0.5");
+    // The padding pair that makes the 34px box is unchanged.
+    expect(cls).toContain("pointer-coarse:p-2.5");
+    expect(cls).toContain("pointer-coarse:-m-2.5");
+  });
+});

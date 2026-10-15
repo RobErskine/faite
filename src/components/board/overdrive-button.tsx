@@ -146,8 +146,17 @@ function HeaderIconButton({
             onClick={onClick}
             aria-label={name}
             className={cn(
-              "shrink-0 self-center rounded text-muted-foreground transition-colors",
+              "relative shrink-0 self-center rounded text-muted-foreground transition-colors",
               "-m-1.5 p-1.5 pointer-coarse:-m-2.5 pointer-coarse:p-2.5",
+              /*
+                The coarse padding makes a 34px box; an `::after` makes the
+                last 10px without moving the icon or the margins a caller sets
+                (EI-388). Lopsided on purpose: the icon sits 12px in from the
+                column's right edge, so the box already ends 2px short of it,
+                and 2px is all the right side may take. The other 8px go left,
+                into the header's `gap-2`.
+              */
+              "pointer-coarse:after:absolute pointer-coarse:after:-inset-y-[5px] pointer-coarse:after:-left-2 pointer-coarse:after:-right-0.5 pointer-coarse:after:content-['']",
               "hover:text-foreground focus-ring",
               className,
             )}

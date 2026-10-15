@@ -97,6 +97,13 @@ fallback a `group-hover:`-revealed control needs on touch. Use native
 throughout) and leave every existing `hover:`/`group-hover:` alone; they
 were already correct.
 
+Every control's coarse target is 44×44 (EI-388). How to get there without
+stealing taps — a `py-*/-my-*` pair, an `::after` extender, or a real
+`pointer-coarse:min-h-11` height — and which controls take which is
+`docs/DESIGN.md` §3 "Touch targets". The one visible cost is on the board:
+card rows, list-group headers and the quick-add are 44px tall on touch,
+36/24/36 with a mouse.
+
 **One tailwind-merge caveat, inherited from `drag-grip.tsx`'s own comment on
 this exact class family:** `tailwind-merge` does not recognize that
 `-inset-3` (shorthand) and `-inset-x-3`/`-inset-y-2` (axis-specific) target

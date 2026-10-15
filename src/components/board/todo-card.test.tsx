@@ -238,7 +238,7 @@ describe("the grip", () => {
     expect(cls).toContain("pointer-coarse:after:-inset-x-1");
     // The base's wider expansions must be merged away, not left to source order.
     expect(cls).not.toContain("after:-inset-x-3");
-    expect(cls).not.toContain("pointer-coarse:after:-inset-x-3.5");
+    expect(cls).not.toContain("pointer-coarse:after:-inset-x-[15px]");
   });
 });
 
@@ -1238,5 +1238,57 @@ describe("the title button's name (EI-378, EI-381)", () => {
     // `py-1` grows the box, `-my-1` hands the space back — both or neither.
     expect(cls).toContain("py-1");
     expect(cls).toContain("-my-1");
+  });
+});
+
+/**
+ * EI-388. On a coarse pointer the row is 44px and the title fills it, so the
+ * row is the tap target; the checkbox and grip move down with the first line.
+ * Measured at 390×844 with touch: title 349×44 (the checkbox's 24px strip
+ * excluded), checkbox 24×44, row 44. With a mouse: row 35.25, unchanged.
+ */
+describe("touch targets on a coarse pointer (EI-388)", () => {
+  const classesOf = (el: Element) => el.className.split(/\s+/);
+  const row = () => titleButton().parentElement!;
+
+  it("gives the row 12px of padding on touch, and keeps 8px for a mouse", () => {
+    render(<Harness />);
+    const cls = classesOf(row());
+    expect(cls).toContain("py-2");
+    expect(cls).toContain("pointer-coarse:py-3");
+  });
+
+  it("grows the title to fill the 44px row without moving it", () => {
+    render(<Harness />);
+    const cls = classesOf(titleButton());
+    // Both halves of each pair, or the row height moves.
+    expect(cls).toContain("pointer-coarse:py-3");
+    expect(cls).toContain("pointer-coarse:-my-3");
+    // 19px of text + 24 is 43; the floor makes the last pixel.
+    expect(cls).toContain("pointer-coarse:min-h-11");
+    // Padding, never an overlay: a pseudo-element over the title would
+    // swallow the hover its markers' tooltips need (EI-378).
+    expect(cls.some((c) => c.includes("after:") || c.includes("before:"))).toBe(false);
+  });
+
+  it("keeps the checkbox and grip on the first line of a coarse row", () => {
+    render(<Harness />);
+    const checkbox = document.querySelector<HTMLElement>('[data-slot="checkbox"]')!;
+    expect(classesOf(checkbox.parentElement!)).toContain("pointer-coarse:top-3.5");
+    const grip = screen.getByRole("button", { name: /^Drag to reschedule/ });
+    expect(classesOf(grip)).toContain("pointer-coarse:top-4");
+  });
+
+  it("makes the checkbox 44 tall on touch, measured from inside its border", () => {
+    render(<Harness />);
+    const cls = classesOf(document.querySelector<HTMLElement>('[data-slot="checkbox"]')!);
+    // The `::after` is placed from the padding box, 1px inside the border:
+    // 14 + 2×15 = 44. `-inset-y-3.5` made 42.
+    expect(cls).toContain("pointer-coarse:after:-inset-y-[15px]");
+    expect(cls).not.toContain("pointer-coarse:after:-inset-y-3.5");
+    // Still 24 wide: wider would cover the grip or the title's first letter
+    // (docs/DRAG-AND-DROP.md §5.4).
+    expect(cls).toContain("after:w-6");
+    expect(cls).toContain("pointer-coarse:after:-inset-x-1");
   });
 });

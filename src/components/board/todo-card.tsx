@@ -456,6 +456,14 @@ export function TodoCard({
           immediately after it.
         */
         "group relative block py-2 pl-3 pr-2",
+        /*
+          44px rows on a coarse pointer (EI-388), the iOS list-row floor. The
+          title below fills the row's height, so the row IS the tap target;
+          at 36px rows the title could only reach 44 by overlapping its
+          neighbors, and the later row would win every tap in the overlap.
+          Touch only: a mouse keeps the 36px rhythm.
+        */
+        "pointer-coarse:py-3",
         draggable && "cursor-grab active:cursor-grabbing",
         "focus-ring",
         // Opacity transitions alongside the background so the row fades in when
@@ -561,6 +569,8 @@ export function TodoCard({
           // `top-2.5` centers a 12px glyph on the first line of `text-sm
           // leading-snug` inside `py-1.5`.
           "absolute left-0 top-3",
+          // Follows the first line down by the 4px a coarse row adds above it.
+          "pointer-coarse:top-4",
           // Full strength rather than DragGrip's resting /30: at rest it is not
           // visible at all, so there is nothing left for a faint state to do.
           "text-muted-foreground transition-opacity",
@@ -642,7 +652,15 @@ export function TodoCard({
               checkbox, so its rect IS the checkbox's rect. GOOD JOB mode
               measures it at click time — see `onCheckedChange` below.
             */
-            <span ref={checkboxRef} className="absolute left-3 top-2.5 inline-flex" />
+            /*
+              `pointer-coarse:top-3.5` keeps the box on the first line of a
+              44px row (EI-388), and puts the checkbox's 44px-tall coarse
+              `::after` exactly on the row: 14 + 16 + 14.
+            */
+            <span
+              ref={checkboxRef}
+              className="absolute left-3 top-2.5 inline-flex pointer-coarse:top-3.5"
+            />
           }
         >
           <Checkbox
@@ -705,6 +723,10 @@ export function TodoCard({
           // on top of the title span and the markers, and swallow the hover
           // their tooltips need.
           "-my-1 py-1",
+          // The same pair at the coarse row's 12px (EI-388), plus a floor:
+          // 19px of text + 24px is 43, so `min-h-11` makes the last pixel.
+          // The row's own `pointer-coarse:py-3` is the room it grows into.
+          "pointer-coarse:-my-3 pointer-coarse:py-3 pointer-coarse:min-h-11",
           // Stated rather than inherited: dragging is the primary gesture over
           // the title now, and a click still opens the sheet.
           draggable && "cursor-grab active:cursor-grabbing",
@@ -787,8 +809,11 @@ export function TodoCard({
           hold a button. Dashed and quiet, because it is a proposal: the to-do
           has not moved, and nothing will until the chip is pressed. The × is
           the dismiss route on touch, where there is no context menu.
+
+          `pointer-coarse:mt-3` clears the title's 12px coarse padding, which
+          would otherwise run under the chip's top 6px (EI-388).
         */
-        <span className="mt-1.5 ml-6 inline-flex items-center gap-0.5">
+        <span className="mt-1.5 ml-6 inline-flex items-center gap-0.5 pointer-coarse:mt-3">
           <button
             type="button"
             data-suggested-list

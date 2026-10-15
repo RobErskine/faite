@@ -963,7 +963,11 @@ export function BoardColumn({
                     // when its own trigger is gone (EI-386,
                     // `overdriveReturnFocus`); without it the focus would land
                     // with nothing on screen to show where.
-                    "min-w-0 truncate type-column-title focus-ring",
+                    "min-w-0 type-column-title focus-ring",
+                    // The button below truncates itself. Truncating here too
+                    // would clip its coarse padding — `overflow: hidden` clips
+                    // hit testing as well as paint (EI-388).
+                    !onOpenInfo && "truncate",
                     // Days are the stage, lists are containers: today text-xl,
                     // other days and the rails text-lg, list columns text-base.
                     dayTrackColumn && emphasis ? "text-xl" : dayTrackColumn || pinned ? "text-lg" : "text-base",
@@ -976,7 +980,19 @@ export function BoardColumn({
                     <button
                       type="button"
                       onClick={onOpenInfo}
-                      className="max-w-full cursor-pointer truncate rounded text-left hover:underline focus-ring"
+                      className={cn(
+                        "max-w-full cursor-pointer truncate rounded text-left hover:underline focus-ring",
+                        /*
+                          28px of title is a 28px target. Under a coarse
+                          pointer `py-2` grows it to 44 and `-my-2` gives the
+                          16px back, so the header does not grow (EI-388):
+                          the box reaches up over the eyebrow, which is plain
+                          text, and down into the header's own `pb-2`. Padding
+                          rather than `::after`, because the button's own
+                          `truncate` would clip an extender.
+                        */
+                        "pointer-coarse:-my-2 pointer-coarse:py-2",
+                      )}
                     >
                       {title}
                     </button>
@@ -1337,6 +1353,11 @@ export function BoardColumn({
                   }
                   className={cn(
                     "w-full bg-transparent px-3 py-2 text-sm",
+                    // 36px for a mouse, 44px under a coarse pointer (EI-388).
+                    // A real height, not an extender: the field is the last
+                    // thing in the column, so there is nothing below to steal
+                    // from and nothing to keep dense.
+                    "pointer-coarse:min-h-11",
                     /*
                       The board's one focus treatment (EI-378). This field had
                       `outline-none` and nothing in its place, so tabbing onto
@@ -1508,6 +1529,16 @@ function TodoGroupSection({
           }}
           className={cn(
             "flex w-full items-center gap-1 border-b px-3 py-1 text-left",
+            /*
+              Floors, not padding (EI-388). 14px of eyebrow + `py-1` + the 1px
+              rule came to 23px, a pixel under WCAG 2.2's 24; `min-h-6` adds
+              that pixel and nothing else. Under a coarse pointer the header
+              is 44px: an extender would reach over the first card below and
+              the last card above, whose titles and checkboxes fill their
+              rows, so the header grows instead. `items-center` keeps the
+              chevron and name centered in either height.
+            */
+            "min-h-6 pointer-coarse:min-h-11",
             "type-eyebrow",
             // Fast in, slower out — see the note on the row wash in todo-card.tsx.
             "cursor-pointer transition-colors duration-(--dur-base) hover:duration-(--dur-fast)",

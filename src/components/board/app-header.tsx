@@ -72,6 +72,9 @@ const HEADER_TOUCH_TARGET =
   "pointer-coarse:after:absolute pointer-coarse:after:-inset-1.5 pointer-coarse:after:content-['']";
 const AVATAR_TOUCH_TARGET =
   "pointer-coarse:after:absolute pointer-coarse:after:-inset-2 pointer-coarse:after:content-['']";
+/** The wordmark is 31×24 (EI-388): 8px each side makes 47 wide, 10px 44 tall. */
+const BRAND_TOUCH_TARGET =
+  "pointer-coarse:after:absolute pointer-coarse:after:-inset-x-2 pointer-coarse:after:-inset-y-2.5 pointer-coarse:after:content-['']";
 
 /**
  * The app's only global chrome: wordmark, palette trigger, account menu.
@@ -201,8 +204,15 @@ export function AppHeader({
         href="/board"
         // The wordmark is the F mark's home in the header. Hover and focus
         // reveal the spectrum through the letterforms — one of its four
-        // allowed places (docs/DESIGN.md §1). Colour changes, nothing moves.
-        className="focus-ring rounded font-heading text-sm font-semibold tracking-tight transition-colors hover:text-spectrum focus-visible:text-spectrum"
+        // allowed places (docs/DESIGN.md §1). Color changes, nothing moves.
+        className={cn(
+          "focus-ring rounded font-heading text-sm font-semibold tracking-tight transition-colors hover:text-spectrum focus-visible:text-spectrum",
+          // 20px of wordmark is a 20px target. `py-0.5 -my-0.5` makes it 24
+          // without moving it; under a coarse pointer an extender takes it
+          // to 47×44, into the header's `px-4` and `gap-3` (EI-388).
+          "relative -my-0.5 py-0.5",
+          BRAND_TOUCH_TARGET,
+        )}
       >
         Faite
       </Link>
