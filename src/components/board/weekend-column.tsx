@@ -36,6 +36,8 @@ interface WeekendColumnProps {
   isDragActive: boolean;
   onExpand: () => void;
   onNavigate: (fromStopId: string, key: NavKey) => boolean;
+  /** DOM `id` for a skip link to name — set when today is in this run (EI-386). */
+  anchorId?: string;
 }
 
 export function WeekendColumn({
@@ -44,6 +46,7 @@ export function WeekendColumn({
   isDragActive,
   onExpand,
   onNavigate,
+  anchorId,
 }: WeekendColumnProps) {
   const { setNodeRef, isOver } = useDroppable({ id });
 
@@ -58,6 +61,7 @@ export function WeekendColumn({
   return (
     <section
       ref={setNodeRef}
+      id={anchorId}
       data-nav-stop={id}
       role="button"
       tabIndex={0}

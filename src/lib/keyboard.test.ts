@@ -127,6 +127,11 @@ describe("isEligible", () => {
 });
 
 describe("formatCombo", () => {
+  it("names the Menu key in words, never as its raw key value (EI-386)", () => {
+    expect(formatCombo("contextmenu", "mac")).toBe("Menu key");
+    expect(formatCombo("contextmenu", "other")).toBe("Menu key");
+  });
+
   it("renders macOS glyphs with no separator", () => {
     expect(formatCombo("mod+k", "mac")).toBe("⌘K");
   });

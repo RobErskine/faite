@@ -18,6 +18,7 @@ import type { Label as LabelRecord, List, ReminderPreset, Tab, Todo } from "@/li
 import { fetchListSuggestions } from "@/lib/smart-sort";
 import { suggestedListFor } from "@/lib/suggested-list";
 import { OVERFLOW, toCivilDate, type PlacementContext } from "@/lib/scheduling";
+import { dayColumnId, listColumnId, overflowColumnId } from "@/lib/board";
 import { isTextEntry, undoById } from "@/lib/undo";
 import { originOf, type ConfettiOrigin } from "@/lib/celebrate";
 import { useExitRetained } from "@/lib/use-exit-retained";
@@ -330,6 +331,14 @@ function OverdriveOverlayContent({
    * button would otherwise have taken focus with it into the void.
    */
   const popupRef = useRef<HTMLDivElement>(null);
+  /**
+   * What had focus when this session opened — the trigger, read once at
+   * mount, before Base UI moves focus into the popup. See
+   * `overdriveReturnFocus` for what it decides.
+   */
+  const [opener] = useState<Element | null>(() =>
+    typeof document === "undefined" ? null : document.activeElement,
+  );
   /**
    * The card at rest, for GOOD JOB mode's confetti origin. Read in `dispatch`
    * before the flick starts — a card mid-throw is no longer where the
@@ -722,6 +731,16 @@ function OverdriveOverlayContent({
         // (EI-370) would otherwise take focus on open, and every verdict key
         // is ignored while a text field has it.
         initialFocus={popupRef}
+        // EI-386: emptying the pile unmounts the button that opened it, and
+        // Base UI's fallback was the last element it saw focused anywhere —
+        // the "Skip to today" link at the top of the page.
+        finalFocus={() => {
+          // Focus the user already moved outside the dialog stays put —
+          // what Base UI's default does, and a function would override.
+          const active = document.activeElement;
+          if (active && active !== document.body && !popupRef.current?.contains(active)) return false;
+          return overdriveReturnFocus(opener, sourceColumnId(source, backlogListId));
+        }}
         showCloseButton={false}
         overlayClassName="bg-black/10 dark:bg-black/50 supports-backdrop-filter:backdrop-blur-none"
         className={cn(
@@ -1010,6 +1029,54 @@ function OverdriveOverlayContent({
       </DialogContent>
     </Dialog>
   );
+}
+
+/** The board column a session's cards come from (`BoardColumn`'s
+ * `data-column-id`). */
+function sourceColumnId(source: OverdriveSource, backlogListId: string): string {
+  if (source === OVERFLOW) return overflowColumnId();
+  if (source === BACKLOG) return listColumnId(backlogListId);
+  return dayColumnId(source);
+}
+
+/**
+ * Where focus goes when Overdrive closes (EI-386).
+ *
+ * Back to the trigger whenever it still exists: `true` hands the choice to
+ * Base UI's default, which is that. But clearing the pile unmounts the
+ * trigger (Overflow's footer button and a day's ⚡ hide under their
+ * threshold, Quick sort's under one card), and so does closing the ⌘K
+ * palette that opened it. Base UI then fell back to the last focused element
+ * still on the page, which was "Skip to today" at the top — a keyboard user
+ * who had just emptied Overflow started over from the top of the page.
+ *
+ * So with the trigger gone, focus goes to the column that was triaged: its
+ * heading, made focusable on request (`tabIndex = -1`, never in the Tab
+ * order), or the heading's own button where it has one (a day column's, which
+ * opens the day). A collapsed rail is already the button that expands it.
+ * Tab from the heading continues into the column — on an empty Overflow, its
+ * empty state.
+ *
+ * An opener that was `<body>` (Safari does not focus a clicked button) says
+ * nothing about where the user was, so that case stays with the default too.
+ */
+export function overdriveReturnFocus(
+  opener: Element | null,
+  columnId: string,
+  root: Document = document,
+): true | HTMLElement {
+  if (!opener || opener === root.body || opener.isConnected) return true;
+  // Every column id is generated (`day:` + an ISO date or "overflow",
+  // `list:` + a UUID), so the quoted selector needs no escaping.
+  const column = root.querySelector<HTMLElement>(`[data-column-id="${columnId}"]`);
+  if (!column) return true;
+  if (column.getAttribute("tabindex") === "0") return column;
+  const heading = column.querySelector<HTMLElement>("header h2");
+  if (!heading) return true;
+  const control = heading.querySelector<HTMLElement>("button");
+  if (control) return control;
+  if (!heading.hasAttribute("tabindex")) heading.tabIndex = -1;
+  return heading;
 }
 
 /** The Quick sort list picker's input id — `L` focuses it. */

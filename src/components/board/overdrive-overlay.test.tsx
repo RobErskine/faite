@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { useState } from "react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { List, Todo } from "@/lib/schema";
@@ -24,7 +25,7 @@ vi.mock("sonner", () => ({ toast: { success: toastSuccess, dismiss: toastDismiss
 // file), reaching `overdrive-overlay.tsx`'s own `import { toast } from
 // "sonner"` before `toastSuccess`/`toastDismiss` have been assigned. Same
 // fix `developer-section.test.tsx` uses for the same reason.
-const { OverdriveOverlay } = await import("./overdrive-overlay");
+const { OverdriveOverlay, overdriveReturnFocus } = await import("./overdrive-overlay");
 
 beforeAll(() => {
   Element.prototype.scrollIntoView = () => {};
@@ -865,5 +866,120 @@ describe("day sessions (EI-253)", () => {
     // Fresh session: nothing staged, back at card 1 of 2.
     expect(screen.queryByText(/schedule for/i)).toBeNull();
     expect(screen.getByText(/1 of 2/i)).toBeTruthy();
+  });
+});
+
+/**
+ * EI-386. Emptying Overflow unmounts the button that opened Overdrive, and
+ * Base UI's fallback was whatever it last saw focused — "Skip to today", at
+ * the top of the page.
+ */
+describe("where focus goes when Overdrive closes (EI-386)", () => {
+  const OVERFLOW_COLUMN = "day:overflow";
+
+  function Board({ triggerOutlivesSession }: { triggerOutlivesSession: boolean }) {
+    const [source, setSource] = useState<OverdriveSource | null>(null);
+    const [triggerShown, setTriggerShown] = useState(true);
+    return (
+      <TooltipProvider>
+        <a href="#today">Skip to today</a>
+        <section data-column-id={OVERFLOW_COLUMN} aria-label="Overflow">
+          <header>
+            <h2>Overflow</h2>
+          </header>
+          {triggerShown && (
+            <button type="button" onClick={() => setSource(OVERFLOW)}>
+              Overdrive · 2
+            </button>
+          )}
+        </section>
+        <OverdriveOverlay
+          source={source}
+          todos={TODOS}
+          todosById={new Map(TODOS.map((t) => [t.id, t]))}
+          listsById={new Map(LISTS.map((l) => [l.id, l]))}
+          backlogListId="list-backlog"
+          labels={[]}
+          ctx={ctx}
+          onClose={() => {
+            // The pile emptied: the footer button is gone with it.
+            if (!triggerOutlivesSession) setTriggerShown(false);
+            setSource(null);
+          }}
+          onVerdict={vi.fn(() => ({ undoId: "undo-1", label: "Decided" }))}
+        />
+      </TooltipProvider>
+    );
+  }
+
+  async function openThenClose(triggerOutlivesSession: boolean) {
+    vi.useRealTimers();
+    render(<Board triggerOutlivesSession={triggerOutlivesSession} />);
+    // Something focused earlier, like the skip link a keyboard user tabbed past.
+    screen.getByRole("link", { name: "Skip to today" }).focus();
+    const trigger = screen.getByRole("button", { name: "Overdrive · 2" });
+    trigger.focus();
+    fireEvent.click(trigger);
+    await screen.findByRole("dialog");
+    // Closing from outside the keyboard path: the dialog's own dismissal.
+    fireEvent.pointerDown(document.body);
+    fireEvent.click(document.body);
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  }
+
+  it("lands on the Overflow heading when the trigger went with the pile", async () => {
+    await openThenClose(false);
+    const heading = screen.getByRole("heading", { name: "Overflow" });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+    // Focusable on request, never a Tab stop.
+    expect(heading.getAttribute("tabindex")).toBe("-1");
+  });
+
+  it("goes back to the trigger while it is still there", async () => {
+    await openThenClose(true);
+    const trigger = screen.getByRole("button", { name: "Overdrive · 2" });
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+  });
+
+  describe("overdriveReturnFocus", () => {
+    const column = (inner: string, attrs = "") => {
+      document.body.innerHTML = `<section data-column-id="${OVERFLOW_COLUMN}" ${attrs}>${inner}</section>`;
+      return document.body.firstElementChild as HTMLElement;
+    };
+    const gone = () => document.createElement("button"); // never attached
+
+    it("defers to Base UI while the opener is still on the page", () => {
+      column("<header><h2>Overflow</h2></header><button>Overdrive · 6</button>");
+      const opener = document.querySelector("button")!;
+      expect(overdriveReturnFocus(opener, OVERFLOW_COLUMN)).toBe(true);
+    });
+
+    it("defers when nothing real had focus (Safari does not focus a clicked button)", () => {
+      column("<header><h2>Overflow</h2></header>");
+      expect(overdriveReturnFocus(document.body, OVERFLOW_COLUMN)).toBe(true);
+      expect(overdriveReturnFocus(null, OVERFLOW_COLUMN)).toBe(true);
+    });
+
+    it("hands back the column's heading once the opener is gone", () => {
+      column("<header><h2>Overflow</h2></header><p>No items.</p>");
+      const target = overdriveReturnFocus(gone(), OVERFLOW_COLUMN);
+      expect(target).toBe(document.querySelector("h2"));
+      expect((target as HTMLElement).tabIndex).toBe(-1);
+    });
+
+    it("prefers the heading's own button — a day column's", () => {
+      column("<header><h2><button>Monday</button></h2></header>");
+      expect(overdriveReturnFocus(gone(), OVERFLOW_COLUMN)).toBe(document.querySelector("h2 button"));
+    });
+
+    it("lands on a collapsed rail itself, which is the button that expands it", () => {
+      const rail = column("<header><h2>Overflow</h2></header>", 'role="button" tabindex="0"');
+      expect(overdriveReturnFocus(gone(), OVERFLOW_COLUMN)).toBe(rail);
+    });
+
+    it("defers when the column is not on screen (the other phone page)", () => {
+      document.body.innerHTML = "";
+      expect(overdriveReturnFocus(gone(), OVERFLOW_COLUMN)).toBe(true);
+    });
   });
 });

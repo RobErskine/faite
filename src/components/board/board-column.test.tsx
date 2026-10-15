@@ -111,6 +111,7 @@ interface HarnessProps {
   onRescheduleGroup?: (todos: readonly Todo[], date: string) => void;
   tone?: "urgent";
   regionLabel?: string;
+  anchorId?: string;
 }
 
 function Harness({ groups, todos, ...rest }: HarnessProps) {
@@ -985,6 +986,14 @@ describe("accessibility floor (EI-378)", () => {
     render(<Harness />);
     const region = screen.getByRole("region", { name: "Sunday" });
     expect(region.getAttribute("data-column-id")).toBe("day:2026-08-09");
+  });
+
+  it("carries a skip link's target id only when given one (EI-386)", () => {
+    const { unmount } = render(<Harness anchorId="today" />);
+    expect(screen.getByRole("region", { name: "Sunday" }).id).toBe("today");
+    unmount();
+    render(<Harness />);
+    expect(screen.getByRole("region", { name: "Sunday" }).hasAttribute("id")).toBe(false);
   });
 
   it("falls back to the title when no region label is given", () => {

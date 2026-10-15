@@ -439,6 +439,15 @@ Component-level tests only for wiring pure functions cannot reach, using the
   other phone page), then focuses with `preventScroll` and scrolls the way
   §11.4 does. They are links, not shortcuts, so they are not in
   `shortcuts.ts`.
+
+  Their `href`s name real elements (EI-386): `#today` and `#backlog`
+  (`SKIP_TARGET_IDS`), placed by the shells on exactly one element each — the
+  column itself (`BoardColumn`'s `anchorId`), or whatever stands in for it
+  while it is hidden: the weekend strip that holds today, a collapsed half's
+  `SplitStrip`, the phone bottom bar's tab for the other page. So the link
+  works as a plain same-page link whenever the click handler does not run
+  (opened in a new tab, say), and Lighthouse's `skip-link` audit finds a
+  target. They used to point at fragments nothing carried.
 - Announce results rather than relying on visual change alone. The "Undone"
   toast does this today.
 - **dnd-kit drag announcements** (EI-84) — `DndContext`'s `accessibility.announcements`

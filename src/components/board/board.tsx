@@ -564,6 +564,7 @@ export function Board() {
       <SettingsSheet
         open={ui.settingsOpen}
         onOpenChange={ui.setSettingsOpen}
+        initialSection={ui.settingsSection}
         settings={data.settings}
       />
 
@@ -655,6 +656,7 @@ export function Board() {
         onOpenHistory={() => ui.setHistoryDay(today)}
         duplicateCount={data.duplicates?.length ?? 0}
         onOpenDuplicates={openDuplicates}
+        onOpenSettings={ui.openSettings}
       />
 
       <SessionProvider />

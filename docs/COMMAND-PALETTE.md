@@ -108,16 +108,18 @@ At root, in render order:
 | Group | Items | Notes |
 | --- | --- | --- |
 | **Triage** | Open Overdrive (N) | only while Overflow has cards — then it is the first row of the palette (EI-383). Same command (`view-overdrive`) as the View row below; `groupFor` moves it |
+| | Quick sort Backlog (N) | only while Backlog has open to-dos, after Overdrive (EI-386) — Overflow is overdue, Backlog only unsorted. Same command (`view-quick-sort`) as the disabled View row below; `groupFor` moves it |
 | **To-dos** | up to 8 search hits | only when the query is non-empty; each hit renders like a board card (priority rail, deadline/location/recurrence markers, label and scheduled-date badges — via `todo-row-parts.tsx`) and supports the row actions below |
 | **Create** | `Create to-do "<query>"` | only when the query is non-empty; parses quick-add tokens — §5 |
 | | New to-do / list / label / project / tab | New to-do parses quick-add tokens too — §5; the rest enter a plain entry mode |
 | **Tabs** | one row per tab, active marked `current` | hidden when `tabs.length <= 1` |
 | **Manage** | Keyboard shortcuts | opens the help sheet (`?`, EI-75) |
 | | Activity feed | opens the global activity feed (`⌘⇧A`) — the whole-app event log, `activity-sheet.tsx` |
+| | Open settings / Faite Loop settings / Design settings | open the settings sheet, the last two on that section (`SettingsSheet`'s `initialSection`, via `openSettings(section)` in `use-board-ui-state.ts`) — EI-386: "sett" used to find "Show 7 days". No shortcut; the app binds none for settings. `settings-sheet.test.tsx` fails if a section id they name is renamed |
 | **View** | Show 1 / 3 / 5 / 7 days | writes `settings.visibleDays` |
 | | Roll over on workdays only ⇄ every day | writes `settings.workdaysOnly` — same setting also lives in Settings → Faite Loop (`loop-section.tsx`, EI-96), which additionally exposes `overflowAfterDays`; see [FAITE-LOOP.md](FAITE-LOOP.md) |
 | | Overdrive — Overflow is empty | the View row only while Overflow is empty, disabled; with cards it moves to **Triage**, top of the list (EI-383). Opens the same full-screen triage overlay as the button at the foot of the Overflow column (EI-97) — see [OVERDRIVE.md](OVERDRIVE.md). Overflow-only, deliberately: a day column's own Overdrive entry (EI-253) is a header icon, not a palette command — see OVERDRIVE.md §12 |
-| | Quick sort Backlog (N) | disabled when Backlog has no open to-dos; opens Overdrive over Backlog with a list picker per card (EI-370) — see OVERDRIVE.md §13 |
+| | Quick sort — Backlog is empty | the View row only while Backlog is empty, disabled; with open to-dos it moves to **Triage** (EI-386). Opens Overdrive over Backlog with a list picker per card (EI-370) — see OVERDRIVE.md §13 |
 | **Delete** | Delete a list… / Delete a tab… | each enters a picker mode. Last on purpose (EI-383): they used to rank 5th–6th, under Manage, ahead of everything a planning session reaches for. Ids are still `manage-delete-list`/`manage-delete-tab` |
 
 **Why this order (EI-383).** The second board critique counted: with
@@ -514,7 +516,8 @@ Three layers, all required:
   entry-mode ids), and the `label`/`disabled`/`run` logic on the View group
   (current-day marker, last-status-can't-turn-off guard, status-toggle
   ordering, Overdrive's count/disabled state), and the group order —
-  Overdrive in Triage only while Overflow has cards, Delete last (EI-383).
+  Overdrive in Triage only while Overflow has cards, Quick sort after it
+  only while Backlog has open to-dos (EI-386), Delete last (EI-383).
   `command-palette.test.tsx` asserts the same order on the rendered options.
 - **`src/lib/search.test.ts`** — pure matcher. Node environment, no DOM. Tier
   ordering, status ordering, recency tiebreak, soft-delete exclusion, limit.
@@ -550,6 +553,12 @@ target; palette work must stay client-only.
   straight into `DialogContent`, so the `<Command>` must be established manually
   or `CommandInput` has no store and throws on open. Guarded by the
   "mounts open without throwing" test.
+- **A Base UI `Dialog.Title` outside the popup renders anyway.** shadcn's
+  `CommandDialog` put its sr-only `DialogHeader` beside `DialogContent`, so a
+  "Command palette" `h2` and its description sat in the board's DOM with the
+  palette closed, outside any dialog, where heading navigation found them
+  (EI-386). The header now lives inside `DialogContent` and mounts with the
+  popup. Guarded by "names itself only while open".
 - **Base UI is not Radix.** This project uses the `base-nova` shadcn style over
   `@base-ui/react`. Parts are stricter about context: `Menu.GroupLabel` throws
   outright without a `Menu.Group` ancestor. Closed-menu assertions cannot see

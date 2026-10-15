@@ -5,6 +5,11 @@ import { cn } from "@/lib/utils";
 interface PhoneBottomBarProps {
   view: "days" | "lists";
   onSelectView: (view: "days" | "lists") => void;
+  /**
+   * DOM `id`s for the tabs (EI-386). While a skip link's column is on the
+   * other page, its `href` names the tab that shows that page instead.
+   */
+  tabIds?: { days?: string; lists?: string };
 }
 
 /**
@@ -18,29 +23,42 @@ interface PhoneBottomBarProps {
  * `env(safe-area-inset-bottom)` via `--safe-bottom` (globals.css) — this is
  * the last thing before the home-indicator gesture strip on an iPhone.
  */
-export function PhoneBottomBar({ view, onSelectView }: PhoneBottomBarProps) {
+export function PhoneBottomBar({ view, onSelectView, tabIds }: PhoneBottomBarProps) {
   return (
     <nav
       aria-label="Board view"
       className="flex shrink-0 border-t bg-background pb-(--safe-bottom)"
     >
-      <TabButton label="Days" active={view === "days"} onClick={() => onSelectView("days")} />
-      <TabButton label="Lists" active={view === "lists"} onClick={() => onSelectView("lists")} />
+      <TabButton
+        id={tabIds?.days}
+        label="Days"
+        active={view === "days"}
+        onClick={() => onSelectView("days")}
+      />
+      <TabButton
+        id={tabIds?.lists}
+        label="Lists"
+        active={view === "lists"}
+        onClick={() => onSelectView("lists")}
+      />
     </nav>
   );
 }
 
 function TabButton({
+  id,
   label,
   active,
   onClick,
 }: {
+  id?: string;
   label: string;
   active: boolean;
   onClick: () => void;
 }) {
   return (
     <button
+      id={id}
       type="button"
       aria-current={active ? "true" : undefined}
       onClick={onClick}

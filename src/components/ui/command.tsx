@@ -51,10 +51,6 @@ function CommandDialog({
 }) {
   return (
     <Dialog {...props}>
-      <DialogHeader className="sr-only">
-        <DialogTitle>{title}</DialogTitle>
-        <DialogDescription>{description}</DialogDescription>
-      </DialogHeader>
       <DialogContent
         className={cn(
           // Opens right under the header's own search field (AppHeader is
@@ -66,6 +62,17 @@ function CommandDialog({
         )}
         showCloseButton={showCloseButton}
       >
+        {/*
+          Inside the popup, not beside it (EI-386). As a sibling of
+          `DialogContent` the header rendered whether or not the dialog was
+          open: a sr-only "Command palette" h2 sat in the board's DOM, outside
+          any dialog, and heading navigation found it on a closed palette.
+          In here it mounts and unmounts with the popup, and still names it.
+        */}
+        <DialogHeader className="sr-only">
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
+        </DialogHeader>
         {children}
       </DialogContent>
     </Dialog>

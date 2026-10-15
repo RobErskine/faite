@@ -29,7 +29,17 @@ import { cn } from "@/lib/utils";
  * scrolled day track lands between columns and fights the anchor the next
  * jump reads (docs/KEYBOARD.md §11.4), the same reason `use-column-nav.ts`
  * does it this way.
+ *
+ * Each `href` also names a real element (EI-386), so the link is a working
+ * same-page link before the script runs and whenever the click handler does
+ * not (a middle click, a link opened elsewhere), and an auditor that checks
+ * the target finds one. The shells put `SKIP_TARGET_IDS` on exactly one
+ * element each: the column itself, or, while it is hidden, the control that
+ * brings it back (the collapsed half's strip, the phone's other page tab).
  */
+
+/** The `id`s the skip links point at. The shells place them. */
+export const SKIP_TARGET_IDS = { today: "today", backlog: "backlog" } as const;
 
 export interface SkipLinkTarget {
   /** The column's droppable id (`day:2026-10-14`, `list:<id>`), which
@@ -98,8 +108,10 @@ export function SkipLinks({
   backlog: SkipLinkTarget | null;
 }) {
   const links = [
-    { href: "#today", label: "Skip to today", target: today },
-    ...(backlog ? [{ href: "#backlog", label: "Skip to Backlog", target: backlog }] : []),
+    { href: `#${SKIP_TARGET_IDS.today}`, label: "Skip to today", target: today },
+    ...(backlog
+      ? [{ href: `#${SKIP_TARGET_IDS.backlog}`, label: "Skip to Backlog", target: backlog }]
+      : []),
   ];
   return (
     <div data-skip-links>

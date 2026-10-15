@@ -9,6 +9,8 @@ interface SplitStripProps {
   /** Which way the collapsed half sits relative to its expanded neighbor — points the chevron toward more room. */
   direction: "down" | "up";
   onExpand: () => void;
+  /** DOM `id`, so a skip link can name the strip while its half is collapsed (EI-386). */
+  id?: string;
 }
 
 /**
@@ -17,10 +19,11 @@ interface SplitStripProps {
  * without the vertical `writing-mode` text those use (there's no narrow
  * column here to fit a title sideways into).
  */
-export function SplitStrip({ label, count, direction, onExpand }: SplitStripProps) {
+export function SplitStrip({ label, count, direction, onExpand, id }: SplitStripProps) {
   const Chevron = direction === "down" ? ChevronDown : ChevronUp;
   return (
     <div
+      id={id}
       role="button"
       tabIndex={0}
       aria-label={`Show ${label}${count > 0 ? `, ${count} to-do${count === 1 ? "" : "s"}` : ""}`}
