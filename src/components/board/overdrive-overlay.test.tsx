@@ -5,7 +5,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vite
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { List, Todo } from "@/lib/schema";
 import { OVERFLOW, type PlacementContext } from "@/lib/scheduling";
-import type { OverdriveSource, Verdict } from "@/lib/overdrive";
+import { BACKLOG, type OverdriveSource, type Verdict } from "@/lib/overdrive";
 
 interface ToastCallOptions {
   id?: string;
@@ -128,6 +128,8 @@ interface HarnessOptions {
   /** EI-253 — defaults to OVERFLOW so every pre-existing test keeps
    * exercising an Overflow session exactly as before. */
   source?: OverdriveSource;
+  /** EI-393 — replaces `LISTS`, e.g. to give `list-1` a long name. */
+  lists?: List[];
 }
 
 function renderOverlay({
@@ -135,9 +137,10 @@ function renderOverlay({
   onVerdict,
   autoConfirmMs,
   source = OVERFLOW,
+  lists = LISTS,
 }: HarnessOptions = {}) {
   const todosById = new Map(TODOS.map((t) => [t.id, t]));
-  const listsById = new Map(LISTS.map((l) => [l.id, l]));
+  const listsById = new Map(lists.map((l) => [l.id, l]));
   const verdictSpy = onVerdict ?? vi.fn(() => ({ undoId: "undo-1", label: "Decided" }));
 
   render(
@@ -153,6 +156,8 @@ function renderOverlay({
         onClose={onClose}
         onVerdict={verdictSpy}
         autoConfirmMs={autoConfirmMs}
+        lists={lists}
+        tabs={[]}
       />
     </TooltipProvider>,
   );
@@ -1014,6 +1019,143 @@ describe("where focus goes when Overdrive closes (EI-386)", () => {
     it("defers when the column is not on screen (the other phone page)", () => {
       document.body.innerHTML = "";
       expect(overdriveReturnFocus(gone(), OVERFLOW_COLUMN)).toBe(true);
+    });
+  });
+});
+
+describe("the controls stay put between cards (EI-393)", () => {
+  const verdicts = () => dialog().querySelector<HTMLElement>("[data-overdrive-verdicts]")!;
+  const verdictButtons = () => [...verdicts().querySelectorAll("button")];
+  const stagedSlot = () => dialog().querySelector<HTMLElement>("[data-overdrive-staged-slot]")!;
+  const LONG = "Someday maybe projects for the garage and the shed";
+  const longLists = [list("list-1", LONG), LISTS[1]];
+
+  it("the dialog is a fixed box — its size comes from tokens, never its card", () => {
+    renderOverlay();
+    const cls = dialog().className;
+    expect(cls).toContain("tall:h-[min(85dvh,var(--overdrive-h))]");
+    expect(cls).toContain("[--overdrive-h:36rem]");
+    expect(cls).toContain("tall:max-w-3xl");
+    expect(cls).not.toContain("tall:h-auto");
+  });
+
+  it("the card fills a full-width stage instead of sizing to its title", () => {
+    renderOverlay();
+    const stage = dialog().querySelector<HTMLElement>("[data-overdrive-stage]")!;
+    expect(stage.className).toMatch(/\bw-full\b/);
+    expect(stage.className).toMatch(/\bflex-1\b/);
+    const cardSlot = stage.firstElementChild as HTMLElement;
+    expect(cardSlot.className).toMatch(/\bw-full\b/);
+    expect((cardSlot.firstElementChild as HTMLElement).className).toMatch(/\bw-full\b/);
+    expect(titleHeading("t1").className).toContain("wrap-break-word");
+  });
+
+  it("four equal verdict columns in arrow-key order, then the date picker", () => {
+    renderOverlay();
+    expect(verdicts().className).toContain("grid-cols-2");
+    expect(verdicts().className).toContain("@md:grid-cols-[repeat(4,minmax(0,1fr))_2rem]");
+    expect(verdicts().className).toContain("touch:grid-cols-2");
+    // The grid queries the controls column, not the viewport.
+    expect(verdicts().parentElement!.className).toContain("@container");
+    const [wontDo, toList, done, schedule, pick] = verdictButtons();
+    expect(wontDo.textContent).toMatch(/won.t do/i);
+    expect(toList.textContent).toBe(" Back to Brain Dump");
+    expect(done.textContent).toMatch(/done/i);
+    expect(schedule.textContent).toMatch(/schedule/i);
+    expect(pick.getAttribute("aria-label")).toBe("Pick a date");
+    for (const button of [wontDo, toList, done, schedule]) {
+      expect(button.className).toMatch(/\bw-full\b/);
+      expect(button.className).toMatch(/\bmin-w-0\b/);
+      expect(button.className).toContain("pointer-coarse:min-h-11");
+      expect(button.querySelector(".truncate")).toBeTruthy();
+    }
+  });
+
+  it("a long list name truncates visually but stays whole in the accessible name", () => {
+    renderOverlay({ lists: longLists });
+    const button = screen.getByRole("button", { name: `Back to ${LONG}` });
+    expect(button.querySelector(".truncate")?.textContent).toBe(`Back to ${LONG}`);
+    // Same cell as a short name: nothing about the grid depends on the label.
+    expect(button.className).toMatch(/\bmin-w-0\b/);
+  });
+
+  it("…and its full text is the tooltip", async () => {
+    vi.useRealTimers();
+    renderOverlay({ lists: longLists });
+    const button = screen.getByRole("button", { name: `Back to ${LONG}` });
+    fireEvent.pointerEnter(button, { pointerType: "mouse" });
+    fireEvent.mouseEnter(button);
+    fireEvent.focus(button);
+    const tip = await waitFor(() => {
+      const el = document.querySelector("[data-slot='tooltip-content']");
+      if (!el) throw new Error("no tooltip yet");
+      return el;
+    });
+    expect(tip.textContent).toContain(`Back to ${LONG}`);
+  });
+
+  it("staging fills a slot that was already there — the buttons' container does not move", () => {
+    renderOverlay();
+    const gridBefore = verdicts();
+    const slotBefore = stagedSlot();
+    expect(slotBefore.className).toContain("min-h-15");
+    expect(slotBefore.className).toContain("pointer-coarse:min-h-18");
+    expect(slotBefore.childElementCount).toBe(0);
+    expect(slotBefore.nextElementSibling).toBe(gridBefore);
+
+    press("ArrowRight");
+    expect(screen.getByText(/schedule for/i)).toBeTruthy();
+    // Same nodes, same order: the panel went INTO the slot, nothing was
+    // inserted ahead of the buttons.
+    expect(verdicts()).toBe(gridBefore);
+    expect(stagedSlot()).toBe(slotBefore);
+    expect(slotBefore.childElementCount).toBe(1);
+    expect(slotBefore.nextElementSibling).toBe(gridBefore);
+    expect([...gridBefore.parentElement!.children]).toEqual([slotBefore, gridBefore]);
+
+    // Confirm still works from the slot.
+    fireEvent.click(screen.getByRole("button", { name: /confirm/i }));
+    expect(screen.queryByText(/schedule for/i)).toBeNull();
+  });
+
+  it("the controls column comes after the stage, so a taller card cannot push it", () => {
+    renderOverlay();
+    const stage = dialog().querySelector("[data-overdrive-stage]")!;
+    const actions = dialog().querySelector("[data-overdrive-actions]")!;
+    expect(stage.nextElementSibling).toBe(actions);
+    expect(actions.lastElementChild).toBe(verdicts());
+  });
+
+  describe("Quick sort", () => {
+    beforeEach(() => {
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 409 }));
+    });
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it("the list picker keeps its place through the flick — hidden and inert, not unmounted", () => {
+      renderOverlay({ source: BACKLOG });
+      const actions = dialog().querySelector("[data-overdrive-actions]")!;
+      const pickerSlot = actions.firstElementChild as HTMLElement;
+      expect(pickerSlot.querySelector("#quick-sort-list")).toBeTruthy();
+      expect(pickerSlot.nextElementSibling).toBe(stagedSlot());
+
+      press("ArrowUp");
+      expect(actions.firstElementChild).toBe(pickerSlot);
+      expect(pickerSlot.className).toContain("invisible");
+      expect(pickerSlot.hasAttribute("inert")).toBe(true);
+
+      flushFlick();
+      expect(pickerSlot.className).not.toContain("invisible");
+      expect(pickerSlot.hasAttribute("inert")).toBe(false);
+    });
+
+    it("the ↓ button is the same grid cell with nothing picked", () => {
+      renderOverlay({ source: BACKLOG });
+      const button = screen.getByRole("button", { name: "Pick a list" });
+      expect(verdictButtons()[1]).toBe(button);
+      expect(button.className).toMatch(/\bmin-w-0\b/);
     });
   });
 });

@@ -39,12 +39,17 @@ export function OverdriveCard({
   const overflowInfo = rollStateFor(todo, ctx).overflow;
 
   return (
-    <div className="flex w-full max-w-xl flex-col gap-3 rounded-lg border border-border bg-background p-6">
+    // `w-full` of the overlay's fixed-width stage, never of its own content:
+    // a card that sized to its title made the dialog jump between cards
+    // (EI-393). A long title wraps.
+    <div className="flex w-full flex-col gap-3 rounded-lg border border-border bg-background p-6">
       <p className="num text-xs text-muted-foreground">
         {index + 1} of {total}
       </p>
 
-      <h2 className="font-heading text-2xl font-bold text-foreground">{todo.title}</h2>
+      <h2 className="font-heading text-2xl font-bold text-pretty wrap-break-word text-foreground">
+        {todo.title}
+      </h2>
 
       {todo.description && (
         <p className="line-clamp-3 text-sm text-muted-foreground">{todo.description}</p>
