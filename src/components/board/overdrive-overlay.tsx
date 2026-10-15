@@ -203,9 +203,28 @@ export function OverdriveOverlay({ source: sourceProp, ...rest }: OverdriveOverl
   // Held through the close so the overlay can animate out — see
   // src/lib/use-exit-retained.ts.
   const { value: source, open: sheetOpen } = useExitRetained(sourceProp);
+  /*
+    Counts opens, so each one remounts (EI-383). `useExitRetained` holds
+    `source` after the close and never lets it go, so closing Overflow and
+    reopening Overflow kept the same `key` — the content never unmounted, and
+    the reopened overlay resumed the finished session ("2 of 2", or its
+    tally) instead of the pile as it is now. Bumped only on the way IN, so
+    the outgoing overlay keeps its key, and its content, while it animates
+    out. A render-phase update for the same reason `useExitRetained` uses one.
+  */
+  const isOpen = sourceProp != null;
+  const [opens, setOpens] = useState({ seq: isOpen ? 1 : 0, open: isOpen });
+  if (opens.open !== isOpen) {
+    setOpens({ seq: opens.seq + (isOpen ? 1 : 0), open: isOpen });
+  }
   if (!source) return null;
   return (
-    <OverdriveOverlayContent key={source} source={source} sheetOpen={sheetOpen} {...rest} />
+    <OverdriveOverlayContent
+      key={`${source}:${opens.seq}`}
+      source={source}
+      sheetOpen={sheetOpen}
+      {...rest}
+    />
   );
 }
 
@@ -462,8 +481,17 @@ function OverdriveOverlayContent({
   };
 
   // Whatever toast is up when the overlay closes — however it closes — goes
-  // with it. Runs on unmount only ([] deps), which is exactly when this
-  // content component goes away (see `OverdriveOverlay`'s gate above).
+  // with it (docs/OVERDRIVE.md §7a). Keyed on `sheetOpen`, not on unmount
+  // alone (EI-383): `useExitRetained` keeps this component mounted after the
+  // close so it can animate out, and nothing unmounts it after that, so an
+  // unmount-only cleanup left the `duration: Infinity` toast on the board
+  // indefinitely. The verdict stays undoable after the close through the
+  // board's own ⌘Z — every verdict went through `pushUndo`.
+  useEffect(() => {
+    if (!sheetOpen) toast.dismiss(OVERDRIVE_TOAST_ID);
+  }, [sheetOpen]);
+  // And on unmount, for a close that skips the exit (a remount on reopen,
+  // the board unmounting under it).
   useEffect(() => {
     return () => {
       toast.dismiss(OVERDRIVE_TOAST_ID);

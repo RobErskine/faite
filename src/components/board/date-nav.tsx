@@ -75,6 +75,18 @@ interface DateNavProps {
    * swipe has no equivalent for "jump to a specific far-out date."
    */
   compact?: boolean;
+  /**
+   * The phone pager's page indicator (EI-383), `compact` only. Overflow is
+   * page −1 of the Days pager, and from Today nothing said it was there: the
+   * pager has no dots, and a swipe you don't know about is a page you never
+   * see. So today's page — the one page that sits next to Overflow — shows a
+   * quiet "‹ Overflow 8" before the range, pointing the way the swipe goes.
+   *
+   * Only at `anchorIndex === 0`: on later days `Today` is the way back (and
+   * claims the width this would need at 375px), and on the Overflow page the
+   * heading already says where you are.
+   */
+  overflowPeek?: { count: number; onShow: () => void };
 }
 
 /**
@@ -105,6 +117,7 @@ export function DateNav({
   onOpenActivity,
   onOpenHistory,
   compact,
+  overflowPeek,
 }: DateNavProps) {
   const rangeStart = addDays(today, anchorIndex);
   const rangeEnd = addDays(today, anchorIndex + Math.max(visibleCount - 1, 0));
@@ -131,6 +144,7 @@ export function DateNav({
   if (compact) {
     return (
       <div className="flex items-center gap-2 px-4 py-2">
+        {overflowPeek && anchorIndex === 0 && <OverflowPeek {...overflowPeek} />}
         <HistoryTrigger onClick={onOpenHistory} />
         {/*
           The board's one serif display moment (docs/DESIGN.md §2): "where am
@@ -214,6 +228,33 @@ export function DateNav({
         <ActivityTrigger onClick={onOpenActivity} />
       </div>
     </div>
+  );
+}
+
+/**
+ * "‹ Overflow 8" — see `DateNavProps.overflowPeek`. Muted ink and no rule:
+ * Overflow's red lives on its own column (EI-374), and a pointer to it is
+ * not the place to repeat it. The count is the unfiltered pile, the same
+ * number the column header shows; an empty Overflow drops it rather than
+ * printing a 0.
+ *
+ * The accessible name contains the visible words ("Show Overflow, 8 to-dos"
+ * holds "Overflow 8" once punctuation is ignored), so voice control can say
+ * what it sees.
+ */
+function OverflowPeek({ count, onShow }: { count: number; onShow: () => void }) {
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      className="shrink-0 gap-0.5 pl-1.5 text-muted-foreground"
+      onClick={onShow}
+      aria-label={count > 0 ? `Show Overflow, ${count} to-do${count === 1 ? "" : "s"}` : "Show Overflow"}
+    >
+      <ChevronLeft aria-hidden />
+      Overflow
+      {count > 0 && <span className="num ml-1">{count}</span>}
+    </Button>
   );
 }
 

@@ -218,6 +218,35 @@ describe("CommandPalette", () => {
     expect(screen.getByText("Delete a tab…")).toBeTruthy();
   });
 
+  it("leads with Overdrive while Overflow has cards, and ends with Delete (EI-383)", () => {
+    renderPalette({ overflowCount: 8 });
+
+    const options = screen.getAllByRole("option").map((o) => o.textContent);
+    expect(options[0]).toBe("Open Overdrive (8)");
+    expect(options.slice(-2)).toEqual(["Delete a list…", "Delete a tab…"]);
+    expect(screen.getByText("Triage")).toBeTruthy();
+  });
+
+  it("with Overflow empty, starts at Create and keeps a disabled Overdrive under View (EI-383)", () => {
+    renderPalette({ overflowCount: 0 });
+
+    const options = screen.getAllByRole("option");
+    expect(options[0].textContent).toBe("New to-do");
+    expect(options.slice(-2).map((o) => o.textContent)).toEqual(["Delete a list…", "Delete a tab…"]);
+    expect(screen.queryByText("Triage")).toBeNull();
+    const overdrive = screen.getByRole("option", { name: "Overdrive — Overflow is empty" });
+    expect(overdrive.getAttribute("aria-disabled")).toBe("true");
+  });
+
+  it("still finds the moved commands by searching (EI-383)", () => {
+    renderPalette({ overflowCount: 8 });
+
+    search("delete a tab");
+    expect(screen.getByRole("option", { name: "Delete a tab…" })).toBeTruthy();
+    search("overdrive");
+    expect(screen.getByRole("option", { name: "Open Overdrive (8)" })).toBeTruthy();
+  });
+
   it("lists tabs for switching, marking the active one", () => {
     renderPalette();
 

@@ -40,7 +40,9 @@ roll.
 `settings.overflowAfterDays` (`lib/schema.ts`) — `int, 0–30, default 3`.
 
 - **0** — a miss falls straight into Overflow the next eligible day. No
-  gradual rolling.
+  gradual rolling. The preset reads **"0 · next day"**, never "None"
+  (EI-383): "None" read as "never overflow", the one option the Loop
+  deliberately lacks (next bullet).
 - **30** — the maximum. There is deliberately **no "never overflow" option**:
   the whole thesis of the mechanic is that everything eventually gets a
   verdict.
@@ -158,6 +160,10 @@ no new prop plumbing through `board-column.tsx` or `use-board-data.ts`.
   Not `RollEvent.rolls`: `rollEventsFor` stops at the `overflowed` event, so
   its `rolls` is always `overflowAfterDays + 1` and every card read the same
   number until EI-374.
+  **Words only, no icon** (EI-383). It used to carry the same ↳
+  (`CornerDownRight`) as the rollover marker, so one glyph meant both
+  "rolled onto today" and "in Overflow". ↳ is the roll's alone; the
+  homepage replicas (`demo-board.tsx`, `story-panel.tsx`) match.
   Not red, either (EI-374, `docs/DESIGN.md` §1): the Overflow column's rule
   and count carry the urgency once — and only while the column holds
   something — so the cards in it stay quiet, in the same register as the

@@ -48,7 +48,7 @@ Board
 | File | Role |
 | --- | --- |
 | `src/components/board/command-palette.tsx` | the whole surface |
-| `src/lib/command-registry.ts` | `ROOT_COMMANDS` — the root menu's Create/Manage/View commands as data, plus `commandsByGroup` — see §7.1 |
+| `src/lib/command-registry.ts` | `ROOT_COMMANDS` — the root menu's Triage/Create/Manage/View/Delete commands as data, plus `commandsByGroup` — see §7.1 |
 | `src/lib/command-registry.test.ts` | pure unit tests for the registry — visibility, disabled/label logic, status-toggle math |
 | `src/lib/search.ts` | `searchTodos` — the matcher, pure and testable. Also `collapseRecurringSeries`, which reduces a recurring series to its single next occurrence — see §6.4 |
 | `src/lib/search.test.ts` | matcher unit tests |
@@ -107,17 +107,26 @@ At root, in render order:
 
 | Group | Items | Notes |
 | --- | --- | --- |
+| **Triage** | Open Overdrive (N) | only while Overflow has cards — then it is the first row of the palette (EI-383). Same command (`view-overdrive`) as the View row below; `groupFor` moves it |
 | **To-dos** | up to 8 search hits | only when the query is non-empty; each hit renders like a board card (priority rail, deadline/location/recurrence markers, label and scheduled-date badges — via `todo-row-parts.tsx`) and supports the row actions below |
 | **Create** | `Create to-do "<query>"` | only when the query is non-empty; parses quick-add tokens — §5 |
 | | New to-do / list / label / project / tab | New to-do parses quick-add tokens too — §5; the rest enter a plain entry mode |
 | **Tabs** | one row per tab, active marked `current` | hidden when `tabs.length <= 1` |
-| **Manage** | Delete a list… / Delete a tab… | each enters a picker mode |
-| | Keyboard shortcuts | opens the help sheet (`?`, EI-75) |
+| **Manage** | Keyboard shortcuts | opens the help sheet (`?`, EI-75) |
 | | Activity feed | opens the global activity feed (`⌘⇧A`) — the whole-app event log, `activity-sheet.tsx` |
 | **View** | Show 1 / 3 / 5 / 7 days | writes `settings.visibleDays` |
 | | Roll over on workdays only ⇄ every day | writes `settings.workdaysOnly` — same setting also lives in Settings → Faite Loop (`loop-section.tsx`, EI-96), which additionally exposes `overflowAfterDays`; see [FAITE-LOOP.md](FAITE-LOOP.md) |
-| | Open Overdrive (N) | disabled when Overflow is empty; opens the same full-screen triage overlay as the button at the foot of the Overflow column (EI-97) — see [OVERDRIVE.md](OVERDRIVE.md). Overflow-only, deliberately: a day column's own Overdrive entry (EI-253) is a header icon, not a palette command — see OVERDRIVE.md §12 |
+| | Overdrive — Overflow is empty | the View row only while Overflow is empty, disabled; with cards it moves to **Triage**, top of the list (EI-383). Opens the same full-screen triage overlay as the button at the foot of the Overflow column (EI-97) — see [OVERDRIVE.md](OVERDRIVE.md). Overflow-only, deliberately: a day column's own Overdrive entry (EI-253) is a header icon, not a palette command — see OVERDRIVE.md §12 |
 | | Quick sort Backlog (N) | disabled when Backlog has no open to-dos; opens Overdrive over Backlog with a list picker per card (EI-370) — see OVERDRIVE.md §13 |
+| **Delete** | Delete a list… / Delete a tab… | each enters a picker mode. Last on purpose (EI-383): they used to rank 5th–6th, under Manage, ahead of everything a planning session reaches for. Ids are still `manage-delete-list`/`manage-delete-tab` |
+
+**Why this order (EI-383).** The second board critique counted: with
+Overflow full, "Open Overdrive (N)" was the 19th row and "Delete a list…"
+the 5th. The palette's empty-query order is advice about what matters now,
+so the most useful command for a full Overflow leads, and the destructive
+ones close the list. Search is unaffected — a command's label is still its
+cmdk match value, so typing "delete" or "overdrive" finds the same rows as
+before; with a query, cmdk's scoring orders the groups anyway.
 
 Every mutating item routes through the shared undo helpers (`recordCreate`,
 `deleteListWithUndo`, `deleteTabWithUndo`) so palette actions and their
@@ -135,7 +144,7 @@ exempts `⌘⌫` when focus is in a text field, because that combo means "delete
 to line start" natively; the palette does not, since its search input is the
 only focus target and exempting it would just disable the shortcut.
 
-**The Create/Manage/View commands above are data, not hardcoded JSX** — see
+**The Triage/Create/Manage/View/Delete commands above are data, not hardcoded JSX** — see
 §7.1 (EI-77). To-do results, the Tabs switcher, and the delete pickers stay
 bespoke renders, deliberately (§7.1 explains why).
 
@@ -379,7 +388,9 @@ Each `PaletteCommand` is a plain object:
 ```ts
 interface PaletteCommand {
   id: string
-  group: "Create" | "Manage" | "View"
+  group: "Triage" | "Create" | "Manage" | "View" | "Delete"
+  groupFor?: (ctx) => PaletteCommandGroup  // overrides `group` per render —
+                             // Overdrive moves to Triage while Overflow has cards
   label: (ctx: PaletteCommandCtx) => string
   value?: (ctx) => string   // cmdk match value override — only the
                              // create-from-query fallback needs one
@@ -502,7 +513,9 @@ Three layers, all required:
   commands `commandsByGroup` returns per `ctx` (create-fallback visibility,
   entry-mode ids), and the `label`/`disabled`/`run` logic on the View group
   (current-day marker, last-status-can't-turn-off guard, status-toggle
-  ordering, Overdrive's count/disabled state).
+  ordering, Overdrive's count/disabled state), and the group order —
+  Overdrive in Triage only while Overflow has cards, Delete last (EI-383).
+  `command-palette.test.tsx` asserts the same order on the rendered options.
 - **`src/lib/search.test.ts`** — pure matcher. Node environment, no DOM. Tier
   ordering, status ordering, recency tiebreak, soft-delete exclusion, limit.
 - **`src/lib/quick-add.test.ts`** / **`src/lib/mention.test.ts`** — pure,

@@ -13,8 +13,9 @@ import { formatCombo, type Platform } from "./keyboard";
  * any of the palette's dialog/DOM machinery.
  *
  * Deliberately in scope: the "Create" entry-mode switches, the create-from-
- * query fallback, "Manage", and "View". Deliberately OUT of scope — these
- * stay bespoke renders in `command-palette.tsx`, not registry entries:
+ * query fallback, "Manage", "View", "Triage" and "Delete". Deliberately OUT
+ * of scope — these stay bespoke renders in `command-palette.tsx`, not
+ * registry entries:
  *   - to-do search results and the Tabs switcher (existing entities, not
  *     commands — see docs/COMMAND-PALETTE.md §4's own Create/Tabs split)
  *   - the delete-list/delete-tab picker bodies (same reason: they list
@@ -71,12 +72,30 @@ export interface PaletteCommandCtx {
   toggleWorkdaysOnly: () => void | Promise<void>;
 }
 
-export const COMMAND_GROUPS = ["Create", "Manage", "View"] as const;
+/**
+ * Render order, top to bottom (EI-383):
+ *
+ * - **Triage** first, and only while there is triage to do. Overdrive used to
+ *   sit 19th, under View, the day Overflow had cards in it — the one moment
+ *   it is the most useful command in the list.
+ * - **Delete** last. "Delete a list…" and "Delete a tab…" used to rank 5th
+ *   and 6th, ahead of everything a planning session actually reaches for. A
+ *   destructive command belongs where the eye arrives last, not where an
+ *   arrow key lands early.
+ *
+ * Ids never change with the group (`manage-delete-list` is still its id), and
+ * the label is the cmdk match value, so search finds every command exactly
+ * as before; only the empty-query order moved.
+ */
+export const COMMAND_GROUPS = ["Triage", "Create", "Manage", "View", "Delete"] as const;
 export type PaletteCommandGroup = (typeof COMMAND_GROUPS)[number];
 
 export interface PaletteCommand {
   id: string;
   group: PaletteCommandGroup;
+  /** Overrides `group` for this render — a command that moves to the top
+   * while it matters (Overdrive, EI-383). Omit to always sit in `group`. */
+  groupFor?: (ctx: PaletteCommandCtx) => PaletteCommandGroup;
   label: (ctx: PaletteCommandCtx) => string;
   /** Overrides cmdk's default match value (which falls back to the rendered
    * label) — only the create-from-query fallback needs this, so its value
@@ -117,18 +136,6 @@ const CREATE_COMMANDS: PaletteCommand[] = [
 ];
 
 const MANAGE_COMMANDS: PaletteCommand[] = [
-  {
-    id: "manage-delete-list",
-    group: "Manage",
-    label: () => "Delete a list…",
-    run: (ctx) => ctx.enterMode("delete-list"),
-  },
-  {
-    id: "manage-delete-tab",
-    group: "Manage",
-    label: () => "Delete a tab…",
-    run: (ctx) => ctx.enterMode("delete-tab"),
-  },
   {
     id: "manage-keyboard-shortcuts",
     group: "Manage",
@@ -171,6 +178,23 @@ const MANAGE_COMMANDS: PaletteCommand[] = [
       ctx.openDuplicates();
       ctx.close();
     },
+  },
+];
+
+/** Last in the palette (EI-383) — see `COMMAND_GROUPS`. The `manage-` ids
+ * predate the move and are kept so nothing keyed on them breaks. */
+const DELETE_COMMANDS: PaletteCommand[] = [
+  {
+    id: "manage-delete-list",
+    group: "Delete",
+    label: () => "Delete a list…",
+    run: (ctx) => ctx.enterMode("delete-list"),
+  },
+  {
+    id: "manage-delete-tab",
+    group: "Delete",
+    label: () => "Delete a tab…",
+    run: (ctx) => ctx.enterMode("delete-tab"),
   },
 ];
 
@@ -223,8 +247,11 @@ const VIEW_MISC_COMMANDS: PaletteCommand[] = [
     run: (ctx) => ctx.toggleWorkdaysOnly(),
   },
   {
+    // Top of the palette while Overflow has cards (EI-383); back among the
+    // View commands, disabled, once it is empty.
     id: "view-overdrive",
     group: "View",
+    groupFor: (ctx) => (ctx.overflowCount > 0 ? "Triage" : "View"),
     label: (ctx) =>
       ctx.overflowCount > 0 ? `Open Overdrive (${ctx.overflowCount})` : "Overdrive — Overflow is empty",
     disabled: (ctx) => ctx.overflowCount === 0,
@@ -254,6 +281,7 @@ export const ROOT_COMMANDS: PaletteCommand[] = [
   ...VIEW_DAYS_COMMANDS,
   ...VIEW_STATUS_COMMANDS,
   ...VIEW_MISC_COMMANDS,
+  ...DELETE_COMMANDS,
 ];
 
 /**
@@ -266,7 +294,7 @@ export function commandsByGroup(ctx: PaletteCommandCtx): Map<PaletteCommandGroup
   const map = new Map<PaletteCommandGroup, PaletteCommand[]>(COMMAND_GROUPS.map((g) => [g, []]));
   for (const command of ROOT_COMMANDS) {
     if (command.when && !command.when(ctx)) continue;
-    map.get(command.group)!.push(command);
+    map.get(command.groupFor?.(ctx) ?? command.group)!.push(command);
   }
   return map;
 }

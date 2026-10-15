@@ -2,6 +2,7 @@
 
 import { ListTree, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { OVERDRIVE_MIN_TODOS } from "@/lib/overdrive";
 import { cn } from "@/lib/utils";
 
@@ -76,18 +77,12 @@ export function DayOverdriveButton({
   if (count < minTodos) return null;
 
   return (
-    <button
-      type="button"
+    <HeaderIconButton
+      name={`Overdrive ${label} — ${count} to-do${count === 1 ? "" : "s"}`}
       onClick={onOpen}
-      aria-label={`Overdrive ${label} — ${count} to-do${count === 1 ? "" : "s"}`}
-      className={cn(
-        "shrink-0 self-center rounded text-muted-foreground transition-colors",
-        "-m-1.5 p-1.5 pointer-coarse:-m-2.5 pointer-coarse:p-2.5",
-        "hover:text-foreground focus-ring",
-      )}
     >
       <Zap className="size-3.5" aria-hidden />
-    </button>
+    </HeaderIconButton>
   );
 }
 
@@ -114,18 +109,54 @@ export function QuickSortButton({
   if (count < 1) return null;
 
   return (
-    <button
-      type="button"
+    <HeaderIconButton
+      name={`Quick sort Backlog — ${count} to-do${count === 1 ? "" : "s"}`}
       onClick={onOpen}
-      aria-label={`Quick sort Backlog — ${count} to-do${count === 1 ? "" : "s"}`}
-      className={cn(
-        "shrink-0 self-center rounded text-muted-foreground transition-colors",
-        "-m-1.5 p-1.5 pointer-coarse:-m-2.5 pointer-coarse:p-2.5",
-        "hover:text-foreground focus-ring",
-        className,
-      )}
+      className={className}
     >
       <ListTree className="size-3.5" aria-hidden />
-    </button>
+    </HeaderIconButton>
+  );
+}
+
+/**
+ * The icon-only header button both entries above share, with a tooltip that
+ * says exactly what its accessible name says (EI-383). A bare ⚡ in a day
+ * header meant nothing until clicked; Overflow's own entry spells out
+ * "Overdrive · N" in text, so the icon versions owe a sighted user the same
+ * words on hover or focus. One string feeds both, so they cannot drift.
+ */
+function HeaderIconButton({
+  name,
+  onClick,
+  className,
+  children,
+}: {
+  name: string;
+  onClick: () => void;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <button
+            type="button"
+            onClick={onClick}
+            aria-label={name}
+            className={cn(
+              "shrink-0 self-center rounded text-muted-foreground transition-colors",
+              "-m-1.5 p-1.5 pointer-coarse:-m-2.5 pointer-coarse:p-2.5",
+              "hover:text-foreground focus-ring",
+              className,
+            )}
+          >
+            {children}
+          </button>
+        }
+      />
+      <TooltipContent>{name}</TooltipContent>
+    </Tooltip>
   );
 }

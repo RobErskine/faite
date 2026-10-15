@@ -97,12 +97,12 @@ describe("tab pill counts", () => {
     );
     const pill = screen.getByRole("button", { name: /^Work\b/ }).closest("[data-tab-pill]")!;
     fireEvent.mouseEnter(pill);
-    expect(await screen.findByText("1 list with 1 item")).toBeTruthy();
+    expect(await screen.findByText("1 list, 1 to-do in it, 0 on the calendar")).toBeTruthy();
   });
 
-  it("spells out the assigned tally only when there is one", async () => {
+  it("names every visible number, in order, even a zero (EI-383)", async () => {
     // The whole point of the third number: a tab whose lists look empty still
-    // reads 3/0/1, and the tooltip has to say why.
+    // reads 3/0/↑1, and the tooltip has to say why.
     const work = tab("t1", "Work");
     render(
       <Harness
@@ -114,8 +114,33 @@ describe("tab pill counts", () => {
     const pill = screen.getByRole("button", { name: /^Work\b/ }).closest("[data-tab-pill]")!;
     fireEvent.mouseEnter(pill);
     expect(
-      await screen.findByText("3 lists with 0 items, plus 1 item assigned to a day"),
+      await screen.findByText("3 lists, 0 to-dos in them, 1 on the calendar"),
     ).toBeTruthy();
+  });
+
+  it("puts the tooltip's exact words in the pill's accessible name (EI-383)", () => {
+    render(
+      <Harness
+        tabs={[tab("t1", "Work")]}
+        activeTabId="t1"
+        counts={new Map([["t1", { lists: 4, items: 3, assigned: 8 }]])}
+      />,
+    );
+    expect(
+      screen.getByRole("button", { name: "Work, 4 lists, 3 to-dos in them, 8 on the calendar" }),
+    ).toBeTruthy();
+  });
+
+  it("opens the same tooltip from the keyboard, not only on hover (EI-383)", async () => {
+    render(
+      <Harness
+        tabs={[tab("t1", "Work")]}
+        activeTabId="t1"
+        counts={new Map([["t1", { lists: 4, items: 3, assigned: 8 }]])}
+      />,
+    );
+    fireEvent.focus(screen.getByRole("button", { name: /^Work\b/ }));
+    expect(await screen.findByText("4 lists, 3 to-dos in them, 8 on the calendar")).toBeTruthy();
   });
 
   it("shows the description above the count when both are present", async () => {
@@ -130,7 +155,7 @@ describe("tab pill counts", () => {
     const pill = screen.getByRole("button", { name: /^Work\b/ }).closest("[data-tab-pill]")!;
     fireEvent.mouseEnter(pill);
     expect(await screen.findByText("Day job")).toBeTruthy();
-    expect(await screen.findByText("2 lists with 17 items")).toBeTruthy();
+    expect(await screen.findByText("2 lists, 17 to-dos in them, 0 on the calendar")).toBeTruthy();
   });
 });
 

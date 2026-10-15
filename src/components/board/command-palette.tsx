@@ -475,7 +475,7 @@ export function CommandPalette({
 
   /**
    * Ctx for the command registry (`command-registry.ts`) — the root menu's
-   * "Create"/"Manage"/"View" groups render from `ROOT_COMMANDS` via this
+   * Triage/Create/Manage/View/Delete groups render from `ROOT_COMMANDS` via this
    * object rather than from inline JSX. Every registry action bottoms out in
    * a helper already defined above/here; the registry itself never imports
    * `mutateSettings` or any other persistence call directly.
@@ -758,6 +758,20 @@ export function CommandPalette({
           <>
             <CommandEmpty>No results found.</CommandEmpty>
 
+            {/*
+              Triage (EI-383): Overdrive, at the very top while Overflow has
+              cards — absent otherwise, so an empty group never renders a
+              heading. With a query, cmdk's own scoring orders the groups.
+            */}
+            {commandGroups.get("Triage")!.length > 0 ? (
+              <>
+                <CommandGroup heading="Triage">
+                  {commandGroups.get("Triage")!.map(renderCommand)}
+                </CommandGroup>
+                <CommandSeparator />
+              </>
+            ) : null}
+
             {results.length > 0 ? (
               <>
                 <CommandGroup heading="To-dos">
@@ -886,15 +900,21 @@ export function CommandPalette({
             <CommandSeparator />
 
             {/*
-              Day counts, status filters, weekends/workday toggles, and
-              Overdrive — same registry-driven rendering as Create/Manage
-              above. `className="nums"` on the day-count rows lives on the
+              Day counts, status filters, weekends/workday toggles, Quick
+              sort, and Overdrive while Overflow is empty (it is in Triage,
+              at the top, otherwise) — same registry-driven rendering as
+              Create/Manage above. `className="nums"` on the day-count rows lives on the
               registry entries themselves (`command-registry.ts`): on the
               item, not a wrapper span, because CommandItem is a flex row
               with a gap that a span would break into columns, and
               font-variant-numeric inherits so `nums` keeps the body font.
             */}
             <CommandGroup heading="View">{commandGroups.get("View")!.map(renderCommand)}</CommandGroup>
+
+            <CommandSeparator />
+
+            {/* Destructive commands last (EI-383) — see `COMMAND_GROUPS`. */}
+            <CommandGroup heading="Delete">{commandGroups.get("Delete")!.map(renderCommand)}</CommandGroup>
           </>
         )}
       </CommandList>

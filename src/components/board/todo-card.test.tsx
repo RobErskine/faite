@@ -601,6 +601,17 @@ describe("the Faite Loop", () => {
     expect(age?.className).not.toMatch(/\b(text|bg)-urgent/);
   });
 
+  it("gives ↳ one meaning: the rolled marker has it, the Overflow age badge does not (EI-383)", () => {
+    render(<Harness todo={todo({ scheduledDate: "2026-08-08" })} />); // rolling
+    expect(row().querySelector("[data-rollover-marker] svg.lucide-corner-down-right")).not.toBeNull();
+    cleanup();
+
+    render(<Harness todo={todo({ scheduledDate: "2026-08-01" })} />); // in Overflow
+    const age = row().querySelector("[data-overflow-age]");
+    expect(age?.querySelector("svg")).toBeNull();
+    expect(age?.textContent).toBe("In Overflow 4 days");
+  });
+
   it("shows neither for a settled todo, however stale", () => {
     render(
       <Harness todo={todo({ scheduledDate: "2026-07-01", status: "done" })} />,

@@ -418,6 +418,11 @@ export function TodoMetaBadges({
             same thing N times — and red at `text-2xs` breaks PRODUCT.md's
             "colored text never at the smallest size". Same quiet register as
             the rolled-over marker this badge replaces.
+
+            Words only, no icon (EI-383). It used to carry ↳ too, which made
+            one glyph mean two things: "rolled forward onto today" on the
+            title marker, "sitting in Overflow" here. ↳ belongs to the roll;
+            "In Overflow N days" already says the rest.
           */}
           <TooltipTrigger
             render={
@@ -425,10 +430,9 @@ export function TodoMetaBadges({
                 data-overflow-age
                 className={cn(
                   badgeVariants({ variant: "outline" }),
-                  "num gap-1 text-2xs font-normal text-muted-foreground",
+                  "num text-2xs font-normal text-muted-foreground",
                 )}
               >
-                      <CornerDownRight className="size-2.5" aria-hidden />
                 {formatOverflowAge(overflow.since, today)}
               </span>
             }

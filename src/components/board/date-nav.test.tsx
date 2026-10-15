@@ -195,3 +195,56 @@ describe("DateNav on the phone's Overflow page", () => {
     expect(screen.queryByRole("button", { name: "Today" })).toBeNull();
   });
 });
+
+describe("DateNav's Overflow peek — the phone pager's page indicator (EI-383)", () => {
+  afterEach(cleanup);
+
+  const peekProps = { ...baseProps, compact: true, visibleCount: 1, onOpenActivity: () => {} };
+
+  it("shows '‹ Overflow 8' on today's page, named for what it does", () => {
+    render(<DateNav {...peekProps} anchorIndex={0} overflowPeek={{ count: 8, onShow: () => {} }} />);
+    const peek = screen.getByRole("button", { name: "Show Overflow, 8 to-dos" });
+    expect(peek.textContent).toBe("Overflow8");
+    // Leftmost, before History and the range: Overflow is the page to the left.
+    const history = screen.getByRole("button", { name: "Open history" });
+    expect(peek.compareDocumentPosition(history) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("takes you there", () => {
+    const onShow = vi.fn();
+    render(<DateNav {...peekProps} anchorIndex={0} overflowPeek={{ count: 8, onShow }} />);
+    fireEvent.click(screen.getByRole("button", { name: /show overflow/i }));
+    expect(onShow).toHaveBeenCalledOnce();
+  });
+
+  it("counts in the singular, and drops the count for an empty Overflow", () => {
+    render(<DateNav {...peekProps} anchorIndex={0} overflowPeek={{ count: 1, onShow: () => {} }} />);
+    expect(screen.getByRole("button", { name: "Show Overflow, 1 to-do" })).toBeTruthy();
+    cleanup();
+    render(<DateNav {...peekProps} anchorIndex={0} overflowPeek={{ count: 0, onShow: () => {} }} />);
+    const empty = screen.getByRole("button", { name: "Show Overflow" });
+    expect(empty.textContent).toBe("Overflow");
+  });
+
+  it("only on today's page — later days have Today, the Overflow page has its heading", () => {
+    for (const anchorIndex of [-1, 1]) {
+      render(<DateNav {...peekProps} anchorIndex={anchorIndex} overflowPeek={{ count: 8, onShow: () => {} }} />);
+      expect(screen.queryByRole("button", { name: /show overflow/i })).toBeNull();
+      cleanup();
+    }
+  });
+
+  it("never in the desktop bar, where Overflow is a pinned rail you can see", () => {
+    render(
+      <DateNav {...baseProps} onOpenActivity={() => {}} overflowPeek={{ count: 8, onShow: () => {} }} />,
+    );
+    expect(screen.queryByRole("button", { name: /show overflow/i })).toBeNull();
+  });
+
+  it("draws in muted ink — no urgent red, no new color", () => {
+    render(<DateNav {...peekProps} anchorIndex={0} overflowPeek={{ count: 8, onShow: () => {} }} />);
+    const peek = screen.getByRole("button", { name: /show overflow/i });
+    expect(peek.className).toContain("text-muted-foreground");
+    expect(peek.innerHTML).not.toMatch(/urgent|spectrum/);
+  });
+});

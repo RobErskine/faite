@@ -1,4 +1,4 @@
-import { CalendarCheck, CornerDownRight, ListChecks, MapPin } from "lucide-react";
+import { CalendarCheck, ListChecks, MapPin } from "lucide-react";
 import { badgeVariants } from "@/components/ui/badge";
 // `edge` only — the column accent is a real feature (lists and tabs both have
 // a ColorPicker). `tint` went with the fabricated label colors.
@@ -421,14 +421,14 @@ function DemoCard({ todo }: { todo: DemoTodo }) {
                 label={`Scheduled ${todo.overflow.from} · in Overflow since ${todo.overflow.since}`}
               >
                 {/* Muted, as the board draws it (EI-374): the column's rule
-                    and count carry Overflow's red, never each card. */}
+                    and count carry Overflow's red, never each card. Words
+                    only: ↳ is the rolled marker's alone (EI-383). */}
                 <span
                   className={cn(
                     badgeVariants({ variant: "outline" }),
-                    "num gap-1 text-2xs font-normal text-muted-foreground",
+                    "num text-2xs font-normal text-muted-foreground",
                   )}
                 >
-                  <CornerDownRight className="size-2.5" aria-hidden />
                   In Overflow {todo.overflow.days} days
                 </span>
               </DemoTooltip>

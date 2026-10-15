@@ -304,6 +304,21 @@ page — every read/write of `scrollLeft` in that hook translates through
 `indexOffset` at exactly two points (the scroll listener's anchor
 computation, the jump effect's `scrollTo`).
 
+**The page indicator: "‹ Overflow 8" (EI-383).** Scroll-snap gives the
+pager no dots, so from Today nothing said there was a page to the left.
+`DateNav`'s compact bar takes an `overflowPeek` prop and, on today's page
+only, shows a quiet ghost button before History: a left chevron, "Overflow",
+and the unfiltered count (dropped at 0). Accessible name "Show Overflow, 8
+to-dos". Tapping it scrolls the day track to `scrollLeft: 0` (a raw
+`scrollTo`, since `jumpToIndex` clamps at today) and moves focus to the
+first Overflow card, or the column when it is empty — the peek unmounts as
+the anchor leaves today and would otherwise drop focus on `<body>`. Not
+dots: the Days pager is 30+ pages long, and the only page a user cannot
+infer is the one that is not a day. Only on today's page because it is the
+one page next to Overflow, later days already offer `Today`, and at 375px
+there is no width for both. Muted ink, no rule: Overflow's red stays on its
+column (EI-374). Tests: `date-nav.test.tsx`.
+
 **Bug found and fixed: `useEffect`/`useLayoutEffect` deps don't see a ref
 attach.** A `React.RefObject`'s `.current` going from `null` to an element
 does not itself re-trigger effects with an empty/unrelated dep array — and

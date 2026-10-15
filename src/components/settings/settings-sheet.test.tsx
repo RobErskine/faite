@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import "fake-indexeddb/auto";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SettingsSheet } from "./settings-sheet";
 import { SETTINGS_SECTIONS } from "./sections";
@@ -199,7 +199,7 @@ describe("SettingsSheet", () => {
     expect(screen.getByText(/Overflow on/)).toBeTruthy();
   });
 
-  it("marks 'None' pressed and skips the roll list when overflowAfterDays is 0", () => {
+  it("marks '0 · next day' pressed and skips the roll list when overflowAfterDays is 0", () => {
     render(
       <SettingsSheet
         open
@@ -213,8 +213,35 @@ describe("SettingsSheet", () => {
     const pressed = screen
       .getAllByRole("button")
       .filter((el) => el.getAttribute("aria-pressed") === "true");
-    expect(pressed.some((el) => el.textContent?.trim() === "None")).toBe(true);
+    expect(pressed.some((el) => el.textContent?.trim() === "0 · next day")).toBe(true);
     expect(screen.queryByText(/rolls to/)).toBeNull();
+  });
+
+  it("names the 0 preset for what it does, never 'None' (EI-383)", () => {
+    render(
+      <SettingsSheet
+        open
+        onOpenChange={() => {}}
+        settings={settingsWith({ overflowAfterDays: 3, timezone: "UTC" })}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Faite Loop"));
+
+    const rolls = screen.getByRole("group", { name: "Rolls before Overflow" });
+    // The visible text IS the accessible name — no aria-label to drift from it.
+    const zero = within(rolls).getByRole("button", { name: "0 · next day" });
+    expect(zero.getAttribute("aria-label")).toBeNull();
+    expect(within(rolls).queryByRole("button", { name: "None" })).toBeNull();
+  });
+
+  it("says when Overdrive shows instead of 'Entry threshold' (EI-383)", () => {
+    render(<SettingsSheet open onOpenChange={() => {}} settings={settingsWith({})} />);
+
+    fireEvent.click(screen.getByText("Faite Loop"));
+
+    expect(screen.queryByText("Entry threshold")).toBeNull();
+    expect(screen.getByRole("group", { name: "When to show Overdrive" })).toBeTruthy();
   });
 
   it("reflects workdaysOnly as the Faite Loop switch state", () => {

@@ -137,20 +137,41 @@ describe("commandsByGroup", () => {
     const empty = makeCtx({ overflowCount: 0 });
     const withItems = makeCtx({ overflowCount: 3 });
     const emptyCmd = commandsByGroup(empty).get("View")!.find((c) => c.id === "view-overdrive")!;
-    const withItemsCmd = commandsByGroup(withItems).get("View")!.find((c) => c.id === "view-overdrive")!;
+    const withItemsCmd = commandsByGroup(withItems).get("Triage")!.find((c) => c.id === "view-overdrive")!;
     expect(emptyCmd.disabled?.(empty)).toBe(true);
     expect(emptyCmd.label(empty)).toBe("Overdrive — Overflow is empty");
     expect(withItemsCmd.label(withItems)).toBe("Open Overdrive (3)");
   });
 
-  it("routes Manage entries to enterMode/openHelp+close", () => {
+  it("moves Overdrive to Triage, the first group, while Overflow has cards (EI-383)", () => {
+    const withItems = commandsByGroup(makeCtx({ overflowCount: 3 }));
+    expect([...withItems.keys()][0]).toBe("Triage");
+    expect(withItems.get("Triage")!.map((c) => c.id)).toEqual(["view-overdrive"]);
+    expect(withItems.get("View")!.some((c) => c.id === "view-overdrive")).toBe(false);
+
+    const empty = commandsByGroup(makeCtx({ overflowCount: 0 }));
+    expect(empty.get("Triage")).toEqual([]);
+    expect(empty.get("View")!.some((c) => c.id === "view-overdrive")).toBe(true);
+  });
+
+  it("puts the destructive Delete commands last, under their old ids (EI-383)", () => {
+    const groups = commandsByGroup(makeCtx({ overflowCount: 3 }));
+    expect([...groups.keys()].at(-1)).toBe("Delete");
+    expect(groups.get("Delete")!.map((c) => c.id)).toEqual(["manage-delete-list", "manage-delete-tab"]);
+    expect(groups.get("Manage")!.some((c) => c.id.startsWith("manage-delete"))).toBe(false);
+    // The registry's own order agrees, for any consumer that reads it flat.
+    expect(ROOT_COMMANDS.slice(-2).map((c) => c.id)).toEqual(["manage-delete-list", "manage-delete-tab"]);
+  });
+
+  it("routes Manage and Delete entries to enterMode/openHelp+close", () => {
     const enterMode = vi.fn();
     const openHelp = vi.fn();
     const close = vi.fn();
     const ctx = makeCtx({ enterMode, openHelp, close });
-    const manage = commandsByGroup(ctx).get("Manage")!;
+    const groups = commandsByGroup(ctx);
+    const manage = groups.get("Manage")!;
 
-    manage.find((c) => c.id === "manage-delete-list")!.run(ctx);
+    groups.get("Delete")!.find((c) => c.id === "manage-delete-list")!.run(ctx);
     expect(enterMode).toHaveBeenCalledWith("delete-list");
 
     manage.find((c) => c.id === "manage-keyboard-shortcuts")!.run(ctx);

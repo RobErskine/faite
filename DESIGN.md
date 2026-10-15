@@ -308,6 +308,7 @@ Quiet and tactile; the board has no loud fills.
 
 ### Don't:
 - **Don't** add a second red anywhere in the app (§1).
+- **Don't** give one icon two meanings: ↳ marks a rolled to-do and nothing else; the Overflow age badge is words only (§7, EI-383).
 - **Don't** use the spectrum as a fill, a text color, a badge, or in a fifth place (§1).
 - **Don't** give priority a hue (§1, §7 decision A).
 - **Don't** strike through Won't do (§1).

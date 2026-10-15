@@ -4,6 +4,7 @@ import { useRef } from "react";
 import { StickyNote } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import { prefersReducedMotion } from "@/lib/reduced-motion";
 import { effectiveListColor } from "@/lib/colors";
 import { NAV_LOAD_MORE, navKeyOf } from "@/lib/column-nav";
 import { dayColumnId } from "@/lib/board";
@@ -22,7 +23,7 @@ import { BACKLOG } from "@/lib/overdrive";
 import { OverflowEmptyState } from "./overflow-empty-state";
 import { TabStrip } from "./tab-strip";
 import { PhoneBottomBar } from "./phone-bottom-bar";
-import { SkipLinks } from "./skip-links";
+import { findSkipTarget, SkipLinks } from "./skip-links";
 import type { BoardUiState } from "./use-board-ui-state";
 import type { useBoardActions } from "./use-board-actions";
 import type { NavigateFn } from "./use-column-nav";
@@ -143,6 +144,26 @@ export function PhoneBoard({
   // than being hoisted to the shell the way `dayTrackRef` is.
   const listTrackRef = useRef<HTMLDivElement>(null);
 
+  /**
+   * The Overflow peek's target (EI-383, `DateNav`'s `overflowPeek`): page −1,
+   * which is `scrollLeft: 0` — a raw `scrollTo`, because `jumpToIndex`
+   * clamps at today and has no index for a page that is not a day (see the
+   * same choice in `use-day-track.ts`). The scroll listener there moves the
+   * anchor to −1 on its own, which retitles the nav "Overflow".
+   *
+   * Focus follows, because the peek unmounts the moment the anchor leaves
+   * today and would otherwise drop focus on `<body>`: the first card, or the
+   * column itself when Overflow is empty. `preventScroll`, so the focus call
+   * cannot fight the pager's own scroll — the skip links do the same.
+   */
+  const showOverflowPage = () => {
+    dayTrackRef.current?.scrollTo({ left: 0, behavior: prefersReducedMotion() ? "auto" : "smooth" });
+    const found = findSkipTarget(document, { columnId: board.overflow.id, prefer: "card" });
+    if (!found) return;
+    if (!found.exact && !found.element.hasAttribute("tabindex")) found.element.tabIndex = -1;
+    found.element.focus({ preventScroll: true });
+  };
+
   return (
     <div className="flex h-dvh flex-col overscroll-none">
       {/* First in the DOM, so they are the first Tab stops (EI-381). Each
@@ -198,6 +219,7 @@ export function PhoneBoard({
           onToday={jumpToToday}
           onOpenActivity={() => ui.setActivityOpen(true)}
           onOpenHistory={() => ui.setHistoryDay(ctx.today)}
+          overflowPeek={{ count: board.overflow.todos.length, onShow: showOverflowPage }}
         />
       )}
 

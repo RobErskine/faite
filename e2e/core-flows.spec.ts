@@ -67,8 +67,9 @@ test("default tab and the ⌘K command palette are reachable", async ({ page }) 
   await switchToLists(page);
   // TabPill (tab-strip.tsx) renders as a plain <button>, not role="tab" —
   // the strip has no ARIA tablist semantics today. Its accessible name is
-  // "My Lists, N lists with M items": EI-118 appended an `sr-only` count
-  // sentence, so `exact` no longer matches. Anchor instead of loosening to a
+  // "My Lists, N lists, M to-dos in them, K on the calendar" (EI-118,
+  // EI-383): a count sentence follows the name, so `exact` no longer
+  // matches. Anchor instead of loosening to a
   // substring — the same pill row also carries "Tab options for My Lists" and
   // "Drag to reorder the My Lists tab", which a substring would make ambiguous.
   await expect(page.getByRole("button", { name: /^My Lists\b/ })).toBeVisible();
