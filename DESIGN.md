@@ -301,6 +301,7 @@ Quiet and tactile; the board has no loud fills.
 ### Overlays (dialog, sheet, alert-dialog, command palette)
 - Popover surface, `rounded.3xl`, `p-5`, `--shadow-overlay`; heading-weight titles; footers are a `border-line-faint` hairline, never a filled bar.
 - A dialog scales in place from 0.95 above 640px and rises from the bottom below it; a sheet slides its own width and never overshoots. Exits are shorter and unsprung (§4).
+- The to-do details drawer (EI-396) is shaped around the quick edit: priority sits in the header with a short rail mark (no hanging tab); a quiet story line says where the to-do has been; When and Deadline, List, Labels, Location, Sub-tasks and Notes are always visible; Attachments and History are collapsed disclosures. Footer endings: Done (↑, primary ink, never green), Won't do (←, ⌘⌫), Back to <list> (↓, only when the to-do has a day), Delete (⇧⌘⌫, muted ghost icon, never red). Phone stays a full-width right panel. Toasts move clear of an open drawer (docs/DESIGN.md §3).
 
 ## Do's and Don'ts
 

@@ -194,6 +194,13 @@ export const LOCAL_SHORTCUTS: ShortcutEntry[] = [
     source: "todo-sheet.tsx — handleSheetKeyDown",
   },
   {
+    id: "sheet-arrow-back-to-list",
+    combo: "arrowdown",
+    label: "Back to its list (removes the day) — when the to-do has a day and focus is not in a text field",
+    scope: "To-do sheet",
+    source: "todo-sheet.tsx — handleSheetKeyDown",
+  },
+  {
     id: "sheet-mark-done",
     combo: "mod+enter",
     label: "Mark done and close the sheet",

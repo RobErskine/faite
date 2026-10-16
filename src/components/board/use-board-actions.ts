@@ -2152,6 +2152,7 @@ export function useBoardActions(
     handleToggle,
     handleSheetSave,
     handleSheetStatus,
+    handleMoveBackToList,
     handleOverdriveVerdict,
     handleAcceptSuggestion,
     handleDismissSuggestion,

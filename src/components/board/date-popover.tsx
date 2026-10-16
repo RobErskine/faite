@@ -32,6 +32,22 @@ function whenHint(date: CivilDate, today: CivilDate): string {
   return daysBetween(today, date) < 7 ? formatDay(date).weekday : formatShortDate(date);
 }
 
+const SHORT_WEEKDAY = new Intl.DateTimeFormat("en-US", { weekday: "short", timeZone: "UTC" });
+
+/** "Thu" for a civil date; noon UTC keeps it clear of midnight rounding. */
+function shortWeekday(date: CivilDate): string {
+  return SHORT_WEEKDAY.format(new Date(`${date}T12:00:00Z`));
+}
+
+/** "Repeats weekly" / "Repeats every 2 weeks" — the trigger's short form of
+ * the rule; `RepeatSection` below the field spells it out in full. */
+function repeatPhrase(rule: RecurrenceInfo["rule"]): string {
+  const adverb = { daily: "daily", weekly: "weekly", monthly: "monthly", yearly: "yearly" }[rule.freq];
+  if (rule.interval === 1) return `Repeats ${adverb}`;
+  const unit = { daily: "day", weekly: "week", monthly: "month", yearly: "year" }[rule.freq];
+  return `Repeats every ${rule.interval} ${unit}s`;
+}
+
 interface DatePopoverProps {
   /** Lands on the trigger `<button>` so the sheet's `<Label htmlFor>` still
    * addresses it — `button` is a labelable element. */
@@ -122,14 +138,19 @@ export function DatePopover({
     close();
   }
 
-  // The date first, because that is what the field is for; the time beside it
-  // because a reminder with no date cannot exist. The rule is NOT spelled out
-  // here — at this width it would truncate to nothing, and the repeat summary
-  // sits directly below the field saying it in full. The icon is the cue.
+  // The whole schedule in one line (EI-396): date · time · repeat, whichever
+  // are set. The weekday leads the date ("Thu Oct 16") because a drawer opened
+  // from a column wants the day of the week at a glance. With no date there is
+  // nothing to anchor a time or a series to, so a stray series falls back to
+  // its rule.
   const label = value
-    ? todo.reminderTime
-      ? `${formatShortDate(value)} · ${formatReminderTime(todo.reminderTime)}`
-      : formatShortDate(value)
+    ? [
+        `${shortWeekday(value)} ${formatShortDate(value)}`,
+        todo.reminderTime ? formatReminderTime(todo.reminderTime) : null,
+        recurrence ? repeatPhrase(recurrence.rule) : null,
+      ]
+        .filter(Boolean)
+        .join(" · ")
     : recurrence
       ? summarizeSchedule(recurrence.rule, recurrence.seriesStart)
       : "No date";
@@ -149,11 +170,7 @@ export function DatePopover({
           <CalendarDays className="size-4 shrink-0 opacity-60" aria-hidden />
           <span className="truncate">{label}</span>
           {recurrence && (
-            <Repeat
-              className="size-3.5 shrink-0 opacity-60"
-              aria-label="Repeats"
-              role="img"
-            />
+            <Repeat className="size-3.5 shrink-0 opacity-60" aria-hidden />
           )}
         </PopoverTrigger>
         {value && (

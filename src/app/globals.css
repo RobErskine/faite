@@ -1118,6 +1118,31 @@
 }
 
 /*
+  Toasts clear the open drawer (EI-396).
+
+  Sonner's default is bottom-right, which is exactly where a side sheet's
+  footer (Save, Delete) sits, so a toast would cover the control that caused
+  it. While any sheet is open the toaster moves out of the way: bottom-left at
+  >=640px (the sheet takes the right edge), top-center below 640px (the sheet
+  takes the whole bottom). The sheet is portaled to <body>, not a descendant of
+  the toaster, so the `:has()` anchor is `body`. Unlayered, like the blocks
+  above, so it outranks sonner's runtime stylesheet by specificity.
+*/
+body:has([data-slot="sheet-content"]:not([data-closed])) [data-sonner-toaster] {
+  right: auto;
+  left: var(--offset-left, 24px);
+}
+
+@media (max-width: 639.98px) {
+  body:has([data-slot="sheet-content"]:not([data-closed])) [data-sonner-toaster] {
+    top: var(--mobile-offset-top, 16px);
+    bottom: auto;
+    left: var(--mobile-offset-left, 16px);
+    right: var(--mobile-offset-right, 16px);
+  }
+}
+
+/*
   BlockNote fitted into a form field.
 
   Unlayered, like the Sonner block above and for the same reason: BlockNote's

@@ -450,6 +450,10 @@ because it changes what a card sits on and how completing one feels.
 - Overlays (the to-do sheet included) dropped shadcn's default filled
   footer bar and label-sized title for a hairline footer and a real
   heading step — see `docs/DESIGN.md`'s new "Overlays" paragraph in §3.
+- The sheet's structure and endings (EI-396): priority in the header, a story
+  line, Attachments and History as collapsed disclosures, and a footer of
+  Done · Won't do · Back to <list> (only with a day) · Delete — see the same
+  paragraph and the 2026-10-16 row in §7.
 
 ---
 

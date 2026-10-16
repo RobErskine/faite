@@ -501,6 +501,7 @@ export function Board() {
         onSetStatus={actions.handleSheetStatus}
         onToggleLabel={actions.handleToggleLabel}
         onDelete={actions.handleDelete}
+        onMoveBackToList={actions.handleMoveBackToList}
         onAddSubtask={actions.handleAddSubtask}
         backToDay={ui.todoOriginDay ?? undefined}
         onBackToDay={ui.handleBackToDay}
