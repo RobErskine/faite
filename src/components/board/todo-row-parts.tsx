@@ -43,7 +43,7 @@ import {
  * | board card  | `PriorityRail`  | 12px            | all    | `todoRowName`   |
  * | ⌘K row      | `PriorityRail`  | 12px            | all, + scheduled date | `todoRowName` + list |
  * | Overdrive   | border, `railBorderStyle` | 16px, by a 24px title | all | `todoRowDetails` |
- * | drag chip   | border, `railBorderStyle` | 12px, no tooltips | none (the row stays put as a ghost) | — |
+ * | drag chip   | border, `railBorder` | 12px, no tooltips | all, no tooltips | — (dnd-kit announces the drag) |
  *
  * `todoRowFacts` derives the per-to-do inputs (roll state, counts, the series
  * summary) the same way for all of them. `TodoCard` itself (drag, keyboard
@@ -434,6 +434,8 @@ export function TodoMetaBadges({
   reminderPresets,
   subtaskCount,
   attachmentCount,
+  interactive = true,
+  className,
 }: {
   todo: Todo;
   labels: LabelRecord[];
@@ -458,6 +460,14 @@ export function TodoMetaBadges({
   /** How many files are attached (EI-242) — see `use-board-data.ts`'s
    * `attachmentCounts`. Undefined or 0 shows no badge. */
   attachmentCount?: number;
+  /**
+   * False drops every hover text — the Overflow age's tooltip and the counts'
+   * `title`s — and keeps the badges, as `TitleMarkers` does: the drag chip
+   * follows the pointer, so anything that opens on hover would open under it.
+   */
+  interactive?: boolean;
+  /** Density: the badge line's own spacing, e.g. the drag chip's tighter gap. */
+  className?: string;
 }) {
   const deadlineMissed = isDeadlineMissed(todo, { today });
   const todoLabels = labels.filter((l) => todo.labelIds.includes(l.id));
@@ -478,9 +488,43 @@ export function TodoMetaBadges({
   const Time = ROW_ICONS.time;
   const Subtasks = ROW_ICONS.subtasks;
   const Attachments = ROW_ICONS.attachments;
+  /*
+    The Overflow age, as an element so it can stand alone (`interactive`
+    false) or be its tooltip's trigger. Why a styled `span` and what it says:
+    the comment where it renders, below.
+  */
+  const overflowAge = overflow && (
+    <span
+      data-overflow-age
+      data-row-badge="overflow-age"
+      className={cn(
+        badgeVariants({ variant: "outline" }),
+        ROW_BADGE_TEXT,
+        // `text-foreground/60`, the quiet ink that passes (EI-378):
+        // muted ink fell to 4.1:1 under the hover wash on
+        // Overflow's `surface-0` (EI-395). Worst now 4.90:1.
+        "text-foreground/60",
+        "h-auto min-h-5 max-w-full flex-wrap justify-start gap-x-[0.25em] gap-y-0 whitespace-normal",
+      )}
+    >
+      {formatOverflowAge(overflow.since, today)
+        .split(" · ")
+        .map((half, i) => (
+          // The space before "·" is trimmed at a line start, so a
+          // wrapped second half begins "· 9 days"; on one line the
+          // text reads exactly `formatOverflowAge`'s string.
+          <span key={half} className="whitespace-nowrap">
+            {i > 0 && " · "}
+            {half}
+          </span>
+        ))}
+    </span>
+  );
+  /** A badge's `title`, only where hover text is wanted. */
+  const hoverText = (text: string) => (interactive ? text : undefined);
 
   return (
-    <span className={ROW_BADGES}>
+    <span className={cn(ROW_BADGES, className)}>
       {/*
         The verdicts. The two red badges sit one step up, at `text-xs`, while
         their neighbors stay at `text-2xs`: colored text never at the smallest
@@ -499,82 +543,57 @@ export function TodoMetaBadges({
           variant="destructive"
           data-row-badge="missed-occurrences"
           className={ROW_BADGE_VERDICT}
-          title={`Missed ${missedCount} times in a row`}
+          title={hoverText(`Missed ${missedCount} times in a row`)}
         >
           Missed ×{missedCount}
         </Badge>
       )}
-      {overflow && (
-        <Tooltip>
-          {/*
-            A styled `span`, not a `<Badge>`, as the trigger itself — every
-            other trigger in this file is a plain element for the same
-            reason (§ `Glyph` above): the badge's visual classes are
-            applied directly rather than composing two render-prop components.
+      {/*
+        A styled `span`, not a `<Badge>`, as the trigger itself — every
+        other trigger in this file is a plain element for the same
+        reason (§ `Glyph` above): the badge's visual classes are
+        applied directly rather than composing two render-prop components.
 
-            Muted ink, not the urgent red (EI-374, docs/DESIGN.md §1): the
-            Overflow column's rule and count already carry the urgency once,
-            so a red pill on every card in it was a wall of red saying the
-            same thing N times — and red at `text-2xs` breaks PRODUCT.md's
-            "colored text never at the smallest size". Same quiet register as
-            the rolled-over marker this badge replaces.
+        Muted ink, not the urgent red (EI-374, docs/DESIGN.md §1): the
+        Overflow column's rule and count already carry the urgency once,
+        so a red pill on every card in it was a wall of red saying the
+        same thing N times — and red at `text-2xs` breaks PRODUCT.md's
+        "colored text never at the smallest size". Same quiet register as
+        the rolled-over marker this badge replaces.
 
-            Words only, no icon (EI-383). It used to carry ↳ too, which made
-            one glyph mean two things: "rolled forward onto today" on the
-            title marker, "sitting in Overflow" here. ↳ belongs to the roll.
+        Words only, no icon (EI-383). It used to carry ↳ too, which made
+        one glyph mean two things: "rolled forward onto today" on the
+        title marker, "sitting in Overflow" here. ↳ belongs to the roll.
 
-            "since Oct 6 · 9 days" everywhere (EI-390): the start and the
-            count, never "In Overflow" (the column says that once) and never
-            a bare count, which under a "Scheduled Aug 30" read as "9 days
-            late". The full sentence is the row's name (`todoRowName`) and the
-            tooltip.
+        "since Oct 6 · 9 days" everywhere (EI-390): the start and the
+        count, never "In Overflow" (the column says that once) and never
+        a bare count, which under a "Scheduled Aug 30" read as "9 days
+        late". The full sentence is the row's name (`todoRowName`) and the
+        tooltip.
 
-            Fit (measured at the 168px column floor, whose badge row is
-            148px): 96–101px in Source Sans, 112–116px in Hyperlegible, so it
-            stays one unit and, beside other badges, moves to its own line
-            whole. The one string that cannot fit is a start in another year
-            in Hyperlegible ("since Dec 30, 2025 · 290 days", 170px), so the
-            badge may break — but only between its two halves, each of which
-            stays unbroken (`whitespace-nowrap` per half, `flex-wrap` on the
-            pill). `ROW_BADGE_TEXT` (`nums`): a phrase with numbers in it,
-            not a count, stays in the text face — mono would have cost a
-            third more width.
-          */}
-          <TooltipTrigger
-            render={
-              <span
-                data-overflow-age
-                data-row-badge="overflow-age"
-                className={cn(
-                  badgeVariants({ variant: "outline" }),
-                  ROW_BADGE_TEXT,
-                  // `text-foreground/60`, the quiet ink that passes (EI-378):
-                  // muted ink fell to 4.1:1 under the hover wash on
-                  // Overflow's `surface-0` (EI-395). Worst now 4.90:1.
-                  "text-foreground/60",
-                  "h-auto min-h-5 max-w-full flex-wrap justify-start gap-x-[0.25em] gap-y-0 whitespace-normal",
-                )}
-              >
-                {formatOverflowAge(overflow.since, today)
-                  .split(" · ")
-                  .map((half, i) => (
-                    // The space before "·" is trimmed at a line start, so a
-                    // wrapped second half begins "· 9 days"; on one line the
-                    // text reads exactly `formatOverflowAge`'s string.
-                    <span key={half} className="whitespace-nowrap">
-                      {i > 0 && " · "}
-                      {half}
-                    </span>
-                  ))}
-              </span>
-            }
-          />
-          <TooltipContent>
-            Scheduled {formatShortDateAsOf(overflow.from, today)} ·{" "}
-            {describeOverflowAge(overflow.since, today)}
-          </TooltipContent>
-        </Tooltip>
-      )}
+        Fit (measured at the 168px column floor, whose badge row is
+        148px): 96–101px in Source Sans, 112–116px in Hyperlegible, so it
+        stays one unit and, beside other badges, moves to its own line
+        whole. The one string that cannot fit is a start in another year
+        in Hyperlegible ("since Dec 30, 2025 · 290 days", 170px), so the
+        badge may break — but only between its two halves, each of which
+        stays unbroken (`whitespace-nowrap` per half, `flex-wrap` on the
+        pill). `ROW_BADGE_TEXT` (`nums`): a phrase with numbers in it,
+        not a count, stays in the text face — mono would have cost a
+        third more width.
+      */}
+      {overflow &&
+        (interactive ? (
+          <Tooltip>
+            <TooltipTrigger render={overflowAge} />
+            <TooltipContent>
+              Scheduled {formatShortDateAsOf(overflow.from, today)} ·{" "}
+              {describeOverflowAge(overflow.since, today)}
+            </TooltipContent>
+          </Tooltip>
+        ) : (
+          overflowAge
+        ))}
       {/* When: the date, then the time. */}
       {showScheduledDate && todo.scheduledDate && (
         <Badge variant="outline" data-row-badge="scheduled" className={ROW_BADGE_TEXT}>
@@ -594,7 +613,7 @@ export function TodoMetaBadges({
           variant="outline"
           data-row-badge="subtasks"
           className={ROW_BADGE_COUNT}
-          title={`${subtaskCount.done} of ${subtaskCount.total} sub-tasks done`}
+          title={hoverText(`${subtaskCount.done} of ${subtaskCount.total} sub-tasks done`)}
         >
           <Subtasks aria-hidden />
           {subtaskCount.done}/{subtaskCount.total}
@@ -605,7 +624,7 @@ export function TodoMetaBadges({
           variant="outline"
           data-row-badge="attachments"
           className={ROW_BADGE_COUNT}
-          title={`${attachmentCount} ${attachmentCount === 1 ? "attachment" : "attachments"}`}
+          title={hoverText(plural(attachmentCount!, "attachment", "attachments"))}
         >
           <Attachments aria-hidden />
           {attachmentCount}

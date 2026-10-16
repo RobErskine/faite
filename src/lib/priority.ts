@@ -136,17 +136,20 @@ export function railBorderStyle(rail: PriorityRail): RailStyle {
  * true and no layout to shift around it can simply take a border, so these
  * two use one rather than `PriorityRail`'s span. Opacity rides the color via
  * `color-mix`, because the chip's own opacity is the lift animation's. `{}`
- * for an unprioritised to-do.
+ * for an unprioritised to-do. `settled` steps it back the way `PriorityRail`
+ * does on a done or Won't do row (`railOpacity`), so a settled row's chip
+ * wears the row's rail rather than a full-strength one.
  */
 export function railBorder(
   priority: Priority | null | undefined,
+  settled = false,
 ): { borderLeftWidth?: number; borderLeftStyle?: RailStyle; borderLeftColor?: string } {
   const rail = priorityRail(priority);
   if (!rail) return {};
   return {
     borderLeftWidth: rail.width,
     borderLeftStyle: railBorderStyle(rail),
-    borderLeftColor: `color-mix(in oklch, var(--foreground) ${Math.round(rail.opacity * 100)}%, transparent)`,
+    borderLeftColor: `color-mix(in oklch, var(--foreground) ${Math.round(railOpacity(rail, settled) * 100)}%, transparent)`,
   };
 }
 

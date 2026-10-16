@@ -9,7 +9,6 @@ import { BACKLOG } from "@/lib/overdrive";
 import { OVERFLOW } from "@/lib/scheduling";
 import { LIFTED } from "@/lib/drop-animation";
 import { tint } from "@/lib/colors";
-import { railBorder } from "@/lib/priority";
 import { FONT_STORAGE_KEY, normalizeFontPairing } from "@/lib/fonts";
 import {
   DARK_CLASS,
@@ -36,7 +35,8 @@ import { SettingsSheet } from "@/components/settings/settings-sheet";
 import { CommandPalette } from "./command-palette";
 import { DaySheet } from "./day-sheet";
 import { OverdriveOverlay } from "./overdrive-overlay";
-import { TitleMarkers, todoRowFacts, type TodoRowSources } from "./todo-row-parts";
+import { type TodoRowSources } from "./todo-row-parts";
+import { DragChip } from "./drag-chip";
 import { SessionProvider } from "@/components/auth/session-provider";
 import { DesktopAuthProvider } from "@/components/desktop/desktop-auth-provider";
 import { SyncProvider } from "@/components/sync/sync-provider";
@@ -355,8 +355,6 @@ export function Board() {
   // Read once past the gate above: a callback prop loses TypeScript's
   // narrowing of `data.ctx`, and the palette's History entry needs it.
   const today = data.ctx.today;
-  /** The carried to-do's roll state and series summary, for the drag chip. */
-  const activeFacts = ui.activeTodo ? todoRowFacts(ui.activeTodo, data.ctx, rowSources) : null;
 
   return (
     /*
@@ -442,76 +440,19 @@ export function Board() {
       {/*
         The overlay follows the cursor at a slight tilt and scale so the item
         reads as lifted off the board rather than sliding along it — then
-        settles flat as it flies into its new slot on release.
+        settles flat as it flies into its new slot on release. A to-do's chip
+        is `DragChip`: the row's own anatomy, at chip density.
       */}
       <DragOverlay dropAnimation={actions.dropAnimation}>
         {ui.activeTodo && (
-          <div
-            // The lift is inline rather than `rotate-2 scale-[1.02]` so the drop
-            // animation knows exactly which properties it is unwinding. Given
-            // classes, whether Tailwind emits `transform` or the individual
-            // `rotate`/`scale` properties decides whether the animation
-            // composites or doubles the tilt — not a thing to leave to chance.
-            style={{
-              ...LIFTED,
-              // The card's rail, riding the chip's border (`railBorder`): a
-              // standalone rounded box has no column edge to keep true and no
-              // layout to shift. Width, opacity and rhythm all come from
-              // PRIORITY_RAILS, so the two cannot drift in value.
-              ...railBorder(ui.activeTodo.priority),
-            }}
-            className={cn(
-              "flex max-w-xs cursor-grabbing items-start gap-1 rounded-md border",
-              "bg-background px-2 py-1.5 text-sm leading-snug shadow-xl ring-2 ring-primary/40",
-            )}
-          >
-            {/* On the title's first line, as the card's grip is. */}
-            <GripVertical
-              className="mt-[0.1875rem] size-3 shrink-0 text-muted-foreground"
-              aria-hidden
-            />
-            {/*
-              The card's title, glyphs and all (EI-395): ↳, the deadline flag,
-              the repeat and the pin, from the same `TitleMarkers`, without
-              their tooltips — a tooltip opening under the pointer mid-drag
-              would ride along with the chip. Badges stay on the row, which
-              holds its place as a ghost.
-
-              Two lines, then clamped, where it used to truncate to one. The
-              drop animation needs a box that does not change size mid-drag
-              (§4.7); a clamp is as stable as a truncate, since the title
-              cannot change while it is being carried.
-            */}
-            <span
-              data-drag-chip-title
-              className={cn(
-                "min-w-0 wrap-break-word line-clamp-2",
-                ui.activeTodo.status !== "open" && "text-foreground/60",
-              )}
-            >
-              <TitleMarkers
-                todo={ui.activeTodo}
-                today={data.ctx.today}
-                interactive={false}
-                rolledFrom={activeFacts?.rolledFrom}
-                recurrenceSummary={activeFacts?.recurrenceSummary}
-              />
-              <span className={cn(ui.activeTodo.status === "done" && "line-through")}>
-                {ui.activeTodo.title}
-              </span>
-            </span>
-            {/*
-              How many are coming with it (EI-194). A badge INSIDE the existing
-              wrapper, `shrink-0` so the box stays the size the drop animation
-              measured — a fan of stacked ghost cards would grow the wrapper's
-              rect mid-drag and break the flight (§4.7).
-            */}
-            {(ui.activeSelectionIds?.length ?? 0) > 1 && (
-              <span className="num shrink-0 rounded-full bg-primary px-1.5 text-2xs font-medium text-primary-foreground">
-                {ui.activeSelectionIds!.length}
-              </span>
-            )}
-          </div>
+          <DragChip
+            todo={ui.activeTodo}
+            labels={data.labels}
+            reminderPresets={data.reminderPresets}
+            ctx={data.ctx}
+            rowSources={rowSources}
+            selectionCount={ui.activeSelectionIds?.length ?? 1}
+          />
         )}
         {ui.activeList && (
           <div
