@@ -234,7 +234,9 @@ outline, shown only when the to-do has a day; clears the day and reminder,
 keeps the list, Backlog when none) and **Delete** (⇧⌘⌫; ghost icon in muted
 ink, not a second red). The bare ↑ ← ↓ keys are ignored inside text fields.
 While a drawer is open, toasts move away from its footer (bottom-left from
-640px up, top-center below).
+1100px up, where the board still shows beside the drawer; top-center below).
+`Toaster` picks the position from the open-sheet state (`toasterPosition`,
+`src/lib/toaster-placement.ts`), not from CSS.
 
 ### Touch targets
 

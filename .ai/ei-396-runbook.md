@@ -42,3 +42,25 @@ Done when: the drawer shows the story line, priority in the header with no hangi
 
 ## Conductor report
 (The conductor writes its `## Conductor report` here, below this line, and commits it with the PR, because it cannot post to Linear.)
+
+## Conductor report
+
+PR: https://github.com/RobErskine/faite/pull/164 (Linear ticket not moved: no Linear MCP in conductor sessions — move EI-396 to In Review by hand).
+
+**Steps**
+1. Footer endings — done. Needed one extra file outside the step list: `use-board-actions.ts` did not export `handleMoveBackToList` (typecheck caught it).
+2. Toasts clear the drawer — done as CSS, then replaced after review (see below).
+3. Header — done.
+4. Body order and on-demand sections — done. The body order already matched. I deleted the EI-318 e2e test in `core-flows.spec.ts` (priority rail vs History day headers) because the rail no longer exists.
+5. Docs — done.
+No step was escalated to Opus.
+
+**Checks (after the review fixes)**
+typecheck, `npm test` (205 files, 3464 tests), openapi generate with no diff, lint, build:static, build, and `CI=1 e2e:ci` on port 3100 (151 passed) — all green. First gate run had 1 flaky, an Overdrive Quick sort test on phone-iphone that passed on retry. Skipped: the server suite (no auth/sync/API/MCP change). The rebase onto origin/main brought only a docs commit (#162), so §3 was not re-run for it. Toast placement was not checked in a browser.
+
+**Review (pr-reviewer, posted on the PR)** — fixed in one round:
+- bug: sheet "Back to <list>" / ↓ moved the whole multi-selection → new single-target `handleSheetMoveBackToList` + test.
+- bug: CSS toast placement left toasts off-screen below 640px → `<Toaster position>` now chosen by `toasterPosition()`.
+- bug: bottom-left toast covered the footer between 640 and ~1100px → top-center below 1100px.
+- rule: "judgement" → "judgment" in a comment.
+Left open: none. Not reviewed: `.impeccable/` notes and visual/contrast checks. Line 35 of this runbook still describes the old CSS toast approach and the 640px breakpoint (the code now uses 1100px).

@@ -720,7 +720,7 @@ function TodoSheetContent({
           */}
           {/*
             Priority beside the title, in the header row (EI-396). It is a
-            judgement about the to-do whose title you are reading, and the two
+            judgment about the to-do whose title you are reading, and the two
             belong in one glance. `items-start`, not centered: a title that
             grows to three lines must not drag the select down the block.
 
