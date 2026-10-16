@@ -1,6 +1,7 @@
 "use client";
 
 import { proposeListForNewTodo } from "@/lib/smart-sort";
+import { NO_LIST_NAME } from "@/lib/row-grammar";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { defaultFilter } from "cmdk";
@@ -865,8 +866,8 @@ export function CommandPalette({
                   {results.map((todo) => {
                     const facts = rowFacts.get(todo.id) ?? {};
                     // A to-do with no list is in Backlog (`buildBoard`), and
-                    // the row says so — the word Overdrive uses (EI-395).
-                    const listName = listNameById.get(todo.listId ?? "") ?? "Backlog";
+                    // the row says so, in the word Overdrive uses (EI-395).
+                    const listName = listNameById.get(todo.listId ?? "") ?? NO_LIST_NAME;
                     return (
                       <CommandItem
                         key={todo.id}

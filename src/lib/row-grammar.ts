@@ -85,6 +85,15 @@ export const ROW_BADGE_ORDER = [
 
 export type RowBadge = (typeof ROW_BADGE_ORDER)[number];
 
+/**
+ * The list a row names for a to-do with no list (`listId === null`, or a list
+ * that no longer resolves). `buildBoard` puts it in the Backlog column, so
+ * that is where it is — "Backlog", one of PRODUCT.md's exact terms. ⌘K said
+ * "Unfiled" while Overdrive said "Backlog" (critique, 2026-10-15): one fact,
+ * two words. Every surface that names a to-do's list reads this.
+ */
+export const NO_LIST_NAME = "Backlog";
+
 /** A title glyph's slot: inline, before the title text, on its first line. */
 export const ROW_GLYPH_SLOT = "mr-1 inline-block align-[-0.1875em] text-muted-foreground";
 /** The glyph itself — 12px, every one. */

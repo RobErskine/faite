@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { Todo } from "@/lib/schema";
 import type { PlacementContext } from "@/lib/scheduling";
+import { NO_LIST_NAME } from "@/lib/row-grammar";
 import { OverdriveCard } from "./overdrive-card";
 
 afterEach(cleanup);
@@ -76,5 +77,20 @@ describe("OverdriveCard — the Overflow age (EI-390)", () => {
   it("names the year on a start in another year", () => {
     renderCard(todo({ scheduledDate: "2025-12-20" })); // overflowed Dec 24, 2025
     expect(age()).toBe("since Dec 24, 2025 · 294 days");
+  });
+});
+
+/**
+ * One fact, one word: a to-do with no list sits in the Backlog column
+ * (`buildBoard`), and ⌘K and Overdrive both say "Backlog" — not "Unfiled" in
+ * one and "Backlog" in the other (critique, 2026-10-15; PRODUCT.md's terms).
+ * ⌘K's side is its row-name test ("…, Backlog").
+ */
+describe("OverdriveCard — a to-do with no list", () => {
+  it('says "Backlog", the word every row surface uses', () => {
+    expect(NO_LIST_NAME).toBe("Backlog");
+    renderCard(todo({ listId: null }));
+    expect(screen.getByText("Backlog", { exact: false })).toBeTruthy();
+    expect(screen.queryByText(/unfiled/i)).toBeNull();
   });
 });

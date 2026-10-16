@@ -18,6 +18,7 @@ import { prefersReducedMotion } from "@/lib/reduced-motion";
 import type { Label as LabelRecord, List, ReminderPreset, Tab, Todo } from "@/lib/schema";
 import { fetchListSuggestions } from "@/lib/smart-sort";
 import { suggestedListFor } from "@/lib/suggested-list";
+import { NO_LIST_NAME } from "@/lib/row-grammar";
 import { OVERFLOW, toCivilDate, type PlacementContext } from "@/lib/scheduling";
 import { dayColumnId, listColumnId, overflowColumnId } from "@/lib/board";
 import { isTextEntry, undoById } from "@/lib/undo";
@@ -689,7 +690,7 @@ function OverdriveOverlayContent({
     ? pickedList
       ? `Move to ${pickedList.name}`
       : "Pick a list"
-    : `Back to ${list ? list.name : "Backlog"}`;
+    : `Back to ${list ? list.name : NO_LIST_NAME}`;
 
   return (
     <Dialog

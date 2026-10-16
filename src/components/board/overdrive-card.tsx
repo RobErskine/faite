@@ -3,6 +3,7 @@
 import type { Label as LabelRecord, List, ReminderPreset, Todo } from "@/lib/schema";
 import { formatShortDateAsOf, type PlacementContext } from "@/lib/scheduling";
 import { railBorder } from "@/lib/priority";
+import { NO_LIST_NAME } from "@/lib/row-grammar";
 import {
   TitleMarkers,
   TodoMetaBadges,
@@ -101,7 +102,7 @@ export function OverdriveCard({
 
       <p className="text-sm text-muted-foreground">
         {/* "Backlog", the word ⌘K uses too: a to-do with no list is in it. */}
-        {list ? list.name : "Backlog"}
+        {list ? list.name : NO_LIST_NAME}
         {todo.scheduledDate && <> · Scheduled {formatShortDateAsOf(todo.scheduledDate, ctx.today)}</>}
       </p>
 
