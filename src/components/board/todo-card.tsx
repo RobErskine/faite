@@ -396,7 +396,7 @@ export function TodoCard({
           unmodified branch below deliberately does NOT stop propagation.
         - The checkbox still toggles on a plain click, and on a modified one
           selects instead of ticking — one uniform rule for the whole row,
-          with the `after:-inset-x-1` hit-area geometry left alone.
+          with the `after:-inset-x-px` hit-area geometry left alone.
 
         macOS turns Ctrl+click into `contextmenu` and suppresses the `click`
         entirely, so `ctrlKey` is effectively the Windows/Linux path.

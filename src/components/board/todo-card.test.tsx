@@ -1325,6 +1325,29 @@ describe("touch targets on a coarse pointer (EI-388)", () => {
     expect(cls).toContain("after:w-6");
     expect(cls).toContain("pointer-coarse:after:-inset-x-px");
   });
+
+  /*
+    EI-395. On a phone the column's edge is the screen's, and the grip is
+    always visible, so at a 12px gutter the rail sat flush with the glass and
+    the grip's dots touched a P3/P4 rail. Measured at 390×844 with touch:
+    rail x=4–7, grip x=10–22, checkbox target x=24–48, title from x=48. A
+    mouse keeps the 12px gutter: rail x=0, grip x=0–12, checkbox x=12–36.
+  */
+  it("gives the rail and the grip room from the screen edge on touch only", () => {
+    render(<Harness todo={todo({ priority: 3 })} />);
+    const card = document.querySelector<HTMLElement>("[data-todo-row]")!;
+    expect(classesOf(card)).toContain("pl-3");
+    expect(classesOf(card)).toContain("pointer-coarse:pl-6");
+    const rail = card.querySelector<HTMLElement>("[data-priority-rail]")!;
+    expect(classesOf(rail)).toContain("left-0");
+    expect(classesOf(rail)).toContain("pointer-coarse:left-1");
+    const grip = screen.getByRole("button", { name: /^Drag to reschedule/ });
+    expect(classesOf(grip)).toContain("left-0");
+    expect(classesOf(grip)).toContain("pointer-coarse:left-2.5");
+    const checkbox = document.querySelector<HTMLElement>('[data-slot="checkbox"]')!;
+    expect(classesOf(checkbox.parentElement!)).toContain("left-3");
+    expect(classesOf(checkbox.parentElement!)).toContain("pointer-coarse:left-6");
+  });
 });
 
 /**
