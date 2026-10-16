@@ -2,14 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { DndContext, DragOverlay, MeasuringStrategy } from "@dnd-kit/core";
-import { GripVertical, MapPin } from "lucide-react";
+import { GripVertical } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useViewport } from "@/lib/use-viewport";
 import { BACKLOG } from "@/lib/overdrive";
 import { OVERFLOW } from "@/lib/scheduling";
 import { LIFTED } from "@/lib/drop-animation";
 import { tint } from "@/lib/colors";
-import { priorityRail, railBorderStyle } from "@/lib/priority";
+import { railBorder } from "@/lib/priority";
 import { FONT_STORAGE_KEY, normalizeFontPairing } from "@/lib/fonts";
 import {
   DARK_CLASS,
@@ -36,6 +36,7 @@ import { SettingsSheet } from "@/components/settings/settings-sheet";
 import { CommandPalette } from "./command-palette";
 import { DaySheet } from "./day-sheet";
 import { OverdriveOverlay } from "./overdrive-overlay";
+import { TitleMarkers, todoRowFacts, type TodoRowSources } from "./todo-row-parts";
 import { SessionProvider } from "@/components/auth/session-provider";
 import { DesktopAuthProvider } from "@/components/desktop/desktop-auth-provider";
 import { SyncProvider } from "@/components/sync/sync-provider";
@@ -310,13 +311,26 @@ export function Board() {
    */
   const hotkeys: Hotkey[] = ui.hotkeys;
 
-  const activeRail = priorityRail(ui.activeTodo?.priority ?? null);
+  /**
+   * The board's per-to-do maps, as one object for the surfaces that show a
+   * to-do off the board — ⌘K, Overdrive, the drag chip — so each builds the
+   * row from the same facts the board card does (`todoRowFacts`, EI-395).
+   */
+  const rowSources = useMemo(
+    (): TodoRowSources => ({
+      recurrenceSummaries: data.recurrenceSummaries,
+      missedCounts: data.recurrenceExpansion?.missedCounts,
+      subtaskCounts: data.subtaskCounts,
+      attachmentCounts: data.attachmentCounts,
+    }),
+    [data.recurrenceSummaries, data.recurrenceExpansion, data.subtaskCounts, data.attachmentCounts],
+  );
 
   /**
    * dnd-kit screen-reader announcements (EI-84) — string-building lives in
    * `dnd-announcements.ts` so it's testable without React; this just supplies
    * the same board data `DndContext` below already reads. A `useMemo` before
-   * the loading guard, like `hotkeys`/`activeRail` above — hooks can't follow
+   * the loading guard, like `hotkeys`/`rowSources` above — hooks can't follow
    * a conditional return, so `data.board` may still be null here, hence the
    * empty fallback (never actually reached by a drag before `ready`).
    */
@@ -341,6 +355,8 @@ export function Board() {
   // Read once past the gate above: a callback prop loses TypeScript's
   // narrowing of `data.ctx`, and the palette's History entry needs it.
   const today = data.ctx.today;
+  /** The carried to-do's roll state and series summary, for the drag chip. */
+  const activeFacts = ui.activeTodo ? todoRowFacts(ui.activeTodo, data.ctx, rowSources) : null;
 
   return (
     /*
@@ -438,34 +454,52 @@ export function Board() {
             // composites or doubles the tilt — not a thing to leave to chance.
             style={{
               ...LIFTED,
-              // The card's rail, but riding the chip's existing border rather
-              // than an absolutely positioned span: a standalone rounded box has
-              // no column edge to keep true and no layout to shift, so a border
-              // is simply the right form here. Both surfaces read their width,
-              // opacity and rhythm from PRIORITY_RAILS, so they cannot
-              // drift in value. Opacity rides the color via color-mix here
-              // because the chip's own opacity is the lift animation's.
-              borderLeftWidth: activeRail?.width,
-              borderLeftStyle: activeRail ? railBorderStyle(activeRail) : undefined,
-              borderLeftColor: activeRail
-                ? `color-mix(in oklch, var(--foreground) ${Math.round(activeRail.opacity * 100)}%, transparent)`
-                : undefined,
+              // The card's rail, riding the chip's border (`railBorder`): a
+              // standalone rounded box has no column edge to keep true and no
+              // layout to shift. Width, opacity and rhythm all come from
+              // PRIORITY_RAILS, so the two cannot drift in value.
+              ...railBorder(ui.activeTodo.priority),
             }}
             className={cn(
-              "flex max-w-xs cursor-grabbing items-center gap-1 rounded-md border",
-              "bg-background px-2 py-1.5 text-sm shadow-xl ring-2 ring-primary/40",
+              "flex max-w-xs cursor-grabbing items-start gap-1 rounded-md border",
+              "bg-background px-2 py-1.5 text-sm leading-snug shadow-xl ring-2 ring-primary/40",
             )}
           >
-            <GripVertical className="size-3 shrink-0 text-muted-foreground" aria-hidden />
-            {ui.activeTodo.location && (
-              <MapPin className="size-3 shrink-0 text-muted-foreground" aria-hidden />
-            )}
+            {/* On the title's first line, as the card's grip is. */}
+            <GripVertical
+              className="mt-[0.1875rem] size-3 shrink-0 text-muted-foreground"
+              aria-hidden
+            />
             {/*
-              Truncated, not wrapped like the card: the overlay wrapper has to
-              keep a stable measurable box or the drop animation mis-measures its
-              flight (§4.7), and a chip that changed height mid-drag would.
+              The card's title, glyphs and all (EI-395): ↳, the deadline flag,
+              the repeat and the pin, from the same `TitleMarkers`, without
+              their tooltips — a tooltip opening under the pointer mid-drag
+              would ride along with the chip. Badges stay on the row, which
+              holds its place as a ghost.
+
+              Two lines, then clamped, where it used to truncate to one. The
+              drop animation needs a box that does not change size mid-drag
+              (§4.7); a clamp is as stable as a truncate, since the title
+              cannot change while it is being carried.
             */}
-            <span className="truncate">{ui.activeTodo.title}</span>
+            <span
+              data-drag-chip-title
+              className={cn(
+                "min-w-0 wrap-break-word line-clamp-2",
+                ui.activeTodo.status !== "open" && "text-foreground/60",
+              )}
+            >
+              <TitleMarkers
+                todo={ui.activeTodo}
+                today={data.ctx.today}
+                interactive={false}
+                rolledFrom={activeFacts?.rolledFrom}
+                recurrenceSummary={activeFacts?.recurrenceSummary}
+              />
+              <span className={cn(ui.activeTodo.status === "done" && "line-through")}>
+                {ui.activeTodo.title}
+              </span>
+            </span>
             {/*
               How many are coming with it (EI-194). A badge INSIDE the existing
               wrapper, `shrink-0` so the box stays the size the drop animation
@@ -640,6 +674,7 @@ export function Board() {
         labels={data.labels}
         reminderPresets={data.reminderPresets}
         recurrenceSummaries={data.recurrenceSummaries}
+        rowSources={rowSources}
         tabs={data.tabs}
         settings={data.settings}
         activeTabId={data.activeTabId}
@@ -729,6 +764,7 @@ export function Board() {
       backlogListId={data.backlogList?.id ?? ""}
       labels={data.labels}
       reminderPresets={data.reminderPresets}
+      rowSources={rowSources}
       ctx={data.ctx}
       onClose={() => ui.setOverdriveSource(null)}
       onVerdict={actions.handleOverdriveVerdict}

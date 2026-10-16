@@ -107,12 +107,6 @@ export function railBackgroundImage(rail: PriorityRail): string | null {
 }
 
 /**
- * The rail as a `border-style`, for the two surfaces that draw it as a
- * BORDER — the drag chip and the sheet's priority tab.
- *
- * Exact, not an approximation: the four levels ARE CSS's four line styles.
- */
-/**
  * How much of its level's opacity a settled (done or Won't do) row's rail
  * keeps (EI-395). At full strength the P1 double rail was the loudest mark on
  * a finished row, louder than its own dimmed title; at 40% it still says what
@@ -126,8 +120,34 @@ export function railOpacity(rail: PriorityRail, settled: boolean): number {
   return settled ? rail.opacity * SETTLED_RAIL_OPACITY : rail.opacity;
 }
 
+/**
+ * The rail as a `border-style`, for the surfaces that draw it as a BORDER —
+ * the drag chip, the Overdrive card and the sheet's priority tab.
+ *
+ * Exact, not an approximation: the four levels ARE CSS's four line styles.
+ */
 export function railBorderStyle(rail: PriorityRail): RailStyle {
   return rail.style;
+}
+
+/**
+ * The whole left border for a standalone box that wears the rail — the drag
+ * chip and the Overdrive card (EI-395). A box with no column edge to keep
+ * true and no layout to shift around it can simply take a border, so these
+ * two use one rather than `PriorityRail`'s span. Opacity rides the color via
+ * `color-mix`, because the chip's own opacity is the lift animation's. `{}`
+ * for an unprioritised to-do.
+ */
+export function railBorder(
+  priority: Priority | null | undefined,
+): { borderLeftWidth?: number; borderLeftStyle?: RailStyle; borderLeftColor?: string } {
+  const rail = priorityRail(priority);
+  if (!rail) return {};
+  return {
+    borderLeftWidth: rail.width,
+    borderLeftStyle: railBorderStyle(rail),
+    borderLeftColor: `color-mix(in oklch, var(--foreground) ${Math.round(rail.opacity * 100)}%, transparent)`,
+  };
 }
 
 /** `undefined` for an unprioritised to-do, so callers can render nothing. */

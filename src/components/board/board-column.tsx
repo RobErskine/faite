@@ -13,7 +13,8 @@ import {
   verticalListSortingStrategy,
   type SortingStrategy,
 } from "@dnd-kit/sortable";
-import { CalendarCheck, ChevronDown, Plus, Search, X } from "lucide-react";
+import { ChevronDown, Plus, Search, X } from "lucide-react";
+import { ROW_ICONS } from "@/lib/row-grammar";
 import { cn } from "@/lib/utils";
 import { edge, tint, wash } from "@/lib/colors";
 import { listDragId, type TodoGroup } from "@/lib/board";
@@ -83,6 +84,9 @@ const CARDS_NOT_DROPPABLE = { draggable: false, droppable: true } as const;
  * colored text never sits at the smallest size. 9.1:1 light, 8.8:1 dark
  * with the hover wash under it.
  */
+/** "N due" counts deadlines, so it wears the row's deadline flag (EI-395). */
+const DueFlag = ROW_ICONS.deadline;
+
 const DUE_BANNER = cn(
   "flex items-center gap-1 border-b border-urgent/20 bg-urgent/10 px-3",
   "py-1 text-xs font-medium text-urgent-foreground",
@@ -1091,7 +1095,7 @@ export function BoardColumn({
               "focus-ring",
             )}
           >
-            <CalendarCheck className="size-3 shrink-0" aria-hidden />
+            <DueFlag className="size-3 shrink-0" aria-hidden />
             <span aria-hidden>
               <span className="num">{dueCount}</span> due
             </span>
@@ -1102,7 +1106,7 @@ export function BoardColumn({
           </button>
         ) : (
           <div data-due-banner={dueCount} className={DUE_BANNER}>
-            <CalendarCheck className="size-3 shrink-0" aria-hidden />
+            <DueFlag className="size-3 shrink-0" aria-hidden />
             <span aria-hidden>
               <span className="num">{dueCount}</span> due
             </span>

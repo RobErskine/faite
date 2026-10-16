@@ -223,24 +223,30 @@ describe("the grip", () => {
     const checkbox = document.querySelector<HTMLElement>('[data-slot="checkbox"]')!;
     // The shadcn base expands 12px horizontally, which from `left-3` reaches
     // back over the whole grip — a click meant for the grip would toggle done.
-    expect(checkbox.className).toContain("after:-inset-x-1");
+    // `-inset-x-px` puts the target's left edge on the box's own (x=12),
+    // where the grip's 12px target ends (EI-395). `-inset-x-1` took the
+    // grip's last 3px.
+    expect(checkbox.className).toContain("after:-inset-x-px");
+    expect(checkbox.className).not.toContain("after:-inset-x-1 ");
   });
 
   it("gives the checkbox a full 24px-wide target without moving its left edge", () => {
     /*
      * EI-382. The `::after` is placed from the padding box, inside the 1px
-     * border, so `-inset-x-1` alone spans 14 + 8 = 22px — Lighthouse measured
-     * 22×30. `w-6` sets 24px; with `left` and `width` both set, `right` is
-     * dropped, so the left edge stays 4px out (clear of the grip) and the
-     * extra 2px grow toward the title. jsdom has no layout, so the geometry
-     * is asserted as classes; the browser measurement is in the commit.
+     * border, so an inset alone spans 14px plus the two insets — Lighthouse
+     * measured 22×30 at `-inset-x-1`. `w-6` sets 24px; with `left` and
+     * `width` both set, `right` is dropped, so the left edge holds at the
+     * box's own edge (`-inset-x-px`, EI-395: where the grip's target ends)
+     * and the target runs to the title's first letter. jsdom has no layout,
+     * so the geometry is asserted as classes; the browser measurement is in
+     * the commit.
      */
     render(<Harness />);
     const checkbox = document.querySelector<HTMLElement>('[data-slot="checkbox"]')!;
     const cls = checkbox.className.split(/\s+/);
     expect(cls).toContain("after:w-6");
-    expect(cls).toContain("after:-inset-x-1");
-    expect(cls).toContain("pointer-coarse:after:-inset-x-1");
+    expect(cls).toContain("after:-inset-x-px");
+    expect(cls).toContain("pointer-coarse:after:-inset-x-px");
     // The base's wider expansions must be merged away, not left to source order.
     expect(cls).not.toContain("after:-inset-x-3");
     expect(cls).not.toContain("pointer-coarse:after:-inset-x-[15px]");
@@ -753,7 +759,7 @@ describe("the completion stamp", () => {
      * breaks the geometry §5.4 depends on.
      */
     render(<Harness todo={done()} timezone="UTC" />);
-    expect(checkbox().className).toContain("after:-inset-x-1");
+    expect(checkbox().className).toContain("after:-inset-x-px");
     // `after:absolute` is in the shadcn base and stays; what must be gone is
     // the positioning the wrapper now owns.
     expect(checkbox().className).not.toContain("absolute left-3");
@@ -1317,7 +1323,7 @@ describe("touch targets on a coarse pointer (EI-388)", () => {
     // Still 24 wide: wider would cover the grip or the title's first letter
     // (docs/DRAG-AND-DROP.md §5.4).
     expect(cls).toContain("after:w-6");
-    expect(cls).toContain("pointer-coarse:after:-inset-x-1");
+    expect(cls).toContain("pointer-coarse:after:-inset-x-px");
   });
 });
 
