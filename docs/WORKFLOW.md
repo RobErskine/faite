@@ -182,8 +182,9 @@ The cheaper models do what is already decided. Four project subagents in
 **Escalation is triggered by evidence, not by a guess.** The implementer
 stops with `ESCALATE:` when the typecheck or a test still fails after its
 second fix, or when the spec reads two ways. The caller then re-runs it with
-`model: "claude-opus-5-5"` on the Agent call — a per-call model outranks the
-agent's frontmatter — and if Opus escalates too, the step needs a person. In
+`model: "opus"` on the Agent call — a per-call model outranks the agent's
+frontmatter, and the Agent tool accepts only the aliases there — and if Opus
+escalates too, the step needs a person. In
 an interactive session the main session can also just finish the work
 itself. Guessing a
 task's difficulty from its ticket before anyone has read the code was

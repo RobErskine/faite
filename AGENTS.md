@@ -159,7 +159,7 @@ lives in `.claude/agents/` (EI-398):
 | Agent | Model | Use it when |
 |---|---|---|
 | `Explore` | Haiku 5.5 | You need to find code. It **replaces** the built-in `Explore`, so search is cheap by default. It locates; it does not judge. |
-| `implementer` | Sonnet 5.5 | One step whose design is decided: what, which files, how to verify. It stops with `ESCALATE:` after two failed fixes or an ambiguous spec — re-run it with `model: "claude-opus-5-5"` on the Agent call. |
+| `implementer` | Sonnet 5.5 | One step whose design is decided: what, which files, how to verify. It stops with `ESCALATE:` after two failed fixes or an ambiguous spec — re-run it with `model: "opus"` on the Agent call. |
 | `ticket-writer` | Sonnet 5.5 | Turning a plan into Linear tickets. It searches for duplicates first. |
 | `pr-reviewer` | Opus 5.5 | Reviewing a PR or branch against these rules. Read-only; posts one GitHub review only when told to. |
 
