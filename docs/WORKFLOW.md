@@ -70,6 +70,17 @@ Then start the new session with one line: *"Work EI-249. Read the ticket and
 its Handoff comment first."* Everything else is recoverable from Linear and the
 repo. `/handoff` and `/pickup` in `.claude/commands/` automate both ends.
 
+### Handing off to an *unattended* session → `/dispatch`
+
+When the design is settled and you want the work done without you, run
+`/dispatch` instead of `/handoff`. It adds a `## Steps` plan to the Handoff
+comment — each step one `implementer` run with exact files and a verify
+command — then creates the worktree and a session on Sonnet in `auto` mode,
+and tells it to follow `.claude/commands/conduct.md`. The conductor builds,
+runs the CI gate, opens the PR, has `pr-reviewer` post a review, fixes what
+the review finds once, and reports on the ticket. It never merges. §7 says
+which model does what.
+
 ### Naming
 
 Pass Linear's `gitBranchName` as `customName`. Jean has no Linear API key, so
@@ -170,8 +181,11 @@ The cheaper models do what is already decided. Four project subagents in
 
 **Escalation is triggered by evidence, not by a guess.** The implementer
 stops with `ESCALATE:` when the typecheck or a test still fails after its
-second fix, or when the spec reads two ways. The main session then finishes
-the work itself, or re-dispatches with the question answered. Guessing a
+second fix, or when the spec reads two ways. The caller then re-runs it with
+`model: "claude-opus-5-5"` on the Agent call — a per-call model outranks the
+agent's frontmatter — and if Opus escalates too, the step needs a person. In
+an interactive session the main session can also just finish the work
+itself. Guessing a
 task's difficulty from its ticket before anyone has read the code was
 considered and rejected — the ticket rarely shows it.
 
