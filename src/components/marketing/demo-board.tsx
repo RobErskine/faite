@@ -1,9 +1,18 @@
-import { CalendarCheck, ListChecks, MapPin } from "lucide-react";
 import { badgeVariants } from "@/components/ui/badge";
 // `edge` only — the column accent is a real feature (lists and tabs both have
 // a ColorPicker). `tint` went with the fabricated label colors.
 import { edge } from "@/lib/colors";
-import { priorityRail, railBackgroundImage } from "@/lib/priority";
+import { priorityRail, railBackgroundImage, railOpacity } from "@/lib/priority";
+import {
+  ROW_BADGES,
+  ROW_BADGE_COUNT,
+  ROW_BADGE_LABEL,
+  ROW_BADGE_TEXT,
+  ROW_BADGE_VERDICT,
+  ROW_GLYPH,
+  ROW_GLYPH_SLOT,
+  ROW_ICONS,
+} from "@/lib/row-grammar";
 import { describeOverflowAge, formatOverflowAge } from "@/lib/rollover-events";
 import { formatShortDateAsOf } from "@/lib/scheduling";
 import { STORY_BEATS } from "@/lib/story-beats";
@@ -40,7 +49,8 @@ import { DemoTooltip } from "./demo-tooltip";
  * The parts that carry meaning rather than behavior, so the demo cannot drift
  * from the product's own vocabulary: `priorityRail` (the achromatic rail,
  * docs/DESIGN.md §7), `tint`/`edge` (the identity ladder, §1),
- * `badgeVariants`, `TITLE_CLAMP_CLASS`, and the surface/type utilities from
+ * `badgeVariants`, the row's badge grammar (`lib/row-grammar.ts`: its icons,
+ * badge classes and order, EI-395), `TITLE_CLAMP_CLASS`, and the surface/type utilities from
  * `globals.css`. The markup is a hand-written echo of `todo-card.tsx` and
  * `board-column.tsx` — if either of those is restyled, this needs a look.
  *
@@ -358,7 +368,7 @@ function DemoCard({ todo }: { todo: DemoTodo }) {
           data-priority-rail={todo.priority}
           style={{
             width: rail.width,
-            opacity: rail.opacity,
+            opacity: railOpacity(rail, Boolean(done)),
             ...(railBackgroundImage(rail)
               ? { backgroundImage: railBackgroundImage(rail)! }
               : { backgroundColor: "var(--foreground)" }),
@@ -375,48 +385,47 @@ function DemoCard({ todo }: { todo: DemoTodo }) {
       <div
         className={cn(
           "block w-full text-left text-sm leading-snug",
-          done && "text-muted-foreground line-through",
+          done && "text-foreground/60",
         )}
       >
         <span className={cn("indent-6 wrap-break-word", TITLE_CLAMP_CLASS)}>
           {/*
             Every marker is a tooltip trigger, the way it is on the real board.
             A glyph you cannot interrogate is decoration; `TitleMarkers` puts
-            each of these behind its own tooltip and so does this.
+            each of these behind its own tooltip and so does this. Same icons,
+            same order (`ROW_ICONS`, `ROW_GLYPH_ORDER`): deadline, then place.
           */}
           {todo.deadlineAhead && (
-            <DemoTooltip
-              label={`Due ${todo.deadlineAhead}`}
-              className="mr-1 align-[-0.1875em] text-muted-foreground"
-            >
-              <CalendarCheck className="size-3" aria-hidden />
+            <DemoTooltip label={`Deadline ${todo.deadlineAhead}`} className={ROW_GLYPH_SLOT}>
+              <DeadlineIcon className={ROW_GLYPH} aria-hidden />
             </DemoTooltip>
           )}
           {todo.location && (
             <DemoTooltip
               label={todo.location}
               sr={`Location: ${todo.location}.`}
-              className="mr-1 align-[-0.1875em] text-muted-foreground"
+              className={ROW_GLYPH_SLOT}
             >
-              <MapPin className="size-3" aria-hidden />
+              <LocationIcon className={ROW_GLYPH} aria-hidden />
             </DemoTooltip>
           )}
-          {todo.title}
+          {/* The strike on the title text alone, as on the board (EI-395). */}
+          <span className={cn(done && "line-through")}>{todo.title}</span>
           {rail && <span className="sr-only"> — {rail.label}</span>}
         </span>
 
         {badges && (
-          <span className="mt-1.5 flex flex-wrap items-center gap-1">
-            {subtaskTotal > 0 && (
-              <DemoTooltip label={`${subtaskDone} of ${subtaskTotal} sub-tasks done`}>
-                <span
-                  className={cn(
-                    badgeVariants({ variant: "outline" }),
-                    "num gap-1 text-2xs font-normal",
-                  )}
-                >
-                  <ListChecks className="size-2.5" aria-hidden />
-                  {subtaskDone}/{subtaskTotal}
+          /* `ROW_BADGE_ORDER`, as the board draws it: the verdict (a missed
+             deadline, the Overflow age), then progress, then identity. */
+          <span className={ROW_BADGES}>
+            {todo.deadlineMissed && (
+              // The board leaves this one bare, but a red badge reading
+              // "Deadline Sep 4" beside a card scheduled for Sep 8 is the one
+              // most worth explaining: the date has passed, and that is the
+              // whole reason it is loud.
+              <DemoTooltip label={`Deadline was ${todo.deadlineMissed} — now past`}>
+                <span className={cn(badgeVariants({ variant: "destructive" }), ROW_BADGE_VERDICT)}>
+                  Deadline {todo.deadlineMissed}
                 </span>
               </DemoTooltip>
             )}
@@ -435,23 +444,19 @@ function DemoCard({ todo }: { todo: DemoTodo }) {
                   aria-hidden
                   className={cn(
                     badgeVariants({ variant: "outline" }),
-                    "nums text-2xs font-normal text-muted-foreground",
+                    ROW_BADGE_TEXT,
+                    "text-foreground/60",
                   )}
                 >
                   {formatOverflowAge(todo.overflow.since, DEMO_TODAY)}
                 </span>
               </DemoTooltip>
             )}
-            {todo.deadlineMissed && (
-              // The board leaves this one bare, but a red badge reading
-              // "Deadline Sep 4" beside a card scheduled for Sep 8 is the one
-              // most worth explaining: the date has passed, and that is the
-              // whole reason it is loud.
-              <DemoTooltip label={`Deadline was ${todo.deadlineMissed} — now past`}>
-                <span
-                  className={cn(badgeVariants({ variant: "destructive" }), "text-xs font-normal")}
-                >
-                  Deadline <span className="num">{todo.deadlineMissed}</span>
+            {subtaskTotal > 0 && (
+              <DemoTooltip label={`${subtaskDone} of ${subtaskTotal} sub-tasks done`}>
+                <span className={cn(badgeVariants({ variant: "outline" }), ROW_BADGE_COUNT)}>
+                  <SubtasksIcon aria-hidden />
+                  {subtaskDone}/{subtaskTotal}
                 </span>
               </DemoTooltip>
             )}
@@ -464,9 +469,7 @@ function DemoCard({ todo }: { todo: DemoTodo }) {
                 anyone skimming, as though colored labels were a thing.
               */
               <DemoTooltip key={label.name} label={`Label: ${label.name}`}>
-                <span
-                  className={cn(badgeVariants({ variant: "secondary" }), "text-2xs font-normal")}
-                >
+                <span className={cn(badgeVariants({ variant: "secondary" }), ROW_BADGE_LABEL)}>
                   {label.name}
                 </span>
               </DemoTooltip>
@@ -477,6 +480,10 @@ function DemoCard({ todo }: { todo: DemoTodo }) {
     </div>
   );
 }
+
+const DeadlineIcon = ROW_ICONS.deadline;
+const LocationIcon = ROW_ICONS.location;
+const SubtasksIcon = ROW_ICONS.subtasks;
 
 /** A column, echoing `board-column.tsx`'s header and body. */
 function DemoColumnView({ column, dayTrack }: { column: DemoColumn; dayTrack?: boolean }) {

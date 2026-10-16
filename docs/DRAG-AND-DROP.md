@@ -48,7 +48,8 @@ handle mid-drag.
 | `src/components/board/board-column.tsx` | `useDroppable` + `SortableContext`; `useDraggable` for column reorder; whole-header drag; drop-target visual states |
 | `src/components/board/todo-card.tsx` | `useSortable`; whole-row drag, out-of-flow grip, priority rail, inline location pin, insertion line |
 | `src/components/board/drag-grip.tsx` | The one grip affordance, shared by rows, columns and tabs |
-| `src/lib/priority.ts` | `PRIORITY_RAILS` — the width and color of a card's priority rail, shared with the drag overlay chip; `byPriorityThenPosition`, which orders a group |
+| `src/components/board/drag-chip.tsx` | `DragChip`, the overlay's to-do card: the row's anatomy from `todo-row-parts.tsx` at chip density (§6 "Overlay") |
+| `src/lib/priority.ts` | `PRIORITY_RAILS` — the width and color of a card's priority rail, shared with the drag chip (`railBorder`); `byPriorityThenPosition`, which orders a group |
 | `src/lib/board.ts` | Id codecs, `preferPreciseTarget()`, and every pure drop planner — `planListDrop`, `planTabDrop`, `planListTabDrop`, `planListDayDrop` (§4.10e), `selectedTodosInBoardOrder`/`rangeSelectionIds` (§4.14). Plus `TodoGroup`, `listSortKey`, `byListGroup`, `dayGroupId` — the calendar half's computed grouping (§4.13) |
 | `src/components/board/create-list-column.tsx` | End-of-track "Create list" slot. Column-sized, deliberately **not** a droppable (§5.6) |
 | `src/components/board/use-day-track.ts` | Pure scroll-position/jump math for the day track (anchor index, jump clamping) — not itself drag-and-drop, but shares the track dnd-kit measures |
@@ -1250,11 +1251,15 @@ Three rules, and each has a failure mode if changed:
   and the affordance, not the primary hit area.
 
 **On touch, the grip stays 12×24 and the card checkbox stays 24 wide** (EI-388,
-decided rather than missed). The row's left gutter is 36px before the title's
-first letter: grip box x=0–12, checkbox box x=12–28, text from x=36. A 44px-wide
-checkbox would need x≈0–44, covering the grip (a tap on the visible grip would
-complete the to-do) and the title's first ~8px (a tap on the first letter would
-complete rather than open). An accidental completion is the costliest mistap the
+decided rather than missed). With a mouse the row's left gutter is 36px before
+the title's first letter: grip target x=0–12, checkbox target x=12–36, text
+from x=36. On touch the whole gutter is 12px wider (EI-395): a phone column's
+edge is the screen's and the grip is always visible there, so the rail steps
+4px in (x=4), the grip sits at x=10–22, clear of even a P1's 5px rail, the
+checkbox target runs x=24–48, and text starts at x=48. A 44px-wide checkbox
+would need the whole gutter and more, covering the grip (a tap on the visible
+grip would complete the to-do) and the title's first ~8px (a tap on the first
+letter would complete rather than open). An accidental completion is the costliest mistap the
 row has, so the checkbox grows in the one direction that is free: it is **44
 tall**, exactly the coarse row's height (`ui/checkbox.tsx`, 15px each way —
 the `::after` is placed inside the 1px border, so 14px made 42). It clears WCAG
@@ -1363,16 +1368,20 @@ and toasts with an Undo action, the same shape the palette's creates use.
   pointer nicety and the name is the real channel. These are **nested**
   tooltip triggers inside the title's own trigger; Base UI handles that by walking
   up to the closest enabled trigger and suppressing the ancestor
-- **an upcoming deadline is a `CalendarCheck` marker** in the same inline run,
+- **an upcoming deadline is a flag marker** (`ROW_ICONS.deadline`) in the same inline run,
   tooltip "Deadline Aug 14, due in 5 days" from `formatDeadlineDue()` (EI-391). A **missed** deadline
   gets no marker — it keeps the loud destructive badge it always had, because two
   indicators for one fact is the clutter this redesign is removing. Quiet marker
   ahead of time, loud badge once it is blown
-- the checkbox's `after:-inset-x-1` is load bearing: the shadcn base expands 12px
-  horizontally, which from `left-3` reaches back across the whole grip, so a click
-  meant for the grip would toggle done. 4px keeps the target at the WCAG 2.2
-  24px minimum while stopping clear of the grip's glyph
-- badge row is now away-date, missed deadline and labels only
+- the checkbox's `after:-inset-x-px after:w-6` is load bearing: the shadcn base
+  expands 12px horizontally, which from `left-3` reaches back across the whole
+  grip, so a click meant for the grip would toggle done. `-1px` (the `::after`
+  is placed inside the 1px border) puts the target's left edge exactly where
+  the grip's 12px target ends, and `w-6` makes it 24 wide. It was
+  `-inset-x-1` until EI-395, which started it at x=9 and left the grip a 9×24
+  target
+- the badge line follows the row grammar (`lib/row-grammar.ts`,
+  docs/DESIGN.md §2): verdict, then when, then progress, then identity
 - dragged source stays at **30% opacity** so the column does not collapse under
   the cursor
 - insertion line: 2px primary bar + leading dot, absolutely positioned at
@@ -1380,6 +1389,26 @@ and toasts with an Undo action, the same shape the palette's creates use.
   it doubles as the drop animation's target (§4.7), so its position is load
   bearing, not just decorative
 - landing row held at `opacity-0` while the overlay flies to it
+- **the row's inline `transition` is composed, never dnd-kit's alone**
+  (EI-395, `rowTransition` in `lib/completion-beat.ts`). `useSortable` returns
+  `transform 200ms ease`, or `transform 0ms linear` for the frame it sets up a
+  move, and the row used to pass that straight to `style`. An inline
+  `transition` shorthand replaces the WHOLE list, so the class's
+  `background-color`/`opacity` transitions were gone on every row: the hover
+  wash snapped and the landing fade did nothing. The composed value keeps
+  dnd-kit's string first, untouched, then the wash and the fade on CSS
+  variables (`--row-wash-dur`, `--row-fade-dur`) that the classes set, so
+  `hover:` can still shorten one. Never pass `transition` alone again.
+- **the completion beat's slide is WAAPI, not style** (`use-completion-beat.ts`).
+  When a completed row leaves, the rows below animate `translateY` from where
+  they were with `element.animate()`, which composites over the inline
+  `transform` dnd-kit owns without writing it, and needs no re-render. It runs
+  only on the commit that releases a held row, never on a drop, so it cannot
+  fight §4.7's landing flight.
+- the checkbox's wrapper is `z-[1]`: the title button is `position: relative`
+  (its notched focus outline is pseudo-elements), and a positioned box later in
+  the DOM takes clicks over an earlier one. Without it every checkbox click
+  landed on the title; e2e caught it, `click()` from a script did not
 
 **Column** (`board-column.tsx`) — three mutually exclusive drag states, shared
 by card drags and column drags:
@@ -1418,7 +1447,7 @@ All use `outline-offset-[-2px]` to draw inside the column bounds.
   rect dnd-kit measured for it
 
 **Deadlines due (`board-column.tsx`, day columns only)** — a destructive-tinted
-strip directly under the header, `CalendarCheck` + a count, carrying
+strip directly under the header, the deadline flag (`ROW_ICONS.deadline`) + a count, carrying
 `data-due-banner`. The count comes from `use-board-data.ts`'s `dueByDay` map
 (grouped, not merely counted, so the banner and the day sheet's Due section can
 never disagree), built over **every** visible open todo rather than the
@@ -1461,9 +1490,20 @@ all, because it is not a droppable (§5.6). While its field is open the dashed
 border stays but the card fills faintly, so it reads as the same slot mid-edit
 rather than as a new element.
 
-**Overlay** (`board.tsx`) — tilted 2° and scaled 1.02 via the inline `LIFTED`
-style, plus ring + shadow, so the item reads as lifted off the board rather than
-sliding along it. On release it flies to the drop indicator over 200 ms while
+**Overlay** (`board.tsx`; a to-do's chip is `DragChip`, `drag-chip.tsx`) —
+tilted 2° and scaled 1.02 via the inline `LIFTED` style, plus ring + shadow, so
+the item reads as lifted off the board rather than sliding along it. A to-do's
+chip is the row it lifted from, built from the same parts
+(`todo-row-parts.tsx`, EI-395): the rail as the chip's left border
+(`railBorder`, stepped back on a settled row), the title with every glyph (↳,
+the deadline flag, repeat, pin), the badge line, and the multi-drag count. It
+differs on purpose in four ways: no checkbox (the grip stands in its place);
+the title clamps at two lines, not three, inside `max-w-xs`; nothing opens on
+hover (`interactive={false}` on both `TitleMarkers` and `TodoMetaBadges` — a
+tooltip under the pointer would ride along); and no scheduled-date badge, since
+the column under the pointer is the date being proposed. A clamp, like the old
+one-line truncate, keeps the box the size the drop animation measured (§4.7):
+nothing on a carried to-do changes while it is carried. On release it flies to the drop indicator over 200 ms while
 settling flat and morphing to the destination column's width, then crossfades
 into the real row over the final 90 ms. See §4.7.
 

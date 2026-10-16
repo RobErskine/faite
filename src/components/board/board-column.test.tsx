@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { DndContext } from "@dnd-kit/core";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -9,6 +9,7 @@ import { cardStop, groupStop } from "@/lib/column-nav";
 import type { List, Todo } from "@/lib/schema";
 import { ListColumnMenu } from "./list-column-menu";
 import { dayRegionLabel, type PlacementContext } from "@/lib/scheduling";
+import { BEAT_MS, LEAVE_MS } from "@/lib/completion-beat";
 
 /**
  * Grouped rendering, which `column-nav.test.tsx` does not reach — it covers the
@@ -112,6 +113,7 @@ interface HarnessProps {
   tone?: "urgent";
   regionLabel?: string;
   anchorId?: string;
+  onToggle?: (t: Todo) => void;
 }
 
 function Harness({ groups, todos, ...rest }: HarnessProps) {
@@ -1085,5 +1087,141 @@ describe("the due banner's touch target (EI-392)", () => {
   it("leaves the inert banner alone — it is not a target", () => {
     render(<Harness dueCount={1} />);
     expect(document.querySelector("[data-due-banner]")!.className).not.toContain("pointer-coarse:");
+  });
+});
+
+/**
+ * The column's half of the completion beat (EI-395, `use-completion-beat.ts`).
+ *
+ * The data is driven by hand: completing calls `onToggle`, and the test then
+ * re-renders with what `buildBoard` would hand the column once the write has
+ * landed — the row gone (default view), or still there and settled. Timers
+ * are faked; the slide itself needs layout and is checked in the browser.
+ */
+describe("the completion beat", () => {
+  const done = (t: Todo): Todo => ({ ...t, status: "done", completedAt: "2026-08-09T10:00:00.000Z" });
+  const rowOf = (id: string) => document.querySelector<HTMLElement>(`[data-nav-stop="${cardStop(id)}"]`);
+  const boxOf = (id: string) => rowOf(id)!.querySelector<HTMLElement>("[role=checkbox]")!;
+  const [a, b, c] = [todo("a"), todo("b"), todo("c")];
+
+  const setReducedMotion = (reduce: boolean) =>
+    vi.stubGlobal(
+      "matchMedia",
+      (q: string) => ({ matches: reduce && q.includes("reduce"), media: q, addEventListener() {}, removeEventListener() {} }),
+    );
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it("holds a completed row, checked, for the beat after the write lands, then fades it out, then lets it go", () => {
+    vi.useFakeTimers();
+    setReducedMotion(false);
+    const onToggle = vi.fn();
+    const { rerender } = render(<Harness todos={[a, b, c]} onToggle={onToggle} />);
+    fireEvent.click(boxOf("b"));
+    // The column wraps the board's handler; the write itself is still the board's.
+    expect(onToggle).toHaveBeenCalledTimes(1);
+    expect(onToggle.mock.calls[0][0]).toMatchObject({ id: "b", status: "open" });
+
+    // The write lands: under the default view the data no longer has "b".
+    rerender(<Harness todos={[a, c]} onToggle={onToggle} />);
+    const order = () => [...document.querySelectorAll("[data-todo-row]")].map((r) => r.getAttribute("data-nav-stop"));
+    expect(order()).toEqual([cardStop("a"), cardStop("b"), cardStop("c")]);
+    expect(boxOf("b").getAttribute("aria-checked")).toBe("true");
+    expect(rowOf("b")!.hasAttribute("inert")).toBe(false);
+
+    act(() => vi.advanceTimersByTime(BEAT_MS));
+    expect(rowOf("b")!.hasAttribute("inert")).toBe(true);
+    expect(rowOf("b")!.className).toContain("opacity-0");
+
+    act(() => vi.advanceTimersByTime(LEAVE_MS));
+    expect(rowOf("b")).toBeNull();
+    expect(order()).toEqual([cardStop("a"), cardStop("c")]);
+  });
+
+  it("under reduced motion, keeps the beat (the state is the confirmation) but leaves in one step", () => {
+    vi.useFakeTimers();
+    setReducedMotion(true);
+    const { rerender } = render(<Harness todos={[a, b]} />);
+    fireEvent.click(boxOf("b"));
+    rerender(<Harness todos={[a]} />);
+    expect(boxOf("b").getAttribute("aria-checked")).toBe("true");
+    act(() => vi.advanceTimersByTime(BEAT_MS));
+    // No fading frame: gone at the end of the beat.
+    expect(rowOf("b")).toBeNull();
+  });
+
+  it("lets undo restore the row: the data wins as soon as it is open again", () => {
+    vi.useFakeTimers();
+    setReducedMotion(false);
+    const { rerender } = render(<Harness todos={[a, b]} />);
+    fireEvent.click(boxOf("b"));
+    rerender(<Harness todos={[a]} />);
+    rerender(<Harness todos={[a, b]} />); // ⌘Z, mid-beat
+    expect(boxOf("b").getAttribute("aria-checked")).toBe("false");
+    act(() => vi.advanceTimersByTime(BEAT_MS + LEAVE_MS));
+    expect(rowOf("b")).not.toBeNull();
+    expect(rowOf("b")!.hasAttribute("inert")).toBe(false);
+    expect(boxOf("b").getAttribute("aria-checked")).toBe("false");
+  });
+
+  it("moves keyboard focus to the row that takes its place", () => {
+    vi.useFakeTimers();
+    setReducedMotion(false);
+    const { rerender } = render(<Harness todos={[a, b, c]} />);
+    rowOf("b")!.focus();
+    fireEvent.keyDown(rowOf("b")!, { key: " " });
+    rerender(<Harness todos={[a, c]} />);
+    act(() => vi.advanceTimersByTime(BEAT_MS));
+    expect(document.activeElement).toBe(rowOf("c"));
+  });
+
+  it("falls back to the row above when the last row leaves", () => {
+    vi.useFakeTimers();
+    setReducedMotion(false);
+    const { rerender } = render(<Harness todos={[a, b]} />);
+    rowOf("b")!.focus();
+    fireEvent.keyDown(rowOf("b")!, { key: " " });
+    rerender(<Harness todos={[a]} />);
+    act(() => vi.advanceTimersByTime(BEAT_MS));
+    expect(document.activeElement).toBe(rowOf("a"));
+  });
+
+  it("holds a settled row at its old place under View: All, then releases it to its new one", () => {
+    vi.useFakeTimers();
+    setReducedMotion(false);
+    const { rerender } = render(<Harness todos={[a, b, c]} />);
+    fireEvent.click(boxOf("a"));
+    // The data keeps "a", done, and sinks it below the open work.
+    rerender(<Harness todos={[b, c, done(a)]} />);
+    const order = () => [...document.querySelectorAll("[data-todo-row]")].map((r) => r.getAttribute("data-nav-stop"));
+    expect(order()).toEqual([cardStop("a"), cardStop("b"), cardStop("c")]);
+    act(() => vi.advanceTimersByTime(BEAT_MS));
+    expect(order()).toEqual([cardStop("b"), cardStop("c"), cardStop("a")]);
+    expect(rowOf("a")!.hasAttribute("inert")).toBe(false);
+  });
+
+  it("brings a vanished list group back for the beat when its last row completes", () => {
+    vi.useFakeTimers();
+    setReducedMotion(true);
+    const only = group("admin", "Admin", [todo("a1")]);
+    const { rerender } = render(<Harness groups={[only, BUY]} />);
+    fireEvent.click(boxOf("a1"));
+    rerender(<Harness groups={[BUY]} />);
+    expect(header("Admin")).toBeTruthy();
+    expect(rowOf("a1")).not.toBeNull();
+    act(() => vi.advanceTimersByTime(BEAT_MS));
+    expect(screen.queryByRole("button", { name: /^Admin/ })).toBeNull();
+    expect(rowOf("a1")).toBeNull();
+  });
+
+  it("does nothing special when a done row is reopened", () => {
+    vi.useFakeTimers();
+    const { rerender } = render(<Harness todos={[a, done(b)]} />);
+    fireEvent.click(boxOf("b"));
+    rerender(<Harness todos={[a]} />); // e.g. a filter hid it
+    expect(rowOf("b")).toBeNull();
   });
 });

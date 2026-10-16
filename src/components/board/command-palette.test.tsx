@@ -957,7 +957,7 @@ describe("CommandPalette — result rows say what the board says (EI-387)", () =
     expect(row.querySelector("[data-overflow-age]")).toBeNull();
     expect(
       screen.getByRole("option", {
-        name: "Call dentist, Rolled from Oct 12, 2 days ago, Overflow in 2 days, Scheduled Oct 12, Unfiled",
+        name: "Call dentist, Rolled from Oct 12, 2 days ago, Overflow in 2 days, Scheduled Oct 12, Backlog",
       }),
     ).toBeTruthy();
   });
@@ -974,7 +974,7 @@ describe("CommandPalette — result rows say what the board says (EI-387)", () =
     expect(row.querySelector("[data-overflow-age]")?.textContent).toBe("since Oct 5 · 9 days");
     expect(
       screen.getByRole("option", {
-        name: "Renew visa, Scheduled Oct 1, In Overflow since Oct 5, 9 days, Unfiled",
+        name: "Renew visa, In Overflow since Oct 5, 9 days, Scheduled Oct 1, Backlog",
       }),
     ).toBeTruthy();
   });
@@ -1003,7 +1003,7 @@ describe("CommandPalette — result rows say what the board says (EI-387)", () =
     expect(rowFor("y2").textContent).toContain("Oct 30");
     expect(rowFor("y2").textContent).not.toContain("2026");
     expect(
-      screen.getByRole("option", { name: "Renew passport 2027, Scheduled Oct 1, 2027, Unfiled" }),
+      screen.getByRole("option", { name: "Renew passport 2027, Scheduled Oct 1, 2027, Backlog" }),
     ).toBeTruthy();
   });
 });
@@ -1039,7 +1039,7 @@ describe("CommandPalette — result names speak their state (EI-391)", () => {
 
     expect(
       screen.getByRole("option", {
-        name: "Pick up dry cleaning, Completed Oct 14, 12:30 AM, Scheduled Oct 12, Unfiled",
+        name: "Pick up dry cleaning, Completed Oct 14, 12:30 AM, Scheduled Oct 12, Backlog",
       }),
     ).toBeTruthy();
   });
@@ -1061,7 +1061,7 @@ describe("CommandPalette — result names speak their state (EI-391)", () => {
 
     expect(
       screen.getByRole("option", {
-        name: "Pick up dry cleaning, Marked won’t do Oct 14, 12:30 AM, Scheduled Oct 14, Unfiled",
+        name: "Pick up dry cleaning, Marked won’t do Oct 14, 12:30 AM, Scheduled Oct 14, Backlog",
       }),
     ).toBeTruthy();
     // Dim only, no visible word (owner decision 2026-10-15).
@@ -1075,7 +1075,7 @@ describe("CommandPalette — result names speak their state (EI-391)", () => {
 
     expect(document.body.querySelector('[data-todo-id="m1"]')!.textContent).toContain("Deadline Oct 12");
     expect(
-      screen.getByRole("option", { name: "File taxes, Deadline Oct 12, overdue by 2 days, Unfiled" }),
+      screen.getByRole("option", { name: "File taxes, Deadline Oct 12, overdue by 2 days, Backlog" }),
     ).toBeTruthy();
   });
 
@@ -1085,7 +1085,7 @@ describe("CommandPalette — result names speak their state (EI-391)", () => {
     search("taxes");
 
     expect(
-      screen.getByRole("option", { name: "File taxes, Deadline Oct 19, due in 5 days, Unfiled" }),
+      screen.getByRole("option", { name: "File taxes, Deadline Oct 19, due in 5 days, Backlog" }),
     ).toBeTruthy();
   });
 });

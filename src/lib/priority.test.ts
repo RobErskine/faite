@@ -5,7 +5,9 @@ import {
   byPriorityThenPosition,
   priorityRail,
   priorityRank,
+  SETTLED_RAIL_OPACITY,
   railBackgroundImage,
+  railBorder,
   railBorderStyle,
 } from "./priority";
 import type { Priority, Todo } from "./schema";
@@ -184,5 +186,30 @@ describe("railBorderStyle", () => {
     for (const p of LEVELS) {
       expect(railBorderStyle(PRIORITY_RAILS[p])).toBe(PRIORITY_RAILS[p].style);
     }
+  });
+});
+
+describe("railBorder", () => {
+  it("is nothing for an unprioritised to-do", () => {
+    expect(railBorder(null)).toEqual({});
+  });
+
+  it("draws each level's width and style, its opacity riding the color", () => {
+    for (const p of LEVELS) {
+      const rail = PRIORITY_RAILS[p];
+      expect(railBorder(p)).toEqual({
+        borderLeftWidth: rail.width,
+        borderLeftStyle: rail.style,
+        borderLeftColor: `color-mix(in oklch, var(--foreground) ${Math.round(rail.opacity * 100)}%, transparent)`,
+      });
+    }
+  });
+
+  it("steps back on a settled row, as PriorityRail does (EI-395)", () => {
+    const rail = PRIORITY_RAILS[1];
+    const settled = Math.round(rail.opacity * SETTLED_RAIL_OPACITY * 100);
+    expect(railBorder(1, true).borderLeftColor).toBe(
+      `color-mix(in oklch, var(--foreground) ${settled}%, transparent)`,
+    );
   });
 });

@@ -248,7 +248,12 @@
     `motion-reduce:animate-none` — the state has to be right with the
     animation removed.
   */
-  --animate-check: check 180ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  /*
+    The check flash animates `box-shadow`, so it lands on `--ease-out-soft`
+    rather than a spring (EI-395): a spring belongs on `transform` alone, and
+    a shadow cannot overshoot, it only lingers (docs/DESIGN.md §4).
+  */
+  --animate-check: check 180ms cubic-bezier(0.22, 1, 0.36, 1);
   --animate-strike: strike 180ms cubic-bezier(0.22, 1, 0.36, 1);
   --animate-settle: settle 260ms cubic-bezier(0.22, 1, 0.36, 1);
 
@@ -261,13 +266,15 @@
       box-shadow: 0 0 0 6px transparent;
     }
   }
-  /* The strike draws left to right, like a pen. Apply to a scaleX line. */
+  /*
+    The strike draws left to right, like a pen (EI-395). Pair with the
+    `strike-draw` utility, whose line is a background, so every wrapped line
+    of a title draws at once. Only the width moves; the line is already where
+    it ends, so `motion-reduce:animate-none` leaves the finished strike.
+  */
   @keyframes strike {
     from {
-      transform: scaleX(0);
-    }
-    to {
-      transform: scaleX(1);
+      background-size: 0% var(--strike-thickness);
     }
   }
   /* A dropped row settles from the overlay's 1.02 lift back to rest. */
@@ -681,6 +688,13 @@
   --app-mono: var(--font-plex-mono), ui-monospace, monospace;
   --app-numeric: var(--app-mono);
   --app-text-2xs: 0.625rem;
+  /*
+    Where `strike-draw` sits: the face's own strike-through, measured in
+    Chrome at 200px against `line-through` (EI-395) — 0.1em thick, its top
+    47.7% of the way down the inline box's free height.
+  */
+  --strike-y: 47.7%;
+  --strike-thickness: 0.1em;
 }
 
 /*
@@ -694,6 +708,8 @@
   --app-mono: var(--font-atkinson-mono), ui-monospace, monospace;
   --app-numeric: var(--app-mono);
   --app-text-2xs: 0.6875rem;
+  --strike-y: 50.9%;
+  --strike-thickness: 0.1em;
 }
 
 /*
@@ -759,6 +775,68 @@
     outline: 2px solid var(--ring);
     outline-offset: -2px;
   }
+}
+
+/*
+  `focus-ring`, drawn round an L instead of a rectangle: for the to-do title,
+  whose button runs under the checkbox in its top-left corner (EI-395). A
+  plain outline enclosed the checkbox, so "open" and "complete" read as one
+  control. `::after` is the outline with the corner clipped away; `::before`
+  draws the two edges of the step. The caller sets `--notch-h` (the first
+  line's height, padding included); `--notch-w` defaults to the checkbox's
+  16px plus a 4px gap, short of the title's 24px indent.
+
+  Pseudo-elements only, `pointer-events: none`, so the button's hit area is
+  untouched (EI-388's 44px touch rows). Square corners: a radius would not
+  meet the step.
+*/
+@utility focus-ring-notched {
+  position: relative;
+  outline: none;
+  &:focus-visible::before,
+  &:focus-visible::after {
+    content: "";
+    position: absolute;
+    pointer-events: none;
+    border: 0 solid var(--ring);
+  }
+  &:focus-visible::after {
+    inset: 0;
+    border-width: 2px;
+    clip-path: polygon(
+      var(--notch-w, 1.25rem) 0,
+      100% 0,
+      100% 100%,
+      0 100%,
+      0 var(--notch-h),
+      var(--notch-w, 1.25rem) var(--notch-h)
+    );
+  }
+  &:focus-visible::before {
+    top: 0;
+    left: 0;
+    width: var(--notch-w, 1.25rem);
+    height: var(--notch-h);
+    border-right-width: 2px;
+    border-bottom-width: 2px;
+  }
+}
+
+/*
+  A strike-through drawn as a background line, so it can be drawn (the
+  `strike` keyframes) where `text-decoration` can only appear. Inline, with
+  `box-decoration-break: clone`, so each line of a wrapped title gets its own
+  line. Sat where the font's own strike-through sits — `--strike-y` and
+  `--strike-thickness` per pairing, measured against `line-through` (EI-395)
+  — so a row that was drawn and a row that mounted struck look the same.
+*/
+@utility strike-draw {
+  background-image: linear-gradient(currentColor, currentColor);
+  background-repeat: no-repeat;
+  background-position: 0 var(--strike-y);
+  background-size: 100% var(--strike-thickness);
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
 }
 
 /*

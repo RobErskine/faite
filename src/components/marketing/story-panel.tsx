@@ -1,6 +1,14 @@
-import { Bell, CalendarClock, CornerDownRight, ListChecks, MapPin, Repeat } from "lucide-react";
 import { badgeVariants } from "@/components/ui/badge";
-import { priorityRail } from "@/lib/priority";
+import { priorityRail, railBackgroundImage } from "@/lib/priority";
+import {
+  ROW_BADGES,
+  ROW_BADGE_COUNT,
+  ROW_BADGE_LABEL,
+  ROW_BADGE_TEXT,
+  ROW_GLYPH,
+  ROW_GLYPH_SLOT,
+  ROW_ICONS,
+} from "@/lib/row-grammar";
 import { cn } from "@/lib/utils";
 import { DemoCheckbox, MOVE_SUBTASKS, MOVE_TODO_TITLE } from "./demo-board";
 import { DemoTooltip } from "./demo-tooltip";
@@ -84,15 +92,23 @@ export function StoryPanel({
         {rail && (
           <span
             aria-hidden
-            style={{ width: rail.width, opacity: rail.opacity, backgroundColor: "var(--foreground)" }}
-            className="pointer-events-none absolute inset-y-0 left-0"
+            /* The board's rail, P1's double stroke included, inset 4px top
+               and bottom as `PriorityRail` is (EI-318). It was drawn solid. */
+            style={{
+              width: rail.width,
+              opacity: rail.opacity,
+              ...(railBackgroundImage(rail)
+                ? { backgroundImage: railBackgroundImage(rail)! }
+                : { backgroundColor: "var(--foreground)" }),
+            }}
+            className="pointer-events-none absolute inset-y-1 left-0"
           />
         )}
         <div className="flex items-start gap-2">
           <DemoCheckbox className="mt-0.5" />
           <div className="min-w-0">
             <p className="text-sm leading-snug font-medium">{MOVE_TODO_TITLE}</p>
-            <span className="mt-1.5 flex flex-wrap items-center gap-1">
+            <span className={ROW_BADGES}>
               {/*
                 A real tooltip rather than the native `title` this used to
                 carry. The board itself uses `title` here, but review asked for
@@ -102,9 +118,9 @@ export function StoryPanel({
               */}
               <DemoTooltip label={`${doneThrough} of ${MOVE_SUBTASKS.length} sub-tasks done`}>
               <span
-                className={cn(badgeVariants({ variant: "outline" }), "num gap-1 text-2xs font-normal")}
+                className={cn(badgeVariants({ variant: "outline" }), ROW_BADGE_COUNT)}
               >
-                <ListChecks className="size-2.5" aria-hidden />
+                <SubtasksIcon aria-hidden />
                 {/*
                   One flex child, not two. The badge is `inline-flex gap-1`, so
                   splitting the count into `<span>3</span>` plus a bare "/6"
@@ -116,9 +132,7 @@ export function StoryPanel({
                 </span>
               </span>
               </DemoTooltip>
-              <span
-                className={cn(badgeVariants({ variant: "secondary" }), "text-2xs font-normal")}
-              >
+              <span className={cn(badgeVariants({ variant: "secondary" }), ROW_BADGE_LABEL)}>
                 {home.name}
               </span>
             </span>
@@ -169,20 +183,8 @@ export function StoryPanel({
                   actually about going somewhere. A pin on every line would be
                   decoration; on this line it is the product.
                 */}
-                {/*
-                  A recurring to-do carries a repeat MARKER, not "— every
-                  Wednesday" in its title. The schedule is a property you
-                  interrogate, the way `TitleMarkers` presents it on a real
-                  card, not part of the task's name.
-                */}
-                {subtask.repeat && (
-                  <DemoTooltip
-                    label={`Repeats: ${subtask.repeat.toLowerCase()}`}
-                    className="mr-1 align-[-0.1875em] text-muted-foreground"
-                  >
-                    <Repeat className="size-3" aria-hidden />
-                  </DemoTooltip>
-                )}
+                {/* `ROW_GLYPH_ORDER`, as on a real card: the roll, then the
+                    repeat, then the place. */}
                 {/*
                   The rollover marker, hidden until the card has actually
                   rolled. `story-ticks.tsx` reveals it and rewrites its
@@ -193,78 +195,73 @@ export function StoryPanel({
                   <span data-roll-marker hidden className="contents">
                     <DemoTooltip
                       label="Rolled from Wed, Sep 9"
-                      className="mr-1 align-[-0.1875em] text-muted-foreground"
+                      className={ROW_GLYPH_SLOT}
                     >
-                      <CornerDownRight className="size-3" aria-hidden />
+                      <RolledIcon className={ROW_GLYPH} aria-hidden />
                     </DemoTooltip>
                   </span>
+                )}
+                {/*
+                  A recurring to-do carries a repeat MARKER, not "— every
+                  Wednesday" in its title. The schedule is a property you
+                  interrogate, the way `TitleMarkers` presents it on a real
+                  card, not part of the task's name.
+                */}
+                {subtask.repeat && (
+                  <DemoTooltip
+                    label={`Repeats: ${subtask.repeat.toLowerCase()}`}
+                    className={ROW_GLYPH_SLOT}
+                  >
+                    <RecurringIcon className={ROW_GLYPH} aria-hidden />
+                  </DemoTooltip>
                 )}
                 {subtask.location && (
                   <DemoTooltip
                     label={subtask.location}
                     sr={`Location: ${subtask.location}.`}
-                    className="mr-1 align-[-0.1875em] text-muted-foreground"
+                    className={ROW_GLYPH_SLOT}
                   >
-                    <MapPin className="size-3" aria-hidden />
+                    <LocationIcon className={ROW_GLYPH} aria-hidden />
                   </DemoTooltip>
                 )}
                 {subtask.title}
                 {/*
                   The day the card currently sits on, and — once it has rolled
                   twice — the Overflow badge. Both are the real board's own
-                  vocabulary: a scheduled date reads through `CalendarClock`,
-                  and Overflow is the urgency channel's destructive variant.
+                  vocabulary (`lib/row-grammar.ts`): a scheduled date reads
+                  through the calendar, a time through the clock, and the
+                  Overflow age comes first, the way the verdict leads a real
+                  card's badges.
 
                   Rendered at day one and updated by `story-ticks.tsx`, so a
                   reader with no JavaScript sees a coherent card rather than an
                   empty one.
                 */}
                 {subtask.when && (
-                  <span className="mt-1.5 flex flex-wrap items-center gap-1">
+                  <span className={ROW_BADGES}>
                     <DemoTooltip label={`Scheduled ${subtask.when.date}`}>
-                      <span
-                        className={cn(
-                          badgeVariants({ variant: "outline" }),
-                          "num gap-1 text-2xs font-normal",
-                        )}
-                      >
-                        <CalendarClock className="size-2.5" aria-hidden />
+                      <span className={cn(badgeVariants({ variant: "outline" }), ROW_BADGE_TEXT)}>
+                        <ScheduledIcon aria-hidden />
                         {subtask.when.date}
                       </span>
                     </DemoTooltip>
                     {/*
-                      The time, as a reminder badge — the board's own way of
-                      showing one. Review shortened this task's title to
+                      The time, as the board's time badge — the board's own way
+                      of showing one. Review shortened this task's title to
                       "Change paint color", and the beat's entire claim is "a
                       date and a TIME", so the time had to keep existing
                       somewhere the reader can see it.
                     */}
-                    <DemoTooltip label={`Reminder at ${subtask.when.time}`}>
-                      <span
-                        className={cn(
-                          badgeVariants({ variant: "outline" }),
-                          "num gap-1 text-2xs font-normal",
-                        )}
-                      >
-                        <Bell className="size-2.5" aria-hidden />
+                    <DemoTooltip label={`At ${subtask.when.time}`}>
+                      <span className={cn(badgeVariants({ variant: "outline" }), ROW_BADGE_TEXT)}>
+                        <TimeIcon aria-hidden />
                         {subtask.when.time}
                       </span>
                     </DemoTooltip>
                   </span>
                 )}
                 {subtask.rolls && (
-                  <span className="mt-1.5 flex flex-wrap items-center gap-1">
-                    <DemoTooltip label="Scheduled for this day">
-                      <span
-                        className={cn(
-                          badgeVariants({ variant: "outline" }),
-                          "num gap-1 text-2xs font-normal",
-                        )}
-                      >
-                        <CalendarClock className="size-2.5" aria-hidden />
-                        <span data-roll-date>{subtask.rolls[0]}</span>
-                      </span>
-                    </DemoTooltip>
+                  <span className={ROW_BADGES}>
                     <span data-roll-overflow hidden className="contents">
                       <DemoTooltip
                         label="Scheduled Wed, Sep 9 · In Overflow since today"
@@ -285,13 +282,20 @@ export function StoryPanel({
                           aria-hidden
                           className={cn(
                             badgeVariants({ variant: "outline" }),
-                            "nums text-2xs font-normal text-muted-foreground",
+                            ROW_BADGE_TEXT,
+                            "text-foreground/60",
                           )}
                         >
                           since today
                         </span>
                       </DemoTooltip>
                     </span>
+                    <DemoTooltip label="Scheduled for this day">
+                      <span className={cn(badgeVariants({ variant: "outline" }), ROW_BADGE_TEXT)}>
+                        <ScheduledIcon aria-hidden />
+                        <span data-roll-date>{subtask.rolls[0]}</span>
+                      </span>
+                    </DemoTooltip>
                   </span>
                 )}
               </span>
@@ -302,3 +306,10 @@ export function StoryPanel({
     </div>
   );
 }
+
+const SubtasksIcon = ROW_ICONS.subtasks;
+const RolledIcon = ROW_ICONS.rolled;
+const RecurringIcon = ROW_ICONS.recurring;
+const LocationIcon = ROW_ICONS.location;
+const ScheduledIcon = ROW_ICONS.scheduled;
+const TimeIcon = ROW_ICONS.time;

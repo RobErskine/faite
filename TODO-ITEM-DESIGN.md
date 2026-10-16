@@ -363,7 +363,18 @@ decisions it builds on.
   2px, P4 dotted 2px (`docs/DESIGN.md` §7, 2026-09-10). Hue was dropped so red
   can mean urgency alone — `docs/DESIGN.md` §7, decision A. See
   `src/lib/priority.ts`.
-- `done` is struck through; `dropped` is dimmed only.
+- `done` is struck through; `dropped` is dimmed only. Both are
+  `text-foreground/60` (5.1:1 or better on every surface, hover included —
+  Won't do was muted ink at 70%, 2.71:1), the strike sits on the title text
+  rather than the whole button (it used to strike the label chips too), and
+  the priority rail drops to 40% of its opacity (EI-395).
+- **Completing a row is a beat, not a disappearance** (EI-395,
+  `docs/DESIGN.md` §4 "The completion beat"). The column holds the ticked
+  row checked and struck for 260ms after the write lands, fades it, then
+  closes the gap on a transform; under View: All it slides to its new place.
+  The column does it (`use-completion-beat.ts`), not the card, because the
+  card is what `buildBoard` stops handing over. Keyboard focus moves to the
+  row that takes its place. Undo wins at any moment.
 - The unchecked checkbox uses `border-muted-foreground`, not `border-input`.
   `--input` is `oklch(0.922 0 0)` in the light theme — near-white, fine on a
   plain surface and invisible over a colored group wash. It is square
@@ -383,6 +394,26 @@ decisions it builds on.
   EI-391): the missed-deadline badge "Deadline Oct 13" is named "Deadline
   Oct 13, overdue by 2 days", not "Overdue by 2 days: Oct 13", which a
   voice-control user saying "Deadline" could not match.
+- **One badge grammar, one anatomy** (EI-395, `src/lib/row-grammar.ts`,
+  `docs/DESIGN.md` §2). `num` only for a badge that is a bare count ("1/3");
+  a date, time or phrase is `nums`. Every badge is `text-2xs` but the two red
+  verdicts (`text-xs`, no icon). Every row glyph is 12px in muted ink, one
+  icon per meaning (`ROW_ICONS`: the time is a clock, a deadline ahead a
+  flag, Repeat only "repeats"). Badges run verdict → when → progress →
+  identity (`ROW_BADGE_ORDER`), and `todoRowName` reads in that order. The
+  board card, ⌘K, the Overdrive card and the drag chip (`drag-chip.tsx`) all
+  build the row from `todo-row-parts.tsx`, with the facts from
+  `todoRowFacts`, and vary only density. A to-do with no list is "Backlog"
+  wherever a row names its list (`NO_LIST_NAME`). A recurring occurrence
+  shows none of its series' deadline, sub-tasks or attachments by design:
+  `cloneOccurrence` drops the deadline, and the other two belong to the
+  occurrence's own id.
+- **The touch gutter is 24px** (EI-395). On a phone a column's edge is the
+  screen's and the grip is always visible, so under `pointer: coarse` the
+  row's left padding doubles: the rail steps 4px in, the grip sits at
+  x=10–22, and the checkbox's 24px-wide target runs x=24–48. With a mouse
+  the gutter stays 12px: grip x=0–12, checkbox x=12–36. The two targets meet
+  at one edge and never overlap (`docs/DRAG-AND-DROP.md` §5.4).
 - The three color alphas in `src/lib/colors.ts` are a **ladder**, and the gaps
   are the point: rule 35% / header 12% / card field 5%. Wash and tint were once
   10% and 12%, which is inside the noise — the header and the run below it read
@@ -405,12 +436,17 @@ because it changes what a card sits on and how completing one feels.
   shadow should carry the same spread, not the bare `0 1px 2px` shape.
 - **The completion check-flash is wired** (`--animate-check`, `todo-
   card.tsx`): a spectrum pulse on the checkbox the instant a to-do is
-  marked done, gated on the actual open→done transition (a `wasDoneRef`
-  guard), not on `status === "done"` alone, so an already-done card
-  remounting (tab switch, filter change) never replays it.
+  marked done, gated on the actual open→done transition, not on
+  `status === "done"` alone, so an already-done card remounting (tab
+  switch, filter change) never replays it. Since EI-395 the gate is the
+  render-time `seenStatus` pattern rather than a `wasDoneRef` effect, it
+  also draws the strike, and the column keeps the row on screen long enough
+  for both to be seen (before, the default view unmounted it first).
 - **Every focus ring, including the checkbox and title button, is one
   `focus-ring` utility** (`globals.css`) now — no more per-component
-  `ring-2`/`outline-2` variants drifting apart.
+  `ring-2`/`outline-2` variants drifting apart. (The checkbox actually kept
+  shadcn's 1.97:1 halo until EI-395. The title's outline is
+  `focus-ring-notched`, the same line stepped round the checkbox.)
 - Overlays (the to-do sheet included) dropped shadcn's default filled
   footer bar and label-sized title for a hairline footer and a real
   heading step — see `docs/DESIGN.md`'s new "Overlays" paragraph in §3.

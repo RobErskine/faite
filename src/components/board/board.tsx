@@ -2,14 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { DndContext, DragOverlay, MeasuringStrategy } from "@dnd-kit/core";
-import { GripVertical, MapPin } from "lucide-react";
+import { GripVertical } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useViewport } from "@/lib/use-viewport";
 import { BACKLOG } from "@/lib/overdrive";
 import { OVERFLOW } from "@/lib/scheduling";
 import { LIFTED } from "@/lib/drop-animation";
 import { tint } from "@/lib/colors";
-import { priorityRail, railBorderStyle } from "@/lib/priority";
 import { FONT_STORAGE_KEY, normalizeFontPairing } from "@/lib/fonts";
 import {
   DARK_CLASS,
@@ -36,6 +35,8 @@ import { SettingsSheet } from "@/components/settings/settings-sheet";
 import { CommandPalette } from "./command-palette";
 import { DaySheet } from "./day-sheet";
 import { OverdriveOverlay } from "./overdrive-overlay";
+import { type TodoRowSources } from "./todo-row-parts";
+import { DragChip } from "./drag-chip";
 import { SessionProvider } from "@/components/auth/session-provider";
 import { DesktopAuthProvider } from "@/components/desktop/desktop-auth-provider";
 import { SyncProvider } from "@/components/sync/sync-provider";
@@ -310,13 +311,26 @@ export function Board() {
    */
   const hotkeys: Hotkey[] = ui.hotkeys;
 
-  const activeRail = priorityRail(ui.activeTodo?.priority ?? null);
+  /**
+   * The board's per-to-do maps, as one object for the surfaces that show a
+   * to-do off the board — ⌘K, Overdrive, the drag chip — so each builds the
+   * row from the same facts the board card does (`todoRowFacts`, EI-395).
+   */
+  const rowSources = useMemo(
+    (): TodoRowSources => ({
+      recurrenceSummaries: data.recurrenceSummaries,
+      missedCounts: data.recurrenceExpansion?.missedCounts,
+      subtaskCounts: data.subtaskCounts,
+      attachmentCounts: data.attachmentCounts,
+    }),
+    [data.recurrenceSummaries, data.recurrenceExpansion, data.subtaskCounts, data.attachmentCounts],
+  );
 
   /**
    * dnd-kit screen-reader announcements (EI-84) — string-building lives in
    * `dnd-announcements.ts` so it's testable without React; this just supplies
    * the same board data `DndContext` below already reads. A `useMemo` before
-   * the loading guard, like `hotkeys`/`activeRail` above — hooks can't follow
+   * the loading guard, like `hotkeys`/`rowSources` above — hooks can't follow
    * a conditional return, so `data.board` may still be null here, hence the
    * empty fallback (never actually reached by a drag before `ready`).
    */
@@ -426,58 +440,19 @@ export function Board() {
       {/*
         The overlay follows the cursor at a slight tilt and scale so the item
         reads as lifted off the board rather than sliding along it — then
-        settles flat as it flies into its new slot on release.
+        settles flat as it flies into its new slot on release. A to-do's chip
+        is `DragChip`: the row's own anatomy, at chip density.
       */}
       <DragOverlay dropAnimation={actions.dropAnimation}>
         {ui.activeTodo && (
-          <div
-            // The lift is inline rather than `rotate-2 scale-[1.02]` so the drop
-            // animation knows exactly which properties it is unwinding. Given
-            // classes, whether Tailwind emits `transform` or the individual
-            // `rotate`/`scale` properties decides whether the animation
-            // composites or doubles the tilt — not a thing to leave to chance.
-            style={{
-              ...LIFTED,
-              // The card's rail, but riding the chip's existing border rather
-              // than an absolutely positioned span: a standalone rounded box has
-              // no column edge to keep true and no layout to shift, so a border
-              // is simply the right form here. Both surfaces read their width,
-              // opacity and rhythm from PRIORITY_RAILS, so they cannot
-              // drift in value. Opacity rides the color via color-mix here
-              // because the chip's own opacity is the lift animation's.
-              borderLeftWidth: activeRail?.width,
-              borderLeftStyle: activeRail ? railBorderStyle(activeRail) : undefined,
-              borderLeftColor: activeRail
-                ? `color-mix(in oklch, var(--foreground) ${Math.round(activeRail.opacity * 100)}%, transparent)`
-                : undefined,
-            }}
-            className={cn(
-              "flex max-w-xs cursor-grabbing items-center gap-1 rounded-md border",
-              "bg-background px-2 py-1.5 text-sm shadow-xl ring-2 ring-primary/40",
-            )}
-          >
-            <GripVertical className="size-3 shrink-0 text-muted-foreground" aria-hidden />
-            {ui.activeTodo.location && (
-              <MapPin className="size-3 shrink-0 text-muted-foreground" aria-hidden />
-            )}
-            {/*
-              Truncated, not wrapped like the card: the overlay wrapper has to
-              keep a stable measurable box or the drop animation mis-measures its
-              flight (§4.7), and a chip that changed height mid-drag would.
-            */}
-            <span className="truncate">{ui.activeTodo.title}</span>
-            {/*
-              How many are coming with it (EI-194). A badge INSIDE the existing
-              wrapper, `shrink-0` so the box stays the size the drop animation
-              measured — a fan of stacked ghost cards would grow the wrapper's
-              rect mid-drag and break the flight (§4.7).
-            */}
-            {(ui.activeSelectionIds?.length ?? 0) > 1 && (
-              <span className="num shrink-0 rounded-full bg-primary px-1.5 text-2xs font-medium text-primary-foreground">
-                {ui.activeSelectionIds!.length}
-              </span>
-            )}
-          </div>
+          <DragChip
+            todo={ui.activeTodo}
+            labels={data.labels}
+            reminderPresets={data.reminderPresets}
+            ctx={data.ctx}
+            rowSources={rowSources}
+            selectionCount={ui.activeSelectionIds?.length ?? 1}
+          />
         )}
         {ui.activeList && (
           <div
@@ -640,6 +615,7 @@ export function Board() {
         labels={data.labels}
         reminderPresets={data.reminderPresets}
         recurrenceSummaries={data.recurrenceSummaries}
+        rowSources={rowSources}
         tabs={data.tabs}
         settings={data.settings}
         activeTabId={data.activeTabId}
@@ -729,6 +705,7 @@ export function Board() {
       backlogListId={data.backlogList?.id ?? ""}
       labels={data.labels}
       reminderPresets={data.reminderPresets}
+      rowSources={rowSources}
       ctx={data.ctx}
       onClose={() => ui.setOverdriveSource(null)}
       onVerdict={actions.handleOverdriveVerdict}

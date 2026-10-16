@@ -27,6 +27,13 @@ function Checkbox({ className, ...props }: CheckboxPrimitive.Root.Props) {
           so it cannot depend on the backdrop to be seen.
         */
         /*
+          Focus is the board's one `focus-ring` (globals.css; docs/DESIGN.md
+          §3), not shadcn's `border-ring ring-3 ring-ring/50`. That halo is the
+          ring color at 50% and measured 1.97:1 against the page — under the
+          3:1 a focus indicator needs — and it was the one control on the row
+          whose focus looked different from its neighbors' (EI-395).
+        */
+        /*
           `pointer-coarse:` grows the `::after` hit area to a 44×44
           WCAG/HIG-comfortable square. 15px, not 14 (`-inset-3.5`): an
           absolute box is placed from the PADDING box, inside the 1px border,
@@ -37,7 +44,7 @@ function Checkbox({ className, ...props }: CheckboxPrimitive.Root.Props) {
           axis-specific forms target the same property, so mixing them here
           would leave whichever one is undetected silently in the DOM.
         */
-        "peer relative flex size-4 shrink-0 items-center justify-center rounded-none border border-muted-foreground transition-colors outline-none group-has-disabled/field:opacity-50 after:absolute after:-inset-x-3 after:-inset-y-2 pointer-coarse:after:-inset-x-[15px] pointer-coarse:after:-inset-y-[15px] focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 aria-invalid:aria-checked:border-primary dark:bg-input/30 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 data-checked:border-primary data-checked:bg-primary data-checked:text-primary-foreground dark:data-checked:bg-primary",
+        "peer relative flex size-4 shrink-0 items-center justify-center rounded-none border border-muted-foreground transition-colors focus-ring group-has-disabled/field:opacity-50 after:absolute after:-inset-x-3 after:-inset-y-2 pointer-coarse:after:-inset-x-[15px] pointer-coarse:after:-inset-y-[15px] disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 aria-invalid:aria-checked:border-primary dark:bg-input/30 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 data-checked:border-primary data-checked:bg-primary data-checked:text-primary-foreground dark:data-checked:bg-primary",
         className
       )}
       {...props}

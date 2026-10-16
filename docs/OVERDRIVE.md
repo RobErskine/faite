@@ -892,7 +892,7 @@ syncs like anything else.
 | `lib/dev-seed.ts` | `seedOverflow()` — the dev-only Overflow-pile generator |
 | `components/board/overdrive-button.tsx` | `OverdriveButton` (Overflow's footer entry) + `DayOverdriveButton` (a day's header `actions` entry, EI-253) |
 | `components/board/overdrive-overlay.tsx` | the Dialog, the keydown handler, the date picker, the finish screen, the persistent toast, the blocking flick transition |
-| `components/board/overdrive-card.tsx` | the presentational card — progress readout, title, description, list/scheduled line, `TodoMetaBadges` (labels + the Overflow age, "N days"). No drag source, no checkbox, no nav stop — the whole reason it's not a reuse of `TodoCard` |
+| `components/board/overdrive-card.tsx` | the presentational card — progress readout, title with the row's glyphs (`TitleMarkers` at 16px: ↳, the deadline flag, repeat, pin), description, list/scheduled line ("Backlog" for a to-do with no list, `NO_LIST_NAME`), and the row's badge line (`TodoMetaBadges`: verdicts, time, sub-task and attachment counts, labels, the Overflow age "since Oct 6 · 9 days"). The priority rail is the card's left border (`railBorder`). Facts come from `todoRowFacts`, as on the board card (EI-395; docs/DESIGN.md §2). No drag source, no checkbox, no nav stop — the whole reason it's not a reuse of `TodoCard` |
 | `components/board/use-board-actions.ts` | `handleOverdriveVerdict` — the one write path, returns `{ undoId, label }` |
 | `components/board/use-board-ui-state.ts` | `overdriveSource: OverdriveSource \| null` + `computeModalOpen` |
 | `components/board/use-board-data.ts` | `overdriveDayTodos` — the day queue/count's one shared derivation (EI-253) |

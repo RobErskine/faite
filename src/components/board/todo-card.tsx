@@ -21,6 +21,7 @@ import { cardStop, navKeyOf, type NavKey } from "@/lib/column-nav";
 import { placeSettled } from "@/lib/board";
 import { formatCompletionStamp } from "@/lib/event-time";
 import { TITLE_CLAMP_CLASS } from "@/lib/title";
+import { rowTransition } from "@/lib/completion-beat";
 import { rollStateFor } from "@/lib/rollover-events";
 import type { Label as LabelRecord, List, ReminderPreset, Todo } from "@/lib/schema";
 import type { PlacementContext } from "@/lib/scheduling";
@@ -93,6 +94,12 @@ interface TodoCardProps {
    * in layout so the column does not resize under the animation.
    */
   isLanding?: boolean;
+  /**
+   * This row has been completed and is fading out of a view that does not
+   * show finished work (EI-395, `use-completion-beat.ts`). Inert while it
+   * goes, so nothing can be clicked on a row that is no longer there.
+   */
+  leaving?: boolean;
   /**
    * False where the card cannot be dragged — the day sheet's timeline, which
    * renders outside the board's DndContext. Drops the grip and the grab cursor,
@@ -169,6 +176,7 @@ export function TodoCard({
   isAway,
   showInsertionLine,
   isLanding,
+  leaving = false,
   draggable = true,
   onToggle,
   onOpen,
@@ -283,27 +291,32 @@ export function TodoCard({
   }, [todo.title]);
 
   /**
-   * True for one animation cycle right after THIS card is completed — not
+   * True once THIS card has watched its to-do go from open to done — not
    * simply "status is done", which is also true every time an already-done
-   * card remounts (a tab switch, a filter change). `wasDoneRef` is what
-   * tells a fresh completion apart from a card that was already settled
-   * when it mounted, so the flash plays once, at the moment it means
-   * something. Drives `--animate-check` (docs/DESIGN.md §4), one of the
-   * spectrum's four allowed places — the same signal the hairline and the
-   * focus ring use, here for "you just finished this."
+   * card mounts (a tab switch, a filter change, a reload). An animation keys
+   * on a transition, never on a state (docs/DESIGN.md §4), so a card that
+   * mounts done renders the static strike and no flash.
+   *
+   * Render-time, not an effect (the `lastSeen` pattern, `.ai/lessons.md`):
+   * an effect lands a frame after the checked box has already painted, and
+   * the flash would start late. It clears when the strike finishes drawing,
+   * and the row swaps to a plain `line-through` it cannot tell apart (the
+   * drawn line sits where the face's own strike does). Clearing matters:
+   * under View: All the finished row then MOVES, React re-inserts its node,
+   * and a CSS animation still on it would play a second time.
+   *
+   * Drives `--animate-check` on the box (one of the spectrum's four places)
+   * and `--animate-strike` on the title: the completion beat (EI-395). The
+   * column holds the row in place long enough for both to be seen
+   * (`use-completion-beat.ts`).
    */
-  const wasDoneRef = useRef(todo.status === "done");
+  const [seenStatus, setSeenStatus] = useState(todo.status);
   const [justCompleted, setJustCompleted] = useState(false);
-  useEffect(() => {
-    const isDone = todo.status === "done";
-    if (isDone && !wasDoneRef.current) {
-      setJustCompleted(true);
-      const timer = setTimeout(() => setJustCompleted(false), 200);
-      wasDoneRef.current = isDone;
-      return () => clearTimeout(timer);
-    }
-    wasDoneRef.current = isDone;
-  }, [todo.status]);
+  if (todo.status !== seenStatus) {
+    setSeenStatus(todo.status);
+    setJustCompleted(seenStatus === "open" && todo.status === "done");
+  }
+  const settled = todo.status !== "open";
 
   return (
     /*
@@ -327,7 +340,18 @@ export function TodoCard({
     >
     <ContextMenuTrigger
       ref={setNodeRef}
-      style={{ transform: CSS.Translate.toString(transform), transition }}
+      /*
+        `rowTransition` composes dnd-kit's `transition` with the wash and the
+        fade rather than letting it replace them (EI-395): an inline
+        `transition` shorthand overrides the whole class list, so the hover
+        wash used to snap. The two durations are CSS variables, set by the
+        classes below, so `hover:` and `leaving` can still change them.
+      */
+      style={{
+        transform: CSS.Translate.toString(transform),
+        transition: rowTransition(transition),
+      }}
+      inert={leaving || undefined}
       /*
         Mouse and touch drags start anywhere on the row. Only those two
         activators move here — `attributes` (role, tabIndex,
@@ -372,7 +396,7 @@ export function TodoCard({
           unmodified branch below deliberately does NOT stop propagation.
         - The checkbox still toggles on a plain click, and on a modified one
           selects instead of ticking — one uniform rule for the whole row,
-          with the `after:-inset-x-1` hit-area geometry left alone.
+          with the `after:-inset-x-px` hit-area geometry left alone.
 
         macOS turns Ctrl+click into `contextmenu` and suppresses the `click`
         entirely, so `ctrlKey` is effectively the Windows/Linux path.
@@ -454,8 +478,15 @@ export function TodoCard({
 
           `pl-3` is the grip's 12px gutter; the checkbox sits at `left-3`,
           immediately after it.
+
+          On a coarse pointer the gutter is 24px (EI-395): the rail steps 4px
+          in from the edge (on a phone the column's edge is the screen's),
+          and the always-visible grip sits 10px in, so its dots clear even a
+          P1's 5px rail by 4px instead of touching a P3/P4 rail. The checkbox
+          moves with it and keeps its 24px target. A mouse keeps the 12px
+          gutter, where the grip is hidden until hover.
         */
-        "group relative block py-2 pl-3 pr-2",
+        "group relative block py-2 pl-3 pr-2 pointer-coarse:pl-6",
         /*
           44px rows on a coarse pointer (EI-388), the iOS list-row floor. The
           title below fills the row's height, so the row IS the tap target;
@@ -467,17 +498,19 @@ export function TodoCard({
         draggable && "cursor-grab active:cursor-grabbing",
         "focus-ring",
         // Opacity transitions alongside the background so the row fades in when
-        // a landing completes rather than popping. Hover only changes the
-        // background, so naming both properties loses nothing over
-        // `transition-colors`.
+        // a landing completes rather than popping, and out when a completed
+        // row leaves (EI-395).
         //
         // The wash arrives on `--dur-fast` and leaves on `--dur-base`. The
         // asymmetry is the point: sweeping a pointer down a column fades every
         // row it crosses both in and out, and at one speed that reads as a
         // strobe. Leaving slower turns the rows behind the cursor into a wake
         // instead. Both ends stay inside the budget (docs/DESIGN.md §4).
-        "transition-[background-color,opacity] duration-(--dur-base)",
-        "hover:duration-(--dur-fast)",
+        //
+        // The transition list itself is the inline `rowTransition` above;
+        // these set its two durations.
+        "[--row-wash-dur:var(--dur-base)] [--row-fade-dur:var(--dur-base)]",
+        "hover:[--row-wash-dur:var(--dur-fast)]",
         "hover:bg-foreground/5 focus-within:bg-foreground/5",
         // The dragged row stays in place as a faint ghost so the list does not
         // visibly collapse out from under the cursor.
@@ -494,6 +527,10 @@ export function TodoCard({
         // Last, so it wins over the dragging and away states.
         isLanding && "opacity-0",
         isAway && !isLanding && "opacity-60",
+        // The completion beat's exit: a fade on `--dur-fast`, faster than the
+        // strike it follows. Inert above, so it takes no input while it goes.
+        // Reduced motion never reaches this state; the row leaves in one step.
+        leaving && "pointer-events-none opacity-0 [--row-fade-dur:var(--dur-fast)]",
       )}
     >
       {/*
@@ -522,7 +559,7 @@ export function TodoCard({
         The rail is `aria-hidden`; the level reaches screen readers through the
         title button's name below (`todoRowName`).
       */}
-      <PriorityRail priority={todo.priority} />
+      <PriorityRail priority={todo.priority} settled={settled} className="pointer-coarse:left-1" />
 
       {/*
         Insertion indicator: a solid line showing exactly where the dragged item
@@ -561,16 +598,19 @@ export function TodoCard({
         `before:inset-x-0` is not tidiness. DragGrip expands its hit area to
         24×24 via `::before`, and an `opacity-0` element still receives pointer
         events — so out of flow, that expansion would sit over the checkbox and
-        silently eat its clicks. Vertical only.
+        silently eat its clicks. Vertical only: the grip's target is its own
+        12×24 box, x=0–12, and the checkbox's starts at x=12 (EI-395), so the
+        two meet without either covering the other.
       */}
       {draggable && (
       <DragGrip
         className={cn(
-          // `top-2.5` centers a 12px glyph on the first line of `text-sm
-          // leading-snug` inside `py-1.5`.
+          // `top-3` centers a 12px glyph on the 19.25px first line of
+          // `text-sm leading-snug` inside the row's `py-2`.
           "absolute left-0 top-3",
-          // Follows the first line down by the 4px a coarse row adds above it.
-          "pointer-coarse:top-4",
+          // Follows the first line down by the 4px a coarse row adds above it,
+          // and steps in off the rail (the coarse gutter, above).
+          "pointer-coarse:top-4 pointer-coarse:left-2.5",
           // Full strength rather than DragGrip's resting /30: at rest it is not
           // visible at all, so there is nothing left for a faint state to do.
           "text-muted-foreground transition-opacity",
@@ -594,24 +634,25 @@ export function TodoCard({
 
       {/*
         Out of flow, in the gutter right after the grip, so the title can wrap
-        beneath it. `top-2` centers a 16px box on the first line of `text-sm
-        leading-snug` inside `py-1.5`.
+        beneath it. `top-2.5` centers a 16px box on the 19.25px first line of
+        `text-sm leading-snug` inside the row's `py-2`.
 
-        `after:-inset-x-1` narrows the shadcn base's 12px horizontal hit
-        expansion to 4px. Left at 12px it would reach back to x=0 and cover the
-        grip entirely, so a click meant for the grip would toggle done. At 4px
-        it stops clear of the grip's glyph, which is painted between x≈4.5 and
-        x≈7.5: the target starts at x=9.
+        `after:-inset-x-px` narrows the shadcn base's 12px horizontal hit
+        expansion to the box's own edge. Left at 12px it would reach back to
+        x=0 and cover the grip entirely, so a click meant for the grip would
+        toggle done. An absolute box is placed from its parent's PADDING box,
+        inside the 1px border, so `-1px` puts the target's left edge exactly
+        on the box's: x=12, where the grip's 12px target ends (EI-395). It
+        used to be `-inset-x-1`, x=9, which took the grip's last 3px and left
+        it a 9×24 target.
 
         `after:w-6` is what makes it 24px wide, the WCAG 2.2 minimum (EI-382).
-        An absolute box is placed from its parent's PADDING box, inside the
-        1px border, so `-inset-x-1` alone spanned 14 + 2×4 = 22px, and
-        Lighthouse measured 22×30. With `left`, `right` and `width` all set,
-        CSS drops `right` (in LTR), so the left edge holds at x=9 and the
-        extra 2px grow rightward, toward the title's 36px first-line indent
-        and away from the grip: x=9 to x=33.
+        With `left`, `right` and `width` all set, CSS drops `right` (in LTR),
+        so the left edge holds and the target runs x=12 to x=36 — exactly to
+        the title's first letter, at the 36px first-line indent. On a coarse
+        pointer the whole gutter is 12px wider, so it runs x=24 to x=48.
 
-        `pointer-coarse:after:-inset-x-1` restates the same narrowing under
+        `pointer-coarse:after:-inset-x-px` restates the same narrowing under
         `ui/checkbox.tsx`'s own `pointer-coarse:` hit-area growth (P1) —
         without it, the coarse-pointer rule would win on specificity-tie
         source order (it's declared later in the stylesheet) and silently
@@ -637,10 +678,9 @@ export function TodoCard({
           location pin inside the title button.
 
           The positioning moves to this wrapper, but the HIT AREA does not:
-          `after:-inset-x-1` stays on the checkbox and is measured from the
-          checkbox's own box, so the 4px expansion still stops clear of the
-          grip's glyph. That boundary is what its regression test protects,
-          and it is unchanged.
+          `after:-inset-x-px` stays on the checkbox and is measured from the
+          checkbox's own box, so the target still starts where the grip's
+          ends. That boundary is what its regression test protects.
         */}
         <TooltipTrigger
           disabled={!completionStamp}
@@ -656,10 +696,16 @@ export function TodoCard({
               `pointer-coarse:top-3.5` keeps the box on the first line of a
               44px row (EI-388), and puts the checkbox's 44px-tall coarse
               `::after` exactly on the row: 14 + 16 + 14.
+
+              `z-[1]`: the title button is `position: relative` now (its
+              notched focus outline is drawn by pseudo-elements, EI-395), and
+              a positioned box later in the DOM paints, and takes clicks, over
+              an earlier one. Without this the title would swallow every
+              click on the checkbox it sits under.
             */
             <span
               ref={checkboxRef}
-              className="absolute left-3 top-2.5 inline-flex pointer-coarse:top-3.5"
+              className="absolute left-3 top-2.5 z-[1] inline-flex pointer-coarse:left-6 pointer-coarse:top-3.5"
             />
           }
         >
@@ -672,7 +718,7 @@ export function TodoCard({
             // drag surface. It still drags if you pull from it; it just should not
             // advertise that over being a checkbox.
             className={cn(
-              "cursor-pointer after:-inset-x-1 after:w-6 pointer-coarse:after:-inset-x-1",
+              "cursor-pointer after:-inset-x-px after:w-6 pointer-coarse:after:-inset-x-px",
               justCompleted && "animate-check motion-reduce:animate-none",
             )}
           />
@@ -730,7 +776,18 @@ export function TodoCard({
           // Stated rather than inherited: dragging is the primary gesture over
           // the title now, and a click still opens the sheet.
           draggable && "cursor-grab active:cursor-grabbing",
-          "focus-ring rounded",
+          /*
+            The title's focus outline goes around the TITLE, not around the
+            checkbox sitting in its top-left corner (EI-395). A plain outline
+            on this full-width button enclosed the checkbox, so "open" and
+            "complete" read as one control; `focus-ring-notched`
+            (globals.css) draws the same 2px spectrum line around an L that
+            steps round the checkbox, which has its own ring. The hit area is
+            unchanged — only the drawing moved. `--notch-h` is the first
+            line's box: the padding above it plus one line height.
+          */
+          "focus-ring-notched [--notch-h:calc(0.25rem+1lh+2px)]",
+          "pointer-coarse:[--notch-h:calc(0.75rem+1lh+2px)]",
           /*
             Two settled statuses, two different reads — worth the extra branch
             now that the "Marked as won't do" filter can put them side by side.
@@ -738,11 +795,17 @@ export function TodoCard({
             A strike-through means "this got done"; wearing it, `dropped` would
             claim credit for work that was abandoned, which is the exact
             distinction `todoStatusSchema` refuses to collapse. Both dim, since
-            neither is live work; only `done` is struck.
+            neither is live work; only `done` is struck (on the title text
+            below, not the badges).
+
+            One quiet ink for both, `text-foreground/60` (EI-395): the board's
+            "quiet ink that must pass" (docs/DESIGN.md §7, EI-378). It clears
+            4.5:1 on the hover wash, today's card, Overflow and a list's wash
+            in both themes (worst 4.90:1 light, 5.71:1 dark). Won't do used to
+            be muted ink at 70% opacity, 2.71:1 — dim, and unreadable with it.
+            It is still plainly dimmer than an open title (17:1).
           */
-          todo.status !== "open" && "text-muted-foreground",
-          todo.status === "done" && "line-through",
-          todo.status === "dropped" && "opacity-70",
+          settled && "text-foreground/60",
         )}
       >
         {/*
@@ -784,7 +847,28 @@ export function TodoCard({
                   recurrenceSummary={recurrenceSummary}
                   rolledFrom={rolledFrom}
                 />
-                {todo.title}
+                {/*
+                  The strike sits on the title text alone. On the button it
+                  also struck every label chip and badge below, which read as
+                  "this label was removed". A done row that this card watched
+                  being completed draws its strike left to right
+                  (`strike-draw`, `--animate-strike`); one that mounted done
+                  gets the static `line-through`.
+                */}
+                <span
+                  data-todo-title-text
+                  onAnimationEnd={(e) => {
+                    if (e.animationName === "strike") setJustCompleted(false);
+                  }}
+                  className={cn(
+                    todo.status === "done" &&
+                      (justCompleted
+                        ? "strike-draw animate-strike motion-reduce:animate-none"
+                        : "line-through"),
+                  )}
+                >
+                  {todo.title}
+                </span>
               </span>
             }
           />

@@ -18,6 +18,7 @@ import { prefersReducedMotion } from "@/lib/reduced-motion";
 import type { Label as LabelRecord, List, ReminderPreset, Tab, Todo } from "@/lib/schema";
 import { fetchListSuggestions } from "@/lib/smart-sort";
 import { suggestedListFor } from "@/lib/suggested-list";
+import { NO_LIST_NAME } from "@/lib/row-grammar";
 import { OVERFLOW, toCivilDate, type PlacementContext } from "@/lib/scheduling";
 import { dayColumnId, listColumnId, overflowColumnId } from "@/lib/board";
 import { isTextEntry, undoById } from "@/lib/undo";
@@ -44,6 +45,7 @@ import {
 import { civilDateToLocalDate } from "./date-nav";
 import { ListField } from "./list-field";
 import { OverdriveCard } from "./overdrive-card";
+import type { TodoRowSources } from "./todo-row-parts";
 import { outcomeToast } from "./outcome-toast";
 
 /**
@@ -165,6 +167,11 @@ export interface OverdriveOverlayProps {
   labels: LabelRecord[];
   /** Named reminder times (EI-106 P5) — see `TodoMetaBadges`. */
   reminderPresets?: ReminderPreset[];
+  /**
+   * The board's per-to-do maps (counts, series summaries), so the card shows
+   * every part the board row does (EI-395) — see `todoRowFacts`.
+   */
+  rowSources?: TodoRowSources;
   ctx: PlacementContext;
   onClose: () => void;
   /** `use-board-actions.ts`'s `handleOverdriveVerdict` — the one write path
@@ -240,6 +247,7 @@ function OverdriveOverlayContent({
   backlogListId,
   labels,
   reminderPresets,
+  rowSources,
   ctx,
   onClose,
   onVerdict,
@@ -682,7 +690,7 @@ function OverdriveOverlayContent({
     ? pickedList
       ? `Move to ${pickedList.name}`
       : "Pick a list"
-    : `Back to ${list ? list.name : "Backlog"}`;
+    : `Back to ${list ? list.name : NO_LIST_NAME}`;
 
   return (
     <Dialog
@@ -901,6 +909,7 @@ function OverdriveOverlayContent({
                     list={transitioning ? transitioning.list : list}
                     labels={labels}
                     reminderPresets={reminderPresets}
+                    rowSources={rowSources}
                     ctx={ctx}
                     index={transitioning ? transitioning.index : session.index}
                     total={transitioning ? transitioning.total : session.queue.length}

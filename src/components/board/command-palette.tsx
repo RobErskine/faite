@@ -1,6 +1,7 @@
 "use client";
 
 import { proposeListForNewTodo } from "@/lib/smart-sort";
+import { NO_LIST_NAME } from "@/lib/row-grammar";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { defaultFilter } from "cmdk";
@@ -26,7 +27,6 @@ import { createUndoStep, pushUndo, undoById } from "@/lib/undo";
 import { deleteListWithUndo } from "./list-actions";
 import { createTabWithUndo, deleteTabWithUndo } from "./tab-actions";
 import { todayIn } from "@/lib/scheduling";
-import { rollStateFor, type RollState } from "@/lib/rollover-events";
 import { formatCompletionStamp } from "@/lib/event-time";
 import { effectiveListColor } from "@/lib/colors";
 import {
@@ -47,7 +47,15 @@ import {
   type PaletteCommandCtx,
   type PaletteEntryMode,
 } from "@/lib/command-registry";
-import { PriorityRail, TitleMarkers, TodoMetaBadges, todoRowName } from "./todo-row-parts";
+import {
+  PriorityRail,
+  TitleMarkers,
+  TodoMetaBadges,
+  todoRowFacts,
+  todoRowName,
+  type TodoRowFacts,
+  type TodoRowSources,
+} from "./todo-row-parts";
 import { TITLE_CLAMP_CLASS } from "@/lib/title";
 import type {
   Label as LabelRecord,
@@ -82,6 +90,12 @@ interface CommandPaletteProps {
    * same reason `TodoCard` takes it as a prop: only the template row knows
    * its own rule. */
   recurrenceSummaries?: Map<string, string>;
+  /**
+   * The board's other per-to-do maps — missed occurrences, sub-task and
+   * attachment counts — so a result row shows every part the board row does
+   * (EI-395; it used to drop the counts). See `todoRowFacts`.
+   */
+  rowSources?: TodoRowSources;
   /** Opens a search hit. Board owns which to-do the sheet is showing. */
   onSelectTodo: (todo: Todo) => void;
   /** Switches the planning half. Board owns where the active tab is stored. */
@@ -163,6 +177,7 @@ export function CommandPalette({
   settings,
   activeTabId,
   recurrenceSummaries,
+  rowSources,
   onSelectTodo,
   onSelectTab,
   onSetTodoStatus,
@@ -222,24 +237,31 @@ export function CommandPalette({
   );
 
   /**
-   * Each hit's place in the Faite Loop — rolled (↳) or in Overflow and for
-   * how long — from `rollStateFor`, the function the board card reads
-   * (EI-387). Search used to show neither, so a to-do nine days into Overflow
-   * looked exactly like one scheduled for today. Built from the same four
-   * settings `contextFromSettings` puts in the board's `ctx`.
+   * Each hit's facts beyond its own fields — its place in the Faite Loop
+   * (rolled ↳, or in Overflow and for how long, EI-387), its series summary,
+   * missed occurrences, sub-task and attachment counts (EI-395) — from
+   * `todoRowFacts`, the derivation the board card's column feeds it. Search
+   * used to show no roll state, so a to-do nine days into Overflow looked
+   * exactly like one scheduled for today; and no counts. The roll state is
+   * built from the same four settings `contextFromSettings` puts in the
+   * board's `ctx`.
    */
-  const rollStates = useMemo(() => {
-    const states = new Map<string, RollState>();
-    if (!settings) return states;
+  const rowFacts = useMemo(() => {
+    const facts = new Map<string, TodoRowFacts>();
+    const sources = { ...rowSources, recurrenceSummaries: rowSources?.recurrenceSummaries ?? recurrenceSummaries };
     const ctx = {
       today,
-      workdaysOnly: settings.workdaysOnly,
-      workdays: settings.workdays,
-      overflowAfterDays: settings.overflowAfterDays,
+      workdaysOnly: settings?.workdaysOnly ?? false,
+      workdays: settings?.workdays ?? [],
+      overflowAfterDays: settings?.overflowAfterDays ?? 0,
     };
-    for (const todo of results) states.set(todo.id, rollStateFor(todo, ctx));
-    return states;
-  }, [results, settings, today]);
+    for (const todo of results) {
+      const row = todoRowFacts(todo, ctx, sources);
+      // No settings, no loop: the roll state needs the user's rules.
+      facts.set(todo.id, settings ? row : { ...row, rolledFrom: undefined, overflow: undefined });
+    }
+    return facts;
+  }, [results, settings, today, rowSources, recurrenceSummaries]);
 
   /**
    * Quick-add's "@list" mention candidates — color-resolved the same way
@@ -842,7 +864,10 @@ export function CommandPalette({
               <>
                 <CommandGroup heading="To-dos">
                   {results.map((todo) => {
-                    const { rolledFrom, overflow } = rollStates.get(todo.id) ?? {};
+                    const facts = rowFacts.get(todo.id) ?? {};
+                    // A to-do with no list is in Backlog (`buildBoard`), and
+                    // the row says so, in the word Overdrive uses (EI-395).
+                    const listName = listNameById.get(todo.listId ?? "") ?? NO_LIST_NAME;
                     return (
                       <CommandItem
                         key={todo.id}
@@ -881,20 +906,16 @@ export function CommandPalette({
                             todo,
                             labels,
                             today,
-                            recurrenceSummary: todo.recurrenceParentId
-                              ? recurrenceSummaries?.get(todo.recurrenceParentId)
-                              : undefined,
+                            ...facts,
                             reminderPresets,
                             showScheduledDate: true,
-                            rolledFrom,
-                            overflow,
                             completionStamp: formatCompletionStamp(
                               todo.status,
                               todo.completedAt,
                               settings?.timezone ?? "UTC",
                             ),
                           }),
-                          listNameById.get(todo.listId ?? "") ?? "Unfiled",
+                          listName,
                         ].join(", ")}
                         onSelect={() => {
                           onSelectTodo(todo);
@@ -902,28 +923,31 @@ export function CommandPalette({
                         }}
                         className="items-start overflow-hidden py-2 pl-4"
                       >
-                        <PriorityRail priority={todo.priority} />
+                        <PriorityRail
+                          priority={todo.priority}
+                          settled={todo.status !== "open"}
+                        />
                         <span className="min-w-0 flex-1 text-sm leading-snug">
                           <span
                             className={cn(
                               "wrap-break-word",
                               TITLE_CLAMP_CLASS,
-                              todo.status !== "open" && "text-muted-foreground",
-                              todo.status === "done" && "line-through",
-                              todo.status === "dropped" && "opacity-70",
+                              // The board row's settled ink (EI-395): one
+                              // quiet ink that passes, Won't do dim-only.
+                              todo.status !== "open" && "text-foreground/60",
                             )}
                           >
                             <TitleMarkers
                               todo={todo}
                               today={today}
-                              recurrenceSummary={
-                                todo.recurrenceParentId
-                                  ? recurrenceSummaries?.get(todo.recurrenceParentId)
-                                  : undefined
-                              }
-                              rolledFrom={rolledFrom}
+                              recurrenceSummary={facts.recurrenceSummary}
+                              rolledFrom={facts.rolledFrom}
                             />
-                            {todo.title}
+                            {/* The strike on the title text alone, as on the
+                                card: never through the glyphs or badges. */}
+                            <span className={cn(todo.status === "done" && "line-through")}>
+                              {todo.title}
+                            </span>
                           </span>
                           <TodoMetaBadges
                             todo={todo}
@@ -931,11 +955,14 @@ export function CommandPalette({
                             reminderPresets={reminderPresets}
                             today={today}
                             showScheduledDate
-                            overflow={overflow}
+                            overflow={facts.overflow}
+                            missedCount={facts.missedCount}
+                            subtaskCount={facts.subtaskCount}
+                            attachmentCount={facts.attachmentCount}
                           />
                         </span>
                         <span className="ml-auto shrink-0 self-center text-xs text-muted-foreground">
-                          {listNameById.get(todo.listId ?? "") ?? "Unfiled"}
+                          {listName}
                         </span>
                       </CommandItem>
                     );

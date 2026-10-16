@@ -19,8 +19,11 @@ import { cn } from "@/lib/utils";
  * an absolutely positioned `::before` costs nothing in layout, and pointer
  * events on it still resolve to the button.
  *
- * The expansion stops 2px short of the neighboring control on a card, so
- * widening it further would start stealing clicks from the checkbox.
+ * On a column header the expansion stops ~2px short of the neighboring
+ * control, so widening it further would start stealing clicks from it. A
+ * card turns the horizontal expansion off (`before:inset-x-0`): out of flow,
+ * the grip's own 12px box meets the checkbox's target at x=12 and neither
+ * covers the other (`todo-card.tsx`, docs/DRAG-AND-DROP.md §5.4).
  *
  * Hover is a color change, not a background: a filled box around a 12px icon
  * would undo the point of making the mark small.

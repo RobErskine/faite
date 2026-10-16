@@ -119,3 +119,39 @@ export function edge(color: string | null | undefined): string | undefined {
 export function wash(color: string | null | undefined): string | undefined {
   return isTintableColor(color) ? `${color}${WASH_ALPHA}` : undefined;
 }
+
+/**
+ * The share of a label's hue in its chip's text; the rest is `--foreground`.
+ *
+ * Label chips used to set their text in the raw hue, the one place hue
+ * touched text, and a step-9 hue at `text-2xs` measured 1.4–3.9:1 on its own
+ * tint (Amber worst in light, Violet in dark). Mixing the hue into the
+ * foreground keeps the chip reading as its color — the hue still owns the
+ * tint and the edge — while the text inherits the foreground's contrast, in
+ * both themes from one rule, since `--foreground` flips with the theme.
+ *
+ * 30% is checked, not guessed: every preset clears 7.7:1 on its chip over
+ * the page, today's card, Overflow, the hover wash and any list's wash, in
+ * both themes; even pure black and pure white hues clear 5.2:1. At 40% black
+ * in the dark theme fell to 3.6:1. (EI-395, docs/DESIGN.md §1.)
+ */
+export const LABEL_INK_HUE_SHARE = 30;
+
+/** The ink for a label chip's text: its hue, mostly foreground. */
+export function labelInk(color: string | null | undefined): string | undefined {
+  return isTintableColor(color)
+    ? `color-mix(in oklab, ${color} ${LABEL_INK_HUE_SHARE}%, var(--foreground))`
+    : undefined;
+}
+
+/**
+ * A label chip's inline style — tint behind, edge around, `labelInk` on the
+ * text. Shared by the board row, the to-do sheet's label field and the
+ * quick-add preview, so the three chips cannot drift apart.
+ */
+export function labelChipStyle(
+  color: string | null | undefined,
+): { backgroundColor: string; borderColor: string; color: string } | undefined {
+  if (!isTintableColor(color)) return undefined;
+  return { backgroundColor: tint(color)!, borderColor: edge(color)!, color: labelInk(color)! };
+}

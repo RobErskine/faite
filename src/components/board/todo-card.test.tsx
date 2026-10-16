@@ -8,7 +8,7 @@ import { TodoCard, startsDrag } from "./todo-card";
 import { PRIORITY_RAILS } from "@/lib/priority";
 import type { TodoContextActions } from "./todo-card-menu";
 import { cardStop, type NavKey } from "@/lib/column-nav";
-import type { ReminderPreset, Todo } from "@/lib/schema";
+import type { Label as LabelRecord, ReminderPreset, Todo } from "@/lib/schema";
 import type { PlacementContext } from "@/lib/scheduling";
 
 /**
@@ -92,6 +92,8 @@ interface HarnessProps {
   contextActions?: TodoContextActions;
   selectionCount?: number;
   isAway?: boolean;
+  labels?: LabelRecord[];
+  leaving?: boolean;
 }
 
 function Harness({
@@ -112,6 +114,8 @@ function Harness({
   contextActions,
   selectionCount,
   isAway,
+  labels = [],
+  leaving,
 }: HarnessProps) {
   return (
     <TooltipProvider>
@@ -119,7 +123,8 @@ function Harness({
         <SortableContext items={[t.id]}>
           <TodoCard
             todo={t}
-            labels={[]}
+            labels={labels}
+            leaving={leaving}
             reminderPresets={reminderPresets}
             ctx={ctx}
             timezone={timezone}
@@ -218,24 +223,30 @@ describe("the grip", () => {
     const checkbox = document.querySelector<HTMLElement>('[data-slot="checkbox"]')!;
     // The shadcn base expands 12px horizontally, which from `left-3` reaches
     // back over the whole grip — a click meant for the grip would toggle done.
-    expect(checkbox.className).toContain("after:-inset-x-1");
+    // `-inset-x-px` puts the target's left edge on the box's own (x=12),
+    // where the grip's 12px target ends (EI-395). `-inset-x-1` took the
+    // grip's last 3px.
+    expect(checkbox.className).toContain("after:-inset-x-px");
+    expect(checkbox.className).not.toContain("after:-inset-x-1 ");
   });
 
   it("gives the checkbox a full 24px-wide target without moving its left edge", () => {
     /*
      * EI-382. The `::after` is placed from the padding box, inside the 1px
-     * border, so `-inset-x-1` alone spans 14 + 8 = 22px — Lighthouse measured
-     * 22×30. `w-6` sets 24px; with `left` and `width` both set, `right` is
-     * dropped, so the left edge stays 4px out (clear of the grip) and the
-     * extra 2px grow toward the title. jsdom has no layout, so the geometry
-     * is asserted as classes; the browser measurement is in the commit.
+     * border, so an inset alone spans 14px plus the two insets — Lighthouse
+     * measured 22×30 at `-inset-x-1`. `w-6` sets 24px; with `left` and
+     * `width` both set, `right` is dropped, so the left edge holds at the
+     * box's own edge (`-inset-x-px`, EI-395: where the grip's target ends)
+     * and the target runs to the title's first letter. jsdom has no layout,
+     * so the geometry is asserted as classes; the browser measurement is in
+     * the commit.
      */
     render(<Harness />);
     const checkbox = document.querySelector<HTMLElement>('[data-slot="checkbox"]')!;
     const cls = checkbox.className.split(/\s+/);
     expect(cls).toContain("after:w-6");
-    expect(cls).toContain("after:-inset-x-1");
-    expect(cls).toContain("pointer-coarse:after:-inset-x-1");
+    expect(cls).toContain("after:-inset-x-px");
+    expect(cls).toContain("pointer-coarse:after:-inset-x-px");
     // The base's wider expansions must be merged away, not left to source order.
     expect(cls).not.toContain("after:-inset-x-3");
     expect(cls).not.toContain("pointer-coarse:after:-inset-x-[15px]");
@@ -634,11 +645,14 @@ describe("the Faite Loop", () => {
     expect(age()).toBe("since Aug 8 · 1 day");
   });
 
-  it("draws the Overflow age in muted ink, never the urgent red", () => {
+  it("draws the Overflow age in the quiet ink that passes, never the urgent red", () => {
     render(<Harness todo={todo({ scheduledDate: "2026-08-01" })} />);
     const age = row().querySelector("[data-overflow-age]");
     expect(age).not.toBeNull();
-    expect(age?.className).toContain("text-muted-foreground");
+    // `text-foreground/60`, not muted ink: muted fell to 4.1:1 under the
+    // hover wash on Overflow's surface (EI-395).
+    expect(age?.className).toContain("text-foreground/60");
+    expect(age?.className).not.toMatch(/(^|\s)text-muted-foreground/);
     expect(age?.className).not.toMatch(/\b(text|bg)-urgent/);
   });
 
@@ -745,7 +759,7 @@ describe("the completion stamp", () => {
      * breaks the geometry §5.4 depends on.
      */
     render(<Harness todo={done()} timezone="UTC" />);
-    expect(checkbox().className).toContain("after:-inset-x-1");
+    expect(checkbox().className).toContain("after:-inset-x-px");
     // `after:absolute` is in the shadcn base and stays; what must be gone is
     // the positioning the wrapper now owns.
     expect(checkbox().className).not.toContain("absolute left-3");
@@ -1309,6 +1323,193 @@ describe("touch targets on a coarse pointer (EI-388)", () => {
     // Still 24 wide: wider would cover the grip or the title's first letter
     // (docs/DRAG-AND-DROP.md §5.4).
     expect(cls).toContain("after:w-6");
-    expect(cls).toContain("pointer-coarse:after:-inset-x-1");
+    expect(cls).toContain("pointer-coarse:after:-inset-x-px");
+  });
+
+  /*
+    EI-395. On a phone the column's edge is the screen's, and the grip is
+    always visible, so at a 12px gutter the rail sat flush with the glass and
+    the grip's dots touched a P3/P4 rail. Measured at 390×844 with touch:
+    rail x=4–7, grip x=10–22, checkbox target x=24–48, title from x=48. A
+    mouse keeps the 12px gutter: rail x=0, grip x=0–12, checkbox x=12–36.
+  */
+  it("gives the rail and the grip room from the screen edge on touch only", () => {
+    render(<Harness todo={todo({ priority: 3 })} />);
+    const card = document.querySelector<HTMLElement>("[data-todo-row]")!;
+    expect(classesOf(card)).toContain("pl-3");
+    expect(classesOf(card)).toContain("pointer-coarse:pl-6");
+    const rail = card.querySelector<HTMLElement>("[data-priority-rail]")!;
+    expect(classesOf(rail)).toContain("left-0");
+    expect(classesOf(rail)).toContain("pointer-coarse:left-1");
+    const grip = screen.getByRole("button", { name: /^Drag to reschedule/ });
+    expect(classesOf(grip)).toContain("left-0");
+    expect(classesOf(grip)).toContain("pointer-coarse:left-2.5");
+    const checkbox = document.querySelector<HTMLElement>('[data-slot="checkbox"]')!;
+    expect(classesOf(checkbox.parentElement!)).toContain("left-3");
+    expect(classesOf(checkbox.parentElement!)).toContain("pointer-coarse:left-6");
+  });
+});
+
+/**
+ * EI-395, pass 1 of the to-do row polish: the completion beat as the card
+ * draws it, inks that pass 4.5:1, one focus style, and a hover wash that
+ * actually transitions. The column's half of the beat (holding the row,
+ * letting it go) is in `board-column.test.tsx`.
+ */
+describe("the completion beat, on the card (EI-395)", () => {
+  const box = () => screen.getByRole("checkbox");
+  const titleText = () => document.querySelector<HTMLElement>("[data-todo-title-text]")!;
+
+  it("flashes the box and draws the strike when THIS card sees open → done", () => {
+    const { rerender } = render(<Harness todo={todo()} />);
+    expect(box().className).not.toContain("animate-check");
+    rerender(<Harness todo={todo({ status: "done", completedAt: "2026-08-09T10:00:00.000Z" })} />);
+    expect(box().className).toContain("animate-check");
+    expect(titleText().className).toContain("strike-draw");
+    expect(titleText().className).toContain("animate-strike");
+    // The state must be right with the animation removed (docs/DESIGN.md §4).
+    expect(box().className).toContain("motion-reduce:animate-none");
+    expect(titleText().className).toContain("motion-reduce:animate-none");
+  });
+
+  it("swaps the drawn strike for a plain line-through once it has drawn", () => {
+    const { rerender } = render(<Harness todo={todo()} />);
+    rerender(<Harness todo={todo({ status: "done", completedAt: "2026-08-09T10:00:00.000Z" })} />);
+    fireEvent.animationEnd(titleText(), { animationName: "strike" });
+    expect(titleText().className).toContain("line-through");
+    expect(titleText().className).not.toContain("strike-draw");
+    // Re-inserting the node (a View: All move) must not replay the flash.
+    expect(box().className).not.toContain("animate-check");
+  });
+
+  it("renders a card that MOUNTS done with the static strike and no flash", () => {
+    render(<Harness todo={todo({ status: "done", completedAt: "2026-08-09T10:00:00.000Z" })} />);
+    expect(box().className).not.toContain("animate-check");
+    expect(titleText().className).toContain("line-through");
+    expect(titleText().className).not.toContain("animate-strike");
+  });
+
+  it("strikes the title text, not the badges under it", () => {
+    render(
+      <Harness
+        todo={todo({ status: "done", completedAt: "2026-08-09T10:00:00.000Z", labelIds: ["l1"] })}
+        labels={[{ id: "l1", name: "Work", color: "#46a758", emoji: null } as LabelRecord]}
+      />,
+    );
+    expect(titleText().className).toContain("line-through");
+    expect(titleText().closest("button")!.className).not.toContain("line-through");
+  });
+
+  it("is inert and fading while it leaves, and only then", () => {
+    const { rerender } = render(<Harness />);
+    expect(row().hasAttribute("inert")).toBe(false);
+    rerender(<Harness leaving />);
+    expect(row().hasAttribute("inert")).toBe(true);
+    expect(row().className).toContain("opacity-0");
+    expect(row().className).toContain("pointer-events-none");
+  });
+});
+
+describe("inks that pass 4.5:1 (EI-395)", () => {
+  const button = () => document.querySelector("[data-todo-title]")!.closest("button")!;
+
+  it("sets done and Won't do in the one quiet ink that passes, not muted ink at an opacity", () => {
+    for (const status of ["done", "dropped"] as const) {
+      render(<Harness todo={todo({ status, completedAt: "2026-08-09T10:00:00.000Z" })} />);
+      expect(button().className).toContain("text-foreground/60");
+      expect(button().className).not.toContain("opacity-70");
+      expect(button().className).not.toMatch(/(^|\s)text-muted-foreground/);
+      cleanup();
+    }
+  });
+
+  it("keeps Won't do dim-only: no strike anywhere", () => {
+    render(<Harness todo={todo({ status: "dropped", completedAt: "2026-08-09T10:00:00.000Z" })} />);
+    expect(document.querySelector(".line-through, .strike-draw")).toBeNull();
+  });
+
+  it("leaves an open title at full ink", () => {
+    render(<Harness />);
+    expect(button().className).not.toContain("text-foreground/60");
+  });
+
+  it("sets a label's name in its hue mixed into the foreground, with the hue on tint and edge", () => {
+    render(
+      <Harness
+        todo={todo({ labelIds: ["l1"] })}
+        labels={[{ id: "l1", name: "Work", color: "#ffb224", emoji: null } as LabelRecord]}
+      />,
+    );
+    // happy-dom's CSSOM cannot parse `color-mix()` and drops it, so the ink
+    // itself is asserted on `labelChipStyle` in colors.test.ts. What this
+    // can see: the raw hue is no longer the text color, and it still owns
+    // the tint and the edge.
+    const style = screen.getByText("Work").getAttribute("style") ?? "";
+    expect(style).not.toMatch(/(^|;\s*)color: (#ffb224|rgb\(255, 178, 36\))/);
+    expect(style).toMatch(/background-color: (#ffb22420|rgba\(255, 178, 36, 0\.12)/);
+    expect(style).toMatch(/border-color: (#ffb22459|rgba\(255, 178, 36, 0\.35)/);
+  });
+
+  it("steps the priority rail back on a settled row", () => {
+    const opacity = (status: Todo["status"]) => {
+      render(<Harness todo={todo({ priority: 1, status })} />);
+      const value = Number(row().querySelector<HTMLElement>("[data-priority-rail]")!.style.opacity);
+      cleanup();
+      return value;
+    };
+    const open = opacity("open");
+    expect(opacity("done")).toBeCloseTo(open * 0.4);
+    expect(opacity("dropped")).toBeCloseTo(open * 0.4);
+  });
+});
+
+describe("one focus style (EI-395)", () => {
+  it("rings the checkbox with the board's focus-ring, not shadcn's faint halo", () => {
+    render(<Harness />);
+    const box = screen.getByRole("checkbox");
+    expect(box.className).toContain("focus-ring");
+    expect(box.className).not.toContain("focus-visible:ring-3");
+    expect(box.className).not.toContain("focus-visible:ring-ring/50");
+    expect(box.className).not.toContain("focus-visible:border-ring");
+  });
+
+  it("keeps the title's outline off the checkbox without shrinking the title", () => {
+    render(<Harness />);
+    const button = document.querySelector("[data-todo-title]")!.closest("button")!;
+    expect(button.className).toContain("focus-ring-notched");
+    expect(button.className).not.toMatch(/(^|\s)focus-ring(\s|$)/);
+    // The hit area is untouched: still the full-width block with its padding.
+    expect(button.className).toContain("w-full");
+    expect(button.className).toContain("pointer-coarse:min-h-11");
+  });
+
+  it("keeps the checkbox above the now-positioned title, or the title eats its clicks", () => {
+    // `focus-ring-notched` makes the title `position: relative`; a positioned
+    // box later in the DOM paints over an earlier one. Caught by e2e, where
+    // every checkbox click landed on the title instead.
+    render(<Harness />);
+    const wrapper = screen.getByRole("checkbox").parentElement!;
+    expect(wrapper.className).toContain("absolute");
+    expect(wrapper.className).toContain("z-[1]");
+  });
+});
+
+describe("the hover wash transitions (EI-395)", () => {
+  /*
+    The row passes dnd-kit's `transition` inline, and an inline shorthand
+    replaces the whole class transition list. It used to be passed alone,
+    so the wash on `background-color` snapped. Asserted on the inline value,
+    because that is the one that wins.
+  */
+  it("names the wash and the fade in the row's inline transition", () => {
+    render(<Harness />);
+    expect(row().style.transition).toContain("background-color");
+    expect(row().style.transition).toContain("opacity");
+  });
+
+  it("keeps the asymmetric durations as variables a class can still change", () => {
+    render(<Harness />);
+    expect(row().className).toContain("[--row-wash-dur:var(--dur-base)]");
+    expect(row().className).toContain("hover:[--row-wash-dur:var(--dur-fast)]");
   });
 });
