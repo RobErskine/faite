@@ -232,7 +232,7 @@ An achromatic ink-on-paper ladder, plus five channels that each mean one thing: 
 - **Body** (400, 0.875rem, 1.375): to-do titles and board text.
 - **Label** (500, 0.875rem): buttons and tab triggers.
 - **Eyebrow** (`type-eyebrow`: 500, 0.625rem, uppercase, 0.05em, muted): subtitles, group headers, timeline day labels. `text-2xs` is 0.6875rem (11px) under Hyperlegible, same line height (§2).
-- **Numeric** (`num`: mono face, tabular, slashed zero, lining): a number that stands alone, such as a date, a count, a time. `nums` keeps the family and only fixes figures, for a number inside a sentence.
+- **Numeric** (`num`: mono face, tabular, slashed zero, lining): a number that stands alone, such as a date, a count, a time. `nums` keeps the family and only fixes figures, for a number inside a sentence. On a to-do row's badge line only a bare count ("1/3") takes `num`; a badge with a word or a date in it is `nums` (docs/DESIGN.md §2, `lib/row-grammar.ts`).
 
 ### Named Rules
 **The Roles Not Families Rule.** Components reference type roles (`font-sans`, `font-heading`, `font-mono`, `num`, `nums`, `type-column-title`, `type-eyebrow`), never families, so a pairing switch reaches every component (docs/DESIGN.md §2).
@@ -275,6 +275,7 @@ Quiet and tactile; the board has no loud fills.
 
 ### Badges
 - **Urgent** (`destructive` variant, read through `--urgent`): urgent at 10% behind `urgent-foreground` text, at `text-xs`, pill shape. The only red badge (§1).
+- **Row badge grammar** (`lib/row-grammar.ts`, docs/DESIGN.md §2): every badge `text-2xs` on the 20px pill but the two red verdicts (`text-xs`, no icon); `num` for a bare count, `nums` for anything with a word or a date; every glyph 12px in muted ink, one icon per meaning; order verdict → when → progress → identity.
 - **Overflow age**: outline, `text-foreground/60` ink, `text-2xs` in `nums`, words only. One string everywhere it appears: "since Oct 6 · 9 days", "since today" on the crossing day; the year joins the start when it is not this year. Too wide for its row, it breaks between the halves, never inside one (§7 2026-10-15).
 
 ### Inputs
@@ -282,7 +283,8 @@ Quiet and tactile; the board has no loud fills.
 - **Focus:** border shifts to `--ring` (spectrum solid).
 
 ### To-do Row (signature)
-- Not a flex row: grip and square checkbox sit in a 12px left gutter; the title spans full width with a first-line indent.
+- Not a flex row: grip and square checkbox sit in a 12px left gutter (24px under `pointer: coarse`, the rail 4px in from the screen edge); the title spans full width with a first-line indent. The grip's 12×24 target and the checkbox's 24-wide one meet without overlapping.
+- One anatomy everywhere a to-do appears (board card, ⌘K, Overdrive, the drag chip), built from `todo-row-parts.tsx`; only density varies. A to-do with no list is "Backlog".
 - Priority rail on the left edge per The Form Not Hue Rule; wash on the group container, not the card.
 - Hover wash arrives on `--dur-fast` and leaves on `--dur-base`, so a swept column leaves a wake (§7 2026-09-09).
 - Done: the completion beat (docs/DESIGN.md §4): the checked-box spectrum flash (`animate-check`) and a strike drawn left to right on the title (`animate-strike`), held for one beat, then the row fades and the rows below close up on a transform (View: All: it slides to its new place). Reduced motion keeps the beat, drops the motion. Won't do: dim only.
@@ -309,6 +311,7 @@ Quiet and tactile; the board has no loud fills.
 - **Do** put springs on `transform` only; anything that tints, fades or reflows takes a fixed duration (§4).
 - **Do** prefer a color or opacity change to a layout change, and `transform` to anything that reflows (§4).
 - **Do** read docs/DRAG-AND-DROP.md §6 and TODO-ITEM-DESIGN.md §10 before touching a row (§5).
+- **Do** build a to-do from the row parts (`todo-row-parts.tsx`) and the grammar in `lib/row-grammar.ts` wherever it appears; vary density, never the anatomy (§2).
 - **Do** express every new decision as a token or a named rule, so the upcoming SwiftUI app can port it.
 - **Do** keep a rolled card looking like any other card; the muted arrow is the whole signal (The No-Shame Rule).
 

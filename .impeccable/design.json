@@ -808,7 +808,7 @@
       },
       "numeric": {
         "displayName": "Numeric",
-        "purpose": "num utility: a number that stands alone (a date, a count, a time). Tabular, slashed zero, lining."
+        "purpose": "num utility: a number that stands alone (a date, a count, a time). Tabular, slashed zero, lining. On a to-do row's badge line only a bare count (\"1/3\") takes num; a badge with a word or a date in it is nums (docs/DESIGN.md §2, lib/row-grammar.ts)."
       }
     },
     "shadows": [
@@ -1067,6 +1067,7 @@
       "**Do** put springs on `transform` only; anything that tints, fades or reflows takes a fixed duration (§4).",
       "**Do** prefer a color or opacity change to a layout change, and `transform` to anything that reflows (§4).",
       "**Do** read docs/DRAG-AND-DROP.md §6 and TODO-ITEM-DESIGN.md §10 before touching a row (§5).",
+      "**Do** build a to-do from the row parts (`todo-row-parts.tsx`) and the grammar in `lib/row-grammar.ts` wherever it appears; vary density, never the anatomy (§2).",
       "**Do** express every new decision as a token or a named rule, so the upcoming SwiftUI app can port it.",
       "**Do** keep a rolled card looking like any other card; the muted arrow is the whole signal (The No-Shame Rule)."
     ],

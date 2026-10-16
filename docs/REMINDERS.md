@@ -208,7 +208,9 @@ before with no presets in scope:
 
 ## 5. The card badge
 
-`TodoMetaBadges` (`board/todo-row-parts.tsx`) renders a `Bell`-icon badge
+`TodoMetaBadges` (`board/todo-row-parts.tsx`) renders a clock-icon badge
+(`ROW_ICONS.time`; it wore a bell until EI-395, which promised a reminder
+separate from the time)
 whenever `todo.reminderTime` is set, using `reminderLabelFor` — so a card
 reads "🌅 Morning" when the time matches a preset, or a plain "3:45 PM" when
 it doesn't. `reminderPresets` is an optional prop throughout the chain

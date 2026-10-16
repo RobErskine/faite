@@ -70,6 +70,36 @@ same 14px line height in both, so no row changes height. It resolves through
 12px, because that is `text-xs`, and the step between the two is what keeps
 an eyebrow quieter than what it labels.
 
+**The to-do row's badge grammar** (EI-395, `src/lib/row-grammar.ts`) is
+stricter than the table above, because a row's badges sit side by side and a
+mix of faces reads as noise:
+
+- **Type.** `num` only for a badge that is nothing but a count ("1/3", "3").
+  Anything with a word or a date in it — "Oct 12", "2:00 PM", "☕ Afternoon",
+  "Deadline Oct 12", "since Oct 6 · 9 days" — is `nums`. One family per
+  badge.
+- **Size.** Every badge is `text-2xs` on the 20px pill, except the two red
+  verdicts (missed deadline, "Missed ×N"), which are `text-xs`: colored text
+  is never at the smallest size (§1).
+- **Icons.** Every glyph on a row is 12px in muted ink, a title marker and a
+  badge's icon alike; the badge's words keep the badge's ink. The red
+  verdicts carry no icon. One icon, one meaning (`ROW_ICONS`): ↳ rolled, a
+  flag for a deadline ahead, Repeat for a series, a pin, a calendar for the
+  scheduled date, a clock for the time, a checklist for sub-tasks, a clip
+  for attachments.
+- **Order** (`ROW_BADGE_ORDER`): the verdict (missed deadline, missed
+  occurrences, Overflow age), then when (date, then time), then progress
+  (sub-tasks, attachments), then identity (labels). The title's glyphs run
+  ↳, deadline, repeat, pin. The row's accessible name (`todoRowName`) reads
+  in the same order.
+- **One anatomy, four densities.** The board card, the ⌘K result, the
+  Overdrive card and the drag chip (`drag-chip.tsx`) all build the row from
+  `todo-row-parts.tsx` — rail, title glyphs, badge line, name — and vary
+  only density: Overdrive's 16px glyphs by a 24px title; the drag chip's
+  two-line clamp, its rail as a border and no hover text. A to-do with no
+  list is named "Backlog" wherever a row names its list (`NO_LIST_NAME`):
+  `buildBoard` puts it there.
+
 Two pairings, selected by `data-font` on `<html>`:
 
 | id | Sans / heading | Mono / numeric | Role |
@@ -224,7 +254,12 @@ Two more rules, both from EI-392:
 Exempt by design: the card and column **grips** are 12×24. On touch they are
 affordances, not targets — a long press anywhere on the row or header drags
 (`docs/DRAG-AND-DROP.md` §5.4). The card checkbox is **24×44**, not 44 wide,
-for the same section's reason.
+for the same section's reason. The two targets meet without overlapping: with
+a mouse the grip is x=0–12 and the checkbox x=12–36. On touch the row's left
+gutter is 24px, not 12 (EI-395), because a phone column's edge is the
+screen's and its grip is always visible: the rail steps 4px in (x=4), the
+grip sits at x=10–22, clear of even a P1's 5px rail, and the checkbox runs
+x=24–48.
 
 ## 4. Motion policy
 
@@ -421,3 +456,4 @@ streak, score, or percentage anywhere in it.
 | 2026-10-15 | **The Overflow age says since when and how long, in one string everywhere** (EI-390): "since Oct 6 · 9 days", and "since today" on the day it crosses (`formatOverflowAge`). Board card, Overdrive card, ⌘K row, Settings example and homepage replica all show it; the accessible name and tooltip say "In Overflow since Oct 6, 9 days". Set in `nums`, not `num` — a phrase, not a standalone number (§2). It stays one unit at the 168px floor; the one string too wide for it (a start in another year, in Hyperlegible) breaks between its halves, never inside one. | The age read three ways: "9 days" on the board, "In Overflow 9 days" in ⌘K, and a bare "42 days" under Overdrive's "Scheduled Aug 30" that read as "42 days late". A count alone says how long but not since when; a date alone makes the reader do the arithmetic. EI-387's `overflowWording` variants go: one string needs no switch. |
 | 2026-10-15 | **The date row is where, what, move** (EI-392): History and the range; one "View" menu (statuses, Show weekends, Saved views) beside the day count; ‹ Today › and one "Jump" popover holding Next/Previous week, month and quarter beside the calendar, then Activity. ‹ › step one page and disable rather than vanish; Today disables on today. History, Activity, ‹ and › show their names as tooltips. Phone targets: the N-due banner, the tab name, Archived and the signed-out banner's Sign up reach 44 on touch; two §3 "Touch targets" rules added (neighbors share a gap; an extender stays in its container). | The fourth critique counted ten peer controls in the date row, and "Week › Month › Quarter ›" read as view switches — "Month" looked like a month view and scrolled 28 days. Folding them into Jump keeps every move a click or two away and stops them claiming to be views; Weekends and Saved views are part of what you are viewing, so they went into View. No capability moved more than one click deeper. Measured at 390×844 with touch, before → after: N-due banner 389×26 → 389×44, Keyboard shortcuts 42×44 → 44×44, Sign up 47×29 → 47×45, My Lists 82×24 → 82×44, Archived 36×44 → 44×44, Quick sort 43×42 → 45×44. With a mouse nothing moved. |
 | 2026-10-15 | **The to-do row, polish pass 1** (EI-395): the completion beat (§4) — a ticked row holds checked and struck for one beat, then fades and the rows below close the gap on a transform, or under View: All slides to its new place; the flash lands on `--ease-out-soft`, not a spring. Label chip text is `labelInk` (30% hue into the foreground), retiring §1's one exception. Done and Won't do share `text-foreground/60`; Won't do stays dim-only. The strike is on the title text, not the badges. The Overflow age moves to `text-foreground/60`. A settled row's rail keeps 40% of its opacity. The checkbox takes `focus-ring`; the title's outline steps round it (`focus-ring-notched`). The row's inline `transition` composes dnd-kit's `transform` with the wash and the fade (`rowTransition`). | Measured on the board (light / dark, at rest → under the hover wash): label text 1.6–3.9:1 → 9.7–13.2 / 8.5–10.7; Won't do 2.71 / 3.92 → 5.25 / 6.6 (5.10 / 6.06 hovered); done hovered 4.27 → 5.10 / 6.06; Overflow age hovered 4.1 → 5.02 / 6.46. Under the default View the row used to unmount ~90ms after the click and the confirmation was a toast in the corner. The hover wash never animated at all: the inline `transition: transform 0ms linear` dnd-kit leaves on every row replaced the class's list; it now fades in over 100ms. A struck label chip read as "label removed", and a P1 double rail at full ink was the loudest mark on a finished row. |
+| 2026-10-15 | **The to-do row, polish pass 2** (EI-395): one badge grammar in `lib/row-grammar.ts` (§2) — `num` for a bare count only, `nums` for anything with a word or a date; every badge `text-2xs` except the two red verdicts at `text-xs`, which lose their icons; every row glyph 12px in muted ink; one icon per meaning (the time wears a clock, not a bell; a deadline ahead is a flag; the Repeat icon means "repeats" and nothing else); verdict → when → progress → identity. One anatomy on four surfaces: the board card, ⌘K, the Overdrive card (now with the rail, ↳, the pin, the flag and the counts) and the drag chip (`DragChip`: all title glyphs, the badge line, a two-line clamp, the settled rail), all from `todo-row-parts.tsx`. "Backlog" is the word for a to-do with no list everywhere (`NO_LIST_NAME`; ⌘K said "Unfiled"). On touch the row's gutter is 24px, the rail 4px in from the screen edge, the grip clear of it; the grip's 12×24 target and the checkbox's 24-wide one meet at x=12 instead of overlapping by 3px. The rolled tooltip's separator is "·", like its neighbors. | The pass-2 critique scored Consistency 2/4: the row was assembled four ways, so Overdrive dropped the rail, ↳, pin and counts, ⌘K dropped the counts and the drag chip dropped ↳ and the flag, and truncated the title to one line. Inside the row, one badge mixed mono and sans ("Deadline Oct 12"), badges came in two sizes, the scheduled and deadline calendars could not be told apart, Repeat meant both "repeats" and "missed", and the red missed deadline sat fourth in line. Measured live (1440 mouse): grip 12×24 at x=0–12, checkbox 24 wide at x=12–36 (it used to start at x=9, leaving the grip 9×24). At 390 touch: rail x=4–7, grip x=10–22, checkbox x=24–48, where the rail used to be flush with the glass and the always-visible dots touched a P3/P4 rail. Recurring occurrences showing no deadline, sub-task or attachment badges is the data model, not a lost badge: `cloneOccurrence` drops the series' deadline on purpose, and an occurrence's sub-tasks and attachments are its own. |
