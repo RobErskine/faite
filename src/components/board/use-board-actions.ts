@@ -1427,7 +1427,9 @@ export function useBoardActions(
       ]);
       // `todo` may be a virtual recurrence occurrence with no row yet —
       // materialize before writing. A no-op when it already has one.
-      void (async () => {
+      // Returned so a rejected write reaches the card, which ticked
+      // optimistically (EI-399) and must revert.
+      const write = (async () => {
         await materializeIfNeeded(todo);
         const eventId = await setTodoStatus(todo.id, next);
         // EI-94 Phase 3: an instant undo tombstones the `done` event too, so
@@ -1449,6 +1451,7 @@ export function useBoardActions(
         });
       }
       if (next === "done") celebrateDone(todo, origin);
+      return write;
     },
     [materializeIfNeeded, celebrateDone],
   );

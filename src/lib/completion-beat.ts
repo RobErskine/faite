@@ -35,6 +35,16 @@ export const BEAT_MS = 260;
 export const LEAVE_MS = 100;
 
 /**
+ * How long a completing click waits before it calls the board's `onToggle` —
+ * the write, the toast, and the store update that re-derives the whole board
+ * (a 92ms long task, measured). The card ticks and the flash starts on the
+ * click frame from local state; this lead, about two frames, lets the flash's
+ * first frames paint before that work blocks the main thread (EI-399). Tiny
+ * against `GIVE_UP_MS`, which still counts from the click.
+ */
+export const TICK_LEAD_MS = 34;
+
+/**
  * Give up on a write that has not landed this long after the click, and stop
  * holding. The row then behaves exactly as it did before the beat existed.
  */

@@ -287,7 +287,7 @@ Quiet and tactile; the board has no loud fills.
 - One anatomy everywhere a to-do appears (board card, ⌘K, Overdrive, the drag chip), built from `todo-row-parts.tsx`; only density varies. A to-do with no list is "Backlog".
 - Priority rail on the left edge per The Form Not Hue Rule; wash on the group container, not the card.
 - Hover wash arrives on `--dur-fast` and leaves on `--dur-base`, so a swept column leaves a wake (§7 2026-09-09).
-- Done: the completion beat (docs/DESIGN.md §4): the checked-box spectrum flash (`animate-check`) and a strike drawn left to right on the title (`animate-strike`), held for one beat, then the row fades and the rows below close up on a transform (View: All: it slides to its new place). Reduced motion keeps the beat, drops the motion. Won't do: dim only.
+- Done: the completion beat (docs/DESIGN.md §4): the tick lands on the click (optimistic; reverts if the write fails): the checked-box spectrum flash (an opacity/scale ring, `before:animate-check`) and a strike drawn left to right on the title (a `scaleX` overlay per line, `animate-strike`), both compositor-only, held for one beat, then the row fades and the rows below close up on a transform (View: All: it slides to its new place). Reduced motion keeps the beat, drops the motion. Won't do: dim only.
 - Focus: the checkbox takes `focus-ring`; the title's outline steps round the checkbox (`focus-ring-notched`).
 
 ### Column Header

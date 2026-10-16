@@ -8,6 +8,7 @@ import {
   BEAT_MS,
   GIVE_UP_MS,
   LEAVE_MS,
+  TICK_LEAD_MS,
   beatOutcome,
   heldSnapshot,
   holdGroups,
@@ -98,7 +99,7 @@ function moveFocusOff(container: HTMLElement | null, id: string) {
   (next ?? fallback)?.focus({ preventScroll: true });
 }
 
-type Toggle = (todo: Todo, origin?: ConfettiOrigin | null) => void;
+type Toggle = (todo: Todo, origin?: ConfettiOrigin | null) => void | Promise<unknown>;
 
 /**
  * The column's half of the completion beat (`lib/completion-beat.ts`).
@@ -132,9 +133,19 @@ export function useCompletionBeat({
   const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const pendingFlipRef = useRef<Positions | null>(null);
 
+  // Completions waiting out `TICK_LEAD_MS`: id -> the promise handed to the
+  // card, and the function that fires `onToggle` now (once).
+  const leadsRef = useRef<Map<string, { promise: Promise<unknown>; fire: () => void }>>(new Map());
+
   useEffect(() => {
     const timers = timersRef.current;
-    return () => timers.forEach((t) => clearTimeout(t));
+    const leads = leadsRef.current;
+    return () => {
+      timers.forEach((t) => clearTimeout(t));
+      // Unmounted inside the lead: the click already happened, so the write
+      // still goes out — now, once — rather than being lost with the column.
+      [...leads.values()].forEach((l) => l.fire());
+    };
   }, []);
 
   const later = useCallback((id: string, ms: number, fn: () => void) => {
@@ -206,6 +217,8 @@ export function useCompletionBeat({
 
   const toggle: Toggle = (todo, origin) => {
     if (todo.status === "open") {
+      const pending = leadsRef.current.get(todo.id);
+      if (pending) return pending.promise;
       const snapshot = heldSnapshot(todo, new Date().toISOString());
       let entry: HeldRow;
       const home = placedGroups?.groups.find((g) => g.todos.some((t) => t.id === todo.id));
@@ -239,8 +252,29 @@ export function useCompletionBeat({
       // it did before the beat existed. Replaced by the beat's own timer once
       // the write is seen.
       later(todo.id, GIVE_UP_MS, () => release(todo.id, false));
+      // The card has ticked and the flash has started from local state. The
+      // write, and the board re-derive it triggers, wait out the flash's
+      // first frames (EI-399). The timer is outside `timersRef`: `later` is
+      // keyed by id and the give-up timer owns that slot.
+      const leads = leadsRef.current;
+      let fire!: () => void;
+      const promise = new Promise<unknown>((resolve, reject) => {
+        const timer = setTimeout(() => fire(), TICK_LEAD_MS);
+        fire = () => {
+          clearTimeout(timer);
+          leads.delete(todo.id);
+          try {
+            resolve(onToggle(todo, origin));
+          } catch (e) {
+            reject(e);
+          }
+        };
+      });
+      leads.set(todo.id, { promise, fire });
+      return promise;
     }
-    onToggle(todo, origin);
+    // Reopening has no beat to start early: straight through.
+    return onToggle(todo, origin);
   };
 
   return {

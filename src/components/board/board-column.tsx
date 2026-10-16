@@ -183,7 +183,7 @@ interface BoardColumnProps {
   /** Rendered in the column header — list rename/delete menus, etc. */
   actions?: React.ReactNode;
   /** `origin` is the checkbox's box, for GOOD JOB mode's confetti (`TodoCard`). */
-  onToggle: (todo: Todo, origin?: ConfettiOrigin | null) => void;
+  onToggle: (todo: Todo, origin?: ConfettiOrigin | null) => void | Promise<unknown>;
   onOpen: (todo: Todo) => void;
   /**
    * Omit to drop the quick-add row entirely. Overflow does: nothing can be
