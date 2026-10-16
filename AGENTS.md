@@ -129,8 +129,8 @@ Never report an empty result you did not actually get.
   Impeccable design skill reads (`/impeccable critique`, `audit`, `polish`…).
   `docs/DESIGN.md` stays the spec of record; root `DESIGN.md` mirrors its
   tokens, so change `docs/DESIGN.md` first and the mirror the same day.
-- **`docs/WORKFLOW.md`** — how a ticket becomes a merged PR, and how to hand a
-  session off to a worktree.
+- **`docs/WORKFLOW.md`** — how a ticket becomes a merged PR, how to hand a
+  session off to a worktree, and which model does which work.
 - **`.ai/lessons.md`** — mistakes already made here, with the rule each one
   produced. Read it before a non-trivial change; `docs/SYNC.md` calls it
   "not optional".
@@ -150,3 +150,25 @@ recommends them; that is out of date, and PRs #43 onward are all squashes.
 `npm run e2e:ci` is the CI gate. `npm run verify` is a broader local check and
 is **not** the gate — passing it proves nothing about what CI will do. See
 `docs/WORKFLOW.md` for the full loop.
+
+# Subagents, and who runs on which model
+
+Opus plans and decides; cheaper models carry out what is decided. The roster
+lives in `.claude/agents/` (EI-398):
+
+| Agent | Model | Use it when |
+|---|---|---|
+| `Explore` | Haiku 5.5 | You need to find code. It **replaces** the built-in `Explore`, so search is cheap by default. It locates; it does not judge. |
+| `implementer` | Sonnet 5.5 | One step whose design is decided: what, which files, how to verify. It stops with `ESCALATE:` after two failed fixes or an ambiguous spec — re-run it with `model: "opus"` on the Agent call. |
+| `ticket-writer` | Sonnet 5.5 | Turning a plan into Linear tickets. It searches for duplicates first. |
+| `pr-reviewer` | Opus 5.5 | Reviewing a PR or branch against these rules. Read-only; posts one GitHub review only when told to. |
+
+To build without supervision: brainstorm in `main` on Opus, then **`/dispatch`**.
+It writes a step plan into the ticket's `## Handoff` comment, opens a worktree,
+and starts a Sonnet conductor there that follows `.claude/commands/conduct.md`
+— implementers, the CI gate, a PR, a posted review — and **stops before
+merge**. A step plan with no file names is not dispatchable; settle it first.
+`docs/WORKFLOW.md` §7 has the prices and the reasoning.
+
+Agent files name full model IDs (`claude-sonnet-5-5`), never aliases: an older
+Claude Code resolves `sonnet` to the previous generation without a word.

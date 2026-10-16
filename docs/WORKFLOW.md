@@ -70,6 +70,17 @@ Then start the new session with one line: *"Work EI-249. Read the ticket and
 its Handoff comment first."* Everything else is recoverable from Linear and the
 repo. `/handoff` and `/pickup` in `.claude/commands/` automate both ends.
 
+### Handing off to an *unattended* session → `/dispatch`
+
+When the design is settled and you want the work done without you, run
+`/dispatch` instead of `/handoff`. It adds a `## Steps` plan to the Handoff
+comment — each step one `implementer` run with exact files and a verify
+command — then creates the worktree and a session on Sonnet in `auto` mode,
+and tells it to follow `.claude/commands/conduct.md`. The conductor builds,
+runs the CI gate, opens the PR, has `pr-reviewer` post a review, fixes what
+the review finds once, and reports on the ticket. It never merges. §7 says
+which model does what.
+
 ### Naming
 
 Pass Linear's `gitBranchName` as `customName`. Jean has no Linear API key, so
@@ -154,3 +165,50 @@ anything that cost real debugging time to `.ai/lessons.md` as a rule.
 Search Linear — not GitHub — for tickets this work closes, relates to, or
 duplicates, and label each one honestly. Do not close a ticket unless the work
 fully satisfies it, and do not change ticket state unless asked.
+
+## 7. Which model does the work
+
+Opus is the main session: it plans, decides, reviews, and takes work back.
+The cheaper models do what is already decided. Four project subagents in
+`.claude/agents/` carry the routing (EI-398):
+
+| Agent | Model | Use it for |
+|---|---|---|
+| `Explore` | Haiku | Search and reading. This **replaces** Claude Code's built-in `Explore`, which otherwise runs on the main session's model — so every existing Explore call got cheaper without anyone changing habits. |
+| `implementer` | Sonnet, effort `medium` | One ticket or runbook step whose design is settled. |
+| `ticket-writer` | Sonnet, effort `medium` | Filing Linear tickets from a plan. Searches for duplicates first. |
+| `pr-reviewer` | Opus, effort `high` | Reviewing a PR or branch against the rules in `AGENTS.md`. Read-only; posts one GitHub review only when told to post. |
+
+**Escalation is triggered by evidence, not by a guess.** The implementer
+stops with `ESCALATE:` when the typecheck or a test still fails after its
+second fix, or when the spec reads two ways. The caller then re-runs it with
+`model: "opus"` on the Agent call — a per-call model outranks the agent's
+frontmatter, and the Agent tool accepts only the aliases there — and if Opus
+escalates too, the step needs a person. In
+an interactive session the main session can also just finish the work
+itself. Guessing a
+task's difficulty from its ticket before anyone has read the code was
+considered and rejected — the ticket rarely shows it.
+
+Per-token prices when this was set up (2026-10, Anthropic API): Opus 5.5
+$4/$20, Sonnet 5.5 $2/$10, Haiku 5.5 $0.10/$0.50 per million input/output. So
+Sonnet halves the cost, and Haiku is about forty times cheaper — moving search
+to Haiku is most of the saving. Fable 5.1 ($10/$50) is for an architecture
+decision someone asks for by name, not for routine planning.
+
+The frontmatter names full model IDs (`claude-haiku-5-5`, not `haiku`). An
+alias resolves to whatever generation the installed Claude Code knows: the
+older CLI that Jean ships in its app bundle (2.1.220) mapped `sonnet` to
+Sonnet 5 and `haiku` to Haiku 4.5, and could not run `claude-opus-5-5` at all.
+Jean starts sessions with `~/.local/bin/claude`, which is current.
+
+Three things are deliberately left alone:
+
+- `general-purpose` and the globally installed plugin agents still inherit the
+  main model. `CLAUDE_CODE_SUBAGENT_MODEL` would move them; measure with
+  Jean's usage view before turning it on.
+- A per-call `model` on the Agent tool outranks an agent's frontmatter, so the
+  main session can still send a hard search to Opus.
+- Jean's Magic Prompts (commit message, PR description, review) choose their
+  own model in Jean's settings, not in this repo. Set the short-generation
+  ones to Sonnet or Haiku there.

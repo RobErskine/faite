@@ -44,6 +44,7 @@ or read **[docs/README.md](docs/README.md)** for the complete index.
 | add a marketing/legal/support page, or touch `SITE_PAGES`, sitemap, robots, or the contact form | **[SITE.md](docs/SITE.md)** — the route table, the metadata contract, and how to add a page |
 | change the homepage — a story beat, the hero board, the card that flies | **[HOMEPAGE.md](docs/HOMEPAGE.md)** — the one table it all derives from, the zero-client-JS rule, and the known limits |
 | touch the 3D room, a model, or a `--room-*` token | **[SCENE.md](docs/SCENE.md)** — the bake pipeline, the load invariants, what the room does per beat, and the CC-BY chain |
+| hand work to Claude Code agents, or run a ticket unattended in a worktree | [Building with agents](#building-with-agents) below, then **[WORKFLOW.md](docs/WORKFLOW.md)** §2 and §7 |
 
 Split by design: **rationale lives in ARCHITECTURE, setup in SETUP, operations
 in the subsystem doc.** No file repeats another's reasoning — two copies drift,
@@ -146,6 +147,35 @@ The `schema:*` and `auth:schema` scripts are the data-model toolchain
 (generate, parity-check, inspect, reset). Do not run them from memory —
 **[SCHEMA-OPS.md](docs/SCHEMA-OPS.md)** says which one, in what order, and
 against which database.
+
+## Building with agents
+
+Faite is built mostly by Claude Code sessions in Jean worktrees. Opus plans and
+decides; cheaper models carry out what is decided. The subagents live in
+`.claude/agents/`, the slash commands in `.claude/commands/`.
+
+| Agent | Model | Job |
+|---|---|---|
+| `Explore` | Haiku 5.5 | Finds code. Replaces the built-in `Explore`, so search is cheap by default |
+| `implementer` | Sonnet 5.5 | Builds one settled step; stops with `ESCALATE:` when it should not guess |
+| `ticket-writer` | Sonnet 5.5 | Turns a plan into Linear tickets, after a duplicate search |
+| `pr-reviewer` | Opus 5.5 | Reviews a PR against the repo rules; posts only when told to |
+
+| Command | Run it in | Does |
+|---|---|---|
+| `/handoff` | main | Ticket + `## Handoff` comment + worktree; you carry on by hand |
+| `/dispatch` | main | `/handoff`, plus a step plan and a Sonnet conductor started in the worktree |
+| `/conduct` | the worktree | Implementers per step, the CI checks, a PR, a posted review, one fix round, a report on the ticket. **Never merges** |
+| `/pickup` | the worktree | Read the ticket, the handoff and the lessons before touching code |
+
+The usual loop: brainstorm in main on Opus → `/dispatch` → come back to a PR
+with a review on it → merge. `/conduct` needs a `## Steps` plan in the
+ticket's Handoff comment, with exact files for every step; without one it
+stops and says so rather than planning on its own.
+
+**[AGENTS.md](AGENTS.md)** says when to use which agent;
+**[WORKFLOW.md](docs/WORKFLOW.md)** §7 has the prices, the escalation rule, and
+why agent files use full model IDs.
 
 ## Status
 
