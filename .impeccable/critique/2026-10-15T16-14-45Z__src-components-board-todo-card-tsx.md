@@ -10,6 +10,7 @@ target_fingerprint: "sha256:ff208eb7a727dd426a90d3c10538ecf759cb8843aa47b871d71c
 target_path: /Users/roberskine/jean/faite/rob_ei-350-design-pass-2-board-critique-audit-with-impeccable-then-fix/src/components/board/todo-card.tsx
 timestamp: 2026-10-15T16-14-45Z
 slug: src-components-board-todo-card-tsx
+closed: true
 ---
 Method: dual-agent (A: a7ae7eac3faf765d1 · B: a21d57b74e5667c0a). Target src/components/board/todo-card.tsx (+ todo-row-parts.tsx, overdrive-card.tsx, ui/checkbox.tsx) at origin/main 90709eb, live on https://myfaite.app/board. Specimen rows seeded in a blank profile.
 
