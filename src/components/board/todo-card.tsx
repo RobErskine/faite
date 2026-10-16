@@ -21,6 +21,7 @@ import { cardStop, navKeyOf, type NavKey } from "@/lib/column-nav";
 import { placeSettled } from "@/lib/board";
 import { formatCompletionStamp } from "@/lib/event-time";
 import { TITLE_CLAMP_CLASS } from "@/lib/title";
+import { prefersReducedMotion } from "@/lib/reduced-motion";
 import { GIVE_UP_MS, rowTransition } from "@/lib/completion-beat";
 import { rollStateFor } from "@/lib/rollover-events";
 import type { Label as LabelRecord, List, ReminderPreset, Todo } from "@/lib/schema";
@@ -352,7 +353,15 @@ export function TodoCard({
   const [pendingDone, setPendingDone] = useState(false);
   if (todo.status !== seenStatus) {
     setSeenStatus(todo.status);
-    setJustCompleted(seenStatus === "open" && todo.status === "done");
+    // A beat the click already started is not restarted by the store catching
+    // up: the flash would replay and the strike redraw from zero if the write
+    // landed after `animationend`. A flip with no click behind it (sync,
+    // undo/redo, the sheet) still plays the beat.
+    // Reduced motion never starts one: `animationend` would not fire to clear
+    // it, and the overlays would keep click-time pixels through a rewrap.
+    if (!pendingDone) {
+      setJustCompleted(seenStatus === "open" && todo.status === "done" && !prefersReducedMotion());
+    }
     setPendingDone(false);
   }
   const shownDone = todo.status === "done" || pendingDone;
@@ -366,7 +375,7 @@ export function TodoCard({
     if (todo.status === "open") {
       if (pendingDone) return;
       setPendingDone(true);
-      setJustCompleted(true);
+      setJustCompleted(!prefersReducedMotion());
     }
     const write = onToggle(todo, originOf(checkboxRef.current));
     if (write && typeof write.then === "function") {

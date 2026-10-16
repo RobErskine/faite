@@ -36,3 +36,11 @@ Done when: completing a to-do checks the box on the click frame, the flash and s
 
 ## Conductor report
 (The conductor writes its `## Conductor report` here, below this line, and commits it with the PR, because it cannot post to Linear.)
+
+## Conductor report
+
+- **PR:** https://github.com/RobErskine/faite/pull/163 (Linear not moved: no Linear MCP in the conductor session).
+- **Steps:** 1 done (optimistic tick, compositor-only flash and strike). 2 done, with `use-board-actions.ts`, `todo-card.tsx` and `todo-card.test.tsx` added to its file list: step 1 found that `handleToggle` and the hook dropped the write promise, so revert-on-failure could never fire. Design: `TICK_LEAD_MS = 34` leads the open→done write (so the board re-derive, toast and confetti land after the flash's first frames) rather than `startTransition`. 3 done (docs/DESIGN.md §4 + §7, root DESIGN.md). No Opus escalations.
+- **Checks (after the fix round):** typecheck, npm test (3466), openapi drift (none), lint, build:static, build, `e2e:ci` on port 3101 (153 passed) — all green. Server suite skipped (not needed per Handoff). The rebase onto origin/main brought one docs-only commit, so §3 was not re-run after it. Not checked: strike placement by eye in a real browser, and the 92ms long task is not re-measured.
+- **Review (pr-reviewer, posted):** 2 bugs fixed — store flip replaying the beat after `animationend` (now skipped while `pendingDone`); reduced motion leaving stale overlays (beat now never starts under reduced motion, plain line-through).
+- **Left open (nits):** (1) docs/DESIGN.md says "the existing error path toasts", but `handleToggle` has no catch, so a failed write unchecks the box while the "Completed" toast and confetti already showed. (2) The 2s settle timer is not cleared when a new click starts (complete, reopen, complete again within 2s under View: All).

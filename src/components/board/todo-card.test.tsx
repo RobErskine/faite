@@ -1490,6 +1490,41 @@ describe("the completion beat, on the card (EI-395)", () => {
     });
   });
 
+  it("does not replay the beat when the store flips after the strike already ended", () => {
+    twoLines();
+    const onToggle = vi.fn(() => new Promise<void>(() => {}));
+    const { rerender } = render(<Harness onToggle={onToggle} />);
+    fireEvent.click(box());
+    fireEvent.animationEnd(titleText().querySelector("[data-strike-line]")!, {
+      animationName: "strike",
+    });
+    expect(document.querySelector("[data-strike-line]")).toBeNull();
+    rerender(<Harness onToggle={onToggle} todo={done()} />);
+    expect(box().className).not.toContain("before:animate-check");
+    expect(document.querySelector("[data-strike-line]")).toBeNull();
+    expect(titleText().className).toContain("line-through");
+  });
+
+  it("under reduced motion, ends the beat at once and leaves a plain line-through", () => {
+    twoLines();
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query.includes("prefers-reduced-motion"),
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }));
+    try {
+      const onToggle = vi.fn(() => new Promise<void>(() => {}));
+      render(<Harness onToggle={onToggle} />);
+      fireEvent.click(box());
+      expect(document.querySelector("[data-strike-line]")).toBeNull();
+      expect(box().className).not.toContain("before:animate-check");
+      expect(titleText().className).toContain("line-through");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("renders a card that MOUNTS done with the static strike and no flash", () => {
     render(<Harness todo={todo({ status: "done", completedAt: "2026-08-09T10:00:00.000Z" })} />);
     expect(box().className).not.toContain("before:animate-check");
