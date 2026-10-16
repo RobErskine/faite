@@ -13,7 +13,7 @@ reasoning — two copies drift, and the stale one always wins the argument.
 | Doc | Covers |
 |---|---|
 | [ARCHITECTURE.md](ARCHITECTURE.md) | The one source of *why*. Stack, local-first store, `mutate()`, field-level LWW, fractional ordering, auth and routing, roadmap P0–P7. |
-| [WORKFLOW.md](WORKFLOW.md) | Ticket → branch → PR → merge. Linear conventions, handing a session off to a worktree, the fresh-worktree checklist. |
+| [WORKFLOW.md](WORKFLOW.md) | Ticket → branch → PR → merge. Linear conventions, handing a session off to a worktree, the fresh-worktree checklist, which model does which work (the `.claude/agents/` subagents). |
 | [SETUP.md](SETUP.md) | One-time infrastructure runbook (DNS, Worker domain, email, OAuth, secrets), plus local development and what does not work locally. |
 
 ## Data, sync, and schema
