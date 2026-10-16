@@ -297,9 +297,9 @@ check flash never played, and the strike was never seen. Now the **column**
 holds the row (`use-completion-beat.ts`, rules in `lib/completion-beat.ts`),
 because the card is the thing that leaves and cannot keep itself rendered.
 
-| From the write landing (~90ms after the click) | What happens |
+| From the click (the beat starts on the tick) | What happens |
 |---|---|
-| 0–180ms | The box checks with the spectrum flash (`animate-check`, `box-shadow` on `--ease-out-soft`, never a spring) and the strike draws left to right (`animate-strike` on `strike-draw`) |
+| 0–180ms | The box checks with the spectrum flash (`before:animate-check`, an opacity and scale ring on `check-ring`'s `::before`, on `--ease-out-soft`, never a spring) and the strike draws left to right (`animate-strike`, a `scaleX` on one `strike-line` overlay per title line) |
 | 180–260ms | The finished row stands still, to be read. The drawn strike swaps for `line-through` at the same height (measured per face: `--strike-y`, `--strike-thickness`) |
 | 260–360ms | Default view: the row fades on `--dur-fast`, inert, and keyboard focus moves to the row that takes its place (else the one above, else the quick-add) |
 | 360–620ms | The row goes; the rows below close the gap on a transform (`--dur-slow`, `--ease-out-soft`, WAAPI, so dnd-kit's inline transform is untouched) |
@@ -313,6 +313,30 @@ the row is removed in one step at 260ms. **Undo** wins at any point: once
 the data says open again the row renders from the data. A row that was the
 last of its list group brings the group back with it for the beat. A write
 that has not landed 2s after the click stops being held.
+
+**The tick lands on the click (EI-399).** The beat used to start when the write
+reached the store, ~147ms after the click on production, and the board's
+re-derive then ran as a 92ms long task inside the 180ms flash, so the strike
+popped across one frame. Now the card keeps a local `pendingDone`: the box
+checks and the flash and strike start on the click frame (or Space), before the
+write. If the write fails, the tick reverts and the existing error path toasts.
+`pendingDone` clears when the store catches up, and clears itself `GIVE_UP_MS`
+after a write that resolved without ever flipping the store. Only open → done
+is optimistic; reopening has no beat to start early.
+
+Both effects animate `transform` and `opacity` only, so they run on the
+compositor and a busy main thread cannot make them pop. The flash is a ring on
+a `::before` (`check-ring`) that grows from the box's edge to 6px out
+(`scale(1)` → `scale(1.75)`) while it fades; it is invisible at rest. The
+strike is a `scaleX(0)` → `scaleX(1)` overlay (`strike-line`) per rendered
+line of the title, placed on the text's measured line boxes, so every wrapped
+line draws at once and sits at the same `--strike-y` and `--strike-thickness`
+as before. Both are 180ms on the same easing; `motion-reduce` removes both,
+and the resting state of each (ring invisible, line fully drawn) is the
+correct one. The write itself, and with it the toast, the confetti and the
+board re-derive, is led by `TICK_LEAD_MS` (34ms, about two frames) in
+`use-completion-beat.ts`, so it lands after the first frames of the beat
+rather than inside them.
 
 ### How an overlay arrives
 
@@ -457,3 +481,4 @@ streak, score, or percentage anywhere in it.
 | 2026-10-15 | **The date row is where, what, move** (EI-392): History and the range; one "View" menu (statuses, Show weekends, Saved views) beside the day count; ‹ Today › and one "Jump" popover holding Next/Previous week, month and quarter beside the calendar, then Activity. ‹ › step one page and disable rather than vanish; Today disables on today. History, Activity, ‹ and › show their names as tooltips. Phone targets: the N-due banner, the tab name, Archived and the signed-out banner's Sign up reach 44 on touch; two §3 "Touch targets" rules added (neighbors share a gap; an extender stays in its container). | The fourth critique counted ten peer controls in the date row, and "Week › Month › Quarter ›" read as view switches — "Month" looked like a month view and scrolled 28 days. Folding them into Jump keeps every move a click or two away and stops them claiming to be views; Weekends and Saved views are part of what you are viewing, so they went into View. No capability moved more than one click deeper. Measured at 390×844 with touch, before → after: N-due banner 389×26 → 389×44, Keyboard shortcuts 42×44 → 44×44, Sign up 47×29 → 47×45, My Lists 82×24 → 82×44, Archived 36×44 → 44×44, Quick sort 43×42 → 45×44. With a mouse nothing moved. |
 | 2026-10-15 | **The to-do row, polish pass 1** (EI-395): the completion beat (§4) — a ticked row holds checked and struck for one beat, then fades and the rows below close the gap on a transform, or under View: All slides to its new place; the flash lands on `--ease-out-soft`, not a spring. Label chip text is `labelInk` (30% hue into the foreground), retiring §1's one exception. Done and Won't do share `text-foreground/60`; Won't do stays dim-only. The strike is on the title text, not the badges. The Overflow age moves to `text-foreground/60`. A settled row's rail keeps 40% of its opacity. The checkbox takes `focus-ring`; the title's outline steps round it (`focus-ring-notched`). The row's inline `transition` composes dnd-kit's `transform` with the wash and the fade (`rowTransition`). | Measured on the board (light / dark, at rest → under the hover wash): label text 1.6–3.9:1 → 9.7–13.2 / 8.5–10.7; Won't do 2.71 / 3.92 → 5.25 / 6.6 (5.10 / 6.06 hovered); done hovered 4.27 → 5.10 / 6.06; Overflow age hovered 4.1 → 5.02 / 6.46. Under the default View the row used to unmount ~90ms after the click and the confirmation was a toast in the corner. The hover wash never animated at all: the inline `transition: transform 0ms linear` dnd-kit leaves on every row replaced the class's list; it now fades in over 100ms. A struck label chip read as "label removed", and a P1 double rail at full ink was the loudest mark on a finished row. |
 | 2026-10-15 | **The to-do row, polish pass 2** (EI-395): one badge grammar in `lib/row-grammar.ts` (§2) — `num` for a bare count only, `nums` for anything with a word or a date; every badge `text-2xs` except the two red verdicts at `text-xs`, which lose their icons; every row glyph 12px in muted ink; one icon per meaning (the time wears a clock, not a bell; a deadline ahead is a flag; the Repeat icon means "repeats" and nothing else); verdict → when → progress → identity. One anatomy on four surfaces: the board card, ⌘K, the Overdrive card (now with the rail, ↳, the pin, the flag and the counts) and the drag chip (`DragChip`: all title glyphs, the badge line, a two-line clamp, the settled rail), all from `todo-row-parts.tsx`. "Backlog" is the word for a to-do with no list everywhere (`NO_LIST_NAME`; ⌘K said "Unfiled"). On touch the row's gutter is 24px, the rail 4px in from the screen edge, the grip clear of it; the grip's 12×24 target and the checkbox's 24-wide one meet at x=12 instead of overlapping by 3px. The rolled tooltip's separator is "·", like its neighbors. | The pass-2 critique scored Consistency 2/4: the row was assembled four ways, so Overdrive dropped the rail, ↳, pin and counts, ⌘K dropped the counts and the drag chip dropped ↳ and the flag, and truncated the title to one line. Inside the row, one badge mixed mono and sans ("Deadline Oct 12"), badges came in two sizes, the scheduled and deadline calendars could not be told apart, Repeat meant both "repeats" and "missed", and the red missed deadline sat fourth in line. Measured live (1440 mouse): grip 12×24 at x=0–12, checkbox 24 wide at x=12–36 (it used to start at x=9, leaving the grip 9×24). At 390 touch: rail x=4–7, grip x=10–22, checkbox x=24–48, where the rail used to be flush with the glass and the always-visible dots touched a P3/P4 rail. Recurring occurrences showing no deadline, sub-task or attachment badges is the data model, not a lost badge: `cloneOccurrence` drops the series' deadline on purpose, and an occurrence's sub-tasks and attachments are its own. |
+| 2026-10-16 | **The completion beat lands on the click** (EI-399): the tick is optimistic — the box checks and the flash and strike start on the click from a local `pendingDone`, which reverts if the write fails and gives up `GIVE_UP_MS` after a resolved write that never flips the store. The flash is an opacity/scale ring on a `::before` and the strike a `scaleX` overlay per title line (measured line boxes), both compositor-only at 180ms on the same easing; `motion-reduce` removes both. The write, the toast, the confetti and the board re-derive are led by `TICK_LEAD_MS` (34ms). | Measured on production: the box checked ~147ms after the click, a 92ms long task landed at ~162ms, and the strike popped from 38% to 99.7% across one 119ms gap. The flash animated `box-shadow` and the strike `background-size`, both main-thread, so a busy thread made them jump. |

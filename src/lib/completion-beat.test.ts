@@ -6,6 +6,9 @@ import {
   holdRows,
   neighborsOf,
   rowTransition,
+  BEAT_MS,
+  GIVE_UP_MS,
+  TICK_LEAD_MS,
   type HeldRow,
 } from "./completion-beat";
 import type { TodoGroup } from "./board";
@@ -162,5 +165,14 @@ describe("rowTransition", () => {
     expect(value).not.toContain("transform");
     expect(value).toContain("background-color");
     expect(value).toContain("opacity");
+  });
+});
+
+describe("TICK_LEAD_MS (EI-399)", () => {
+  it("is a couple of frames: enough for the flash to start, far short of the beat and the give-up", () => {
+    expect(TICK_LEAD_MS).toBeGreaterThanOrEqual(16);
+    expect(TICK_LEAD_MS).toBeLessThanOrEqual(50);
+    expect(TICK_LEAD_MS).toBeLessThan(BEAT_MS);
+    expect(TICK_LEAD_MS * 10).toBeLessThan(GIVE_UP_MS);
   });
 });

@@ -1,10 +1,11 @@
 // @vitest-environment happy-dom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { DndContext } from "@dnd-kit/core";
 import { SortableContext } from "@dnd-kit/sortable";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { TodoCard, startsDrag } from "./todo-card";
+import { GIVE_UP_MS } from "@/lib/completion-beat";
 import { PRIORITY_RAILS } from "@/lib/priority";
 import type { TodoContextActions } from "./todo-card-menu";
 import { cardStop, type NavKey } from "@/lib/column-nav";
@@ -1360,33 +1361,140 @@ describe("the completion beat, on the card (EI-395)", () => {
   const box = () => screen.getByRole("checkbox");
   const titleText = () => document.querySelector<HTMLElement>("[data-todo-title-text]")!;
 
+  /** Two line boxes, as a wrapped title reports them; happy-dom measures nothing. */
+  const twoLines = () =>
+    vi.spyOn(Range.prototype, "getClientRects").mockReturnValue([
+      { left: 24, top: 0, width: 100, height: 20 },
+      { left: 0, top: 20, width: 60, height: 20 },
+    ] as unknown as DOMRectList);
+  const done = () => todo({ status: "done", completedAt: "2026-08-09T10:00:00.000Z" });
+
+  afterEach(() => vi.restoreAllMocks());
+
   it("flashes the box and draws the strike when THIS card sees open → done", () => {
+    twoLines();
     const { rerender } = render(<Harness todo={todo()} />);
-    expect(box().className).not.toContain("animate-check");
-    rerender(<Harness todo={todo({ status: "done", completedAt: "2026-08-09T10:00:00.000Z" })} />);
-    expect(box().className).toContain("animate-check");
-    expect(titleText().className).toContain("strike-draw");
-    expect(titleText().className).toContain("animate-strike");
+    expect(box().className).not.toContain("before:animate-check");
+    rerender(<Harness todo={done()} />);
+    // The ring is a pseudo-element animating transform/opacity, not the box.
+    expect(box().className).toContain("check-ring");
+    expect(box().className).toContain("before:animate-check");
+    expect(box().className).not.toMatch(/(^|\s)animate-check/);
+    // One overlay per rendered line, each on the transform-only `strike`.
+    const lines = document.querySelectorAll<HTMLElement>("[data-strike-line]");
+    expect(lines).toHaveLength(2);
+    for (const line of lines) {
+      expect(line.className).toContain("strike-line");
+      expect(line.className).toContain("animate-strike");
+      expect(line.className).toContain("motion-reduce:animate-none");
+    }
+    expect(lines[1].style.top).toBe("20px");
+    expect(lines[1].style.width).toBe("60px");
+    expect(titleText().className).not.toContain("strike-draw");
+    expect(titleText().className).not.toContain("line-through");
     // The state must be right with the animation removed (docs/DESIGN.md §4).
-    expect(box().className).toContain("motion-reduce:animate-none");
-    expect(titleText().className).toContain("motion-reduce:animate-none");
+    expect(box().className).toContain("motion-reduce:before:animate-none");
+  });
+
+  it("falls back to a plain line-through where lines cannot be measured", () => {
+    const { rerender } = render(<Harness todo={todo()} />);
+    rerender(<Harness todo={done()} />);
+    expect(document.querySelector("[data-strike-line]")).toBeNull();
+    expect(titleText().className).toContain("line-through");
   });
 
   it("swaps the drawn strike for a plain line-through once it has drawn", () => {
+    twoLines();
     const { rerender } = render(<Harness todo={todo()} />);
-    rerender(<Harness todo={todo({ status: "done", completedAt: "2026-08-09T10:00:00.000Z" })} />);
-    fireEvent.animationEnd(titleText(), { animationName: "strike" });
+    rerender(<Harness todo={done()} />);
+    fireEvent.animationEnd(titleText().querySelector("[data-strike-line]")!, {
+      animationName: "strike",
+    });
     expect(titleText().className).toContain("line-through");
-    expect(titleText().className).not.toContain("strike-draw");
+    expect(document.querySelector("[data-strike-line]")).toBeNull();
     // Re-inserting the node (a View: All move) must not replay the flash.
-    expect(box().className).not.toContain("animate-check");
+    expect(box().className).not.toContain("before:animate-check");
+  });
+
+  describe("the optimistic tick (EI-399)", () => {
+    it("checks the box and starts the beat synchronously, before the write resolves", () => {
+      twoLines();
+      // A write that never settles: nothing the store does can have helped.
+      const onToggle = vi.fn(() => new Promise<void>(() => {}));
+      render(<Harness onToggle={onToggle} />);
+      expect(box().getAttribute("aria-checked")).toBe("false");
+      fireEvent.click(box());
+      expect(onToggle).toHaveBeenCalledTimes(1);
+      expect(box().getAttribute("aria-checked")).toBe("true");
+      expect(box().className).toContain("before:animate-check");
+      expect(document.querySelectorAll("[data-strike-line]")).toHaveLength(2);
+    });
+
+    it("starts from Space too", () => {
+      twoLines();
+      const onToggle = vi.fn(() => new Promise<void>(() => {}));
+      render(<Harness onToggle={onToggle} />);
+      fireEvent.keyDown(row(), { key: " " });
+      expect(onToggle).toHaveBeenCalledTimes(1);
+      expect(box().getAttribute("aria-checked")).toBe("true");
+      expect(box().className).toContain("before:animate-check");
+      expect(document.querySelectorAll("[data-strike-line]")).toHaveLength(2);
+    });
+
+    it("does not write twice on a second click while the first is pending", () => {
+      const onToggle = vi.fn(() => new Promise<void>(() => {}));
+      render(<Harness onToggle={onToggle} />);
+      fireEvent.click(box());
+      fireEvent.click(box());
+      expect(onToggle).toHaveBeenCalledTimes(1);
+    });
+
+    it("reverts the box and the beat when the write rejects", async () => {
+      twoLines();
+      const onToggle = vi.fn(() => Promise.reject(new Error("offline")));
+      render(<Harness onToggle={onToggle} />);
+      fireEvent.click(box());
+      expect(box().getAttribute("aria-checked")).toBe("true");
+      await waitFor(() => expect(box().getAttribute("aria-checked")).toBe("false"));
+      expect(box().className).not.toContain("before:animate-check");
+      expect(document.querySelector("[data-strike-line]")).toBeNull();
+      expect(titleText().className).not.toContain("line-through");
+    });
+
+    it("lets go of the tick when the write resolves but the store never flips", async () => {
+      vi.useFakeTimers();
+      try {
+        const onToggle = vi.fn(() => Promise.resolve());
+        render(<Harness onToggle={onToggle} />);
+        fireEvent.click(box());
+        await act(async () => {
+          await Promise.resolve();
+        });
+        // Not at once: the store may still be catching up.
+        expect(box().getAttribute("aria-checked")).toBe("true");
+        act(() => vi.advanceTimersByTime(GIVE_UP_MS));
+        expect(box().getAttribute("aria-checked")).toBe("false");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("keeps the beat when the store catches up, without restarting it", () => {
+      twoLines();
+      const onToggle = vi.fn(() => new Promise<void>(() => {}));
+      const { rerender } = render(<Harness onToggle={onToggle} />);
+      fireEvent.click(box());
+      rerender(<Harness onToggle={onToggle} todo={done()} />);
+      expect(box().getAttribute("aria-checked")).toBe("true");
+      expect(document.querySelectorAll("[data-strike-line]")).toHaveLength(2);
+    });
   });
 
   it("renders a card that MOUNTS done with the static strike and no flash", () => {
     render(<Harness todo={todo({ status: "done", completedAt: "2026-08-09T10:00:00.000Z" })} />);
-    expect(box().className).not.toContain("animate-check");
+    expect(box().className).not.toContain("before:animate-check");
     expect(titleText().className).toContain("line-through");
-    expect(titleText().className).not.toContain("animate-strike");
+    expect(document.querySelector("[data-strike-line]")).toBeNull();
   });
 
   it("strikes the title text, not the badges under it", () => {
@@ -1425,7 +1533,7 @@ describe("inks that pass 4.5:1 (EI-395)", () => {
 
   it("keeps Won't do dim-only: no strike anywhere", () => {
     render(<Harness todo={todo({ status: "dropped", completedAt: "2026-08-09T10:00:00.000Z" })} />);
-    expect(document.querySelector(".line-through, .strike-draw")).toBeNull();
+    expect(document.querySelector(".line-through, [data-strike-line]")).toBeNull();
   });
 
   it("leaves an open title at full ink", () => {

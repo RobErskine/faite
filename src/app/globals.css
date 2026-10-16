@@ -249,32 +249,42 @@
     animation removed.
   */
   /*
-    The check flash animates `box-shadow`, so it lands on `--ease-out-soft`
-    rather than a spring (EI-395): a spring belongs on `transform` alone, and
-    a shadow cannot overshoot, it only lingers (docs/DESIGN.md §4).
+    The check flash and the strike draw animate `transform` and `opacity`
+    only (EI-399), so they run on the compositor and a busy main thread
+    cannot make them pop. They stay on `--ease-out-soft` rather than a spring:
+    a ring fading out and a line drawing have nothing to overshoot
+    (docs/DESIGN.md §4).
   */
   --animate-check: check 180ms cubic-bezier(0.22, 1, 0.36, 1);
   --animate-strike: strike 180ms cubic-bezier(0.22, 1, 0.36, 1);
   --animate-settle: settle 260ms cubic-bezier(0.22, 1, 0.36, 1);
 
-  /* The checked-box flash: one ring pulse in the spectrum's solid stop. */
+  /*
+    The checked-box flash: one ring pulse in the spectrum's solid stop. Runs
+    on the `check-ring` pseudo-element (`before:animate-check`), not on the
+    box: the ring grows from the box's edge to 6px out (16px → 28px, so 1.75)
+    while it fades. The ring's resting state is invisible, so
+    `motion-reduce:before:animate-none` leaves nothing behind.
+  */
   @keyframes check {
     from {
-      box-shadow: 0 0 0 0 var(--spectrum-solid);
+      opacity: 1;
+      transform: scale(1);
     }
     to {
-      box-shadow: 0 0 0 6px transparent;
+      opacity: 0;
+      transform: scale(1.75);
     }
   }
   /*
-    The strike draws left to right, like a pen (EI-395). Pair with the
-    `strike-draw` utility, whose line is a background, so every wrapped line
-    of a title draws at once. Only the width moves; the line is already where
-    it ends, so `motion-reduce:animate-none` leaves the finished strike.
+    The strike draws left to right, like a pen (EI-395). Runs on one
+    `strike-line` overlay per rendered line of the title, so every wrapped
+    line draws at once. Only `transform` moves; the overlay's resting state is
+    the finished line, so `motion-reduce:animate-none` leaves it struck.
   */
   @keyframes strike {
     from {
-      background-size: 0% var(--strike-thickness);
+      transform: scaleX(0);
     }
   }
   /* A dropped row settles from the overlay's 1.02 lift back to rest. */
@@ -689,7 +699,7 @@
   --app-numeric: var(--app-mono);
   --app-text-2xs: 0.625rem;
   /*
-    Where `strike-draw` sits: the face's own strike-through, measured in
+    Where `strike-line` sits: the face's own strike-through, measured in
     Chrome at 200px against `line-through` (EI-395) — 0.1em thick, its top
     47.7% of the way down the inline box's free height.
   */
@@ -823,20 +833,40 @@
 }
 
 /*
-  A strike-through drawn as a background line, so it can be drawn (the
-  `strike` keyframes) where `text-decoration` can only appear. Inline, with
-  `box-decoration-break: clone`, so each line of a wrapped title gets its own
-  line. Sat where the font's own strike-through sits — `--strike-y` and
-  `--strike-thickness` per pairing, measured against `line-through` (EI-395)
-  — so a row that was drawn and a row that mounted struck look the same.
+  A strike-through drawn as an overlay, so it can be drawn (the `strike`
+  keyframes, a `scaleX` on the compositor) where `text-decoration` can only
+  appear. One element per rendered line of the title, placed and sized to that
+  line's text by the card (`todo-card.tsx` measures it), so a wrapped title
+  draws every line at once. Its own background is the line, sat where the
+  font's own strike-through sits — `--strike-y` and `--strike-thickness` per
+  pairing, measured against `line-through` (EI-395) — so a row that was drawn
+  and a row that mounted struck look the same. Scales from its left edge.
 */
-@utility strike-draw {
+@utility strike-line {
+  position: absolute;
+  pointer-events: none;
+  transform-origin: left center;
   background-image: linear-gradient(currentColor, currentColor);
   background-repeat: no-repeat;
   background-position: 0 var(--strike-y);
   background-size: 100% var(--strike-thickness);
-  -webkit-box-decoration-break: clone;
-  box-decoration-break: clone;
+}
+
+/*
+  The ring behind the checked-box flash (EI-399): a pseudo-element, so the
+  flash can be `transform` and `opacity` instead of `box-shadow`. Invisible at
+  rest; `before:animate-check` is what shows it. The Checkbox's `::after` is
+  its hit area, so this takes `::before`.
+*/
+@utility check-ring {
+  &::before {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border: 2px solid var(--spectrum-solid);
+    opacity: 0;
+    pointer-events: none;
+  }
 }
 
 /*

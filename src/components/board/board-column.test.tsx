@@ -9,7 +9,7 @@ import { cardStop, groupStop } from "@/lib/column-nav";
 import type { List, Todo } from "@/lib/schema";
 import { ListColumnMenu } from "./list-column-menu";
 import { dayRegionLabel, type PlacementContext } from "@/lib/scheduling";
-import { BEAT_MS, LEAVE_MS } from "@/lib/completion-beat";
+import { BEAT_MS, GIVE_UP_MS, LEAVE_MS, TICK_LEAD_MS } from "@/lib/completion-beat";
 
 /**
  * Grouped rendering, which `column-nav.test.tsx` does not reach — it covers the
@@ -113,7 +113,7 @@ interface HarnessProps {
   tone?: "urgent";
   regionLabel?: string;
   anchorId?: string;
-  onToggle?: (t: Todo) => void;
+  onToggle?: (t: Todo) => void | Promise<unknown>;
 }
 
 function Harness({ groups, todos, ...rest }: HarnessProps) {
@@ -1121,6 +1121,7 @@ describe("the completion beat", () => {
     const onToggle = vi.fn();
     const { rerender } = render(<Harness todos={[a, b, c]} onToggle={onToggle} />);
     fireEvent.click(boxOf("b"));
+    act(() => vi.advanceTimersByTime(TICK_LEAD_MS));
     // The column wraps the board's handler; the write itself is still the board's.
     expect(onToggle).toHaveBeenCalledTimes(1);
     expect(onToggle.mock.calls[0][0]).toMatchObject({ id: "b", status: "open" });
@@ -1139,6 +1140,64 @@ describe("the completion beat", () => {
     act(() => vi.advanceTimersByTime(LEAVE_MS));
     expect(rowOf("b")).toBeNull();
     expect(order()).toEqual([cardStop("a"), cardStop("c")]);
+  });
+
+  it("holds the row checked at once but writes only after the tick lead", () => {
+    vi.useFakeTimers();
+    setReducedMotion(false);
+    const onToggle = vi.fn();
+    render(<Harness todos={[a, b]} onToggle={onToggle} />);
+    fireEvent.click(boxOf("b"));
+    expect(onToggle).not.toHaveBeenCalled();
+    expect(boxOf("b").getAttribute("aria-checked")).toBe("true");
+    act(() => vi.advanceTimersByTime(TICK_LEAD_MS - 1));
+    expect(onToggle).not.toHaveBeenCalled();
+    act(() => vi.advanceTimersByTime(1));
+    expect(onToggle).toHaveBeenCalledTimes(1);
+    act(() => vi.advanceTimersByTime(GIVE_UP_MS));
+    expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it("writes a completion once, not twice, on a second click inside the lead", () => {
+    vi.useFakeTimers();
+    const onToggle = vi.fn();
+    render(<Harness todos={[a, b]} onToggle={onToggle} />);
+    fireEvent.click(boxOf("b"));
+    fireEvent.click(boxOf("b"));
+    act(() => vi.advanceTimersByTime(TICK_LEAD_MS));
+    expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it("still writes, once, when the column unmounts inside the lead", () => {
+    vi.useFakeTimers();
+    const onToggle = vi.fn();
+    const { unmount } = render(<Harness todos={[a, b]} onToggle={onToggle} />);
+    fireEvent.click(boxOf("b"));
+    unmount();
+    expect(onToggle).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(TICK_LEAD_MS * 2);
+    expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it("reopens a done row immediately, with no lead", () => {
+    vi.useFakeTimers();
+    const onToggle = vi.fn();
+    render(<Harness todos={[a, done(b)]} onToggle={onToggle} />);
+    fireEvent.click(boxOf("b"));
+    expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it("hands the write's rejection back to the card, which reverts the tick", async () => {
+    vi.useFakeTimers();
+    setReducedMotion(false);
+    const onToggle = vi.fn(() => Promise.reject(new Error("offline")));
+    render(<Harness todos={[a, b]} onToggle={onToggle} />);
+    fireEvent.click(boxOf("b"));
+    expect(boxOf("b").getAttribute("aria-checked")).toBe("true");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(TICK_LEAD_MS);
+    });
+    expect(boxOf("b").getAttribute("aria-checked")).toBe("false");
   });
 
   it("under reduced motion, keeps the beat (the state is the confirmation) but leaves in one step", () => {

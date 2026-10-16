@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type {
   KeyboardEventHandler,
   MouseEventHandler,
@@ -21,7 +21,7 @@ import { cardStop, navKeyOf, type NavKey } from "@/lib/column-nav";
 import { placeSettled } from "@/lib/board";
 import { formatCompletionStamp } from "@/lib/event-time";
 import { TITLE_CLAMP_CLASS } from "@/lib/title";
-import { rowTransition } from "@/lib/completion-beat";
+import { GIVE_UP_MS, rowTransition } from "@/lib/completion-beat";
 import { rollStateFor } from "@/lib/rollover-events";
 import type { Label as LabelRecord, List, ReminderPreset, Todo } from "@/lib/schema";
 import type { PlacementContext } from "@/lib/scheduling";
@@ -119,7 +119,11 @@ interface TodoCardProps {
    * card for a to-do the board is already showing, so an id lookup would find
    * the wrong one and burst behind the sheet.
    */
-  onToggle: (todo: Todo, origin?: ConfettiOrigin | null) => void;
+  /**
+   * May return the write's promise. The card ticks optimistically (EI-399)
+   * and reverts if that promise rejects; one that returns nothing is trusted.
+   */
+  onToggle: (todo: Todo, origin?: ConfettiOrigin | null) => void | Promise<unknown>;
   onOpen: (todo: Todo) => void;
   /**
    * Arrow-key navigation out of this row. Returns true when focus moved, so
@@ -160,6 +164,33 @@ interface TodoCardProps {
   suggestedList?: List | null;
   onAcceptSuggestion?: (todo: Todo) => void;
   onDismissSuggestion?: (todo: Todo) => void;
+}
+
+/** One rendered line of the title, in the title container's own pixels. */
+type StrikeLine = { left: number; top: number; width: number; height: number };
+
+/**
+ * The line boxes of the title text, for the strike overlays (EI-399). A
+ * `Range` over the text reports one rect per rendered line, and each rect is
+ * the inline box the old background-drawn strike was sized to, so the
+ * `--strike-y` placement carries over unchanged. Empty where the environment
+ * cannot measure (happy-dom has no `Range.getClientRects`).
+ */
+function measureStrikeLines(container: HTMLElement | null, text: HTMLElement | null): StrikeLine[] {
+  const node = text?.firstChild;
+  if (!container || !node || typeof document.createRange !== "function") return [];
+  const range = document.createRange();
+  range.selectNodeContents(node);
+  if (typeof range.getClientRects !== "function") return [];
+  const origin = container.getBoundingClientRect();
+  return Array.from(range.getClientRects())
+    .filter((r) => r.width > 0 && r.height > 0)
+    .map((r) => ({
+      left: r.left - origin.left,
+      top: r.top - origin.top,
+      width: r.width,
+      height: r.height,
+    }));
 }
 
 export function TodoCard({
@@ -312,10 +343,64 @@ export function TodoCard({
    */
   const [seenStatus, setSeenStatus] = useState(todo.status);
   const [justCompleted, setJustCompleted] = useState(false);
+  /*
+    The tick is optimistic (EI-399): the box checks and the beat starts on the
+    click frame, from here, instead of waiting for the write to reach the
+    store (measured ~147ms on production). Cleared when the store catches up,
+    and when the write rejects.
+  */
+  const [pendingDone, setPendingDone] = useState(false);
   if (todo.status !== seenStatus) {
     setSeenStatus(todo.status);
     setJustCompleted(seenStatus === "open" && todo.status === "done");
+    setPendingDone(false);
   }
+  const shownDone = todo.status === "done" || pendingDone;
+  const settleTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(settleTimerRef.current), []);
+  /**
+   * Complete (or reopen) from the checkbox or Space. Only open → done is
+   * optimistic; reopening has no beat to start early.
+   */
+  const toggleFromUser = () => {
+    if (todo.status === "open") {
+      if (pendingDone) return;
+      setPendingDone(true);
+      setJustCompleted(true);
+    }
+    const write = onToggle(todo, originOf(checkboxRef.current));
+    if (write && typeof write.then === "function") {
+      write.then(
+        () => {
+          // Resolved, but if the store never flipped (a write that changed
+          // nothing) the optimistic tick must not stay on forever. Late, so it
+          // cannot flicker off before the store catches up; a normal catch-up
+          // clears `pendingDone` itself, and this is then a no-op.
+          clearTimeout(settleTimerRef.current);
+          settleTimerRef.current = setTimeout(() => setPendingDone(false), GIVE_UP_MS);
+        },
+        () => {
+          setPendingDone(false);
+          setJustCompleted(false);
+        },
+      );
+    }
+  };
+
+  /*
+    The strike is one overlay per rendered line of the title (`strike-line`),
+    so it can animate `transform` instead of `background-size`. Measured from
+    the text's own line boxes before paint, in the container's coordinates.
+    `null` until measured; `[]` when the environment cannot say, and the title
+    then takes the plain `line-through`.
+  */
+  const titleTextRef = useRef<HTMLSpanElement>(null);
+  const [strikeLines, setStrikeLines] = useState<StrikeLine[] | null>(null);
+  const drawingStrike = justCompleted && shownDone;
+  useLayoutEffect(() => {
+    if (!drawingStrike) return;
+    setStrikeLines(measureStrikeLines(titleRef.current, titleTextRef.current));
+  }, [drawingStrike, todo.title]);
   const settled = todo.status !== "open";
 
   return (
@@ -457,7 +542,7 @@ export function TodoCard({
           e.preventDefault();
           // Same origin as a click, not the focused row: the checkbox is what
           // Space operates, so the confetti should leave from there too.
-          onToggle(todo, originOf(checkboxRef.current));
+          toggleFromUser();
         } else if (e.key === "x" || e.key === "X") {
           // The keyboard route into a multi-selection (EI-194). Space is
           // already spoken for by "toggle done", so selection needs a letter;
@@ -710,16 +795,17 @@ export function TodoCard({
           }
         >
           <Checkbox
-            checked={todo.status === "done"}
-            onCheckedChange={() => onToggle(todo, originOf(checkboxRef.current))}
-            aria-label={`Mark ${todo.title} ${todo.status === "done" ? "not done" : "done"}`}
+            checked={shownDone}
+            onCheckedChange={toggleFromUser}
+            aria-label={`Mark ${todo.title} ${shownDone ? "not done" : "done"}`}
             data-completed-at={todo.completedAt ?? undefined}
             // Cursor is inherited, so without this the checkbox would read as a
             // drag surface. It still drags if you pull from it; it just should not
             // advertise that over being a checkbox.
             className={cn(
               "cursor-pointer after:-inset-x-px after:w-6 pointer-coarse:after:-inset-x-px",
-              justCompleted && "animate-check motion-reduce:animate-none",
+              justCompleted &&
+                "check-ring before:animate-check motion-reduce:before:animate-none",
             )}
           />
         </TooltipTrigger>
@@ -839,7 +925,7 @@ export function TodoCard({
               <span
                 ref={titleRef}
                 data-todo-title
-                className={cn("indent-6 wrap-break-word", TITLE_CLAMP_CLASS)}
+                className={cn("relative indent-6 wrap-break-word", TITLE_CLAMP_CLASS)}
               >
                 <TitleMarkers
                   todo={todo}
@@ -852,22 +938,32 @@ export function TodoCard({
                   also struck every label chip and badge below, which read as
                   "this label was removed". A done row that this card watched
                   being completed draws its strike left to right
-                  (`strike-draw`, `--animate-strike`); one that mounted done
+                  (`strike-line`, `--animate-strike`); one that mounted done
                   gets the static `line-through`.
                 */}
                 <span
+                  ref={titleTextRef}
                   data-todo-title-text
                   onAnimationEnd={(e) => {
                     if (e.animationName === "strike") setJustCompleted(false);
                   }}
                   className={cn(
-                    todo.status === "done" &&
-                      (justCompleted
-                        ? "strike-draw animate-strike motion-reduce:animate-none"
-                        : "line-through"),
+                    shownDone &&
+                      (!justCompleted || (strikeLines && strikeLines.length === 0)) &&
+                      "line-through",
                   )}
                 >
                   {todo.title}
+                  {drawingStrike &&
+                    strikeLines?.map((line, i) => (
+                      <span
+                        key={i}
+                        aria-hidden
+                        data-strike-line
+                        className="strike-line animate-strike motion-reduce:animate-none"
+                        style={line}
+                      />
+                    ))}
                 </span>
               </span>
             }
