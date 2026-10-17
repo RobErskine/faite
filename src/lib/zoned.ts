@@ -93,3 +93,20 @@ export function zonedInstant(date: CivilDate, time: string, timezone: string): s
   }
   return new Date(guess).toISOString();
 }
+
+/**
+ * The wall-clock time `now` reads in `timezone`, as 24-hour "HH:MM" — the
+ * inverse of `zonedInstant`'s time argument. Falls back to UTC on an
+ * unrecognized timezone, like everything else here.
+ */
+export function wallClockTimeIn(timezone: string, now: Date = new Date()): string {
+  let formatter: Intl.DateTimeFormat;
+  try {
+    formatter = partsFormatter(timezone);
+  } catch {
+    formatter = partsFormatter("UTC");
+  }
+  const parts = formatter.formatToParts(now);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "00";
+  return `${get("hour")}:${get("minute")}`;
+}

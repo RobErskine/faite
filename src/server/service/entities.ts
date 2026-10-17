@@ -107,24 +107,30 @@ export async function updateTab(
   return push(buildUpdateTabEntry(ctx, id, patch));
 }
 
-export async function createDayNote(
+/**
+ * Set a day note's body, creating the row if `existing` is null. The one
+ * write path for `PUT /api/v1/day-notes/{date}`, its `/append` sibling and
+ * MCP's `append_day_note` (EI-342).
+ *
+ * **The caller must read the row first** and pass it as `existing`: `date`
+ * is `notNull()` with no SQL default, so an update-shaped patch at an id
+ * with no row writes a row with no date (`buildCreateDayNoteEntry`).
+ *
+ * `deletedAt: null` on update mirrors `setDayNote`: a note written to a day
+ * whose row was tombstoned by some older path has to come back.
+ */
+export async function writeDayNote(
   ctx: ServiceContext,
   date: CivilDate,
   body: string,
-  push: PushTransport,
-): Promise<{ response: PushResponse; dayNoteId: string }> {
-  const entries = buildCreateDayNoteEntry(ctx, date, body);
-  const response = await push(entries);
-  return { response, dayNoteId: entries[0].entityId };
-}
-
-export async function updateDayNote(
-  ctx: ServiceContext,
-  date: CivilDate,
-  patch: UpdateDayNoteInput,
+  existing: unknown,
   push: PushTransport,
 ): Promise<PushResponse> {
-  return push(buildUpdateDayNoteEntry(ctx, date, patch));
+  return push(
+    existing
+      ? buildUpdateDayNoteEntry(ctx, date, { body, deletedAt: null } satisfies UpdateDayNoteInput)
+      : buildCreateDayNoteEntry(ctx, date, body),
+  );
 }
 
 /**

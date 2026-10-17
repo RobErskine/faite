@@ -62,6 +62,18 @@ check("cleared note is excluded from the range read",
 check("no DELETE route", (await call("DELETE", `/day-notes/${DATE}`)).status === 404);
 check("bad date → 400", (await call("GET", "/day-notes/nope")).status === 400);
 
+console.log("\n── EI-342: append to a day note ──");
+const STAMP = /^\*\*\d{2}:\d{2}\*\* — /;
+const first = await call("POST", `/day-notes/${DATE}/append`, { text: "called the vet" });
+check("append on an empty day creates the note", first.status === 200 && STAMP.test(first.body?.body ?? ""),
+  JSON.stringify(first.body));
+const second = await call("POST", `/day-notes/${DATE}/append`, { text: "lunch" });
+const parts = (second.body?.body ?? "").split("\n\n");
+check("second append keeps the first, after a blank line",
+  parts.length === 2 && parts[0].endsWith("called the vet") && STAMP.test(parts[1]) && parts[1].endsWith("lunch"));
+check("empty text → 400", (await call("POST", `/day-notes/${DATE}/append`, { text: "  " })).status === 400);
+await call("PUT", `/day-notes/${DATE}`, { body: "" });
+
 console.log("\n── A14: lists ──");
 const created = await call("POST", "/lists", { name: "Verify List", description: "temp" });
 check("POST /lists 201", created.status === 201, `got ${created.status}`);

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { encodeHlc } from "@/lib/sync/hlc-core";
 import type { ServiceContext } from "./context";
 import {
+  appendDayNoteEntry,
   buildCreateDayNoteEntry,
   buildCreateLabelEntry,
   buildCreateListEntry,
@@ -153,5 +154,20 @@ describe("buildDeleteEntry", () => {
 describe("dayNoteIdFor", () => {
   it("hand-mirrors repositories.ts's dayNoteId", () => {
     expect(dayNoteIdFor("2026-01-31")).toBe("daynote:2026-01-31");
+  });
+});
+
+describe("appendDayNoteEntry", () => {
+  it("starts an empty note with the stamped entry alone", () => {
+    expect(appendDayNoteEntry("", "called the vet", "09:05")).toBe("**09:05** — called the vet");
+  });
+
+  it("adds after a blank line, keeping what was there", () => {
+    expect(appendDayNoteEntry("# Today", "lunch", "12:30")).toBe("# Today\n\n**12:30** — lunch");
+  });
+
+  /** Repeated appends must not pile up blank lines. */
+  it("drops trailing whitespace on the old body and around the text", () => {
+    expect(appendDayNoteEntry("a\n\n\n", "  b  ", "08:00")).toBe("a\n\n**08:00** — b");
   });
 });

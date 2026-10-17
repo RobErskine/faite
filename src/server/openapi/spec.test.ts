@@ -109,6 +109,7 @@ describe("buildPublicDocument", () => {
         "/api/v1/backlog",
         "/api/v1/day-notes",
         "/api/v1/day-notes/{date}",
+        "/api/v1/day-notes/{date}/append",
         "/api/v1/labels",
         "/api/v1/labels/{id}",
         "/api/v1/lists",
@@ -134,11 +135,13 @@ describe("buildPublicDocument", () => {
   });
 
   /** Day notes are addressed by DATE, not an opaque id, so they get an upsert
-   * PUT and deliberately no POST or DELETE — see `dayNotePaths`. */
+   * PUT and deliberately no POST or DELETE — see `dayNotePaths`. The one POST
+   * is the append sub-resource (EI-342). */
   it("day notes are an upsert by date, with no POST and no DELETE", () => {
     const paths = buildPublicDocument().paths ?? {};
     expect(Object.keys(paths["/api/v1/day-notes/{date}"]).sort()).toEqual(["get", "put"]);
     expect(Object.keys(paths["/api/v1/day-notes"])).toEqual(["get"]);
+    expect(Object.keys(paths["/api/v1/day-notes/{date}/append"])).toEqual(["post"]);
   });
 
   /**
