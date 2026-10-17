@@ -421,6 +421,17 @@ describe("footer endings (EI-396)", () => {
     expect(screen.queryByRole("button", { name: /^Back to/ })).toBeNull();
   });
 
+  it("gives Done half the row and splits the rest equally", () => {
+    const { unmount } = render(<Harness onMoveBackToList={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Done" }).className).toContain("flex-[3]");
+    for (const name of ["Won't do", "Back to Backlog", "Delete"]) {
+      expect(screen.getByRole("button", { name }).className).toContain("flex-1");
+    }
+    unmount();
+    render(<Harness onMoveBackToList={vi.fn()} todo={{ ...TODO, scheduledDate: null, scheduledAt: null }} />);
+    expect(screen.getByRole("button", { name: "Done" }).className).toContain("flex-[2]");
+  });
+
   it("clicking Back to <list> calls onMoveBackToList with the to-do", () => {
     const onMoveBackToList = vi.fn();
     render(<Harness onMoveBackToList={onMoveBackToList} />);
@@ -543,6 +554,12 @@ describe("back-to-day affordance", () => {
   });
 });
 
+/** The sub-task input is hidden until the "+" beside the label is clicked. */
+const openSubtaskInput = () => {
+  fireEvent.click(screen.getByRole("button", { name: "Add a sub-task" }));
+  return screen.getByPlaceholderText("Add a sub-task");
+};
+
 describe("Sub-tasks (EI-55)", () => {
   const child = (id: string, title: string, status: Todo["status"] = "open"): Todo => ({
     ...TODO,
@@ -618,7 +635,7 @@ describe("Sub-tasks (EI-55)", () => {
   it("typing a title and pressing Enter calls onAddSubtask with the parent id, then clears the draft", () => {
     const onAddSubtask = vi.fn();
     render(<Harness onAddSubtask={onAddSubtask} />);
-    const input = screen.getByLabelText("Add a sub-task");
+    const input = openSubtaskInput();
     fireEvent.change(input, { target: { value: "Book flights" } });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(onAddSubtask).toHaveBeenCalledWith(TODO.id, "Book flights");
@@ -628,7 +645,7 @@ describe("Sub-tasks (EI-55)", () => {
   it("blurring with a typed title also commits it", () => {
     const onAddSubtask = vi.fn();
     render(<Harness onAddSubtask={onAddSubtask} />);
-    const input = screen.getByLabelText("Add a sub-task");
+    const input = openSubtaskInput();
     fireEvent.change(input, { target: { value: "Book flights" } });
     fireEvent.blur(input);
     expect(onAddSubtask).toHaveBeenCalledWith(TODO.id, "Book flights");
@@ -637,10 +654,33 @@ describe("Sub-tasks (EI-55)", () => {
   it("does not call onAddSubtask for a blank title", () => {
     const onAddSubtask = vi.fn();
     render(<Harness onAddSubtask={onAddSubtask} />);
-    const input = screen.getByLabelText("Add a sub-task");
+    const input = openSubtaskInput();
     fireEvent.keyDown(input, { key: "Enter" });
     fireEvent.blur(input);
     expect(onAddSubtask).not.toHaveBeenCalled();
+  });
+
+  it("hides the input until the + is clicked, which shows and focuses it", () => {
+    render(<Harness />);
+    expect(screen.queryByPlaceholderText("Add a sub-task")).toBeNull();
+    const input = openSubtaskInput();
+    expect(document.activeElement).toBe(input);
+  });
+
+  it("stays open after a commit; Escape hides it again", () => {
+    render(<Harness />);
+    const input = openSubtaskInput();
+    fireEvent.change(input, { target: { value: "Book flights" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(screen.getByPlaceholderText("Add a sub-task")).toBeTruthy();
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(screen.queryByPlaceholderText("Add a sub-task")).toBeNull();
+  });
+
+  it("blurring with an empty draft hides the input", () => {
+    render(<Harness />);
+    fireEvent.blur(openSubtaskInput());
+    expect(screen.queryByPlaceholderText("Add a sub-task")).toBeNull();
   });
 
   it("one level of nesting: a sub-task's own sheet shows no Sub-tasks section at all", () => {
@@ -707,6 +747,12 @@ describe("on-demand sections (EI-396)", () => {
     expect(screen.queryByRole("list", { name: /^History for/ })).toBeNull();
   });
 
+  it("shows the Attachments label once, on the toggle, when open", () => {
+    render(<Harness />);
+    fireEvent.click(screen.getByRole("button", { name: /^Attachments/ }));
+    expect(screen.getAllByText("Attachments")).toHaveLength(1);
+  });
+
   it("opens Attachments on click and closes it again", () => {
     render(<Harness />);
     const toggle = screen.getByRole("button", { name: /^Attachments/ });
@@ -715,6 +761,29 @@ describe("on-demand sections (EI-396)", () => {
     expect(screen.getByRole("button", { name: "Attach a file" })).toBeTruthy();
     fireEvent.click(toggle);
     expect(screen.queryByRole("button", { name: "Attach a file" })).toBeNull();
+  });
+
+  it("opens History by default only when it has more than 3 events", () => {
+    const event = (n: number): TodoEvent => ({
+      id: `e${n}`,
+      ownerId: "local",
+      createdAt: `2026-08-0${n}T09:00:00.000Z`,
+      updatedAt: `2026-08-0${n}T09:00:00.000Z`,
+      deletedAt: null,
+      todoId: TODO.id,
+      kind: "created",
+      at: `2026-08-0${n}T09:00:00.000Z`,
+      payload: null,
+    });
+    const { unmount } = render(<Harness events={[1, 2, 3].map(event)} />);
+    expect(
+      screen.getByRole("button", { name: /^History/ }).getAttribute("aria-expanded"),
+    ).toBe("false");
+    unmount();
+    render(<Harness events={[1, 2, 3, 4].map(event)} />);
+    expect(
+      screen.getByRole("button", { name: /^History/ }).getAttribute("aria-expanded"),
+    ).toBe("true");
   });
 
   it("opens History on click", () => {
@@ -775,11 +844,11 @@ describe("priority in the header (EI-318)", () => {
     expect(glyph.style.width).toBe(`${PRIORITY_RAILS[1].width}px`);
   });
 
-  it("wears the rail as a short mark on the select, not a full-height edge", () => {
+  it("wears the rail as a short mark on the select trigger, not a full-height edge", () => {
     // The row's own `railBorder`, only as tall as the select (EI-396). The
     // full-height edge on the sheet is gone.
     render(<Harness todo={{ ...TODO, priority: 1 }} />);
-    const mark = document.getElementById("todo-priority")!.parentElement!;
+    const mark = document.getElementById("todo-priority")!;
     expect(mark.getAttribute("data-priority-mark")).toBe("1");
     expect(mark.style.borderLeftWidth).toBe(`${PRIORITY_RAILS[1].width}px`);
     expect(mark.style.borderLeftStyle).toBe("double");
@@ -788,7 +857,7 @@ describe("priority in the header (EI-318)", () => {
 
   it("wears no mark when the to-do is unprioritized", () => {
     render(<Harness todo={{ ...TODO, priority: null }} />);
-    const mark = document.getElementById("todo-priority")!.parentElement!;
+    const mark = document.getElementById("todo-priority")!;
     expect(mark.style.borderLeftWidth).toBe("");
     expect(sheetContent().querySelector(":scope > [data-priority-rail]")).toBeNull();
   });

@@ -3,7 +3,6 @@
 import { useRef, useState, useSyncExternalStore } from "react";
 import { Download, FileText, Image as ImageIcon, Paperclip, X } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import {
   ALLOWED_MIME_TYPES,
   AttachmentError,
@@ -217,13 +216,8 @@ export function AttachmentsSection({ todoId }: { todoId: string }) {
 
   return (
     <section className="space-y-1.5">
-      <Label>
-        Attachments
-        {attachments.length > 0 && (
-          <span className="font-normal text-muted-foreground"> ({attachments.length})</span>
-        )}
-      </Label>
-
+      {/* No heading of its own: `AttachmentsDisclosure` in todo-sheet.tsx owns
+          the "Attachments (N)" toggle this section mounts under. */}
       {attachments.length > 0 && (
         <ul className="space-y-1">
           {attachments.map((attachment) => (

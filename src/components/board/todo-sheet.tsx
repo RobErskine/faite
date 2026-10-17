@@ -28,8 +28,8 @@ import {
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { DatePickerField } from "@/components/ui/date-picker-field";
 import { DatePopover } from "@/components/board/date-popover";
+import { DeadlinePopover } from "@/components/board/deadline-popover";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { MarkdownField } from "@/components/ui/markdown-field";
@@ -154,24 +154,11 @@ function storyLineFor(
 }
 
 /**
- * One metadata row: label on the leading edge, control beside it.
- *
- * Stacked label-over-control cost 162px for List, Labels and Location
- * together, measured; as rows they cost 106px, and the sheet's scroll body is
- * ~820px. That is the smaller half of the reason. The larger one is that a
- * column of labels reads as a properties table — a thing you scan — where
- * three stacked forms read as three equally important questions, which is the
- * hierarchy problem this whole redesign is about.
- *
- * `items-start`, not centered: Labels grows chips onto a second line and
- * Location can open a nickname step under itself. The label stays on the
- * first line where the control's own first line is. `pt-2.5` is what optically
- * centers a 14px label against a 36px control rather than hanging it at the
- * top.
- *
- * Date and Deadline are deliberately NOT rows — they are a two-up grid whose
- * labels sit above, because two controls side by side have no room for a
- * label column each.
+ * One metadata field: label over control, the same `space-y-1.5` as Date,
+ * Deadline and Notes (EI-396). It was a two-column row for a while to save
+ * height; the owner found three different rhythms in one body (rows here,
+ * stacked there), so List, Labels and Location now stack like everything else
+ * and the body's own `space-y-5` spaces them.
  */
 function SheetRow({
   label,
@@ -184,15 +171,8 @@ function SheetRow({
   children: React.ReactNode;
 }) {
   return (
-    <div className="grid grid-cols-[5rem_1fr] items-start gap-3">
-      {/* No color of its own. Every label in this sheet is one thing —
-          `Label`'s own `text-sm font-medium` in the foreground — whether it
-          sits above its control (Date, Deadline, Notes) or beside it. A muted
-          row label made the same word look like two different kinds of word
-          depending on which layout it landed in. */}
-      <Label htmlFor={htmlFor} className="pt-2.5">
-        {label}
-      </Label>
+    <div className="space-y-1.5">
+      <Label htmlFor={htmlFor}>{label}</Label>
       <div className="min-w-0">{children}</div>
     </div>
   );
@@ -724,7 +704,7 @@ function TodoSheetContent({
             belong in one glance. `items-start`, not centered: a title that
             grows to three lines must not drag the select down the block.
 
-            The mark is a short left border on the select's wrapper, from
+            The mark is a short left border on the select's trigger itself, from
             `railBorder` — the same width, dash style and opacity the row's
             rail wears (`PRIORITY_RAILS`), only as tall as the select rather
             than the sheet. Unprioritized wears nothing.
@@ -733,7 +713,7 @@ function TodoSheetContent({
             Shift+Tab from the title lands on priority, Tab from it lands on
             Date.
           */}
-          <div className="flex items-start gap-2">
+          <div className="flex items-start gap-2 pr-10">
             <Select
               value={todo.priority ? String(todo.priority) : NONE}
               onValueChange={(v) =>
@@ -742,14 +722,12 @@ function TodoSheetContent({
                 })
               }
             >
-              <div
-                data-priority-mark={todo.priority ?? "none"}
-                style={railBorder(todo.priority)}
-                className="shrink-0 pl-1.5"
-              >
+              <>
                 <SelectTrigger
                   id="todo-priority"
                   aria-label="Priority"
+                  data-priority-mark={todo.priority ?? "none"}
+                  style={railBorder(todo.priority)}
                   // `h-8` is the title's line box exactly (see below), which is
                   // what makes `items-start` read as vertical centering on the
                   // first line without pinning it to the middle of a tall one.
@@ -790,7 +768,7 @@ function TodoSheetContent({
                     </SelectItem>
                   ))}
                 </SelectContent>
-              </div>
+              </>
             </Select>
             <div className="relative flex-1">
             <Textarea
@@ -916,16 +894,11 @@ function TodoSheetContent({
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="todo-deadline">Deadline</Label>
-              {/*
-                No `disabled` bound, unlike the board's "Jump to date": a
-                deadline already in the past is an ordinary thing to record,
-                and the card badges it rather than refusing it.
-              */}
-              <DatePickerField
+              <DeadlinePopover
                 id="todo-deadline"
                 value={todo.deadline}
+                today={today}
                 onChange={(next) => onSave(todo.id, { deadline: next })}
-                placeholder="No deadline"
               />
             </div>
           </div>
@@ -938,7 +911,7 @@ function TodoSheetContent({
           */}
           {recurrence && <RepeatSection recurrence={recurrence} />}
 
-          <div className="space-y-2">
+          <>
             <SheetRow label="List" htmlFor="todo-list">
               <ListField
                 value={todo.listId}
@@ -955,7 +928,7 @@ function TodoSheetContent({
             <SheetRow label="Location" htmlFor="todo-location-input">
               <LocationField todo={todo} places={places} onSave={onSave} />
             </SheetRow>
-          </div>
+          </>
 
           {/*
             One level of nesting only (EI-55): a todo that is itself a
@@ -1046,7 +1019,7 @@ function TodoSheetContent({
           controls, so the footer reads as the bottom of the same form rather
           than a row of secondary links.
         */}
-        <SheetFooter className="flex flex-row flex-wrap items-center gap-2 border-t">
+        <SheetFooter className="flex flex-row items-center gap-2 border-t">
           <Tooltip>
             <TooltipTrigger
               render={
@@ -1054,6 +1027,8 @@ function TodoSheetContent({
                   ref={markDoneRef}
                   variant={todo.status === "done" ? "outline" : "default"}
                   size="lg"
+                  // Half the row; the others split the other half (EI-396).
+                  className={canMoveBack ? "min-w-0 flex-[3]" : "min-w-0 flex-[2]"}
                   onClick={markDone}
                 />
               }
@@ -1082,7 +1057,7 @@ function TodoSheetContent({
             the item in history as abandoned rather than completed.
           */}
           <Tooltip>
-            <TooltipTrigger render={<Button variant="outline" size="lg" onClick={wontDo} />}>
+            <TooltipTrigger render={<Button variant="outline" size="lg" onClick={wontDo} className="min-w-0 flex-1" />}>
               Won&apos;t do
               <kbd
                 aria-hidden
@@ -1105,7 +1080,7 @@ function TodoSheetContent({
           {canMoveBack && (
             <Tooltip>
               <TooltipTrigger
-                render={<Button variant="outline" size="lg" onClick={moveBackToList} className="min-w-0" />}
+                render={<Button variant="outline" size="lg" onClick={moveBackToList} className="min-w-0 flex-1" />}
               >
                 <span className="truncate">Back to {homeListName}</span>
                 <kbd
@@ -1131,7 +1106,7 @@ function TodoSheetContent({
                   variant="ghost"
                   size="lg"
                   aria-label="Delete"
-                  className="ml-auto text-muted-foreground"
+                  className="min-w-0 flex-1 text-muted-foreground"
                   onClick={remove}
                 />
               }
@@ -1197,6 +1172,9 @@ function SubtasksSection({ subtasks, onToggleStatus, onDelete, onAdd }: Subtasks
   /** Per-row elements, for GOOD JOB mode's confetti origin. Keyed by subtask id. */
   const rowRefs = useRef(new Map<string, HTMLLIElement>());
   const [draft, setDraft] = useState("");
+  // The input is hidden until asked for (EI-396): most to-dos never get a
+  // sub-task, so an always-on empty field is noise on every open.
+  const [adding, setAdding] = useState(false);
 
   const doneCount = subtasks.filter((s) => s.status !== "open").length;
 
@@ -1209,15 +1187,27 @@ function SubtasksSection({ subtasks, onToggleStatus, onDelete, onAdd }: Subtasks
 
   return (
     <section className="space-y-1.5">
-      <Label>
-        Sub-tasks
-        {subtasks.length > 0 && (
-          <span className="font-normal text-muted-foreground">
-            {" "}
-            ({doneCount}/{subtasks.length})
-          </span>
-        )}
-      </Label>
+      <div className="flex items-center gap-1">
+        <Label>
+          Sub-tasks
+          {subtasks.length > 0 && (
+            <span className="font-normal text-muted-foreground">
+              {" "}
+              ({doneCount}/{subtasks.length})
+            </span>
+          )}
+        </Label>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-6 text-muted-foreground"
+          aria-label="Add a sub-task"
+          onClick={() => setAdding(true)}
+        >
+          <Plus className="size-3.5" aria-hidden />
+        </Button>
+      </div>
 
       {subtasks.length > 0 && (
         <ul className="space-y-1">
@@ -1273,20 +1263,32 @@ function SubtasksSection({ subtasks, onToggleStatus, onDelete, onAdd }: Subtasks
         </ul>
       )}
 
-      <Input
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            commit();
-          }
-        }}
-        onBlur={commit}
-        placeholder="Add a sub-task"
-        aria-label="Add a sub-task"
-        className="h-8 text-sm"
-      />
+      {adding && (
+        <Input
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              commit();
+            } else if (e.key === "Escape") {
+              // Hides the field and drops the draft; the sheet's own Escape
+              // handling must not also close the drawer from here.
+              e.stopPropagation();
+              setDraft("");
+              setAdding(false);
+            }
+          }}
+          onBlur={() => {
+            if (draft.trim()) commit();
+            else setAdding(false);
+          }}
+          placeholder="Add a sub-task"
+          aria-label="Add a sub-task"
+          className="h-8 text-sm"
+        />
+      )}
     </section>
   );
 }
@@ -1477,7 +1479,6 @@ function HistorySection({
   listsById,
   settings,
 }: HistorySectionProps) {
-  const [open, setOpen] = useState(false);
   const items = useMemo(
     () => buildTodoTimeline(events, todo, ctx, timezone, today),
     [events, todo, ctx, timezone, today],
@@ -1497,6 +1498,9 @@ function HistorySection({
 
   const eventItems = items.filter((item) => item.type === "event");
   const count = eventItems.length;
+  // A long history is the point of opening the drawer; a short one is noise.
+  // Seeds once per mount (the sheet keys by todo id) and is not persisted.
+  const [open, setOpen] = useState(count > 3);
   const hiddenCount = eventItems.filter((item) => !isVisible(item)).length;
 
   // Filter the EVENTS, then drop any day header left with nothing under it —

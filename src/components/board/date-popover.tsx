@@ -227,19 +227,7 @@ export function DatePopover({
         {/* A named group, so the four rows are reachable as a set — by a
             screen reader, and by a test that would otherwise have to tell
             "Today" apart from the calendar's own today cell. */}
-        <div role="group" aria-label="Quick dates" className="border-b p-1">
-          {DATE_POPOVER_KINDS.map((kind) => {
-            const date = quickRescheduleDate(kind, today);
-            return (
-              <PresetRow
-                key={kind}
-                label={PRESET_LABELS[kind]}
-                hint={whenHint(date, today)}
-                onClick={() => commit(date)}
-              />
-            );
-          })}
-        </div>
+        <QuickDatesGroup today={today} onPick={commit} />
 
         <Calendar
           mode="single"
@@ -295,6 +283,38 @@ const PRESET_LABELS: Record<(typeof DATE_POPOVER_KINDS)[number], string> = {
   thisWeekend: "This weekend",
   nextWeek: "Next week",
 };
+
+/**
+ * The four named days as one labelled group. Shared with the Deadline field's
+ * popover (`deadline-popover.tsx`) so both date controls offer the same rows
+ * in the same words.
+ */
+export function QuickDatesGroup({
+  today,
+  onPick,
+}: {
+  today: CivilDate;
+  onPick: (date: CivilDate) => void;
+}) {
+  return (
+    // A named group, so the four rows are reachable as a set — by a screen
+    // reader, and by a test that would otherwise have to tell "Today" apart
+    // from the calendar's own today cell.
+    <div role="group" aria-label="Quick dates" className="border-b p-1">
+      {DATE_POPOVER_KINDS.map((kind) => {
+        const date = quickRescheduleDate(kind, today);
+        return (
+          <PresetRow
+            key={kind}
+            label={PRESET_LABELS[kind]}
+            hint={whenHint(date, today)}
+            onClick={() => onPick(date)}
+          />
+        );
+      })}
+    </div>
+  );
+}
 
 function PresetRow({
   label,

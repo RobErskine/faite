@@ -86,6 +86,8 @@ async function typeLoneLink(sheet: import("@playwright/test").Locator, url: stri
  * the sheet without this discards the edit (`MarkdownEditor` only commits on
  * blur; a dialog close is not itself a blur of its contenteditable). */
 async function commitNotes(sheet: import("@playwright/test").Locator) {
+  // The input is hidden until the + beside "Sub-tasks" is clicked (EI-396).
+  await sheet.getByRole("button", { name: "Add a sub-task" }).click();
   await sheet.getByPlaceholder("Add a sub-task").click();
 }
 
