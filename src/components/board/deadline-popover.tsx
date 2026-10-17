@@ -10,7 +10,7 @@ import {
   localDateToCivilDate,
 } from "@/components/ui/date-picker-field";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { QuickDatesGroup } from "@/components/board/date-popover";
+import { QuickDatesGroup, TypedDateField } from "@/components/board/date-popover";
 import type { CivilDate } from "@/lib/schema";
 import { formatShortDate } from "@/lib/scheduling";
 import { cn } from "@/lib/utils";
@@ -25,8 +25,8 @@ interface DeadlinePopoverProps {
 }
 
 /**
- * The Deadline field: the Date control's quick picks above the same calendar,
- * and nothing else. No time and no repeat — a deadline is a day, not a
+ * The Deadline field: the Date control's typed-date input and quick picks
+ * above the same calendar, and nothing else. No time and no repeat — a deadline is a day, not a
  * schedule. No `disabled` day either: a deadline in the past is an ordinary
  * thing to record, and the card badges it rather than refusing it.
  *
@@ -35,18 +35,26 @@ interface DeadlinePopoverProps {
  */
 export function DeadlinePopover({ id, value, today, onChange }: DeadlinePopoverProps) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
   const selected = value ? civilDateToLocalDate(value) : undefined;
 
   function commit(next: CivilDate | null) {
     onChange(next);
     setOpen(false);
+    setQuery("");
   }
 
   return (
     // The clear button is a SIBLING of the trigger: a `<button>` inside a
     // `<button>` is invalid HTML.
     <div className="relative">
-      <Popover open={open} onOpenChange={setOpen}>
+      <Popover
+        open={open}
+        onOpenChange={(next) => {
+          setOpen(next);
+          if (!next) setQuery("");
+        }}
+      >
         <PopoverTrigger
           id={id}
           className={cn(
@@ -60,10 +68,15 @@ export function DeadlinePopover({ id, value, today, onChange }: DeadlinePopoverP
           <span className="truncate">{value ? formatShortDate(value) : "No deadline"}</span>
         </PopoverTrigger>
         <PopoverContent align="start" className="w-72 p-0">
+          <TypedDateField
+            today={today}
+            query={query}
+            onQueryChange={setQuery}
+            onCommit={commit}
+          />
           <QuickDatesGroup today={today} onPick={commit} />
           <Calendar
             mode="single"
-            autoFocus
             selected={selected}
             defaultMonth={selected}
             onSelect={(date) => date && commit(localDateToCivilDate(date))}

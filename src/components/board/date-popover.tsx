@@ -116,7 +116,6 @@ export function DatePopover({
   const [query, setQuery] = useState("");
 
   const value = todo.scheduledDate;
-  const typed = parseDatePhrase(query, today);
   const selected = value ? civilDateToLocalDate(value) : undefined;
 
   function close() {
@@ -189,40 +188,12 @@ export function DatePopover({
       </div>
 
       <PopoverContent align="start" className="w-72 p-0">
-        <div className="border-b p-2">
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && typed) {
-                e.preventDefault();
-                commit(typed);
-              }
-            }}
-            placeholder="Type a date…"
-            aria-label="Type a date"
-            className="focus-ring h-8 w-full rounded-md bg-transparent px-2 text-sm outline-none placeholder:text-muted-foreground"
-          />
-        </div>
-
-        {/* The parsed suggestion, above the presets rather than replacing
-            them: typing narrows nothing here, so hiding the named rows would
-            only cost the user their way back. */}
-        {query.trim() !== "" && (
-          <div className="border-b p-1">
-            {typed ? (
-              <PresetRow
-                label={formatShortDate(typed)}
-                hint={whenHint(typed, today)}
-                onClick={() => commit(typed)}
-              />
-            ) : (
-              <p className="px-2 py-1.5 text-sm text-muted-foreground">
-                Not a date we recognize.
-              </p>
-            )}
-          </div>
-        )}
+        <TypedDateField
+          today={today}
+          query={query}
+          onQueryChange={setQuery}
+          onCommit={commit}
+        />
 
         {/* A named group, so the four rows are reachable as a set — by a
             screen reader, and by a test that would otherwise have to tell
@@ -272,6 +243,64 @@ export function DatePopover({
         </div>
       </PopoverContent>
     </Popover>
+  );
+}
+
+/**
+ * The typed-date input and, once something is typed, its parsed suggestion
+ * above the presets. Shared with the Deadline field's popover
+ * (`deadline-popover.tsx`) so both date controls read a phrase the same way.
+ * The caller owns `query` because it also has to reset it when it closes.
+ */
+export function TypedDateField({
+  today,
+  query,
+  onQueryChange,
+  onCommit,
+}: {
+  today: CivilDate;
+  query: string;
+  onQueryChange: (query: string) => void;
+  onCommit: (date: CivilDate) => void;
+}) {
+  const typed = parseDatePhrase(query, today);
+  return (
+    <>
+      <div className="border-b p-2">
+        <input
+          value={query}
+          onChange={(e) => onQueryChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && typed) {
+              e.preventDefault();
+              onCommit(typed);
+            }
+          }}
+          placeholder="Type a date…"
+          aria-label="Type a date"
+          className="focus-ring h-8 w-full rounded-md bg-transparent px-2 text-sm outline-none placeholder:text-muted-foreground"
+        />
+      </div>
+
+      {/* The parsed suggestion, above the presets rather than replacing
+          them: typing narrows nothing here, so hiding the named rows would
+          only cost the user their way back. */}
+      {query.trim() !== "" && (
+        <div className="border-b p-1">
+          {typed ? (
+            <PresetRow
+              label={formatShortDate(typed)}
+              hint={whenHint(typed, today)}
+              onClick={() => onCommit(typed)}
+            />
+          ) : (
+            <p className="px-2 py-1.5 text-sm text-muted-foreground">
+              Not a date we recognize.
+            </p>
+          )}
+        </div>
+      )}
+    </>
   );
 }
 

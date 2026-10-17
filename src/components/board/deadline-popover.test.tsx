@@ -40,4 +40,36 @@ describe("DeadlinePopover", () => {
     fireEvent.click(screen.getByRole("button", { name: "Clear date" }));
     expect(onChange).toHaveBeenCalledWith(null);
   });
+
+  it("saves a typed date on Enter and closes", () => {
+    const onChange = vi.fn();
+    render(<DeadlinePopover id="todo-deadline" value={null} today={TODAY} onChange={onChange} />);
+    fireEvent.click(document.getElementById("todo-deadline")!);
+    fireEvent.change(screen.getByLabelText("Type a date"), { target: { value: "tomorrow" } });
+    fireEvent.keyDown(screen.getByLabelText("Type a date"), { key: "Enter" });
+    expect(onChange).toHaveBeenCalledWith("2026-09-11");
+    expect(screen.queryByLabelText("Type a date")).toBeNull();
+  });
+
+  it("saves the parsed suggestion when picked", () => {
+    const onChange = vi.fn();
+    render(<DeadlinePopover id="todo-deadline" value={null} today={TODAY} onChange={onChange} />);
+    fireEvent.click(document.getElementById("todo-deadline")!);
+    fireEvent.change(screen.getByLabelText("Type a date"), { target: { value: "tomorrow" } });
+    const suggestion = screen
+      .getAllByRole("button", { name: /Sep 11/ })
+      .find((b) => !screen.getByRole("group", { name: "Quick dates" }).contains(b))!;
+    fireEvent.click(suggestion);
+    expect(onChange).toHaveBeenCalledWith("2026-09-11");
+  });
+
+  it("says so when the phrase is not a date, and saves nothing on Enter", () => {
+    const onChange = vi.fn();
+    render(<DeadlinePopover id="todo-deadline" value={null} today={TODAY} onChange={onChange} />);
+    fireEvent.click(document.getElementById("todo-deadline")!);
+    fireEvent.change(screen.getByLabelText("Type a date"), { target: { value: "banana" } });
+    fireEvent.keyDown(screen.getByLabelText("Type a date"), { key: "Enter" });
+    expect(screen.getByText("Not a date we recognize.")).toBeTruthy();
+    expect(onChange).not.toHaveBeenCalled();
+  });
 });

@@ -59,7 +59,7 @@ interface HarnessProps {
   onBackToDay?: () => void;
   onSetStatus?: (id: string, status: Todo["status"]) => void;
   onDelete?: (id: string) => void;
-  onMoveBackToList?: (todo: Todo) => void;
+  onMoveBackToList?: (todo: Todo, opts?: { toBacklog?: boolean }) => void;
   onSave?: (id: string, patch: Partial<Todo>) => void;
   onToggleLabel?: (todoId: string, labelId: string) => void;
   onAddSubtask?: (parentId: string, title: string) => void;
@@ -421,15 +421,57 @@ describe("footer endings (EI-396)", () => {
     expect(screen.queryByRole("button", { name: /^Back to/ })).toBeNull();
   });
 
-  it("gives Done half the row and splits the rest equally", () => {
+  it("lays the footer out as an inverted T: Done alone, then three equal cells", () => {
     const { unmount } = render(<Harness onMoveBackToList={vi.fn()} />);
-    expect(screen.getByRole("button", { name: "Done" }).className).toContain("flex-[3]");
+    const footer = document.querySelector('[data-slot="sheet-footer"]')!;
+    expect(footer.className).toContain("grid-cols-3");
+    expect(screen.getByRole("button", { name: "Done" }).className).toContain("col-span-3");
+    expect(footer.children.length).toBe(4);
     for (const name of ["Won't do", "Back to Backlog", "Delete"]) {
-      expect(screen.getByRole("button", { name }).className).toContain("flex-1");
+      expect(screen.getByRole("button", { name }).className).not.toContain("flex-");
     }
     unmount();
     render(<Harness onMoveBackToList={vi.fn()} todo={{ ...TODO, scheduledDate: null, scheduledAt: null }} />);
-    expect(screen.getByRole("button", { name: "Done" }).className).toContain("flex-[2]");
+    const bare = document.querySelector('[data-slot="sheet-footer"]')!;
+    // Back to <list> is gone but its cell stays, so Won't do and Delete hold still.
+    expect(bare.children.length).toBe(4);
+    expect(bare.children[2].tagName).toBe("DIV");
+  });
+
+  it("shows the Delete chord inline", () => {
+    render(<Harness onMoveBackToList={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Delete" }).querySelector('[data-slot="kbd"]')).toBeTruthy();
+  });
+
+  it("header and footer share the body's px-4 edge", () => {
+    render(<Harness onMoveBackToList={vi.fn()} />);
+    expect(document.querySelector('[data-slot="sheet-header"]')!.className).toContain("px-4");
+    expect(document.querySelector('[data-slot="sheet-footer"]')!.className).toContain("px-4");
+  });
+
+  it("shift+down sends it to Backlog, only with a day and not from a text field", () => {
+    const onMoveBackToList = vi.fn();
+    const { unmount } = render(<Harness onMoveBackToList={onMoveBackToList} />);
+    fireEvent.keyDown(screen.getByLabelText("Title"), { key: "ArrowDown", shiftKey: true });
+    expect(onMoveBackToList).not.toHaveBeenCalled();
+    fireEvent.keyDown(sheetContent(), { key: "ArrowDown", shiftKey: true });
+    expect(onMoveBackToList).toHaveBeenCalledWith(TODO, { toBacklog: true });
+    unmount();
+
+    const none = vi.fn();
+    render(<Harness onMoveBackToList={none} todo={{ ...TODO, scheduledDate: null, scheduledAt: null }} />);
+    fireEvent.keyDown(sheetContent(), { key: "ArrowDown", shiftKey: true });
+    expect(none).not.toHaveBeenCalled();
+  });
+
+  it("d opens the Date popover, but not from a text field", () => {
+    render(<Harness onMoveBackToList={vi.fn()} />);
+    const trigger = document.getElementById("todo-scheduled")!;
+    const click = vi.spyOn(trigger, "click");
+    fireEvent.keyDown(screen.getByLabelText("Title"), { key: "d" });
+    expect(click).not.toHaveBeenCalled();
+    fireEvent.keyDown(sheetContent(), { key: "d" });
+    expect(click).toHaveBeenCalledTimes(1);
   });
 
   it("clicking Back to <list> calls onMoveBackToList with the to-do", () => {

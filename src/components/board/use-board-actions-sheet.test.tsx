@@ -50,4 +50,27 @@ describe("handleSheetMoveBackToList", () => {
       expect(clearSelection).not.toHaveBeenCalled();
     });
   });
+
+  it("toBacklog sends it to Backlog instead of its own list", () => {
+    const a = todo("a", "l1");
+    const data = {
+      lists: [{ id: "back", name: "Backlog", isBacklog: true }],
+      listsById: new Map([["l1", { id: "l1", name: "One" }]]),
+      tabs: [],
+      tabsById: new Map(),
+      todosById: new Map([[a.id, a]]),
+      rawTodoIds: new Set(["a"]),
+      selectedTodos: [a],
+      settings: null,
+    };
+    const ui = { selectedIds: new Set<string>(), clearSelection: vi.fn(), landingTodoIds: new Set(), setLandingTodoIds: vi.fn() };
+    const { result } = renderHook(() =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      useBoardActions(data as any, ui as any, false, "desktop"),
+    );
+    result.current.handleSheetMoveBackToList(a, { toBacklog: true });
+    return vi.waitFor(() => {
+      expect(moveTodoToList).toHaveBeenCalledWith("a", "back");
+    });
+  });
 });

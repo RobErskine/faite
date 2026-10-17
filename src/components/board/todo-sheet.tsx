@@ -253,7 +253,7 @@ interface TodoSheetProps {
    * reminder, keeps the list. Optional — absent means the ending is not
    * offered. Only ever offered for a to-do that has a day.
    */
-  onMoveBackToList?: (todo: Todo) => void;
+  onMoveBackToList?: (todo: Todo, opts?: { toBacklog?: boolean }) => void;
   /**
    * Create a sub-task titled `title` under this todo (EI-55). Optional —
    * when omitted the Sub-tasks section still renders any existing children
@@ -563,6 +563,12 @@ function TodoSheetContent({
     onMoveBackToList?.(todo);
     onClose();
   };
+  // ⇧↓ — Overdrive's "force Backlog": same write as Back to <list>, but to the
+  // Backlog whatever list the to-do came from.
+  const sendToBacklog = () => {
+    onMoveBackToList?.(todo, { toBacklog: true });
+    onClose();
+  };
 
   /**
    * Local `onKeyDown`, not a global registry entry — KEYBOARD.md §5 step 1:
@@ -592,6 +598,8 @@ function TodoSheetContent({
       Overdrive's "back to the list" too (EI-396), and only when the to-do has
       a day. Right stays unbound, because Overdrive's meaning for it (walk the
       ramp) needs its verdict state machine and this sheet has no equivalent.
+      Delete has no bare key on purpose. ⇧↓ sends it to Backlog, `d` opens
+      the Date popover.
 
       Local rather than a `Hotkey` registry entry, for the same reason as the
       chords below: `GuardContext` is one global `modalOpen` boolean with no
@@ -599,7 +607,27 @@ function TodoSheetContent({
       sheet (docs/KEYBOARD.md §1). Registered by hand in `lib/shortcuts.ts`
       so the `?` sheet and the palette can still find them.
     */
+    // ⇧↓ (Overdrive's "force Backlog") is the one shifted bare key.
+    if (
+      e.key === "ArrowDown" &&
+      e.shiftKey &&
+      !e.metaKey &&
+      !e.ctrlKey &&
+      !e.altKey &&
+      !isTextEntry(e.target) &&
+      canMoveBack
+    ) {
+      e.preventDefault();
+      sendToBacklog();
+      return;
+    }
     if (!e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && !isTextEntry(e.target)) {
+      // `d` opens the Date popover, as it opens Overdrive's date picker.
+      if (e.key === "d" || e.key === "D") {
+        e.preventDefault();
+        document.getElementById("todo-scheduled")?.click();
+        return;
+      }
       if (e.key === "ArrowUp") {
         e.preventDefault();
         markDone();
@@ -668,7 +696,7 @@ function TodoSheetContent({
         overlayClassName="supports-backdrop-filter:backdrop-blur-none"
         onKeyDown={handleSheetKeyDown}
       >
-        <SheetHeader className={backToDay ? "gap-1.5 pr-10" : undefined}>
+        <SheetHeader className={backToDay ? "gap-1.5 px-4 pr-10" : "px-4"}>
           <SheetTitle className="sr-only">Edit to-do</SheetTitle>
           <SheetDescription className="sr-only">
             Edit the details of this to-do item.
@@ -1019,7 +1047,7 @@ function TodoSheetContent({
           controls, so the footer reads as the bottom of the same form rather
           than a row of secondary links.
         */}
-        <SheetFooter className="flex flex-row items-center gap-2 border-t">
+        <SheetFooter className="grid grid-cols-3 gap-2 border-t px-4 py-3">
           <Tooltip>
             <TooltipTrigger
               render={
@@ -1027,8 +1055,10 @@ function TodoSheetContent({
                   ref={markDoneRef}
                   variant={todo.status === "done" ? "outline" : "default"}
                   size="lg"
-                  // Half the row; the others split the other half (EI-396).
-                  className={canMoveBack ? "min-w-0 flex-[3]" : "min-w-0 flex-[2]"}
+                  // Row 1 alone, full width; the other three share row 2 (an
+                  // inverted T, like arrow keys).
+                  className="col-span-3 min-w-0"
+
                   onClick={markDone}
                 />
               }
@@ -1057,7 +1087,7 @@ function TodoSheetContent({
             the item in history as abandoned rather than completed.
           */}
           <Tooltip>
-            <TooltipTrigger render={<Button variant="outline" size="lg" onClick={wontDo} className="min-w-0 flex-1" />}>
+            <TooltipTrigger render={<Button variant="outline" size="lg" onClick={wontDo} className="min-w-0" />}>
               Won&apos;t do
               <kbd
                 aria-hidden
@@ -1077,10 +1107,10 @@ function TodoSheetContent({
               </kbd>
             </TooltipContent>
           </Tooltip>
-          {canMoveBack && (
+          {canMoveBack ? (
             <Tooltip>
               <TooltipTrigger
-                render={<Button variant="outline" size="lg" onClick={moveBackToList} className="min-w-0 flex-1" />}
+                render={<Button variant="outline" size="lg" onClick={moveBackToList} className="min-w-0" />}
               >
                 <span className="truncate">Back to {homeListName}</span>
                 <kbd
@@ -1098,6 +1128,9 @@ function TodoSheetContent({
                 </kbd>
               </TooltipContent>
             </Tooltip>
+          ) : (
+            // Keeps the middle cell, so Won't do and Delete never move.
+            <div aria-hidden />
           )}
           <Tooltip>
             <TooltipTrigger
@@ -1106,12 +1139,19 @@ function TodoSheetContent({
                   variant="ghost"
                   size="lg"
                   aria-label="Delete"
-                  className="min-w-0 flex-1 text-muted-foreground"
+                  className="min-w-0 text-muted-foreground"
                   onClick={remove}
                 />
               }
             >
               <Trash2 className="size-4" aria-hidden />
+              <kbd
+                aria-hidden
+                data-slot="kbd"
+                className="ml-1 hidden font-mono text-xs opacity-60 sm:inline"
+              >
+                {formatCombo("shift+mod+backspace", platform)}
+              </kbd>
             </TooltipTrigger>
             <TooltipContent>
               {recurrence ? "Skip this occurrence" : "Delete"}

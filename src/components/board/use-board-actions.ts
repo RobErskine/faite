@@ -1843,13 +1843,17 @@ export function useBoardActions(
    * The details drawer's "Back to {list}" and bare `↓` (EI-396). One to-do:
    * the drawer shows a single to-do, so it must never fan out over a board
    * selection the way `handleMoveBackToList` does through `targetsFor`. Same
-   * write, undo entry and toast; the selection is left alone.
+   * write, undo entry and toast; the selection is left alone. `toBacklog` is
+   * the drawer's `⇧↓` (Overdrive's "force Backlog"): same write, to Backlog
+   * whatever the to-do's own list is.
    */
   const handleSheetMoveBackToList = useCallback(
-    (todo: Todo) => {
+    (todo: Todo, opts?: { toBacklog?: boolean }) => {
       if (todo.scheduledDate === null) return;
-      const home = todo.listId ?? backlogListId;
-      const label = `Moved “${short(todo.title)}” to ${homeListName(todo)}`;
+      const home = opts?.toBacklog ? backlogListId : (todo.listId ?? backlogListId);
+      const label = `Moved “${short(todo.title)}” to ${
+        opts?.toBacklog ? "Backlog" : homeListName(todo)
+      }`;
       const entryId = pushUndo(label, [
         {
           kind: "todo" as const,
