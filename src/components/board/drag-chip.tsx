@@ -3,7 +3,7 @@
 import { GripVertical } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LIFTED } from "@/lib/drop-animation";
-import { railBorder } from "@/lib/priority";
+import { railEdgeVars } from "@/lib/priority";
 import type { Label as LabelRecord, ReminderPreset, Todo } from "@/lib/schema";
 import type { PlacementContext } from "@/lib/scheduling";
 import {
@@ -29,7 +29,7 @@ import {
  * - **No hover text.** `TitleMarkers` and `TodoMetaBadges` both render with
  *   `interactive={false}`: the chip rides under the pointer, so any tooltip
  *   or `title` would open beneath it mid-drag and ride along.
- * - **The rail is the chip's left border** (`railBorder`), not
+ * - **The rail is the chip's left edge** (`railEdgeVars`, `rail-edge`), not
  *   `PriorityRail`'s span: a standalone rounded box has no column edge to
  *   keep true and no layout to shift. Width, rhythm and opacity come from
  *   `PRIORITY_RAILS` either way, settled step-back included.
@@ -72,9 +72,9 @@ export function DragChip({
   return (
     <div
       data-drag-chip=""
-      style={{ ...LIFTED, ...railBorder(todo.priority, settled) }}
+      style={{ ...LIFTED, ...railEdgeVars(todo.priority, settled) }}
       className={cn(
-        "flex max-w-xs cursor-grabbing items-start gap-1 rounded-md border",
+        "rail-edge flex max-w-xs cursor-grabbing items-start gap-1 rounded-md border",
         "bg-background px-2 py-1.5 text-sm leading-snug shadow-xl ring-2 ring-primary/40",
       )}
     >

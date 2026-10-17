@@ -815,6 +815,11 @@ export function BoardColumn({
           from its neighbors by the track's gap and its own header alone.
         */
         dayTrackColumn && !collapsed && emphasis && "bg-surface-1",
+        // Today's spectrum ring (docs/DESIGN.md §1). On the section, the box
+        // that draws Today's visible rounded edge (`rounded-lg` once
+        // desktop-board.tsx's className merges in; `rounded-md` on phone), so
+        // the ring inherits that radius and hugs it exactly.
+        dayTrackColumn && !collapsed && emphasis && "hairline-spectrum",
         // The collapsed strip is a click target and has to read as one — the
         // same subtle tint the weekend strip carries, now that the panel
         // box it used to inherit from the shells is gone.
@@ -907,10 +912,6 @@ export function BoardColumn({
           // non-text content and needs 3:1 against the rail's `surface-0`.
           // /40 measured 2.09:1 light, 1.98:1 dark; /70 is 3.51:1 and 3.68:1.
           tone === "urgent" && todos.length > 0 && !collapsed && "border-b-2 border-urgent/70",
-          // Today: the spectrum's one hairline on the board (docs/DESIGN.md
-          // §1). On the header, not the section, so the section's rounded
-          // corners and outline states stay untouched.
-          dayTrackColumn && emphasis && !collapsed && "hairline-spectrum",
         )}
         style={accentColor && !collapsed ? { borderColor: edge(accentColor) } : undefined}
       >

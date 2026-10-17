@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { ComponentType } from "react";
 import {
   Archive,
-  ArrowLeft,
   ArrowRightLeft,
   Calendar,
   CalendarOff,
@@ -29,8 +28,8 @@ import {
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { DatePickerField } from "@/components/ui/date-picker-field";
 import { DatePopover } from "@/components/board/date-popover";
+import { DeadlinePopover } from "@/components/board/deadline-popover";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { MarkdownField } from "@/components/ui/markdown-field";
@@ -45,6 +44,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { AttachmentsSection } from "@/components/board/attachments-section";
+import { useAttachments } from "@/lib/store/hooks";
 import { RepeatDialog } from "@/components/board/repeat-dialog";
 import { RepeatSection, type RecurrenceInfo } from "@/components/board/repeat-section";
 import {
@@ -73,19 +73,22 @@ import { TimelineList, TimelineRow } from "@/components/board/timeline";
 import { cn } from "@/lib/utils";
 import { useExitRetained } from "@/lib/use-exit-retained";
 import { edge, effectiveListColor } from "@/lib/colors";
-import { PriorityGlyph, PriorityRail } from "@/components/board/todo-row-parts";
-import { priorityRail, railBorderStyle } from "@/lib/priority";
+import { PriorityGlyph } from "@/components/board/todo-row-parts";
+import { railEdgeVars } from "@/lib/priority";
 import { TITLE_LINES } from "@/lib/title";
-import { formatEventTime } from "@/lib/event-time";
+import { formatCompletionStamp, formatEventTime } from "@/lib/event-time";
+import { formatOverflowAge, rollStateFor } from "@/lib/rollover-events";
+import { placeSettled } from "@/lib/board";
 import {
   HISTORY_KIND_GENERATIONS,
   resolveHiddenKinds,
   toggleHiddenKind,
 } from "@/lib/kind-filter";
-import { formatShortDate, type PlacementContext } from "@/lib/scheduling";
+import { formatShortDate, formatShortDateAsOf, type PlacementContext } from "@/lib/scheduling";
 import { parseQuickAdd, type QuickAddOptions } from "@/lib/quick-add";
 import { isTextEntry } from "@/lib/undo";
 import { formatCombo } from "@/lib/keyboard";
+import { NO_LIST_NAME } from "@/lib/row-grammar";
 import { usePlatform } from "@/lib/use-platform";
 import { createLabel } from "@/lib/store/repositories";
 import type { TodoEventKind } from "@/lib/store/todo-events";
@@ -120,49 +123,42 @@ const NONE = "__none__";
 const EMPTY_LISTS_BY_ID: ReadonlyMap<string, List> = new Map();
 
 /**
- * The tab's outline, expressed as the rail it continues.
+ * The header's story line (EI-396), or null when there is nothing to say.
  *
- * `PriorityRail` draws with a width, an opacity on the span, and a repeating
- * gradient for P4's dots. A border cannot take an opacity without fading the
- * text inside it too, so the level's opacity is folded into the color with
- * `color-mix`. The line style needs no translation at all: the four levels
- * are CSS's four `border-style` values, so `railBorderStyle` passes it
- * straight through.
- *
- * Every value falls back to the ordinary field border, which is what an
- * unprioritized to-do gets — and what every to-do gets below `lg`, where the
- * variables are set but nothing reads them.
+ * Open: rolled → "Rolled from Oct 12 · Overflow in 2 days"; in Overflow →
+ * "In Overflow since Oct 6 · 9 days". Settled: the row's completion stamp with
+ * its planned note. Open states need `ctx`; the stamp does not (without it
+ * there is simply no planned note).
  */
-function priorityEdge(priority: Priority | null): React.CSSProperties {
-  const rail = priorityRail(priority);
-  return {
-    "--priority-edge-width": rail ? `${rail.width}px` : "1px",
-    "--priority-edge-color": rail
-      ? `color-mix(in oklch, var(--foreground) ${rail.opacity * 100}%, transparent)`
-      : "var(--input)",
-    "--priority-edge-style": rail ? railBorderStyle(rail) : "solid",
-  } as React.CSSProperties;
+function storyLineFor(
+  todo: Todo,
+  ctx: PlacementContext | undefined,
+  timezone: string,
+): string | null {
+  if (todo.status !== "open") {
+    const placement = ctx ? placeSettled(todo, ctx, timezone) : null;
+    const plannedFor =
+      placement?.half === "calendar" && todo.scheduledDate && placement.day !== todo.scheduledDate
+        ? todo.scheduledDate
+        : null;
+    return formatCompletionStamp(todo.status, todo.completedAt, timezone, plannedFor);
+  }
+  if (!ctx) return null;
+  const { rolledFrom, overflow } = rollStateFor(todo, ctx);
+  if (rolledFrom) {
+    const n = rolledFrom.overflowsIn;
+    return `Rolled from ${formatShortDateAsOf(rolledFrom.from, ctx.today)} · Overflow in ${n} ${n === 1 ? "day" : "days"}`;
+  }
+  if (overflow) return `In Overflow ${formatOverflowAge(overflow.since, ctx.today)}`;
+  return null;
 }
 
 /**
- * One metadata row: label on the leading edge, control beside it.
- *
- * Stacked label-over-control cost 162px for List, Labels and Location
- * together, measured; as rows they cost 106px, and the sheet's scroll body is
- * ~820px. That is the smaller half of the reason. The larger one is that a
- * column of labels reads as a properties table — a thing you scan — where
- * three stacked forms read as three equally important questions, which is the
- * hierarchy problem this whole redesign is about.
- *
- * `items-start`, not centered: Labels grows chips onto a second line and
- * Location can open a nickname step under itself. The label stays on the
- * first line where the control's own first line is. `pt-2.5` is what optically
- * centers a 14px label against a 36px control rather than hanging it at the
- * top.
- *
- * Date and Deadline are deliberately NOT rows — they are a two-up grid whose
- * labels sit above, because two controls side by side have no room for a
- * label column each.
+ * One metadata field: label over control, the same `space-y-1.5` as Date,
+ * Deadline and Notes (EI-396). It was a two-column row for a while to save
+ * height; the owner found three different rhythms in one body (rows here,
+ * stacked there), so List, Labels and Location now stack like everything else
+ * and the body's own `space-y-5` spaces them.
  */
 function SheetRow({
   label,
@@ -175,15 +171,8 @@ function SheetRow({
   children: React.ReactNode;
 }) {
   return (
-    <div className="grid grid-cols-[5rem_1fr] items-start gap-3">
-      {/* No color of its own. Every label in this sheet is one thing —
-          `Label`'s own `text-sm font-medium` in the foreground — whether it
-          sits above its control (Date, Deadline, Notes) or beside it. A muted
-          row label made the same word look like two different kinds of word
-          depending on which layout it landed in. */}
-      <Label htmlFor={htmlFor} className="pt-2.5">
-        {label}
-      </Label>
+    <div className="space-y-1.5">
+      <Label htmlFor={htmlFor}>{label}</Label>
       <div className="min-w-0">{children}</div>
     </div>
   );
@@ -260,6 +249,12 @@ interface TodoSheetProps {
   onToggleLabel: (todoId: string, labelId: string) => void;
   onDelete: (id: string) => void;
   /**
+   * The footer's "Back to <list>" ending (and bare `↓`): drops the day and the
+   * reminder, keeps the list. Optional — absent means the ending is not
+   * offered. Only ever offered for a to-do that has a day.
+   */
+  onMoveBackToList?: (todo: Todo, opts?: { toBacklog?: boolean }) => void;
+  /**
    * Create a sub-task titled `title` under this todo (EI-55). Optional —
    * when omitted the Sub-tasks section still renders any existing children
    * (from `todos` above) but its "Add a sub-task" row silently no-ops,
@@ -334,6 +329,7 @@ function TodoSheetContent({
   onSetStatus,
   onToggleLabel,
   onDelete,
+  onMoveBackToList,
   onAddSubtask,
   backToDay,
   onBackToDay,
@@ -523,7 +519,7 @@ function TodoSheetContent({
     ];
   }, [title, todo.title, today, reminderPresets]);
 
-  /** The "Mark done" button's box — the confetti origin for both it and `⌘↵`. */
+  /** The "Done" button's box — the confetti origin for both it and `⌘↵`. */
   const markDoneRef = useRef<HTMLButtonElement | null>(null);
 
   /**
@@ -558,6 +554,21 @@ function TodoSheetContent({
     onDelete(todo.id);
     onClose();
   };
+  const canMoveBack = todo.scheduledDate !== null && onMoveBackToList !== undefined;
+  const homeListName = todo.listId
+    ? (lists.find((l) => l.id === todo.listId)?.name ?? NO_LIST_NAME)
+    : NO_LIST_NAME;
+  const storyLine = storyLineFor(todo, ctx, timezone);
+  const moveBackToList = () => {
+    onMoveBackToList?.(todo);
+    onClose();
+  };
+  // ⇧↓ — Overdrive's "force Backlog": same write as Back to <list>, but to the
+  // Backlog whatever list the to-do came from.
+  const sendToBacklog = () => {
+    onMoveBackToList?.(todo, { toBacklog: true });
+    onClose();
+  };
 
   /**
    * Local `onKeyDown`, not a global registry entry — KEYBOARD.md §5 step 1:
@@ -583,11 +594,12 @@ function TodoSheetContent({
       of muscle memory rather than two (EI-318).
 
       Bare arrows only, and never while the caret is in a text field, where
-      they move it: `isTextEntry` is the same guard Overdrive uses. Down and
-      right stay unbound, because Overdrive's meanings for them (back to the
-      list, walk the ramp) need its verdict state machine and this sheet has
-      no equivalent — giving them different meanings here would break the
-      very muscle memory the other two exist to share.
+      they move it: `isTextEntry` is the same guard Overdrive uses. Down is
+      Overdrive's "back to the list" too (EI-396), and only when the to-do has
+      a day. Right stays unbound, because Overdrive's meaning for it (walk the
+      ramp) needs its verdict state machine and this sheet has no equivalent.
+      Delete has no bare key on purpose. ⇧↓ sends it to Backlog, `d` opens
+      the Date popover.
 
       Local rather than a `Hotkey` registry entry, for the same reason as the
       chords below: `GuardContext` is one global `modalOpen` boolean with no
@@ -595,7 +607,27 @@ function TodoSheetContent({
       sheet (docs/KEYBOARD.md §1). Registered by hand in `lib/shortcuts.ts`
       so the `?` sheet and the palette can still find them.
     */
+    // ⇧↓ (Overdrive's "force Backlog") is the one shifted bare key.
+    if (
+      e.key === "ArrowDown" &&
+      e.shiftKey &&
+      !e.metaKey &&
+      !e.ctrlKey &&
+      !e.altKey &&
+      !isTextEntry(e.target) &&
+      canMoveBack
+    ) {
+      e.preventDefault();
+      sendToBacklog();
+      return;
+    }
     if (!e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && !isTextEntry(e.target)) {
+      // `d` opens the Date popover, as it opens Overdrive's date picker.
+      if (e.key === "d" || e.key === "D") {
+        e.preventDefault();
+        document.getElementById("todo-scheduled")?.click();
+        return;
+      }
       if (e.key === "ArrowUp") {
         e.preventDefault();
         markDone();
@@ -604,6 +636,11 @@ function TodoSheetContent({
       if (e.key === "ArrowLeft") {
         e.preventDefault();
         wontDo();
+        return;
+      }
+      if (e.key === "ArrowDown" && canMoveBack) {
+        e.preventDefault();
+        moveBackToList();
         return;
       }
     }
@@ -659,39 +696,7 @@ function TodoSheetContent({
         overlayClassName="supports-backdrop-filter:backdrop-blur-none"
         onKeyDown={handleSheetKeyDown}
       >
-        {/*
-          The sheet's leading edge IS the card's priority rail — same width,
-          same opacity, same dotted P4, from the same `PRIORITY_RAILS`
-          (EI-318). A to-do wears one mark on the board and the same mark
-          here, so the sheet reads as that card opened rather than as a
-          different surface that happens to be about it.
-
-          `inset-y-0`, unlike the card's `inset-y-1`: there is no next sheet
-          below this one to fuse with, and the gap the card needs to read as a
-          tick would just look like an unfinished edge here.
-
-          Explicit layering, two steps, and both are load-bearing:
-
-          - `z-10` here puts the edge above everything in the sheet's body. It
-            has to be explicit. With no z-index this was ordinary DOM order,
-            and anything POSITIONED later won: the History timeline's day
-            headers are `relative`, and bleed edge to edge with `-mx-4`, so
-            each one cut a segment out of the rail.
-
-            Measured with `elementFromPoint` on the rail's own x — which needs
-            the rail's `pointer-events: none` lifted first, or the probe cannot
-            see the rail at all and blames whatever sits beneath it. Without
-            this z-index the day header came back topmost; with it, the rail.
-          - `lg:z-20` on the priority tab puts IT above this, which is what
-            lets the edge run down, disappear behind the tab, and be picked up
-            by the tab's own outline in the same treatment.
-
-          An earlier version dropped this z-index to get the second effect and
-          silently lost the first. Both are asserted now, in the browser.
-        */}
-        <PriorityRail priority={todo.priority} className="inset-y-0 z-10" />
-
-        <SheetHeader className={backToDay ? "gap-1.5 pr-10" : undefined}>
+        <SheetHeader className={backToDay ? "gap-1.5 px-4 pr-10" : "px-4"}>
           <SheetTitle className="sr-only">Edit to-do</SheetTitle>
           <SheetDescription className="sr-only">
             Edit the details of this to-do item.
@@ -700,10 +705,11 @@ function TodoSheetContent({
             <button
               type="button"
               onClick={onBackToDay}
+              aria-label={`Return to ${formatShortDate(backToDay)}`}
               className="-ml-1 flex w-fit items-center gap-1 rounded px-1 py-0.5 text-xs font-medium text-muted-foreground hover:text-foreground hover:underline focus-ring"
             >
-              <ArrowLeft className="size-3" aria-hidden />
-              Back to {formatShortDate(backToDay)}
+              <span aria-hidden>‹</span>
+              {formatShortDate(backToDay)}
             </button>
           )}
           {/*
@@ -721,17 +727,21 @@ function TodoSheetContent({
             line of text, and `commitTitle` already runs on blur.
           */}
           {/*
-            Priority on the LEADING edge of the title rather than below the
-            fold in the field stack (EI-318). It is a judgement about the
-            to-do whose title you are reading, and the two belong in one
-            glance. `items-start`, not centered: a title that grows to three
-            lines must not drag the select down the block with it.
+            Priority beside the title, in the header row (EI-396). It is a
+            judgment about the to-do whose title you are reading, and the two
+            belong in one glance. `items-start`, not centered: a title that
+            grows to three lines must not drag the select down the block.
 
-            DOM order is priority-then-title, which is also the tab order the
-            annotation asked for — Shift+Tab from the title lands on
-            priority, Tab from it lands on Date.
+            The mark is a short left edge on the select's trigger itself, from
+            `railEdgeVars` and the `rail-edge` utility, wrapping its corners — the same width, dash style and opacity the row's
+            rail wears (`PRIORITY_RAILS`), only as tall as the select rather
+            than the sheet. Unprioritized wears nothing.
+
+            DOM order is priority-then-title, which is also the tab order —
+            Shift+Tab from the title lands on priority, Tab from it lands on
+            Date.
           */}
-          <div className="flex items-start gap-2">
+          <div className="flex items-start gap-2 pr-10">
             <Select
               value={todo.priority ? String(todo.priority) : NONE}
               onValueChange={(v) =>
@@ -740,81 +750,16 @@ function TodoSheetContent({
                 })
               }
             >
-              {/*
-                The tab. Below `lg` it is nothing — a bare `shrink-0` flex
-                item holding the select beside the title. From `lg` up it
-                becomes the box that hangs off the sheet's leading edge, and
-                the select inside it goes borderless, because the TAB is the
-                control's chrome at that point.
-
-                Attached, not floating, and that is four separate things:
-
-                - No shadow. It had `--shadow-overlay`, which casts on every
-                  side including into the seam, drawing a dark halo exactly
-                  where the two surfaces are supposed to be one.
-                - `bg-popover` — the sheet's own background, not the board's.
-                - No right border, and no right radius, so nothing draws a
-                  line down the join.
-                - `left` is exactly its own width (`-left-24`, -6rem), so its
-                  right edge lands on the sheet's padding edge — where the
-                  rail starts. The rail runs unbroken down the sheet right
-                  past the tab, and the tab's own outline takes it around the
-                  outside.
-                - Its remaining three borders are the RAIL's own treatment,
-                  not `border-input`: same width, same `--foreground` at the
-                  same opacity, dotted for P4. So the sheet's edge comes down,
-                  wraps around the tab, and carries on — one continuous line
-                  rather than a box stuck to a line.
-
-                Those three come through CSS variables rather than an inline
-                `border` shorthand, because they must only apply from `lg` up,
-                where the tab exists at all — and an inline style cannot be
-                gated on a media query. Below `lg` the variables are set and
-                simply unread. Each falls back to the ordinary field border,
-                which is what an unprioritized to-do gets at every width.
-
-                Absolute against `SheetContent`: that is `fixed`, so it is the
-                containing block, and `SheetHeader` sets no `position` of its
-                own. DOM order is untouched, so Shift+Tab from the title still
-                lands on the select.
-
-                Gated on `lg` rather than the desktop shell, because what
-                matters is whether there is board to hang over: the sheet is
-                `w-full` below `sm`.
-              */}
-              <div
-                style={priorityEdge(todo.priority)}
-                className={cn(
-                  "shrink-0",
-                  "lg:absolute lg:top-4 lg:-left-24 lg:z-20 lg:w-24",
-                  "lg:space-y-1 lg:rounded-l-xl lg:rounded-r-none",
-                  "lg:border-t-[length:var(--priority-edge-width)]",
-                  "lg:border-b-[length:var(--priority-edge-width)]",
-                  "lg:border-l-[length:var(--priority-edge-width)]",
-                  "lg:border-r-0",
-                  "lg:[border-color:var(--priority-edge-color)]",
-                  "lg:[border-style:var(--priority-edge-style)]",
-                  "lg:bg-popover lg:py-2 lg:pr-2 lg:pl-3",
-                )}
-              >
-                <Label htmlFor="todo-priority" className="hidden lg:flex">
-                  Priority
-                </Label>
+              <>
                 <SelectTrigger
                   id="todo-priority"
                   aria-label="Priority"
-                  className={cn(
-                    // `h-8` is the title's line box exactly (see below), which
-                    // is what makes `items-start` read as vertical centering on
-                    // the first line without pinning it to the middle of a tall
-                    // one. Only matters below `lg`, where this sits beside the
-                    // title rather than in the tab.
-                    "h-8 w-[4.5rem] shrink-0 bg-popover px-2 text-xs",
-                    // Inside the tab the box IS the tab: no border, no
-                    // background, no padding of its own.
-                    "lg:h-6 lg:w-full lg:border-0 lg:bg-transparent lg:px-0 lg:shadow-none",
-                    "lg:focus-visible:ring-0",
-                  )}
+                  data-priority-mark={todo.priority ?? "none"}
+                  style={railEdgeVars(todo.priority)}
+                  // `h-8` is the title's line box exactly (see below), which is
+                  // what makes `items-start` read as vertical centering on the
+                  // first line without pinning it to the middle of a tall one.
+                  className="rail-edge h-8 w-[4.5rem] shrink-0 bg-popover px-2 text-xs"
                 >
                   {/*
                     The rail plus the number, and nothing else (EI-318).
@@ -823,13 +768,9 @@ function TodoSheetContent({
                     unless given a way to resolve a label — see `ListField`'s
                     comment for the fuller explanation.
 
-                    The rail carries the level: it is the same mark, from the
-                    same `PRIORITY_RAILS`, that this to-do already wears on
-                    the board, so reading the sheet and scanning the column
-                    use one vocabulary. `P2` is the label beside it because
-                    that is the token quick-add and ⌘K parse; spelling it
-                    "High" cost the width of an adjective to say what the rail
-                    had already said.
+                    `P2` is the label beside the rail because that is the
+                    token quick-add and ⌘K parse; spelling it "High" cost the
+                    width of an adjective to say what the rail had already said.
                   */}
                   <SelectValue>
                     {(value: string) =>
@@ -855,7 +796,7 @@ function TodoSheetContent({
                     </SelectItem>
                   ))}
                 </SelectContent>
-              </div>
+              </>
             </Select>
             <div className="relative flex-1">
             <Textarea
@@ -934,6 +875,19 @@ function TodoSheetContent({
             )}
             </div>
           </div>
+          {/*
+            The story line (EI-396): where this to-do has been, in one quiet
+            sentence. Built from the helpers the row uses (`rollStateFor`,
+            `formatOverflowAge`, `formatCompletionStamp`, `placeSettled`), so
+            the sheet and the row cannot disagree. `text-muted-foreground`
+            clears 4.5:1 on the sheet's background; nothing renders for a
+            plain to-do.
+          */}
+          {storyLine && (
+            <p data-slot="story-line" className="text-xs text-muted-foreground">
+              {storyLine}
+            </p>
+          )}
           <QuickAddPreview chips={titleChips} className="px-0 pt-1 pb-0" />
           {/*
             Provenance, in the header rather than down with the fields: "this
@@ -968,16 +922,11 @@ function TodoSheetContent({
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="todo-deadline">Deadline</Label>
-              {/*
-                No `disabled` bound, unlike the board's "Jump to date": a
-                deadline already in the past is an ordinary thing to record,
-                and the card badges it rather than refusing it.
-              */}
-              <DatePickerField
+              <DeadlinePopover
                 id="todo-deadline"
                 value={todo.deadline}
+                today={today}
                 onChange={(next) => onSave(todo.id, { deadline: next })}
-                placeholder="No deadline"
               />
             </div>
           </div>
@@ -990,7 +939,7 @@ function TodoSheetContent({
           */}
           {recurrence && <RepeatSection recurrence={recurrence} />}
 
-          <div className="space-y-2">
+          <>
             <SheetRow label="List" htmlFor="todo-list">
               <ListField
                 value={todo.listId}
@@ -1007,7 +956,7 @@ function TodoSheetContent({
             <SheetRow label="Location" htmlFor="todo-location-input">
               <LocationField todo={todo} places={places} onSave={onSave} />
             </SheetRow>
-          </div>
+          </>
 
           {/*
             One level of nesting only (EI-55): a todo that is itself a
@@ -1054,14 +1003,15 @@ function TodoSheetContent({
           <Separator />
 
           {/*
-            Between Notes and History, matching where the plan put it: an
-            attachment is content the way notes are, not an audit record the
-            way history is. Self-contained (reads its own rows, calls the
-            repository itself) — see its own doc comment.
+            On demand (EI-396): attachments and history are things you go
+            looking for, not things you read every time the drawer opens, so
+            both sit collapsed at the bottom. Open state is local and not
+            persisted — each open of the sheet starts closed. Attachments is
+            content the way notes are, so it still sits above History, the
+            audit record. `AttachmentsDisclosure` mounts the self-contained
+            `AttachmentsSection` only once opened.
           */}
-          <AttachmentsSection todoId={todo.id} />
-
-          <Separator />
+          <AttachmentsDisclosure todoId={todo.id} />
 
           <HistorySection
             todo={todo}
@@ -1080,14 +1030,15 @@ function TodoSheetContent({
           one you almost always want is the one your eye lands on, and the
           irreversible one is the smallest thing down there.
 
-          Green on Mark done, grey on Won't do, and Delete reduced to its
-          icon. `aria-label="Delete"` keeps the accessible name it had as
+          Primary ink on Done, outline on Won't do and Back to <list> (EI-396;
+          the latter only when the to-do has a day), and Delete reduced to its
+          muted icon. `aria-label="Delete"` keeps the accessible name it had as
           text, which is what the unit and e2e specs match on.
 
           The chords render inline rather than only on hover — a shortcut
           nobody can find is a shortcut nobody uses. `aria-hidden` on the
-          `<kbd>`, so the accessible name stays "Mark done" rather than
-          "Mark done ⌘↵"; the tooltip still carries the chord for anyone who
+          `<kbd>`, so the accessible name stays "Done" rather than
+          "Done ↑"; the tooltip still carries the chord for anyone who
           cannot see it.
 
           `size="lg"` rather than `sm`: these are the sheet's only committing
@@ -1096,30 +1047,36 @@ function TodoSheetContent({
           controls, so the footer reads as the bottom of the same form rather
           than a row of secondary links.
         */}
-        <SheetFooter className="grid grid-cols-10 gap-2 border-t">
+        <SheetFooter className="grid grid-cols-3 gap-2 border-t px-4 py-3">
           <Tooltip>
             <TooltipTrigger
               render={
                 <Button
                   ref={markDoneRef}
-                  variant={todo.status === "done" ? "outline" : "success"}
+                  variant={todo.status === "done" ? "outline" : "default"}
                   size="lg"
+                  // Row 1 alone, full width; the other three share row 2 (an
+                  // inverted T, like arrow keys).
+                  className="col-span-3 min-w-0"
+
                   onClick={markDone}
-                  className="col-span-5"
                 />
               }
             >
-              {todo.status === "done" ? "Reopen" : "Mark done"}
+              {todo.status === "done" ? "Reopen" : "Done"}
               <kbd
                 aria-hidden
                 data-slot="kbd"
                 className="ml-1 hidden font-mono text-xs opacity-60 sm:inline"
               >
-                {formatCombo("mod+enter", platform)}
+                ↑
               </kbd>
             </TooltipTrigger>
             <TooltipContent>
-              {todo.status === "done" ? "Reopen" : "Mark done"}
+              {todo.status === "done" ? "Reopen" : "Done"}
+              <kbd data-slot="kbd" className="rounded border border-background/30 px-1 font-mono text-2xs">
+                ↑
+              </kbd>
               <kbd data-slot="kbd" className="rounded border border-background/30 px-1 font-mono text-2xs">
                 {formatCombo("mod+enter", platform)}
               </kbd>
@@ -1130,25 +1087,51 @@ function TodoSheetContent({
             the item in history as abandoned rather than completed.
           */}
           <Tooltip>
-            <TooltipTrigger
-              render={<Button variant="outline" size="lg" onClick={wontDo} className="col-span-3" />}
-            >
+            <TooltipTrigger render={<Button variant="outline" size="lg" onClick={wontDo} className="min-w-0" />}>
               Won&apos;t do
               <kbd
                 aria-hidden
                 data-slot="kbd"
                 className="ml-1 hidden font-mono text-xs opacity-60 sm:inline"
               >
-                {formatCombo("mod+backspace", platform)}
+                ←
               </kbd>
             </TooltipTrigger>
             <TooltipContent>
               Won&apos;t do
               <kbd data-slot="kbd" className="rounded border border-background/30 px-1 font-mono text-2xs">
+                ←
+              </kbd>
+              <kbd data-slot="kbd" className="rounded border border-background/30 px-1 font-mono text-2xs">
                 {formatCombo("mod+backspace", platform)}
               </kbd>
             </TooltipContent>
           </Tooltip>
+          {canMoveBack ? (
+            <Tooltip>
+              <TooltipTrigger
+                render={<Button variant="outline" size="lg" onClick={moveBackToList} className="min-w-0" />}
+              >
+                <span className="truncate">Back to {homeListName}</span>
+                <kbd
+                  aria-hidden
+                  data-slot="kbd"
+                  className="ml-1 hidden font-mono text-xs opacity-60 sm:inline"
+                >
+                  ↓
+                </kbd>
+              </TooltipTrigger>
+              <TooltipContent>
+                Back to {homeListName}
+                <kbd data-slot="kbd" className="rounded border border-background/30 px-1 font-mono text-2xs">
+                  ↓
+                </kbd>
+              </TooltipContent>
+            </Tooltip>
+          ) : (
+            // Keeps the middle cell, so Won't do and Delete never move.
+            <div aria-hidden />
+          )}
           <Tooltip>
             <TooltipTrigger
               render={
@@ -1156,12 +1139,19 @@ function TodoSheetContent({
                   variant="ghost"
                   size="lg"
                   aria-label="Delete"
-                  className="col-span-2 text-destructive hover:text-destructive"
+                  className="min-w-0 text-muted-foreground"
                   onClick={remove}
                 />
               }
             >
               <Trash2 className="size-4" aria-hidden />
+              <kbd
+                aria-hidden
+                data-slot="kbd"
+                className="ml-1 hidden font-mono text-xs opacity-60 sm:inline"
+              >
+                {formatCombo("shift+mod+backspace", platform)}
+              </kbd>
             </TooltipTrigger>
             <TooltipContent>
               {recurrence ? "Skip this occurrence" : "Delete"}
@@ -1222,6 +1212,9 @@ function SubtasksSection({ subtasks, onToggleStatus, onDelete, onAdd }: Subtasks
   /** Per-row elements, for GOOD JOB mode's confetti origin. Keyed by subtask id. */
   const rowRefs = useRef(new Map<string, HTMLLIElement>());
   const [draft, setDraft] = useState("");
+  // The input is hidden until asked for (EI-396): most to-dos never get a
+  // sub-task, so an always-on empty field is noise on every open.
+  const [adding, setAdding] = useState(false);
 
   const doneCount = subtasks.filter((s) => s.status !== "open").length;
 
@@ -1234,15 +1227,27 @@ function SubtasksSection({ subtasks, onToggleStatus, onDelete, onAdd }: Subtasks
 
   return (
     <section className="space-y-1.5">
-      <Label>
-        Sub-tasks
-        {subtasks.length > 0 && (
-          <span className="font-normal text-muted-foreground">
-            {" "}
-            ({doneCount}/{subtasks.length})
-          </span>
-        )}
-      </Label>
+      <div className="flex items-center gap-1">
+        <Label>
+          Sub-tasks
+          {subtasks.length > 0 && (
+            <span className="font-normal text-muted-foreground">
+              {" "}
+              ({doneCount}/{subtasks.length})
+            </span>
+          )}
+        </Label>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="size-6 text-muted-foreground"
+          aria-label="Add a sub-task"
+          onClick={() => setAdding(true)}
+        >
+          <Plus className="size-3.5" aria-hidden />
+        </Button>
+      </div>
 
       {subtasks.length > 0 && (
         <ul className="space-y-1">
@@ -1298,20 +1303,32 @@ function SubtasksSection({ subtasks, onToggleStatus, onDelete, onAdd }: Subtasks
         </ul>
       )}
 
-      <Input
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            commit();
-          }
-        }}
-        onBlur={commit}
-        placeholder="Add a sub-task"
-        aria-label="Add a sub-task"
-        className="h-8 text-sm"
-      />
+      {adding && (
+        <Input
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              commit();
+            } else if (e.key === "Escape") {
+              // Hides the field and drops the draft; the sheet's own Escape
+              // handling must not also close the drawer from here.
+              e.stopPropagation();
+              setDraft("");
+              setAdding(false);
+            }
+          }}
+          onBlur={() => {
+            if (draft.trim()) commit();
+            else setAdding(false);
+          }}
+          placeholder="Add a sub-task"
+          aria-label="Add a sub-task"
+          className="h-8 text-sm"
+        />
+      )}
     </section>
   );
 }
@@ -1433,6 +1450,33 @@ function historyAccent(
   return edge(list?.color);
 }
 
+/**
+ * The collapsed "Attachments (N)" row (EI-396), the same disclosure grammar as
+ * `HistorySection`'s heading. The count shows only when there are files, so a
+ * to-do with none carries no "(0)" noise. The section itself mounts on open.
+ */
+function AttachmentsDisclosure({ todoId }: { todoId: string }) {
+  const [open, setOpen] = useState(false);
+  const count = useAttachments(todoId).length;
+  return (
+    <section className="space-y-1.5">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="flex items-center gap-1 text-sm leading-none font-medium"
+      >
+        <ChevronDown
+          aria-hidden
+          className={cn("size-3.5 transition-transform", !open && "-rotate-90")}
+        />
+        {count > 0 ? `Attachments (${count})` : "Attachments"}
+      </button>
+      {open && <AttachmentsSection todoId={todoId} />}
+    </section>
+  );
+}
+
 interface HistorySectionProps {
   todo: Todo;
   events: TodoEvent[];
@@ -1457,9 +1501,9 @@ const HISTORY_KIND_FILTER_OPTIONS: ReadonlyArray<{ value: ActivityEventKind; lab
  * filterable by kind, and stamped with a time because the header already
  * carries the date.
  *
- * Behind a disclosure with a count in the heading, open by default — a
- * to-do's history is usually exactly what someone opening the sheet wants to
- * see, so it no longer costs an extra click to reveal.
+ * Behind a disclosure with a count in the heading, closed by default and not
+ * persisted (EI-396): the drawer is shaped around quick edits, and history is
+ * what you open it for only some of the time.
  *
  * `hiddenHistoryKinds` is its OWN settings field, never
  * `hiddenActivityKinds`: sharing one would let filtering the global feed
@@ -1475,7 +1519,6 @@ function HistorySection({
   listsById,
   settings,
 }: HistorySectionProps) {
-  const [open, setOpen] = useState(true);
   const items = useMemo(
     () => buildTodoTimeline(events, todo, ctx, timezone, today),
     [events, todo, ctx, timezone, today],
@@ -1495,6 +1538,9 @@ function HistorySection({
 
   const eventItems = items.filter((item) => item.type === "event");
   const count = eventItems.length;
+  // A long history is the point of opening the drawer; a short one is noise.
+  // Seeds once per mount (the sheet keys by todo id) and is not persisted.
+  const [open, setOpen] = useState(count > 3);
   const hiddenCount = eventItems.filter((item) => !isVisible(item)).length;
 
   // Filter the EVENTS, then drop any day header left with nothing under it —

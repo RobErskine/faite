@@ -113,15 +113,22 @@ describe("DatePopover — the trigger says the whole schedule", () => {
     expect(text).toContain("9:00");
   });
 
-  it("marks a repeating to-do without spending the width on the rule", () => {
-    // The rule is spelled out in the summary line under the field; at this
-    // width it would truncate to nothing. The icon is the cue.
+  it("reads date, time and repeat as one line (EI-396)", () => {
+    setup({
+      todo: todo({ scheduledDate: "2026-10-16", reminderTime: "15:00" }),
+      recurrence: recurrence({
+        rule: { ...defaultRule("2026-10-16"), freq: "weekly", interval: 1, byDay: [5] },
+      }),
+    });
+    expect(trigger().textContent).toBe("Fri Oct 16 · 3:00 PM · Repeats weekly");
+  });
+
+  it("names the interval when a series repeats less often than every unit", () => {
     setup({
       todo: todo({ scheduledDate: "2026-09-21" }),
       recurrence: recurrence(),
     });
-    expect(trigger().textContent).toContain("Sep 21");
-    expect(screen.getByRole("img", { name: "Repeats" })).toBeTruthy();
+    expect(trigger().textContent).toBe("Mon Sep 21 · Repeats every 2 weeks");
   });
 
   it("falls back to the rule when a series somehow has no date on this card", () => {

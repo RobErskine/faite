@@ -28,7 +28,7 @@ that thing, or it stays achromatic.
 | **Identity hue** (user-chosen per tab or list, including Tomato) | "belongs to X" | `src/lib/colors.ts`: `wash()` 5%, `tint()` 12%, `edge()` 35%; `effectiveListColor()`; `labelInk()` / `labelChipStyle()` for a label chip's text | wash behind a run of rows, tint on group and tab headers, edge rule under a column title, label chips (tint and edge; the text is `labelInk`), confetti | raw hue as text, at any size; on a card body |
 | **Urgent** (`--urgent`, an alias of `--destructive`) | "needs a verdict now" | `--urgent`, `--urgent-foreground`, `--urgent-soft`; `badgeVariants({ variant: "destructive" })`. Red **text** is always `--urgent-foreground` at `text-xs` or larger, on the 10% tint; bare `--urgent` is for rules and outlines only. The Overflow rule is `border-urgent/70`, the alpha that clears 3:1 on `surface-0` in both themes | the Overflow column's edge rule and count (both only while it holds something), missed Deadline, `×N` missed occurrences, N due banner, drop-refused outline | red text at `text-2xs`; a second red anywhere, and the per-card Overflow age ("since Oct 6 · 9 days", EI-390; "In Overflow" is left to the column), which is muted ink: the column already says it once (EI-374). Users may pick Tomato for a list; the app itself adds no other red |
 | **Priority** | importance | `src/lib/priority.ts` `PRIORITY_RAILS` | the card's left rail: P1 5px double, P2 3px solid, P3 2px dashed, P4 2px dotted, all `--foreground` at falling opacity | hue. Line style, thickness and opacity carry all four levels (decision A; styles added 2026-09-10, §7) |
-| **Spectrum** (`--spectrum`, `--spectrum-solid`) | "Faite, here, now" | `hairline-spectrum` utility; `--spectrum-solid` for rings | four places only: the F mark on hover and focus, the today column's top hairline, the checked-box flash, the focus ring | a fill, a text color, a badge, a fifth place |
+| **Spectrum** (`--spectrum`, `--spectrum-solid`) | "Faite, here, now" | `hairline-spectrum` utility; `--spectrum-solid` for rings | four places only: the F mark on hover and focus, the today column's top edge (a 2px ring that follows the card's corners and fades out down its sides), the checked-box flash, the focus ring | a fill, a text color, a badge, a fifth place |
 | **Status** (`--warning`, `--info`, `--success`, each with `-foreground` and `-soft`) | system state | `bg-warning-soft text-warning-foreground` and siblings | desktop and auth banners, toasts | board content |
 | **Form** (strike-through, dim) | done / dropped | both settled statuses in `text-foreground/60`, the quiet ink that passes; `line-through` on a `done` title's text (not its badges); the priority rail at 40% of its opacity on either (`todo-card.tsx`, `SETTLED_RAIL_OPACITY`) | rows | color. `dropped` never gets the strike; a strike says "this got done" |
 
@@ -144,7 +144,7 @@ dividers** — separation is spacing (36px rhythm, `py-2`; 44px under `pointer: 
 not rules.
 
 **Today is the board's only card**: `--surface-1` + `shadow-card` + the
-spectrum hairline, and no border — the shadow carries the edge (in dark, via
+spectrum edge (a tapered ring, §7 2026-10-16), and no border — the shadow carries the edge (in dark, via
 its inset hairline). Overflow carries an `--urgent` edge rule (at 70%) and its count,
 so it reads as a queue with pressure. Backlog carries an eyebrow, no accent,
 and the one always-visible quick-add placeholder, so it reads as quiet
@@ -212,6 +212,31 @@ at 50%, 1.97:1. The to-do title is the one variation, `focus-ring-notched`:
 the same 2px line drawn round an L that steps round the checkbox sitting in
 the title's top-left corner, so "open" and "complete" never read as one
 control. The title's hit area is unchanged; only the drawing moved.
+
+**The to-do details drawer** (`todo-sheet.tsx`, EI-396) is shaped around the
+quick edit: fix the date, add a note, finish it, let it go. On phone it is
+still a full-width right panel, not a bottom sheet. Structure, top to bottom:
+a header (a quiet "‹ Oct 16" button when opened from a day, aria-label
+"Return to Oct 16"; the title; the **priority** select beside it with a short
+rail mark drawn by `railEdgeVars`, so the hanging left tab and the full-height
+rail are gone), then a one-line **story line** at `text-xs` muted ink
+(rolled: "Rolled from Oct 12 · Overflow in 2 days"; Overflow: "In Overflow since
+Oct 6 · 9 days"; done or Won't do: the card's completion stamp with its
+planned note; otherwise nothing), built from the helpers the row uses so the
+two cannot disagree. The body is always When (date, time or reminder, repeat
+in one control) and Deadline, then Repeat when recurring, List, Labels,
+Location, Sub-tasks, Notes. **Attachments (N)** and **History** are two
+collapsed disclosures at the bottom, closed on every open and not persisted.
+The footer is the honest endings, with keys matching Overdrive: **Done** (↑,
+⌘↵; primary ink, not the green `success` variant, because status colors stay
+off board content), **Won't do** (←, ⌘⌫; outline), **Back to <list>** (↓;
+outline, shown only when the to-do has a day; clears the day and reminder,
+keeps the list, Backlog when none) and **Delete** (⇧⌘⌫; ghost icon in muted
+ink, not a second red). The bare ↑ ← ↓ keys are ignored inside text fields.
+While a drawer is open, toasts move away from its footer (bottom-left from
+1100px up, where the board still shows beside the drawer; top-center below).
+`Toaster` picks the position from the open-sheet state (`toasterPosition`,
+`src/lib/toaster-placement.ts`), not from CSS.
 
 ### Touch targets
 
@@ -394,7 +419,7 @@ Two rules with teeth:
 Read `docs/DRAG-AND-DROP.md` §6 and `TODO-ITEM-DESIGN.md` §10 before touching
 a row. In short:
 
-- The priority rail is an absolutely positioned span, never `border-l`.
+- The priority rail on a square row is an absolutely positioned span, never `border-l`. On a rounded box (drag chip, Overdrive card, the sheet's priority select) it is the `rail-edge` utility: a masked `::before` border ring that follows the corners and fades out along the top and bottom.
 - The row is not a flex container. Grip and checkbox sit in a 12px gutter.
 - Group headers are not sticky. The wash sits on the group container, not on
   each card, so `hover:` still composites over it.
@@ -482,3 +507,5 @@ streak, score, or percentage anywhere in it.
 | 2026-10-15 | **The to-do row, polish pass 1** (EI-395): the completion beat (§4) — a ticked row holds checked and struck for one beat, then fades and the rows below close the gap on a transform, or under View: All slides to its new place; the flash lands on `--ease-out-soft`, not a spring. Label chip text is `labelInk` (30% hue into the foreground), retiring §1's one exception. Done and Won't do share `text-foreground/60`; Won't do stays dim-only. The strike is on the title text, not the badges. The Overflow age moves to `text-foreground/60`. A settled row's rail keeps 40% of its opacity. The checkbox takes `focus-ring`; the title's outline steps round it (`focus-ring-notched`). The row's inline `transition` composes dnd-kit's `transform` with the wash and the fade (`rowTransition`). | Measured on the board (light / dark, at rest → under the hover wash): label text 1.6–3.9:1 → 9.7–13.2 / 8.5–10.7; Won't do 2.71 / 3.92 → 5.25 / 6.6 (5.10 / 6.06 hovered); done hovered 4.27 → 5.10 / 6.06; Overflow age hovered 4.1 → 5.02 / 6.46. Under the default View the row used to unmount ~90ms after the click and the confirmation was a toast in the corner. The hover wash never animated at all: the inline `transition: transform 0ms linear` dnd-kit leaves on every row replaced the class's list; it now fades in over 100ms. A struck label chip read as "label removed", and a P1 double rail at full ink was the loudest mark on a finished row. |
 | 2026-10-15 | **The to-do row, polish pass 2** (EI-395): one badge grammar in `lib/row-grammar.ts` (§2) — `num` for a bare count only, `nums` for anything with a word or a date; every badge `text-2xs` except the two red verdicts at `text-xs`, which lose their icons; every row glyph 12px in muted ink; one icon per meaning (the time wears a clock, not a bell; a deadline ahead is a flag; the Repeat icon means "repeats" and nothing else); verdict → when → progress → identity. One anatomy on four surfaces: the board card, ⌘K, the Overdrive card (now with the rail, ↳, the pin, the flag and the counts) and the drag chip (`DragChip`: all title glyphs, the badge line, a two-line clamp, the settled rail), all from `todo-row-parts.tsx`. "Backlog" is the word for a to-do with no list everywhere (`NO_LIST_NAME`; ⌘K said "Unfiled"). On touch the row's gutter is 24px, the rail 4px in from the screen edge, the grip clear of it; the grip's 12×24 target and the checkbox's 24-wide one meet at x=12 instead of overlapping by 3px. The rolled tooltip's separator is "·", like its neighbors. | The pass-2 critique scored Consistency 2/4: the row was assembled four ways, so Overdrive dropped the rail, ↳, pin and counts, ⌘K dropped the counts and the drag chip dropped ↳ and the flag, and truncated the title to one line. Inside the row, one badge mixed mono and sans ("Deadline Oct 12"), badges came in two sizes, the scheduled and deadline calendars could not be told apart, Repeat meant both "repeats" and "missed", and the red missed deadline sat fourth in line. Measured live (1440 mouse): grip 12×24 at x=0–12, checkbox 24 wide at x=12–36 (it used to start at x=9, leaving the grip 9×24). At 390 touch: rail x=4–7, grip x=10–22, checkbox x=24–48, where the rail used to be flush with the glass and the always-visible dots touched a P3/P4 rail. Recurring occurrences showing no deadline, sub-task or attachment badges is the data model, not a lost badge: `cloneOccurrence` drops the series' deadline on purpose, and an occurrence's sub-tasks and attachments are its own. |
 | 2026-10-16 | **The completion beat lands on the click** (EI-399): the tick is optimistic — the box checks and the flash and strike start on the click from a local `pendingDone`, which reverts if the write fails and gives up `GIVE_UP_MS` after a resolved write that never flips the store. The flash is an opacity/scale ring on a `::before` and the strike a `scaleX` overlay per title line (measured line boxes), both compositor-only at 180ms on the same easing; `motion-reduce` removes both. The write, the toast, the confetti and the board re-derive are led by `TICK_LEAD_MS` (34ms). | Measured on production: the box checked ~147ms after the click, a 92ms long task landed at ~162ms, and the strike popped from 38% to 99.7% across one 119ms gap. The flash animated `box-shadow` and the strike `background-size`, both main-thread, so a busy thread made them jump. |
+| 2026-10-16 | **The to-do details drawer is shaped around the quick edit** (EI-396): priority moves into the header with a short rail mark (no hanging tab, no full-height rail); a story line says where the to-do has been; Attachments and History collapse to on-demand disclosures; the footer is Done (primary ink) · Won't do · Back to <list> (only with a day, bare ↓) · Delete (muted ghost icon); toasts clear the open drawer. | Four critiques found ten fields open at once, a priority tab that read as a rendering glitch, a dashed edge running the full height for P3/P4, and toasts covering the footer. Most opens are short, so the always-visible set is the fields a quick edit touches and the rest waits behind a click. Done is not green and Delete is not red: status colors stay off board content. A phone bottom sheet and "Schedule" as an ending were rejected: the full-width panel already works, and the When control already schedules. |
+| 2026-10-16 | **Accent edges wrap the corner and taper** (EI-396): Today's spectrum line and the priority rail on a rounded box are masked `::before` rings (`hairline-spectrum`, `rail-edge` in `globals.css`) that inherit the host's radius, stay full strength along their own side and round both corners, then fade out over ~24px along the two adjacent sides. The spectrum ring moves from the column header to the column section (the box that draws Today's rounded edge), and `railBorder()` becomes `railEdgeVars()`. Square rows keep their `PriorityRail` span. | A one-sided accent on a rounded box stopped short of the corners (Today's line was inset 10px) or, as a `border-left`, bent into a "((" crescent on a P1 double rail. A ring cut to its side by a mask follows the radius exactly and draws double, dashed and dotted natively. |

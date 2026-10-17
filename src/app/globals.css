@@ -936,19 +936,71 @@
 }
 
 /*
-  The spectrum as a 2px rule along an element's top edge. One of the four
-  places the spectrum is allowed (docs/DESIGN.md §1). A pseudo-element rather
-  than `border-image`, so the element's own borders and radius are untouched.
+  Accent edges that wrap the corner and taper (EI-396). A one-sided accent on
+  a rounded box used to stop short of the corner, or bend into a "((" crescent.
+  Each is a `::before` ring that inherits the host's radius, is drawn all the
+  way round, and is masked so it stays full strength along its own side and
+  through both corner arcs, then fades to nothing along the two adjacent
+  sides. `--edge-hold` is how far it stays solid (past the corner, so it
+  must be at least the host's radius); `--edge-taper` is the fade run.
+*/
+
+/*
+  The spectrum along the top edge of Today's column. One of the four places
+  the spectrum is allowed (docs/DESIGN.md §1). The host is the box that draws
+  Today's visible rounded edge. A 2px ring of `--spectrum`, cut from a
+  full-box layer with `mask-composite: subtract`, then faded toward the bottom.
 */
 @utility hairline-spectrum {
   position: relative;
   &::before {
     content: "";
     position: absolute;
-    inset: 0 10px auto 10px;
-    height: 2px;
-    border-radius: 1px;
+    inset: 0;
+    padding: 2px;
+    border-radius: inherit;
     background: var(--spectrum);
+    --edge-hold: 1rem;
+    --edge-taper: 1.5rem;
+    mask:
+      linear-gradient(
+          to bottom,
+          #000 var(--edge-hold),
+          transparent calc(var(--edge-hold) + var(--edge-taper))
+        )
+        border-box,
+      linear-gradient(#000 0 0) content-box;
+    mask-composite: subtract;
+    pointer-events: none;
+  }
+}
+
+/*
+  A priority rail on a rounded box (drag chip, Overdrive card, the sheet's
+  priority select). The ring is a real CSS border on all four sides, so
+  double, dashed and dotted draw natively round the corners; the mask keeps
+  the left side and both corner arcs and fades it out toward the right. The
+  custom properties come from `railEdgeVars` (lib/priority.ts); with none set
+  the ring has no border and draws nothing. The host keeps its own 1px
+  border, so the ring sits on that border's outer edge (`inset: -1px`).
+*/
+@utility rail-edge {
+  position: relative;
+  &::before {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    border-radius: inherit;
+    border-width: var(--rail-w, 0);
+    border-style: var(--rail-style, none);
+    border-color: var(--rail-color, transparent);
+    --edge-hold: 0.75rem;
+    --edge-taper: 1.5rem;
+    mask: linear-gradient(
+      to right,
+      #000 var(--edge-hold),
+      transparent calc(var(--edge-hold) + var(--edge-taper))
+    );
     pointer-events: none;
   }
 }

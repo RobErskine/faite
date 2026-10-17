@@ -101,7 +101,8 @@ test("a todo's History section logs `created`, then `done` (EI-94)", async ({ pa
   const sheet = openSheet(page);
   await expect(sheet).toBeVisible();
 
-  // Open by default (todo-sheet.tsx HistorySection) — no click needed.
+  // Collapsed by default (todo-sheet.tsx HistorySection, EI-396) — open it.
+  await sheet.getByRole("button", { name: /^History/ }).click();
   // `HISTORY_STARTS_AT` (todo-timeline.ts) must sort before this fixture's
   // frozen clock (`FROZEN_TIME`, support/fixtures.ts), or this todo would
   // render as pre-history and the count below would include a marker row
@@ -117,16 +118,17 @@ test("a todo's History section logs `created`, then `done` (EI-94)", async ({ pa
   // (`["open"]`, schema.ts) drops the card off the board — reopen through
   // ⌘K's search instead of the card, which `searchTodos` (lib/search.ts)
   // never filters by status, unlike the board.
-  await sheet.getByRole("button", { name: "Mark done" }).click();
+  await sheet.getByRole("button", { name: "Done", exact: true }).click();
   await page.keyboard.press("Control+K");
   await page.getByPlaceholder("Search to-dos or run a command…").fill(title);
   // Anchored at the start: an unanchored substring match also resolves the
   // "Create to-do…" fallback option, which quotes the typed title too.
   await page.getByRole("option", { name: new RegExp(`^${title}`) }).click();
 
-  // Reopening the sheet remounts HistorySection, which is open by default —
-  // no click needed here either.
+  // Reopening the sheet remounts HistorySection, which starts closed again
+  // (the open state is not persisted) — open it here too.
   await expect(sheet).toBeVisible();
+  await sheet.getByRole("button", { name: /^History/ }).click();
   // Three now: the same day header, plus `created` and `done`. Newest first,
   // so "Completed" is the row directly under the header.
   const reopened = sheet.getByRole("list", { name: /^History for/ });
@@ -221,59 +223,4 @@ test("GOOD JOB mode throws confetti when a to-do is completed", async ({ page })
   await page.getByRole("checkbox", { name: new RegExp(title) }).click();
 
   await expect(confettiCanvas).toBeAttached();
-});
-
-/**
- * EI-318 — the sheet's leading edge is the to-do's priority rail, and nothing
- * in the sheet may paint over it. History's day headers are `relative` and
- * bleed edge to edge with `-mx-4`, and with no z-index on the rail each one
- * cut a segment out of it — reported from a screenshot, where it read as a
- * broken edge down the timeline.
- *
- * Paint order, not class names: this checks what is actually on top at the
- * rail's own x. The rail is `pointer-events: none`, which hides it from
- * `elementFromPoint` entirely, so it is lifted for the probe and restored —
- * without that, every reading blames whatever sits beneath the rail.
- * Confirmed to fail with the rail's `z-10` removed.
- */
-test("the sheet's priority edge is never covered by History's day headers (EI-318)", async ({
-  page,
-}) => {
-  await switchToLists(page);
-  const backlog = page.getByRole("region", { name: "Backlog" });
-  const title = "Edge stays whole";
-  await backlog.getByPlaceholder("Add a to-do").fill(title);
-  await page.keyboard.press("Enter");
-  await page.getByRole("button", { name: title, exact: true }).click();
-
-  const sheet = openSheet(page);
-  await expect(sheet).toBeVisible();
-
-  await page.locator("#todo-priority").click();
-  await page.getByRole("option", { name: /^P1/ }).first().click();
-
-  // A day header only exists once History has an event under it.
-  const history = sheet.getByRole("list", { name: /^History for/ });
-  await expect(history.getByText("Today")).toBeVisible();
-  // The rail is a `double` at P1; wait for it rather than for a timeout.
-  await expect(sheet.locator(":scope > [data-priority-rail='1']")).toHaveCount(1);
-
-  const topmostOnTheEdge = await page.evaluate(() => {
-    const content = document.querySelector('[data-slot="sheet-content"]') as HTMLElement;
-    const rail = content.querySelector(":scope > [data-priority-rail]") as HTMLElement;
-    const header = Array.from(content.querySelectorAll("li")).find((li) =>
-      /Today/.test(li.textContent ?? ""),
-    ) as HTMLElement;
-    // `elementFromPoint` returns null for anything outside the viewport, and
-    // on a phone History sits well below the fold of a full-height sheet.
-    header.scrollIntoView({ block: "center" });
-    rail.style.pointerEvents = "auto";
-    const r = rail.getBoundingClientRect();
-    const h = header.getBoundingClientRect();
-    const hit = document.elementFromPoint(r.left + 1, h.top + h.height / 2);
-    rail.style.pointerEvents = "";
-    return hit === rail ? "rail" : hit?.tagName.toLowerCase() ?? "nothing";
-  });
-
-  expect(topmostOnTheEdge).toBe("rail");
 });

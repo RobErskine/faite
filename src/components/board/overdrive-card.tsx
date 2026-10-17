@@ -2,7 +2,7 @@
 
 import type { Label as LabelRecord, List, ReminderPreset, Todo } from "@/lib/schema";
 import { formatShortDateAsOf, type PlacementContext } from "@/lib/scheduling";
-import { railBorder } from "@/lib/priority";
+import { railEdgeVars } from "@/lib/priority";
 import { NO_LIST_NAME } from "@/lib/row-grammar";
 import {
   TitleMarkers,
@@ -73,11 +73,11 @@ export function OverdriveCard({
     // (EI-393). A long title wraps.
     //
     // The rail rides the card's left border, as on the drag chip
-    // (`railBorder`): a standalone box has no column edge to keep true.
+    // (`railEdgeVars`): a standalone box has no column edge to keep true.
     <div
       data-overdrive-card
-      style={railBorder(todo.priority)}
-      className="flex w-full flex-col gap-3 rounded-lg border border-border bg-background p-6"
+      style={railEdgeVars(todo.priority)}
+      className="rail-edge flex w-full flex-col gap-3 rounded-lg border border-border bg-background p-6"
     >
       <p className="num text-xs text-muted-foreground">
         {index + 1} of {total}

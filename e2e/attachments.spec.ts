@@ -41,12 +41,19 @@ test("the todo sheet offers an Attachments section", async ({ page }) => {
   // Mounted once in board.tsx above the desktop/phone branch, so this
   // assertion passing on both projects is what proves neither shell needs
   // its own attachment UI.
-  await expect(sheet.getByText("Attachments", { exact: true })).toBeVisible();
+  // Collapsed by default (EI-396): the heading is a disclosure button, and
+  // the picker only exists once it is opened.
+  const toggle = sheet.getByRole("button", { name: "Attachments" });
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect(sheet.getByRole("button", { name: "Attach a file" })).toHaveCount(0);
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
   await expect(sheet.getByRole("button", { name: "Attach a file" })).toBeEnabled();
 });
 
 test("the section states the limit the server actually enforces", async ({ page }) => {
   const sheet = await openSheetFor(page, "Send the invoice");
+  await sheet.getByRole("button", { name: "Attachments" }).click();
 
   // The number comes from `lib/attachment-limits.ts`, the same module the
   // Worker enforces from — so this catches the two drifting apart, which is
@@ -81,6 +88,8 @@ test("History can name an attachment event, though only a Worker can make one", 
   // hide them if the settings field ever drifted from the label map.
   const sheet = await openSheetFor(page, "File the tax return");
 
+  // The filter lives inside History, which is collapsed by default (EI-396).
+  await sheet.getByRole("button", { name: /^History/ }).click();
   await sheet.getByRole("button", { name: "Which history to show" }).click();
   await expect(page.getByRole("menuitemcheckbox", { name: "Attached" })).toBeVisible();
   await expect(page.getByRole("menuitemcheckbox", { name: "Removed file" })).toBeVisible();

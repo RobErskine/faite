@@ -59,6 +59,7 @@ interface HarnessProps {
   onBackToDay?: () => void;
   onSetStatus?: (id: string, status: Todo["status"]) => void;
   onDelete?: (id: string) => void;
+  onMoveBackToList?: (todo: Todo, opts?: { toBacklog?: boolean }) => void;
   onSave?: (id: string, patch: Partial<Todo>) => void;
   onToggleLabel?: (todoId: string, labelId: string) => void;
   onAddSubtask?: (parentId: string, title: string) => void;
@@ -76,6 +77,7 @@ function Harness({
   onBackToDay,
   onSetStatus = vi.fn(),
   onDelete = vi.fn(),
+  onMoveBackToList,
   onSave = vi.fn(),
   onToggleLabel = vi.fn(),
   onAddSubtask = vi.fn(),
@@ -104,6 +106,7 @@ function Harness({
       onSetStatus={onSetStatus}
       onToggleLabel={onToggleLabel}
       onDelete={onDelete}
+      onMoveBackToList={onMoveBackToList}
       onAddSubtask={onAddSubtask}
       backToDay={backToDay}
       onBackToDay={onBackToDay}
@@ -403,12 +406,94 @@ describe("title mentions — @list and #label", () => {
   });
 });
 
-describe("footer", () => {
-  it("renders Mark done, Won't do, and Delete as a 3-up row", () => {
-    render(<Harness />);
-    expect(screen.getByRole("button", { name: "Mark done" })).toBeTruthy();
+describe("footer endings (EI-396)", () => {
+  it("renders Done, Won't do, Back to <list> and Delete", () => {
+    render(<Harness onMoveBackToList={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Done" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Won't do" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Back to Backlog" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Delete" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Mark done" })).toBeNull();
+  });
+
+  it("omits Back to <list> when the to-do has no day", () => {
+    render(<Harness onMoveBackToList={vi.fn()} todo={{ ...TODO, scheduledDate: null, scheduledAt: null }} />);
+    expect(screen.queryByRole("button", { name: /^Back to/ })).toBeNull();
+  });
+
+  it("lays the footer out as an inverted T: Done alone, then three equal cells", () => {
+    const { unmount } = render(<Harness onMoveBackToList={vi.fn()} />);
+    const footer = document.querySelector('[data-slot="sheet-footer"]')!;
+    expect(footer.className).toContain("grid-cols-3");
+    expect(screen.getByRole("button", { name: "Done" }).className).toContain("col-span-3");
+    expect(footer.children.length).toBe(4);
+    for (const name of ["Won't do", "Back to Backlog", "Delete"]) {
+      expect(screen.getByRole("button", { name }).className).not.toContain("flex-");
+    }
+    unmount();
+    render(<Harness onMoveBackToList={vi.fn()} todo={{ ...TODO, scheduledDate: null, scheduledAt: null }} />);
+    const bare = document.querySelector('[data-slot="sheet-footer"]')!;
+    // Back to <list> is gone but its cell stays, so Won't do and Delete hold still.
+    expect(bare.children.length).toBe(4);
+    expect(bare.children[2].tagName).toBe("DIV");
+  });
+
+  it("shows the Delete chord inline", () => {
+    render(<Harness onMoveBackToList={vi.fn()} />);
+    expect(screen.getByRole("button", { name: "Delete" }).querySelector('[data-slot="kbd"]')).toBeTruthy();
+  });
+
+  it("header and footer share the body's px-4 edge", () => {
+    render(<Harness onMoveBackToList={vi.fn()} />);
+    expect(document.querySelector('[data-slot="sheet-header"]')!.className).toContain("px-4");
+    expect(document.querySelector('[data-slot="sheet-footer"]')!.className).toContain("px-4");
+  });
+
+  it("shift+down sends it to Backlog, only with a day and not from a text field", () => {
+    const onMoveBackToList = vi.fn();
+    const { unmount } = render(<Harness onMoveBackToList={onMoveBackToList} />);
+    fireEvent.keyDown(screen.getByLabelText("Title"), { key: "ArrowDown", shiftKey: true });
+    expect(onMoveBackToList).not.toHaveBeenCalled();
+    fireEvent.keyDown(sheetContent(), { key: "ArrowDown", shiftKey: true });
+    expect(onMoveBackToList).toHaveBeenCalledWith(TODO, { toBacklog: true });
+    unmount();
+
+    const none = vi.fn();
+    render(<Harness onMoveBackToList={none} todo={{ ...TODO, scheduledDate: null, scheduledAt: null }} />);
+    fireEvent.keyDown(sheetContent(), { key: "ArrowDown", shiftKey: true });
+    expect(none).not.toHaveBeenCalled();
+  });
+
+  it("d opens the Date popover, but not from a text field", () => {
+    render(<Harness onMoveBackToList={vi.fn()} />);
+    const trigger = document.getElementById("todo-scheduled")!;
+    const click = vi.spyOn(trigger, "click");
+    fireEvent.keyDown(screen.getByLabelText("Title"), { key: "d" });
+    expect(click).not.toHaveBeenCalled();
+    fireEvent.keyDown(sheetContent(), { key: "d" });
+    expect(click).toHaveBeenCalledTimes(1);
+  });
+
+  it("clicking Back to <list> calls onMoveBackToList with the to-do", () => {
+    const onMoveBackToList = vi.fn();
+    render(<Harness onMoveBackToList={onMoveBackToList} />);
+    fireEvent.click(screen.getByRole("button", { name: "Back to Backlog" }));
+    expect(onMoveBackToList).toHaveBeenCalledWith(TODO);
+  });
+
+  it("bare down moves it back to its list, but not from a text field or without a day", () => {
+    const onMoveBackToList = vi.fn();
+    const { unmount } = render(<Harness onMoveBackToList={onMoveBackToList} />);
+    fireEvent.keyDown(screen.getByLabelText("Title"), { key: "ArrowDown" });
+    expect(onMoveBackToList).not.toHaveBeenCalled();
+    fireEvent.keyDown(sheetContent(), { key: "ArrowDown" });
+    expect(onMoveBackToList).toHaveBeenCalledWith(TODO);
+    unmount();
+
+    const none = vi.fn();
+    render(<Harness onMoveBackToList={none} todo={{ ...TODO, scheduledDate: null, scheduledAt: null }} />);
+    fireEvent.keyDown(sheetContent(), { key: "ArrowDown" });
+    expect(none).not.toHaveBeenCalled();
   });
 });
 
@@ -439,12 +524,12 @@ function stubRect(el: Element) {
 
 describe("the confetti origin passed to onSetStatus", () => {
 
-  it("comes from the Mark done button, for both the click and ⌘Enter", () => {
+  it("comes from the Done button, for both the click and ⌘Enter", () => {
     const onSetStatus = vi.fn();
     render(<Harness onSetStatus={onSetStatus} />);
-    stubRect(screen.getByRole("button", { name: "Mark done" }));
+    stubRect(screen.getByRole("button", { name: "Done" }));
 
-    fireEvent.click(screen.getByRole("button", { name: "Mark done" }));
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
     expect(onSetStatus).toHaveBeenLastCalledWith("t1", "done", { x: 0.25, y: 0.25 });
 
     fireEvent.keyDown(sheetContent(), { key: "Enter", metaKey: true });
@@ -496,10 +581,11 @@ describe("back-to-day affordance", () => {
     expect(screen.queryByRole("button", { name: /Back to/ })).toBeNull();
   });
 
-  it("reads 'Back to <day>' and fires onBackToDay when opened from a day", () => {
+  it("reads '‹ <day>', named 'Return to <day>', and fires onBackToDay", () => {
     const onBackToDay = vi.fn();
     render(<Harness backToDay="2026-08-11" onBackToDay={onBackToDay} />);
-    const button = screen.getByRole("button", { name: "Back to Aug 11" });
+    const button = screen.getByRole("button", { name: "Return to Aug 11" });
+    expect(button.textContent).toBe("‹Aug 11");
     fireEvent.click(button);
     expect(onBackToDay).toHaveBeenCalledTimes(1);
   });
@@ -509,6 +595,12 @@ describe("back-to-day affordance", () => {
     expect(screen.queryByRole("button", { name: /Back to/ })).toBeNull();
   });
 });
+
+/** The sub-task input is hidden until the "+" beside the label is clicked. */
+const openSubtaskInput = () => {
+  fireEvent.click(screen.getByRole("button", { name: "Add a sub-task" }));
+  return screen.getByPlaceholderText("Add a sub-task");
+};
 
 describe("Sub-tasks (EI-55)", () => {
   const child = (id: string, title: string, status: Todo["status"] = "open"): Todo => ({
@@ -585,7 +677,7 @@ describe("Sub-tasks (EI-55)", () => {
   it("typing a title and pressing Enter calls onAddSubtask with the parent id, then clears the draft", () => {
     const onAddSubtask = vi.fn();
     render(<Harness onAddSubtask={onAddSubtask} />);
-    const input = screen.getByLabelText("Add a sub-task");
+    const input = openSubtaskInput();
     fireEvent.change(input, { target: { value: "Book flights" } });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(onAddSubtask).toHaveBeenCalledWith(TODO.id, "Book flights");
@@ -595,7 +687,7 @@ describe("Sub-tasks (EI-55)", () => {
   it("blurring with a typed title also commits it", () => {
     const onAddSubtask = vi.fn();
     render(<Harness onAddSubtask={onAddSubtask} />);
-    const input = screen.getByLabelText("Add a sub-task");
+    const input = openSubtaskInput();
     fireEvent.change(input, { target: { value: "Book flights" } });
     fireEvent.blur(input);
     expect(onAddSubtask).toHaveBeenCalledWith(TODO.id, "Book flights");
@@ -604,10 +696,33 @@ describe("Sub-tasks (EI-55)", () => {
   it("does not call onAddSubtask for a blank title", () => {
     const onAddSubtask = vi.fn();
     render(<Harness onAddSubtask={onAddSubtask} />);
-    const input = screen.getByLabelText("Add a sub-task");
+    const input = openSubtaskInput();
     fireEvent.keyDown(input, { key: "Enter" });
     fireEvent.blur(input);
     expect(onAddSubtask).not.toHaveBeenCalled();
+  });
+
+  it("hides the input until the + is clicked, which shows and focuses it", () => {
+    render(<Harness />);
+    expect(screen.queryByPlaceholderText("Add a sub-task")).toBeNull();
+    const input = openSubtaskInput();
+    expect(document.activeElement).toBe(input);
+  });
+
+  it("stays open after a commit; Escape hides it again", () => {
+    render(<Harness />);
+    const input = openSubtaskInput();
+    fireEvent.change(input, { target: { value: "Book flights" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(screen.getByPlaceholderText("Add a sub-task")).toBeTruthy();
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(screen.queryByPlaceholderText("Add a sub-task")).toBeNull();
+  });
+
+  it("blurring with an empty draft hides the input", () => {
+    render(<Harness />);
+    fireEvent.blur(openSubtaskInput());
+    expect(screen.queryByPlaceholderText("Add a sub-task")).toBeNull();
   });
 
   it("one level of nesting: a sub-task's own sheet shows no Sub-tasks section at all", () => {
@@ -626,7 +741,9 @@ describe("History — the Faite Loop (EI-96)", () => {
     overflowAfterDays: 3,
   };
 
-  // History is open by default (EI-96 follow-up) — no toggle click needed.
+  // History is collapsed by default (EI-396) — open it before reading rows.
+  const openHistory = () =>
+    fireEvent.click(screen.getByRole("button", { name: /^History/ }));
 
   it("shows no roll rows without ctx — History is unchanged from before EI-96", () => {
     render(<Harness todo={{ ...TODO, scheduledDate: "2026-08-08" }} />);
@@ -635,6 +752,7 @@ describe("History — the Faite Loop (EI-96)", () => {
 
   it("shows a collapsed 'Rolled over' row while still on today's column", () => {
     render(<Harness todo={{ ...TODO, scheduledDate: "2026-08-08" }} ctx={ctx} />);
+    openHistory();
     expect(screen.getByText("Rolled over")).toBeTruthy();
     expect(screen.getByText("3 days, from Aug 8")).toBeTruthy();
     expect(screen.queryByText("Fell into Overflow")).toBeNull();
@@ -642,6 +760,7 @@ describe("History — the Faite Loop (EI-96)", () => {
 
   it("shows 'Fell into Overflow' once past the threshold", () => {
     render(<Harness todo={{ ...TODO, scheduledDate: "2026-08-07" }} ctx={ctx} />);
+    openHistory();
     expect(screen.getByText("Fell into Overflow")).toBeTruthy();
     expect(screen.getByText("from Aug 7")).toBeTruthy();
   });
@@ -658,6 +777,81 @@ describe("History — the Faite Loop (EI-96)", () => {
   });
 });
 
+
+describe("on-demand sections (EI-396)", () => {
+  it("collapses Attachments and History by default, as buttons with aria-expanded", () => {
+    render(<Harness />);
+    const attachments = screen.getByRole("button", { name: /^Attachments/ });
+    const history = screen.getByRole("button", { name: /^History/ });
+    expect(attachments.getAttribute("aria-expanded")).toBe("false");
+    expect(history.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("button", { name: "Attach a file" })).toBeNull();
+    expect(screen.queryByRole("list", { name: /^History for/ })).toBeNull();
+  });
+
+  it("shows the Attachments label once, on the toggle, when open", () => {
+    render(<Harness />);
+    fireEvent.click(screen.getByRole("button", { name: /^Attachments/ }));
+    expect(screen.getAllByText("Attachments")).toHaveLength(1);
+  });
+
+  it("opens Attachments on click and closes it again", () => {
+    render(<Harness />);
+    const toggle = screen.getByRole("button", { name: /^Attachments/ });
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByRole("button", { name: "Attach a file" })).toBeTruthy();
+    fireEvent.click(toggle);
+    expect(screen.queryByRole("button", { name: "Attach a file" })).toBeNull();
+  });
+
+  it("opens History by default only when it has more than 3 events", () => {
+    const event = (n: number): TodoEvent => ({
+      id: `e${n}`,
+      ownerId: "local",
+      createdAt: `2026-08-0${n}T09:00:00.000Z`,
+      updatedAt: `2026-08-0${n}T09:00:00.000Z`,
+      deletedAt: null,
+      todoId: TODO.id,
+      kind: "created",
+      at: `2026-08-0${n}T09:00:00.000Z`,
+      payload: null,
+    });
+    const { unmount } = render(<Harness events={[1, 2, 3].map(event)} />);
+    expect(
+      screen.getByRole("button", { name: /^History/ }).getAttribute("aria-expanded"),
+    ).toBe("false");
+    unmount();
+    render(<Harness events={[1, 2, 3, 4].map(event)} />);
+    expect(
+      screen.getByRole("button", { name: /^History/ }).getAttribute("aria-expanded"),
+    ).toBe("true");
+  });
+
+  it("opens History on click", () => {
+    render(<Harness />);
+    const toggle = screen.getByRole("button", { name: /^History/ });
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("orders the body: When, List, Labels, Location, Sub-tasks, Notes, then the disclosures", () => {
+    render(<Harness />);
+    const order = [
+      document.getElementById("todo-scheduled")!,
+      document.getElementById("todo-list")!,
+      screen.getByText("Sub-tasks"),
+      screen.getByLabelText("Notes"),
+      screen.getByRole("button", { name: /^Attachments/ }),
+      screen.getByRole("button", { name: /^History/ }),
+    ];
+    for (let i = 1; i < order.length; i++) {
+      expect(
+        order[i - 1].compareDocumentPosition(order[i]) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    }
+  });
+});
 
 describe("priority in the header (EI-318)", () => {
   it("sits before the title in the DOM, which is the tab order", () => {
@@ -692,113 +886,95 @@ describe("priority in the header (EI-318)", () => {
     expect(glyph.style.width).toBe(`${PRIORITY_RAILS[1].width}px`);
   });
 
-  it("puts the level on the SHEET's leading edge, as the card's own rail", () => {
-    // One mark, one table. The sheet reads as that card opened rather than as
-    // a different surface that happens to be about it — which is also why the
-    // select no longer carries a tint of its own: saying it twice in two
-    // different ways is not consistency.
+  it("wears the rail as a short mark on the select trigger, not a full-height edge", () => {
+    // The row's own rail (`railEdgeVars`), only as tall as the select (EI-396). The
+    // full-height edge on the sheet is gone.
     render(<Harness todo={{ ...TODO, priority: 1 }} />);
-    const edge = sheetContent().querySelector(":scope > [data-priority-rail]") as HTMLElement;
-    expect(edge).toBeTruthy();
-    expect(edge.getAttribute("data-priority-rail")).toBe("1");
-    expect(edge.style.width).toBe(`${PRIORITY_RAILS[1].width}px`);
-    // Full height here, unlike the card's inset tick: there is no next sheet
-    // below this one to fuse with.
-    expect(edge.className).toContain("inset-y-0");
-  });
-
-  it("wears nothing on that edge when the to-do is unprioritized", () => {
-    render(<Harness todo={{ ...TODO, priority: null }} />);
+    const mark = document.getElementById("todo-priority")!;
+    expect(mark.getAttribute("data-priority-mark")).toBe("1");
+    expect(mark.style.getPropertyValue("--rail-w")).toBe(`${PRIORITY_RAILS[1].width}px`);
+    expect(mark.style.getPropertyValue("--rail-style")).toBe("double");
     expect(sheetContent().querySelector(":scope > [data-priority-rail]")).toBeNull();
   });
 
-  it("hangs the control off that edge once there is board to hang it over", () => {
-    // Gated on `lg`, not on the desktop shell: what matters is whether the
-    // sheet leaves room beside it, and it is `w-full` below `sm`.
-    render(<Harness todo={{ ...TODO, priority: 2 }} />);
-    const tab = document.getElementById("todo-priority")!.parentElement!;
-    expect(tab.className).toContain("lg:absolute");
-    // Exactly its own width, so its right edge meets the sheet's padding edge
-    // where the rail begins, and the rail runs on past it unbroken.
-    expect(tab.className).toContain("lg:-left-24");
-    expect(tab.className).toContain("lg:w-24");
-  });
-
-  it("gives the tab no shadow, which is what made it look detached", () => {
-    // `--shadow-overlay` casts on every side, including into the seam the two
-    // surfaces are supposed to share. The tab is chrome ON the sheet, so it
-    // carries the sheet's background and three borders instead.
-    render(<Harness todo={{ ...TODO, priority: 2 }} />);
-    const tab = document.getElementById("todo-priority")!.parentElement!;
-    expect(tab.className).not.toContain("shadow-(--shadow-overlay)");
-    expect(tab.className).toContain("lg:bg-popover");
-    expect(tab.className).toContain("lg:border-r-0");
-    expect(tab.className).toContain("lg:rounded-r-none");
-  });
-
-  it("outlines the tab in the rail's own treatment, so the edge wraps it", () => {
-    // The sheet's edge comes down, goes behind the tab, and is picked up by
-    // the tab's border in the same width, color and dottedness — one line
-    // that wraps, rather than a box parked on a line.
-    render(<Harness todo={{ ...TODO, priority: 1 }} />);
-    const tab = document.getElementById("todo-priority")!.parentElement!;
-    expect(tab.style.getPropertyValue("--priority-edge-width")).toBe(
-      `${PRIORITY_RAILS[1].width}px`,
-    );
-    // P1 is `double` now — the four levels are CSS's four line styles.
-    expect(tab.style.getPropertyValue("--priority-edge-style")).toBe("double");
-    expect(tab.style.getPropertyValue("--priority-edge-color")).toContain("--foreground");
-  });
-
-  it("outlines the tab in each level's own line style, exactly", () => {
-    // The four levels are CSS's four `border-style` values, so the tab needs
-    // no approximation — it draws the same thing the rail does.
-    for (const [priority, style] of [
-      [1, "double"],
-      [2, "solid"],
-      [3, "dashed"],
-      [4, "dotted"],
-    ] as const) {
-      cleanup();
-      render(<Harness todo={{ ...TODO, priority }} />);
-      const tab = document.getElementById("todo-priority")!.parentElement!;
-      expect(tab.style.getPropertyValue("--priority-edge-style")).toBe(style);
-    }
-  });
-
-  it("falls back to the ordinary field border when unprioritized", () => {
-    // Which is also what every to-do gets below `lg`, where the variables are
-    // set and nothing reads them.
+  it("wears no mark when the to-do is unprioritized", () => {
     render(<Harness todo={{ ...TODO, priority: null }} />);
-    const tab = document.getElementById("todo-priority")!.parentElement!;
-    expect(tab.style.getPropertyValue("--priority-edge-width")).toBe("1px");
-    expect(tab.style.getPropertyValue("--priority-edge-color")).toBe("var(--input)");
+    const mark = document.getElementById("todo-priority")!;
+    expect(mark.style.getPropertyValue("--rail-w")).toBe("");
+    expect(sheetContent().querySelector(":scope > [data-priority-rail]")).toBeNull();
   });
 
-  it("layers the rail above the sheet's contents, and the tab above the rail", () => {
-    // This test used to assert the rail had NO z-index — a proxy for "the tab
-    // paints over it". The proxy was wrong: it also let every later POSITIONED
-    // element paint over the rail, and History's day headers did, cutting the
-    // edge into segments. Assert the actual relationship instead, and see
-    // `core-flows.spec.ts` for the paint order checked in a real browser.
-    render(<Harness todo={{ ...TODO, priority: 1 }} />);
-    const edge = sheetContent().querySelector(":scope > [data-priority-rail]") as HTMLElement;
-    const tab = document.getElementById("todo-priority")!.parentElement!;
-    expect(edge.className).toContain("z-10");
-    expect(tab.className).toContain("lg:z-20");
-  });
-
-  it("labels the tab, and hides that label when there is no tab", () => {
+  it("has no hanging tab", () => {
     render(<Harness todo={{ ...TODO, priority: 2 }} />);
-    const label = document.querySelector('label[for="todo-priority"]') as HTMLElement;
-    expect(label.textContent).toBe("Priority");
-    // Below `lg` the control sits beside the title with no room for a word,
-    // and its `aria-label` carries the name instead.
-    expect(label.className).toContain("hidden");
-    expect(label.className).toContain("lg:flex");
-    expect(document.getElementById("todo-priority")!.getAttribute("aria-label")).toBe("Priority");
+    expect(sheetContent().innerHTML).not.toContain("lg:-left-24");
+    expect(sheetContent().innerHTML).not.toContain("lg:absolute");
   });
 
+  it("keeps the priority select, id and options", () => {
+    render(<Harness todo={{ ...TODO, priority: 2 }} />);
+    const trigger = document.getElementById("todo-priority")!;
+    expect(trigger.getAttribute("aria-label")).toBe("Priority");
+    expect(trigger.textContent).toContain("P2");
+  });
+});
+
+describe("the header's story line (EI-396)", () => {
+  const ctx: PlacementContext = {
+    today: "2026-08-11",
+    visibleWindow: ["2026-08-11", "2026-08-12"],
+    workdaysOnly: false,
+    workdays: [1, 2, 3, 4, 5],
+    overflowAfterDays: 3,
+  };
+  const story = () => document.querySelector('[data-slot="story-line"]');
+
+  it("says where a rolled to-do came from and when it overflows", () => {
+    render(<Harness todo={{ ...TODO, scheduledDate: "2026-08-08" }} ctx={ctx} />);
+    expect(story()?.textContent).toBe("Rolled from Aug 8 · Overflow in 1 day");
+  });
+
+  it("says since when a to-do has been in Overflow", () => {
+    render(<Harness todo={{ ...TODO, scheduledDate: "2026-08-04" }} ctx={ctx} />);
+    expect(story()?.textContent).toMatch(/^In Overflow since Aug \d+ · \d+ days?$/);
+  });
+
+  it("shows the completion stamp with its planned note for a done to-do", () => {
+    render(
+      <Harness
+        todo={{
+          ...TODO,
+          status: "done",
+          scheduledDate: "2026-08-08",
+          completedAt: "2026-08-11T12:05:00.000Z",
+        }}
+        ctx={ctx}
+      />,
+    );
+    expect(story()?.textContent).toMatch(/^Completed Aug 11 · .* · planned Aug 8$/);
+  });
+
+  it("shows the Won't do stamp, and works without ctx", () => {
+    render(
+      <Harness
+        todo={{ ...TODO, status: "dropped", completedAt: "2026-08-11T12:05:00.000Z" }}
+      />,
+    );
+    expect(story()?.textContent).toMatch(/^Marked won’t do Aug 11/);
+    expect(story()?.textContent).not.toContain("planned");
+  });
+
+  it("is absent for a plain to-do, and for a rolled one with no ctx", () => {
+    const { rerender } = render(<Harness todo={{ ...TODO, scheduledDate: "2026-08-11" }} ctx={ctx} />);
+    expect(story()).toBeNull();
+    rerender(<Harness todo={{ ...TODO, scheduledDate: "2026-08-07" }} />);
+    expect(story()).toBeNull();
+  });
+
+  it("is muted text-xs ink", () => {
+    render(<Harness todo={{ ...TODO, scheduledDate: "2026-08-08" }} ctx={ctx} />);
+    expect(story()?.className).toContain("text-xs");
+    expect(story()?.className).toContain("text-muted-foreground");
+  });
 });
 
 describe("arrow verbs (EI-318)", () => {
@@ -835,9 +1011,9 @@ describe("arrow verbs (EI-318)", () => {
     expect(onSetStatus).not.toHaveBeenCalled();
   });
 
-  it("leaves down and right alone", () => {
-    // Overdrive's meanings for them need its verdict state machine; giving
-    // them different ones here would break the shared muscle memory.
+  it("leaves right alone, and down never changes status", () => {
+    // Overdrive's meaning for right needs its verdict state machine; down is
+    // "back to list" (EI-396), which is not a status write.
     const onSetStatus = vi.fn();
     render(<Harness onSetStatus={onSetStatus} />);
     fireEvent.keyDown(sheetContent(), { key: "ArrowDown" });

@@ -1840,6 +1840,40 @@ export function useBoardActions(
   );
 
   /**
+   * The details drawer's "Back to {list}" and bare `↓` (EI-396). One to-do:
+   * the drawer shows a single to-do, so it must never fan out over a board
+   * selection the way `handleMoveBackToList` does through `targetsFor`. Same
+   * write, undo entry and toast; the selection is left alone. `toBacklog` is
+   * the drawer's `⇧↓` (Overdrive's "force Backlog"): same write, to Backlog
+   * whatever the to-do's own list is.
+   */
+  const handleSheetMoveBackToList = useCallback(
+    (todo: Todo, opts?: { toBacklog?: boolean }) => {
+      if (todo.scheduledDate === null) return;
+      const home = opts?.toBacklog ? backlogListId : (todo.listId ?? backlogListId);
+      const label = `Moved “${short(todo.title)}” to ${
+        opts?.toBacklog ? "Backlog" : homeListName(todo)
+      }`;
+      const entryId = pushUndo(label, [
+        {
+          kind: "todo" as const,
+          entityId: todo.id,
+          patch: inversePatch(todo, listPatch(home)),
+        },
+      ]);
+      void (async () => {
+        await materializeIfNeeded(todo);
+        await moveTodoToList(todo.id, home);
+      })();
+      toast.success(label, {
+        duration: 6000,
+        action: { label: "Undo", onClick: () => void undoById(entryId) },
+      });
+    },
+    [backlogListId, homeListName, materializeIfNeeded],
+  );
+
+  /**
    * Accept Jev's proposed list for a Backlog to-do (EI-369): the chip, or
    * `⇧→` on the row. Moves it with `via: "smart-sort"`, so History — and a
    * later version that learns from accepts (EI-371) — can tell it apart from
@@ -2152,6 +2186,8 @@ export function useBoardActions(
     handleToggle,
     handleSheetSave,
     handleSheetStatus,
+    handleMoveBackToList,
+    handleSheetMoveBackToList,
     handleOverdriveVerdict,
     handleAcceptSuggestion,
     handleDismissSuggestion,
