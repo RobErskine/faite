@@ -946,7 +946,7 @@
 */
 
 /*
-  The spectrum along the top edge of Today's column. One of the four places
+  The spectrum along the top edge of Today's column. One of the five places
   the spectrum is allowed (docs/DESIGN.md §1). The host is the box that draws
   Today's visible rounded edge. A 2px ring of `--spectrum`, cut from a
   full-box layer with `mask-composite: subtract`, then faded toward the bottom.
@@ -984,7 +984,7 @@
 */
 @utility spectrum-glow {
   position: relative;
-  &::before {
+  &::after {
     content: "";
     position: absolute;
     inset: 0;
@@ -1002,7 +1002,12 @@
       transition: none;
     }
   }
-  &:is(:hover, :focus-within)::before {
+  @media (hover: hover) {
+    &:hover::after {
+      opacity: 0.35;
+    }
+  }
+  &:has(:focus-visible)::after {
     opacity: 0.35;
   }
 }

@@ -206,7 +206,7 @@ An achromatic ink-on-paper ladder, plus five channels that each mean one thing: 
 ### Named Rules
 **The One Channel Rule.** Every color on the board belongs to exactly one channel, and a channel means one thing. If a new element needs color, it takes the channel that already means that thing, or it stays achromatic (docs/DESIGN.md §1).
 
-**The Five Places Rule.** The spectrum appears in five places only: the F mark on hover and focus, the today column's top hairline (60% opacity at rest), the column glow (a full-outline glow at 35% on hover or keyboard focus of any non-collapsed column, fading in over 150ms, no motion under reduced motion, CSS only; collapsed rails get none), the checked-box flash, and the focus ring. Never a fill, a text color, a badge, or a sixth place. It changes color, not position (docs/DESIGN.md §1, §7 decision B).
+**The Five Places Rule.** The spectrum appears in five places only: the F mark on hover and focus, the today column's top hairline (60% opacity at rest), the column glow (a full-outline glow at 35% on hover or keyboard focus of any non-collapsed day column, fading in over 150ms, no motion under reduced motion, CSS only; collapsed rails, Backlog and Overflow get none), the checked-box flash, and the focus ring. Never a fill, a text color, a badge, or a sixth place. It changes color, not position (docs/DESIGN.md §1, §7 decision B).
 
 **The One Red Rule.** Red means urgent, only. Users may pick Tomato for a list; the app itself adds no second red anywhere (docs/DESIGN.md §1, §7 decision A).
 
