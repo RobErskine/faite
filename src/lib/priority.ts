@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { byPosition } from "./ordering";
 import type { Priority, Todo } from "./schema";
 
@@ -131,26 +132,29 @@ export function railBorderStyle(rail: PriorityRail): RailStyle {
 }
 
 /**
- * The whole left border for a standalone box that wears the rail — the drag
- * chip and the Overdrive card (EI-395). A box with no column edge to keep
- * true and no layout to shift around it can simply take a border, so these
- * two use one rather than `PriorityRail`'s span. Opacity rides the color via
- * `color-mix`, because the chip's own opacity is the lift animation's. `{}`
- * for an unprioritised to-do. `settled` steps it back the way `PriorityRail`
- * does on a done or Won't do row (`railOpacity`), so a settled row's chip
- * wears the row's rail rather than a full-strength one.
+ * The rail for a standalone ROUNDED box that wears it — the drag chip, the
+ * Overdrive card and the sheet's priority select (EI-396). Returned as CSS
+ * custom properties for the `rail-edge` utility (globals.css), which draws a
+ * real border round the whole box on a `::before` and masks it to the left
+ * edge, so the rail follows the radius round both corners and fades out along
+ * the top and bottom instead of stopping square. A `border-left` could not:
+ * a double rail bent into a "((" crescent at the corner.
+ *
+ * Opacity rides the color via `color-mix`, because the chip's own opacity is
+ * the lift animation's. `{}` for an unprioritised to-do. `settled` steps it
+ * back the way `PriorityRail` does on a done or Won't do row (`railOpacity`).
  */
-export function railBorder(
+export function railEdgeVars(
   priority: Priority | null | undefined,
   settled = false,
-): { borderLeftWidth?: number; borderLeftStyle?: RailStyle; borderLeftColor?: string } {
+): CSSProperties {
   const rail = priorityRail(priority);
   if (!rail) return {};
   return {
-    borderLeftWidth: rail.width,
-    borderLeftStyle: railBorderStyle(rail),
-    borderLeftColor: `color-mix(in oklch, var(--foreground) ${Math.round(railOpacity(rail, settled) * 100)}%, transparent)`,
-  };
+    "--rail-w": `${rail.width}px`,
+    "--rail-style": railBorderStyle(rail),
+    "--rail-color": `color-mix(in oklch, var(--foreground) ${Math.round(railOpacity(rail, settled) * 100)}%, transparent)`,
+  } as CSSProperties;
 }
 
 /** `undefined` for an unprioritised to-do, so callers can render nothing. */

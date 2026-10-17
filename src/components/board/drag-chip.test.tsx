@@ -161,15 +161,15 @@ describe("DragChip — the row's anatomy, carried (EI-395)", () => {
     expect(title.className).not.toContain("truncate");
   });
 
-  it("wears the row's rail as its left border", () => {
+  it("wears the row's rail as its left edge", () => {
     // The settled step-back rides `color-mix`, which happy-dom drops from
-    // `style`; `railBorder`'s own test in lib/priority.test.ts covers it.
+    // `style`; `railEdgeVars`'s own test in lib/priority.test.ts covers it.
     renderChip(todo({ priority: 1 }));
-    expect(chip().style.borderLeftStyle).toBe("double");
-    expect(chip().style.borderLeftWidth).toBe("5px");
+    expect(chip().style.getPropertyValue("--rail-style")).toBe("double");
+    expect(chip().style.getPropertyValue("--rail-w")).toBe("5px");
     cleanup();
     renderChip(todo());
-    expect(chip().style.borderLeftStyle).toBe("");
+    expect(chip().style.getPropertyValue("--rail-style")).toBe("");
   });
 
   it("strikes a done title's words, not its glyphs; Won't do is dimmed only", () => {

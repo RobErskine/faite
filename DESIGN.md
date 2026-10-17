@@ -263,7 +263,7 @@ Exact values, both themes, are in `.impeccable/design.json` and `globals.css`. E
 
 ## Shapes
 
-Radius derives from `--radius` (10px). Buttons and inputs are `rounded.lg`; small buttons cap at `min(--radius-md, 10–12px)`; tab triggers are `rounded.md`; badges are pills (`rounded.4xl` at 20px tall); every overlay's outer popup is `rounded.3xl` (docs/DESIGN.md §3). The checkbox is square. The priority rail is an absolutely positioned span inset 4px top and bottom, so consecutive rails read as separate ticks; never a `border-l` (§5). The spectrum hairline is a 2px rule inset 10px from each side.
+Radius derives from `--radius` (10px). Buttons and inputs are `rounded.lg`; small buttons cap at `min(--radius-md, 10–12px)`; tab triggers are `rounded.md`; badges are pills (`rounded.4xl` at 20px tall); every overlay's outer popup is `rounded.3xl` (docs/DESIGN.md §3). The checkbox is square. The priority rail on a square row is an absolutely positioned span inset 4px top and bottom, so consecutive rails read as separate ticks; never a `border-l` (§5). The spectrum hairline is a 2px ring on Today's rounded edge that follows both top corners and fades out down the sides; the priority rail on a rounded box (drag chip, Overdrive card, the sheet's priority select) is likewise a masked border ring that wraps its corners and tapers.
 
 ## Components
 

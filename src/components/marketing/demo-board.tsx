@@ -492,7 +492,7 @@ function DemoColumnView({ column, dayTrack }: { column: DemoColumn; dayTrack?: b
       aria-label={column.title}
       className={cn(
         "group/column relative flex flex-col rounded-md",
-        dayTrack && column.emphasis && "bg-surface-1 shadow-card",
+        dayTrack && column.emphasis && "hairline-spectrum bg-surface-1 shadow-card",
         column.pinned && "rounded-lg bg-surface-0",
         "min-w-0 flex-1",
       )}
@@ -503,7 +503,6 @@ function DemoColumnView({ column, dayTrack }: { column: DemoColumn; dayTrack?: b
           column.accentColor && "border-b-2",
           // Same 70% as the board's rule (EI-382): /40 failed 3:1 on surface-0.
           column.tone === "urgent" && "border-b-2 border-urgent/70",
-          dayTrack && column.emphasis && "hairline-spectrum",
         )}
         style={column.accentColor ? { borderColor: edge(column.accentColor) } : undefined}
       >

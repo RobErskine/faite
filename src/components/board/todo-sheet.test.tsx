@@ -887,20 +887,20 @@ describe("priority in the header (EI-318)", () => {
   });
 
   it("wears the rail as a short mark on the select trigger, not a full-height edge", () => {
-    // The row's own `railBorder`, only as tall as the select (EI-396). The
+    // The row's own rail (`railEdgeVars`), only as tall as the select (EI-396). The
     // full-height edge on the sheet is gone.
     render(<Harness todo={{ ...TODO, priority: 1 }} />);
     const mark = document.getElementById("todo-priority")!;
     expect(mark.getAttribute("data-priority-mark")).toBe("1");
-    expect(mark.style.borderLeftWidth).toBe(`${PRIORITY_RAILS[1].width}px`);
-    expect(mark.style.borderLeftStyle).toBe("double");
+    expect(mark.style.getPropertyValue("--rail-w")).toBe(`${PRIORITY_RAILS[1].width}px`);
+    expect(mark.style.getPropertyValue("--rail-style")).toBe("double");
     expect(sheetContent().querySelector(":scope > [data-priority-rail]")).toBeNull();
   });
 
   it("wears no mark when the to-do is unprioritized", () => {
     render(<Harness todo={{ ...TODO, priority: null }} />);
     const mark = document.getElementById("todo-priority")!;
-    expect(mark.style.borderLeftWidth).toBe("");
+    expect(mark.style.getPropertyValue("--rail-w")).toBe("");
     expect(sheetContent().querySelector(":scope > [data-priority-rail]")).toBeNull();
   });
 

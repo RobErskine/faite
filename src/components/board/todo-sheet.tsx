@@ -74,7 +74,7 @@ import { cn } from "@/lib/utils";
 import { useExitRetained } from "@/lib/use-exit-retained";
 import { edge, effectiveListColor } from "@/lib/colors";
 import { PriorityGlyph } from "@/components/board/todo-row-parts";
-import { railBorder } from "@/lib/priority";
+import { railEdgeVars } from "@/lib/priority";
 import { TITLE_LINES } from "@/lib/title";
 import { formatCompletionStamp, formatEventTime } from "@/lib/event-time";
 import { formatOverflowAge, rollStateFor } from "@/lib/rollover-events";
@@ -732,8 +732,8 @@ function TodoSheetContent({
             belong in one glance. `items-start`, not centered: a title that
             grows to three lines must not drag the select down the block.
 
-            The mark is a short left border on the select's trigger itself, from
-            `railBorder` — the same width, dash style and opacity the row's
+            The mark is a short left edge on the select's trigger itself, from
+            `railEdgeVars` and the `rail-edge` utility, wrapping its corners — the same width, dash style and opacity the row's
             rail wears (`PRIORITY_RAILS`), only as tall as the select rather
             than the sheet. Unprioritized wears nothing.
 
@@ -755,11 +755,11 @@ function TodoSheetContent({
                   id="todo-priority"
                   aria-label="Priority"
                   data-priority-mark={todo.priority ?? "none"}
-                  style={railBorder(todo.priority)}
+                  style={railEdgeVars(todo.priority)}
                   // `h-8` is the title's line box exactly (see below), which is
                   // what makes `items-start` read as vertical centering on the
                   // first line without pinning it to the middle of a tall one.
-                  className="h-8 w-[4.5rem] shrink-0 bg-popover px-2 text-xs"
+                  className="rail-edge h-8 w-[4.5rem] shrink-0 bg-popover px-2 text-xs"
                 >
                   {/*
                     The rail plus the number, and nothing else (EI-318).
