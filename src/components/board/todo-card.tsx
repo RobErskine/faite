@@ -337,7 +337,7 @@ export function TodoCard({
    * under View: All the finished row then MOVES, React re-inserts its node,
    * and a CSS animation still on it would play a second time.
    *
-   * Drives `--animate-check` on the box (one of the spectrum's four places)
+   * Drives `--animate-check` on the box (one of the spectrum's five places)
    * and `--animate-strike` on the title: the completion beat (EI-395). The
    * column holds the row in place long enough for both to be seen
    * (`use-completion-beat.ts`).

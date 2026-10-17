@@ -165,7 +165,7 @@ Density comes from structure, not decoration. Columns are air, today is the one 
 **Key Characteristics:**
 - Achromatic base (`oklch(L 0 0)` everywhere except the named channels).
 - One color meaning per channel; a new element takes an existing channel or stays achromatic.
-- The spectrum as a hairline and a flash in four places, never area.
+- The spectrum as a hairline, a flash and a faint column glow in five places, never area.
 - Serif headings over a humanist sans (Editorial pairing); tabular numerals in mono.
 - Whitespace separates columns; no borders, no dividers.
 - Springs on `transform` only; arrival under `--dur-slow`.
@@ -206,7 +206,7 @@ An achromatic ink-on-paper ladder, plus five channels that each mean one thing: 
 ### Named Rules
 **The One Channel Rule.** Every color on the board belongs to exactly one channel, and a channel means one thing. If a new element needs color, it takes the channel that already means that thing, or it stays achromatic (docs/DESIGN.md §1).
 
-**The Four Places Rule.** The spectrum appears in four places only: the F mark on hover and focus, the today column's top hairline, the checked-box flash, and the focus ring. Never a fill, a text color, a badge, or a fifth place. It changes color, not position (docs/DESIGN.md §1, §7 decision B).
+**The Five Places Rule.** The spectrum appears in five places only: the F mark on hover and focus, the today column's top hairline (40% opacity at rest, gradient turning slowly), the column glow (a full-outline glow at 35% on hover or keyboard focus of any non-collapsed day column, fading in over 150ms and turning once every 10s, no motion under reduced motion, CSS only; collapsed rails, Backlog and Overflow get none), the checked-box flash, and the focus ring. Never a fill, a text color, a badge, or a sixth place. It changes color, not position (docs/DESIGN.md §1, §7 decision B).
 
 **The One Red Rule.** Red means urgent, only. Users may pick Tomato for a list; the app itself adds no second red anywhere (docs/DESIGN.md §1, §7 decision A).
 
@@ -319,7 +319,7 @@ Quiet and tactile; the board has no loud fills.
 ### Don't:
 - **Don't** add a second red anywhere in the app (§1).
 - **Don't** give one icon two meanings: ↳ marks a rolled to-do and nothing else; the Overflow age badge is words only (§7, EI-383).
-- **Don't** use the spectrum as a fill, a text color, a badge, or in a fifth place (§1).
+- **Don't** use the spectrum as a fill, a text color, a badge, or in a sixth place (§1).
 - **Don't** give priority a hue (§1, §7 decision A).
 - **Don't** strike through Won't do (§1).
 - **Don't** put identity hue on `text-2xs` text or a card body (§1).
