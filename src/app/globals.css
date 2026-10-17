@@ -950,6 +950,7 @@
   the spectrum is allowed (docs/DESIGN.md §1). The host is the box that draws
   Today's visible rounded edge. A 2px ring of `--spectrum`, cut from a
   full-box layer with `mask-composite: subtract`, then faded toward the bottom.
+  Drawn at 0.6 opacity (EI-401) so it reads as a quiet edge, not a banner.
 */
 @utility hairline-spectrum {
   position: relative;
@@ -971,7 +972,38 @@
         border-box,
       linear-gradient(#000 0 0) content-box;
     mask-composite: subtract;
+    opacity: 0.6;
     pointer-events: none;
+  }
+}
+
+/*
+  A faint spectrum outline that appears only on hover or focus (EI-401): a 1px
+  ring of `--spectrum` round the whole host, invisible at rest. The host
+  supplies the radius; the ring inherits it.
+*/
+@utility spectrum-glow {
+  position: relative;
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    padding: 1px;
+    border-radius: inherit;
+    background: var(--spectrum);
+    mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    opacity: 0;
+    transition: opacity 150ms ease-out;
+    pointer-events: none;
+    @media (prefers-reduced-motion: reduce) {
+      transition: none;
+    }
+  }
+  &:is(:hover, :focus-within)::before {
+    opacity: 0.35;
   }
 }
 

@@ -808,6 +808,7 @@ export function BoardColumn({
       }
       className={cn(
         "group/column relative flex flex-col rounded-md transition-all",
+        !collapsed && "spectrum-glow",
         /*
           The Air pass: today is the one surface that steps up from the page
           (paired with `shadow-card` from desktop-board.tsx). Every other day
