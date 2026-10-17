@@ -377,6 +377,17 @@
     non-text floor. 0.55 clears it (5.12:1) while staying the same hue.
   */
   --spectrum-solid: oklch(0.55 0.13 300);
+  /*
+    The same four stops as a closed loop, for edges that rotate (EI-401). Stops
+    only: the angle lives in the utilities, because a `var()` here would be
+    resolved at :root and never see the animation.
+  */
+  --spectrum-loop:
+    oklch(0.85 0.08 55),
+    oklch(0.82 0.09 10),
+    oklch(0.8 0.09 300),
+    oklch(0.82 0.08 230),
+    oklch(0.85 0.08 55);
 
   /* Urgency is the destructive red under a name that says what it means. */
   --urgent: var(--destructive);
@@ -574,6 +585,12 @@
     oklch(0.8 0.08 230)
   );
   --spectrum-solid: oklch(0.78 0.1 300);
+  --spectrum-loop:
+    oklch(0.8 0.08 55),
+    oklch(0.78 0.09 10),
+    oklch(0.78 0.09 300),
+    oklch(0.8 0.08 230),
+    oklch(0.8 0.08 55);
 
   --urgent: var(--destructive);
   --urgent-foreground: oklch(0.88 0.07 20);
@@ -950,16 +967,18 @@
   the spectrum is allowed (docs/DESIGN.md §1). The host is the box that draws
   Today's visible rounded edge. A 2px ring of `--spectrum`, cut from a
   full-box layer with `mask-composite: subtract`, then faded toward the bottom.
-  Drawn at 0.4 opacity (EI-401) so it reads as a quiet edge, not a banner. Its
-  hue drifts a few degrees back and forth over 24s so the edge is not static;
+  Drawn at 0.4 opacity (EI-401) so it reads as a quiet edge, not a banner. The
+  gradient is conic and turns once every 20s so the edge is alive, not static;
   it changes color, never position, and stands still under reduced motion.
 */
-@keyframes spectrum-drift {
-  from {
-    filter: hue-rotate(-14deg);
-  }
+@property --spectrum-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+@keyframes spectrum-turn {
   to {
-    filter: hue-rotate(14deg);
+    --spectrum-angle: 360deg;
   }
 }
 @utility hairline-spectrum {
@@ -970,7 +989,7 @@
     inset: 0;
     padding: 2px;
     border-radius: inherit;
-    background: var(--spectrum);
+    background: conic-gradient(from var(--spectrum-angle), var(--spectrum-loop));
     --edge-hold: 1rem;
     --edge-taper: 1.5rem;
     mask:
@@ -984,7 +1003,7 @@
     mask-composite: subtract;
     opacity: 0.4;
     pointer-events: none;
-    animation: spectrum-drift 24s ease-in-out infinite alternate;
+    animation: spectrum-turn 20s linear infinite;
     @media (prefers-reduced-motion: reduce) {
       animation: none;
     }
@@ -1004,7 +1023,7 @@
     inset: 0;
     padding: 1px;
     border-radius: inherit;
-    background: var(--spectrum);
+    background: conic-gradient(from var(--spectrum-angle), var(--spectrum-loop));
     mask:
       linear-gradient(#000 0 0) content-box,
       linear-gradient(#000 0 0);
@@ -1016,13 +1035,22 @@
       transition: none;
     }
   }
+  /* The ring turns only while it shows, so a resting board animates nothing. */
   @media (hover: hover) {
     &:hover::after {
       opacity: 0.35;
+      animation: spectrum-turn 12s linear infinite;
     }
   }
   &:has(:focus-visible)::after {
     opacity: 0.35;
+    animation: spectrum-turn 12s linear infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    &:hover::after,
+    &:has(:focus-visible)::after {
+      animation: none;
+    }
   }
 }
 
