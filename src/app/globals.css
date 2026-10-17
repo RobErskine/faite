@@ -378,16 +378,15 @@
   */
   --spectrum-solid: oklch(0.55 0.13 300);
   /*
-    The same four stops as a closed loop, for edges that rotate (EI-401). Stops
-    only: the angle lives in the utilities, because a `var()` here would be
-    resolved at :root and never see the animation.
+    The same four stops on their own, for edges whose gradient turns (EI-401).
+    The angle lives in the utilities, because a `var()` here would be resolved
+    at :root and never see the animation.
   */
-  --spectrum-loop:
+  --spectrum-stops:
     oklch(0.85 0.08 55),
     oklch(0.82 0.09 10),
     oklch(0.8 0.09 300),
-    oklch(0.82 0.08 230),
-    oklch(0.85 0.08 55);
+    oklch(0.82 0.08 230);
 
   /* Urgency is the destructive red under a name that says what it means. */
   --urgent: var(--destructive);
@@ -585,12 +584,11 @@
     oklch(0.8 0.08 230)
   );
   --spectrum-solid: oklch(0.78 0.1 300);
-  --spectrum-loop:
+  --spectrum-stops:
     oklch(0.8 0.08 55),
     oklch(0.78 0.09 10),
     oklch(0.78 0.09 300),
-    oklch(0.8 0.08 230),
-    oklch(0.8 0.08 55);
+    oklch(0.8 0.08 230);
 
   --urgent: var(--destructive);
   --urgent-foreground: oklch(0.88 0.07 20);
@@ -968,7 +966,7 @@
   Today's visible rounded edge. A 2px ring of `--spectrum`, cut from a
   full-box layer with `mask-composite: subtract`, then faded toward the bottom.
   Drawn at 0.4 opacity (EI-401) so it reads as a quiet edge, not a banner. The
-  gradient is conic and turns once every 20s so the edge is alive, not static;
+  gradient is linear and its angle turns once every 16s so the edge is alive, not static;
   it changes color, never position, and stands still under reduced motion.
 */
 @property --spectrum-angle {
@@ -989,7 +987,7 @@
     inset: 0;
     padding: 2px;
     border-radius: inherit;
-    background: conic-gradient(from var(--spectrum-angle), var(--spectrum-loop));
+    background: linear-gradient(var(--spectrum-angle), var(--spectrum-stops));
     --edge-hold: 1rem;
     --edge-taper: 1.5rem;
     mask:
@@ -1003,7 +1001,7 @@
     mask-composite: subtract;
     opacity: 0.4;
     pointer-events: none;
-    animation: spectrum-turn 20s linear infinite;
+    animation: spectrum-turn 16s linear infinite;
     @media (prefers-reduced-motion: reduce) {
       animation: none;
     }
@@ -1023,7 +1021,7 @@
     inset: 0;
     padding: 1px;
     border-radius: inherit;
-    background: conic-gradient(from var(--spectrum-angle), var(--spectrum-loop));
+    background: linear-gradient(var(--spectrum-angle), var(--spectrum-stops));
     mask:
       linear-gradient(#000 0 0) content-box,
       linear-gradient(#000 0 0);
@@ -1039,12 +1037,12 @@
   @media (hover: hover) {
     &:hover::after {
       opacity: 0.35;
-      animation: spectrum-turn 12s linear infinite;
+      animation: spectrum-turn 10s linear infinite;
     }
   }
   &:has(:focus-visible)::after {
     opacity: 0.35;
-    animation: spectrum-turn 12s linear infinite;
+    animation: spectrum-turn 10s linear infinite;
   }
   @media (prefers-reduced-motion: reduce) {
     &:hover::after,
