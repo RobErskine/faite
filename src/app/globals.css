@@ -950,8 +950,18 @@
   the spectrum is allowed (docs/DESIGN.md §1). The host is the box that draws
   Today's visible rounded edge. A 2px ring of `--spectrum`, cut from a
   full-box layer with `mask-composite: subtract`, then faded toward the bottom.
-  Drawn at 0.6 opacity (EI-401) so it reads as a quiet edge, not a banner.
+  Drawn at 0.4 opacity (EI-401) so it reads as a quiet edge, not a banner. Its
+  hue drifts a few degrees back and forth over 24s so the edge is not static;
+  it changes color, never position, and stands still under reduced motion.
 */
+@keyframes spectrum-drift {
+  from {
+    filter: hue-rotate(-14deg);
+  }
+  to {
+    filter: hue-rotate(14deg);
+  }
+}
 @utility hairline-spectrum {
   position: relative;
   &::before {
@@ -972,8 +982,12 @@
         border-box,
       linear-gradient(#000 0 0) content-box;
     mask-composite: subtract;
-    opacity: 0.6;
+    opacity: 0.4;
     pointer-events: none;
+    animation: spectrum-drift 24s ease-in-out infinite alternate;
+    @media (prefers-reduced-motion: reduce) {
+      animation: none;
+    }
   }
 }
 
