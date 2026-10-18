@@ -14,6 +14,7 @@ import {
   makeEnv,
   makeStub,
   pushedEntries,
+  rawAssigneeRow,
   rawDayNoteRow,
   rawLabelRow,
   rawListRow,
@@ -36,7 +37,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   stub = makeStub();
   env = makeEnv(stub);
-  authorize.mockResolvedValue({ ok: true, userId: "user-1" });
+  authorize.mockResolvedValue({ ok: true, userId: "user-1", keyId: null });
 });
 
 describe("scope gating", () => {
@@ -1135,5 +1136,193 @@ describe("EI-340: GET /todos search and field projection", () => {
   it("400s on an unknown field", async () => {
     const res = await handleV1Request(v1Request("GET", "/api/v1/todos?fields=version"), env);
     expect(res.status).toBe(400);
+  });
+});
+
+describe("assignee rules on todos (EI-402)", () => {
+  const criterion = { id: "c1", text: "PR is open" };
+
+  /** `getEntity` answers by kind: the assignee, or nothing. */
+  const withAssignee = (row: Record<string, unknown> | null) =>
+    stub.getEntity.mockImplementation(async (kind: string) => (kind === "assignee" ? row : null));
+
+  it("POST 400s an agent's to-do with no Done criteria, naming the rule", async () => {
+    withAssignee(rawAssigneeRow());
+
+    const res = await handleV1Request(
+      v1Request("POST", "/api/v1/todos", { title: "Triage", assigneeId: "assignee-1", access: [] }),
+      env,
+    );
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ error: "invalid-request", message: expect.stringContaining("Done") });
+    expect(stub.push).not.toHaveBeenCalled();
+  });
+
+  it("POST 400s an agent's to-do with access undeclared", async () => {
+    withAssignee(rawAssigneeRow());
+
+    const res = await handleV1Request(
+      v1Request("POST", "/api/v1/todos", {
+        title: "Triage",
+        assigneeId: "assignee-1",
+        doneCriteria: [criterion],
+      }),
+      env,
+    );
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ message: expect.stringContaining("access") });
+  });
+
+  it("POST 201s an agent's to-do with criteria and `access: []`, and pushes all three fields", async () => {
+    withAssignee(rawAssigneeRow());
+
+    const res = await handleV1Request(
+      v1Request("POST", "/api/v1/todos", {
+        title: "Triage",
+        assigneeId: "assignee-1",
+        doneCriteria: [criterion],
+        access: [],
+      }),
+      env,
+    );
+
+    expect(res.status).toBe(201);
+    expect(pushedEntries(stub)[0].patch).toMatchObject({
+      assigneeId: "assignee-1",
+      doneCriteria: [{ id: "c1", text: "PR is open", done: false }],
+      access: [],
+    });
+  });
+
+  it("POST lets a person's to-do through with no checklist", async () => {
+    withAssignee(rawAssigneeRow({ kind: "person" }));
+
+    const res = await handleV1Request(
+      v1Request("POST", "/api/v1/todos", { title: "Ask", assigneeId: "assignee-1" }),
+      env,
+    );
+
+    expect(res.status).toBe(201);
+  });
+
+  it("POST 400s an assigneeId that names no assignee", async () => {
+    withAssignee(null);
+
+    const res = await handleV1Request(
+      v1Request("POST", "/api/v1/todos", { title: "Ask", assigneeId: "ghost" }),
+      env,
+    );
+
+    expect(res.status).toBe(400);
+    expect(stub.push).not.toHaveBeenCalled();
+  });
+
+  it("PATCH judges the MERGED to-do: touching only access keeps the stored checklist", async () => {
+    withAssignee(rawAssigneeRow());
+    stub.getTodo.mockResolvedValue(
+      rawTodoRow({ assigneeId: "assignee-1", doneCriteria: [{ ...criterion, done: false }], access: null }),
+    );
+
+    const res = await handleV1Request(
+      v1Request("PATCH", "/api/v1/todos/todo-1", { access: [{ name: "repo" }] }),
+      env,
+    );
+
+    expect(res.status).toBe(200);
+  });
+
+  it("PATCH 400s reassigning to an agent when the stored to-do has no checklist", async () => {
+    withAssignee(rawAssigneeRow());
+    stub.getTodo.mockResolvedValue(rawTodoRow());
+
+    const res = await handleV1Request(
+      v1Request("PATCH", "/api/v1/todos/todo-1", { assigneeId: "assignee-1" }),
+      env,
+    );
+
+    expect(res.status).toBe(400);
+    expect(stub.push).not.toHaveBeenCalled();
+  });
+
+  it("PATCH of status alone never re-checks the spec, so an agent can complete its own to-do", async () => {
+    withAssignee(rawAssigneeRow());
+    stub.getTodo.mockResolvedValue(rawTodoRow({ assigneeId: "assignee-1" }));
+
+    const res = await handleV1Request(
+      v1Request("PATCH", "/api/v1/todos/todo-1", { status: "done" }),
+      env,
+    );
+
+    expect(res.status).toBe(200);
+  });
+
+  it("GET /todos?assigneeId=none returns only unassigned to-dos", async () => {
+    stub.listEntities.mockResolvedValue([
+      rawTodoRow({ id: "mine" }),
+      rawTodoRow({ id: "bot", assigneeId: "assignee-1" }),
+    ]);
+
+    const res = await handleV1Request(v1Request("GET", "/api/v1/todos?assigneeId=none"), env);
+
+    expect((await res.json()) as { id: string }[]).toMatchObject([{ id: "mine" }]);
+  });
+});
+
+describe("assignees CRUD (EI-402)", () => {
+  it("POST 201s, never writes apiKeyId, and needs only `write`", async () => {
+    stub.getEntity.mockResolvedValue(rawAssigneeRow());
+
+    const res = await handleV1Request(
+      v1Request("POST", "/api/v1/assignees", { name: "Bot", kind: "agent", apiKeyId: "stolen" }),
+      env,
+    );
+
+    expect(res.status).toBe(201);
+    expect(pushedEntries(stub)[0]).toMatchObject({ kind: "assignee" });
+    expect(pushedEntries(stub)[0].patch).toMatchObject({ name: "Bot", kind: "agent", apiKeyId: null });
+    expect(demandedScopes()).toEqual(["write"]);
+  });
+
+  it("POST 400s without a kind", async () => {
+    const res = await handleV1Request(v1Request("POST", "/api/v1/assignees", { name: "Bot" }), env);
+
+    expect(res.status).toBe(400);
+    expect(stub.push).not.toHaveBeenCalled();
+  });
+
+  it("PATCH touches only the named field and cannot rebind the key", async () => {
+    stub.getEntity.mockResolvedValue(rawAssigneeRow());
+
+    await handleV1Request(
+      v1Request("PATCH", "/api/v1/assignees/assignee-1", { color: "blue", apiKeyId: "k2" }),
+      env,
+    );
+
+    expect(Object.keys(pushedEntries(stub)[0].patch).sort()).toEqual(["color", "updatedAt"]);
+  });
+
+  it("GET one 404s an unknown id", async () => {
+    const res = await handleV1Request(v1Request("GET", "/api/v1/assignees/nope"), env);
+
+    expect(res.status).toBe(404);
+  });
+
+  it("DELETE sends its to-dos back to the owner and tombstones it, in ONE push", async () => {
+    stub.getEntity.mockResolvedValue(rawAssigneeRow());
+    stub.listEntities.mockResolvedValue([
+      rawTodoRow({ id: "t1", assigneeId: "assignee-1" }),
+      rawTodoRow({ id: "t2", assigneeId: "other" }),
+    ]);
+
+    const res = await handleV1Request(v1Request("DELETE", "/api/v1/assignees/assignee-1"), env);
+
+    expect(res.status).toBe(204);
+    expect(stub.push).toHaveBeenCalledTimes(1);
+    const entries = pushedEntries(stub);
+    expect(entries).toHaveLength(2);
+    expect(entries[0]).toMatchObject({ kind: "todo", entityId: "t1", patch: { assigneeId: null } });
+    expect(entries[1]).toMatchObject({ kind: "assignee", entityId: "assignee-1" });
   });
 });

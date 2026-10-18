@@ -61,6 +61,9 @@ const todo = (id: string, title: string): Todo => ({
   duplicateOf: null,
   duplicateHeld: null,
   suggestedListId: null,
+  assigneeId: null,
+  doneCriteria: [],
+  access: null,
 });
 
 const OVERALL = [todo("t1", "Show Completed Items"), todo("t2", "Keyboard arrow keys")];

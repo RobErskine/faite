@@ -35,6 +35,9 @@ const EXAMPLE_TODO: Todo = {
   duplicateOf: null,
   duplicateHeld: null,
   suggestedListId: null,
+  assigneeId: null,
+  doneCriteria: [],
+  access: null,
 };
 
 /** Calendar days after the crossing that the Overflow box is drawn on. */

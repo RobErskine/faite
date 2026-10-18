@@ -20,6 +20,12 @@ import { mutateSettings } from "@/lib/store/mutate";
 import { VISIBLE_DAY_OPTIONS, type Settings, type TodoStatus } from "@/lib/schema";
 import { cn } from "@/lib/utils";
 import { SavedViewsSection } from "./saved-views-section";
+import { useAssigneesById } from "./assignees-context";
+import {
+  ASSIGNEE_FILTER_ME,
+  setAssigneeFilter,
+  useAssigneeFilter,
+} from "@/lib/assignee-filter";
 
 /**
  * What the calendar half shows, as controls rather than settings-sheet fields.
@@ -46,6 +52,8 @@ const STATUS_OPTIONS: ReadonlyArray<{ value: TodoStatus; label: string }> = [
   { value: "dropped", label: "Marked as won't do" },
 ];
 
+const ALL_ASSIGNEES = "__all__";
+
 interface ViewSettingsProps {
   /** Raw Dexie row; undefined until the store has read it. */
   settings: Settings | undefined;
@@ -55,6 +63,15 @@ export function ViewSettings({ settings }: ViewSettingsProps) {
   const statuses = settings?.visibleStatuses ?? ["open"];
   const visibleDays = settings?.visibleDays ?? 7;
   const showWeekends = settings?.showWeekends ?? true;
+
+  const assignees = [...useAssigneesById().values()].sort((a, b) => a.name.localeCompare(b.name));
+  const rawAssigneeFilter = useAssigneeFilter();
+  // Same guard as `use-board-data.ts`: a filter naming a vanished assignee
+  // reads as Everyone rather than as a stale radio.
+  const assigneeFilter =
+    rawAssigneeFilter === ASSIGNEE_FILTER_ME || assignees.some((a) => a.id === rawAssigneeFilter)
+      ? rawAssigneeFilter
+      : null;
 
   const toggleStatus = (value: TodoStatus, next: boolean) => {
     /*
@@ -84,6 +101,11 @@ export function ViewSettings({ settings }: ViewSettingsProps) {
           .map((o) => o.label)
           .join(", ") || "None";
 
+  const assigneeName =
+    assigneeFilter === ASSIGNEE_FILTER_ME
+      ? "Me"
+      : assignees.find((a) => a.id === assigneeFilter)?.name;
+
   const dayLabel = `${visibleDays} day${visibleDays === 1 ? "" : "s"}`;
 
   return (
@@ -103,7 +125,10 @@ export function ViewSettings({ settings }: ViewSettingsProps) {
             "max-w-56 text-muted-foreground",
           )}
         >
-          <span className="truncate">View: {statusLabel}</span>
+          <span className="truncate">
+            View: {statusLabel}
+            {assigneeName ? ` · ${assigneeName}` : ""}
+          </span>
           <ChevronDown aria-hidden />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="center" className="w-64">
@@ -123,6 +148,31 @@ export function ViewSettings({ settings }: ViewSettingsProps) {
               </DropdownMenuCheckboxItem>
             ))}
           </DropdownMenuGroup>
+          {assignees.length > 0 && (
+            <>
+              <DropdownMenuSeparator />
+              {/* Only once there is someone to filter by (EI-402). One pick:
+                  everyone, my own to-dos, or one assignee's. Device-local —
+                  see `lib/assignee-filter.ts`. */}
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>Who</DropdownMenuLabel>
+                <DropdownMenuRadioGroup
+                  value={assigneeFilter ?? ALL_ASSIGNEES}
+                  onValueChange={(value) =>
+                    setAssigneeFilter(value === ALL_ASSIGNEES ? null : value)
+                  }
+                >
+                  <DropdownMenuRadioItem value={ALL_ASSIGNEES}>Everyone</DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value={ASSIGNEE_FILTER_ME}>Me</DropdownMenuRadioItem>
+                  {assignees.map((assignee) => (
+                    <DropdownMenuRadioItem key={assignee.id} value={assignee.id}>
+                      {assignee.name}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuGroup>
+            </>
+          )}
           <DropdownMenuSeparator />
           {/*
             Checked means weekends get full columns; off collapses each

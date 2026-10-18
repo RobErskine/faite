@@ -130,6 +130,7 @@
                             "todoEvent",
                             "reminderPreset",
                             "attachment",
+                            "assignee",
                             "settings"
                           ]
                         },
@@ -1710,6 +1711,16 @@
           },
           {
             "in": "query",
+            "name": "assigneeId",
+            "schema": {
+              "description": "Assignee id, or `none` for unassigned (your own) to-dos.",
+              "type": "string",
+              "minLength": 1
+            },
+            "description": "Assignee id, or `none` for unassigned (your own) to-dos."
+          },
+          {
+            "in": "query",
             "name": "updatedSince",
             "schema": {
               "type": "string"
@@ -2013,6 +2024,80 @@
                         "type": "null"
                       }
                     ]
+                  },
+                  "assigneeId": {
+                    "default": null,
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "doneCriteria": {
+                    "default": [],
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "text": {
+                          "type": "string"
+                        },
+                        "done": {
+                          "default": false,
+                          "type": "boolean"
+                        },
+                        "addedBy": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "text"
+                      ]
+                    }
+                  },
+                  "access": {
+                    "default": null,
+                    "anyOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "name": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "status": {
+                              "default": "needed",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "name"
+                          ]
+                        }
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
                   }
                 },
                 "required": [
@@ -2034,7 +2119,7 @@
             }
           },
           "400": {
-            "description": "Malformed request — missing title, or a field fails validation.",
+            "description": "Malformed request — missing title, a field fails validation, `assigneeId` names no assignee, or the assignee is an agent and `doneCriteria` is empty or `access` is null (`message` says which).",
             "content": {
               "application/json": {
                 "schema": {
@@ -2894,6 +2979,239 @@
         }
       }
     },
+    "/api/v1/assignees": {
+      "get": {
+        "tags": [
+          "v1"
+        ],
+        "summary": "List the caller's assignees.",
+        "description": "Requires the `read` scope — every cookie session and every API key has it by default. Soft-deleted rows are never included.",
+        "operationId": "listV1Assignees",
+        "responses": {
+          "200": {
+            "description": "assignees, in board order.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Assignee"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session and no valid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"unauthenticated\" }`."
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A valid API key without the required scope (A2, EI-227). A cookie session or a full desktop-handoff key never sees this.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"insufficient-scope\" }`."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unhandled server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"internal-error\" }`."
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "v1"
+        ],
+        "summary": "Create an assignee.",
+        "description": "Requires the `write` scope. `apiKeyId` is not accepted: the key binding is made in the app. A write is a push — see docs/API.md.",
+        "operationId": "createV1Assignee",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "agent",
+                      "person"
+                    ]
+                  },
+                  "color": {
+                    "default": null,
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "instructions": {
+                    "default": null,
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "name",
+                  "kind"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The created assignee.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Assignee"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Malformed request — missing name or kind, or a field fails validation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"invalid-request\" }`."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No session and no valid API key.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"unauthenticated\" }`."
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "A valid API key without the required scope (A2, EI-227). A cookie session or a full desktop-handoff key never sees this.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"insufficient-scope\" }`."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unhandled server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Error envelope. Example: `{ \"error\": \"internal-error\" }`."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/attachments": {
       "get": {
         "tags": [
@@ -3382,6 +3700,80 @@
                       {
                         "type": "string",
                         "minLength": 1
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "assigneeId": {
+                    "default": null,
+                    "anyOf": [
+                      {
+                        "type": "string",
+                        "minLength": 1
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "doneCriteria": {
+                    "default": [],
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string",
+                          "minLength": 1
+                        },
+                        "text": {
+                          "type": "string"
+                        },
+                        "done": {
+                          "default": false,
+                          "type": "boolean"
+                        },
+                        "addedBy": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "text"
+                      ]
+                    }
+                  },
+                  "access": {
+                    "default": null,
+                    "anyOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "properties": {
+                            "name": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "status": {
+                              "default": "needed",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "name"
+                          ]
+                        }
                       },
                       {
                         "type": "null"
@@ -10337,6 +10729,7 @@
                     "todoEvent",
                     "reminderPreset",
                     "attachment",
+                    "assignee",
                     "settings"
                   ]
                 },
@@ -10822,6 +11215,84 @@
                 "type": "null"
               }
             ]
+          },
+          "assigneeId": {
+            "default": null,
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "doneCriteria": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "text": {
+                  "type": "string"
+                },
+                "done": {
+                  "default": false,
+                  "type": "boolean"
+                },
+                "addedBy": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "text",
+                "done"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "access": {
+            "default": null,
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "status": {
+                      "default": "needed",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "status"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -10851,7 +11322,10 @@
           "source",
           "duplicateOf",
           "duplicateHeld",
-          "suggestedListId"
+          "suggestedListId",
+          "assigneeId",
+          "doneCriteria",
+          "access"
         ],
         "additionalProperties": false
       },
@@ -11086,6 +11560,93 @@
           "iconUrl",
           "name",
           "position"
+        ],
+        "additionalProperties": false
+      },
+      "Assignee": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "ownerId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "deletedAt": {
+            "default": null,
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "agent",
+              "person"
+            ]
+          },
+          "color": {
+            "default": null,
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "instructions": {
+            "default": null,
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "apiKeyId": {
+            "default": null,
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "ownerId",
+          "createdAt",
+          "updatedAt",
+          "deletedAt",
+          "name",
+          "kind",
+          "color",
+          "instructions",
+          "apiKeyId"
         ],
         "additionalProperties": false
       },

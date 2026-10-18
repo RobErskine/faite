@@ -4,9 +4,11 @@ import type { ReactNode } from "react";
 import { Badge, badgeVariants } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { useAssigneesById } from "@/components/board/assignees-context";
+import { doneProgress, hasBlockedAccess } from "@/lib/assignee-rules";
 import { labelChipStyle } from "@/lib/colors";
 import { priorityRail, railBackgroundImage, railOpacity } from "@/lib/priority";
-import type { CivilDate, Label as LabelRecord, ReminderPreset, Todo } from "@/lib/schema";
+import type { Assignee, CivilDate, Label as LabelRecord, ReminderPreset, Todo } from "@/lib/schema";
 import {
   formatDeadlineDue,
   formatShortDateAsOf,
@@ -471,8 +473,12 @@ export function TodoMetaBadges({
 }) {
   const deadlineMissed = isDeadlineMissed(todo, { today });
   const todoLabels = labels.filter((l) => todo.labelIds.includes(l.id));
+  // Only when assigned (EI-402): a to-do that is mine carries no chip at all.
+  const assigneesById = useAssigneesById();
+  const assignee = todo.assigneeId ? assigneesById.get(todo.assigneeId) : undefined;
 
   const hasContent =
+    Boolean(assignee) ||
     todoLabels.length > 0 ||
     (deadlineMissed && todo.deadline) ||
     (showScheduledDate && todo.scheduledDate) ||
@@ -631,6 +637,7 @@ export function TodoMetaBadges({
         </Badge>
       )}
       {/* Identity. */}
+      {assignee && <AssigneeChip todo={todo} assignee={assignee} />}
       {todoLabels.map((label) => (
         <Badge
           key={label.id}
@@ -651,5 +658,39 @@ export function TodoMetaBadges({
         </Badge>
       ))}
     </span>
+  );
+}
+
+/**
+ * Who a to-do is for (EI-402): the assignee's name in its color, "Done n/m"
+ * for an agent's checklist, and a red dot when something it needs access to is
+ * blocked or still needs setup. Rendered only when assigned.
+ */
+function AssigneeChip({ todo, assignee }: { todo: Todo; assignee: Assignee }) {
+  const progress = doneProgress(todo);
+  const blocked = hasBlockedAccess(todo);
+  return (
+    <Badge
+      variant="secondary"
+      data-row-badge="assignee"
+      className={ROW_BADGE_LABEL}
+      style={labelChipStyle(assignee.color)}
+    >
+      {assignee.name}
+      {progress.total > 0 && (
+        <span className="nums" data-assignee-progress>
+          {" "}
+          Done {progress.done}/{progress.total}
+        </span>
+      )}
+      {blocked && (
+        <span
+          role="img"
+          aria-label="Access blocked or needs setup"
+          data-assignee-blocked
+          className="ml-1 inline-block size-1.5 rounded-full bg-destructive"
+        />
+      )}
+    </Badge>
   );
 }

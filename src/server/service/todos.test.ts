@@ -4,7 +4,7 @@ import type { ServiceContext } from "@/lib/service/context";
 import { buildCreateTodoEntry, buildDeleteTodoEntry } from "@/lib/service/todos";
 import { SYNC_PROTOCOL_VERSION, type PushResponse } from "@/lib/sync/wire";
 import { groupByEntity, resolveEntityPush, validateEntries } from "../sync/push";
-import { createTodo, deleteTodo, type PushTransport } from "./todos";
+import { createTodo, deleteTodo, resolveActorAssigneeId, stampActor, updateTodo, type PushTransport } from "./todos";
 
 function fakeContext(): ServiceContext {
   let counter = 0;
@@ -165,3 +165,84 @@ describe("deleteTodo (server adapter)", () => {
 // Sanity check that the doc-comment example in todos.ts's header actually
 // type-checks against the real wire constant, not just prose.
 void SYNC_PROTOCOL_VERSION;
+
+/** EI-402: the server, not the client, says who acted. */
+describe("actor identity", () => {
+  const okResponse: PushResponse = { acked: [], rejected: [], highestVersion: 1, conflicts: [] };
+  const viaOf = (entry: { patch: unknown }) =>
+    JSON.parse((entry.patch as { payload: string }).payload).via as string | undefined;
+
+  it("stamps via: agent:<id> on every event of a create by an agent", async () => {
+    const push = vi.fn<PushTransport>().mockResolvedValue(okResponse);
+    await createTodo({ ...fakeContext(), actorAssigneeId: "agent-1" }, { title: "x" }, push);
+    const [entries] = push.mock.calls[0];
+    expect(viaOf(entries[1])).toBe("agent:agent-1");
+  });
+
+  it("leaves a user's own events with no via", async () => {
+    const push = vi.fn<PushTransport>().mockResolvedValue(okResponse);
+    await createTodo(fakeContext(), { title: "x" }, push);
+    const [entries] = push.mock.calls[0];
+    expect((entries[1].patch as { payload: unknown }).payload).toBeNull();
+  });
+
+  it("overwrites a spoofed via on an event, for an agent and for the user", () => {
+    const spoofed = (): ReturnType<typeof buildCreateTodoEntry> => {
+      const [todo, event] = buildCreateTodoEntry(fakeContext(), { title: "x" });
+      return [todo, { ...event, patch: { ...(event.patch as object), payload: JSON.stringify({ v: 1, text: "hi", via: "agent:someone-else" }) } }];
+    };
+    const asAgent = stampActor({ ...fakeContext(), actorAssigneeId: "agent-1" }, spoofed());
+    expect(viaOf(asAgent[1])).toBe("agent:agent-1");
+    expect(JSON.parse((asAgent[1].patch as { payload: string }).payload).text).toBe("hi");
+
+    const asUser = stampActor(fakeContext(), spoofed());
+    expect(viaOf(asUser[1])).toBeUndefined();
+    expect(JSON.parse((asUser[1].patch as { payload: string }).payload).text).toBe("hi");
+  });
+
+  it("overwrites a spoofed addedBy on a NEW criterion, keeps the stored one on an existing criterion", async () => {
+    const push = vi.fn<PushTransport>().mockResolvedValue(okResponse);
+    const ctx = { ...fakeContext(), actorAssigneeId: "agent-1" };
+    await updateTodo(
+      ctx,
+      "t1",
+      {
+        doneCriteria: [
+          { id: "old", text: "old", done: true, addedBy: "agent-evil" },
+          { id: "new", text: "new", done: false, addedBy: "agent-evil" },
+          { id: "new2", text: "new2", done: false },
+        ],
+      },
+      push,
+      {
+        status: "open",
+        scheduledDate: null,
+        listId: null,
+        doneCriteria: [{ id: "old", text: "old", done: false, addedBy: null }],
+      },
+    );
+    const [entries] = push.mock.calls[0];
+    const criteria = (entries[0].patch as { doneCriteria: { id: string; addedBy?: string | null }[] }).doneCriteria;
+    expect(criteria.map((c) => [c.id, c.addedBy])).toEqual([
+      ["old", null],
+      ["new", "agent-1"],
+      ["new2", "agent-1"],
+    ]);
+  });
+
+  it("a new criterion from the user (no actor) gets addedBy null even if the client claimed an agent", () => {
+    const [todo] = stampActor(
+      fakeContext(),
+      [{ id: "e", kind: "todo", entityId: "t1", hlc: "h", patch: { doneCriteria: [{ id: "c", text: "c", done: false, addedBy: "agent-evil" }] } }],
+    );
+    expect((todo.patch as { doneCriteria: { addedBy: unknown }[] }).doneCriteria[0].addedBy).toBeNull();
+  });
+
+  it("resolveActorAssigneeId: no key and unbound key are the user (null); a bound key is its assignee", async () => {
+    const lookup = vi.fn(async (keyId: string) => (keyId === "bound" ? "agent-1" : null));
+    expect(await resolveActorAssigneeId(null, lookup)).toBeNull();
+    expect(lookup).not.toHaveBeenCalled();
+    expect(await resolveActorAssigneeId("unbound", lookup)).toBeNull();
+    expect(await resolveActorAssigneeId("bound", lookup)).toBe("agent-1");
+  });
+});

@@ -22,7 +22,8 @@ export type TodoEventKind =
   | "edited"
   | "deleted"
   | "attached"
-  | "detached";
+  | "detached"
+  | "note";
 
 /**
  * Where a decision was made, when that is worth knowing later (EI-321).
@@ -33,7 +34,7 @@ export type TodoEventKind =
 /** Where a triage decision was made, for History (EI-321). `smart-sort` is
  * an accepted Jev list proposal (EI-369) — the record a later version can
  * learn from (EI-371). */
-export type EventVia = "overdrive" | "smart-sort";
+export type EventVia = "overdrive" | "smart-sort" | `agent:${string}`;
 
 interface EmptyPayload {
   v: 1;
@@ -102,6 +103,17 @@ export interface DeletedPayload {
   title: string;
 }
 
+/** Cap on `NotePayload.text` — room for a real progress report, not a log dump. */
+export const NOTE_TEXT_MAX_LENGTH = 4000;
+
+/** A progress note an agent (or person) left on the card (EI-402). `via` is
+ * `agent:<assignee id>` when an agent wrote it; the service stamps it. */
+export interface NotePayload {
+  v: 1;
+  text: string;
+  via?: EventVia;
+}
+
 /** Cap on `AttachmentPayload.filename`, for `DELETED_TITLE_MAX_LENGTH`'s
  * reason: long enough for any real filename, short enough that a
  * pathological one cannot bloat a synced table. */
@@ -129,7 +141,8 @@ export type TodoEventPayload =
   | MovedPayload
   | EditedPayload
   | DeletedPayload
-  | AttachmentPayload;
+  | AttachmentPayload
+  | NotePayload;
 
 /**
  * Fields that trigger an `edited` event when patched through `updateTodo`.

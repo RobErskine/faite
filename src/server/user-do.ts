@@ -109,6 +109,8 @@ const ORDER_BY_KIND = {
   // Chronological, which is the only order a day note has. No `position`
   // column and no reorder UI — the date IS the sort key.
   dayNote: "date",
+  // No `position` either; creation order, `id` breaking ties (EI-402).
+  assignee: "created_at, id",
 } as const;
 
 export type ListableKind = keyof typeof ORDER_BY_KIND;
@@ -718,6 +720,20 @@ export class UserDurableObject extends DurableObject {
     const [row] = this.ctx.storage.sql
       .exec<{ id: string }>(
         "SELECT id FROM lists WHERE is_backlog = 1 AND deleted_at IS NULL LIMIT 1",
+      )
+      .toArray();
+    return row?.id ?? null;
+  }
+
+  /**
+   * The id of the live assignee bound to API key `keyId`, or `null` when the
+   * key has none (EI-402). One DO per owner, so the lookup is owner-scoped.
+   */
+  async assigneeIdForApiKey(keyId: string): Promise<string | null> {
+    const [row] = this.ctx.storage.sql
+      .exec<{ id: string }>(
+        "SELECT id FROM assignees WHERE api_key_id = ? AND deleted_at IS NULL LIMIT 1",
+        keyId,
       )
       .toArray();
     return row?.id ?? null;

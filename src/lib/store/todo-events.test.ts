@@ -7,6 +7,14 @@ beforeEach(async () => {
   localStorage.clear();
 });
 
+describe("note events (EI-402)", () => {
+  it("round-trips a note payload with an agent `via`", () => {
+    const event = logTodoEvent("todo-1", "note", { v: 1, text: "Halfway there", via: "agent:a1" });
+    expect(event.kind).toBe("note");
+    expect(parseEventPayload(event.payload)).toEqual({ v: 1, text: "Halfway there", via: "agent:a1" });
+  });
+});
+
 describe("logTodoEvent", () => {
   it("builds a row with a fresh UUIDv7 id, the local owner, and a null payload by default", () => {
     const event = logTodoEvent("todo-1", "created");

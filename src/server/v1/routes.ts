@@ -1,4 +1,14 @@
-import { dayNoteSchema, labelSchema, listSchema, tabSchema, todoSchema, type List, type Todo } from "@/lib/schema";
+import {
+  assigneeSchema,
+  dayNoteSchema,
+  labelSchema,
+  listSchema,
+  tabSchema,
+  todoSchema,
+  type List,
+  type Todo,
+} from "@/lib/schema";
+import { validateAgentSpec, type AgentSpecProblem } from "@/lib/assignee-rules";
 import { resolveDateInputs } from "@/lib/date-input";
 import type { ServiceContext } from "@/lib/service/context";
 import { createAuth } from "../auth";
@@ -9,13 +19,14 @@ import {
   appendDayNoteEntry,
   buildDeleteEntry,
   dayNoteIdFor,
+  buildUpdateAssigneeEntry,
   buildUpdateLabelEntry,
   buildUpdateListEntry,
   buildUpdateTabEntry,
 } from "@/lib/service/entities";
-import { createLabel, createList, createTab, writeDayNote } from "../service/entities";
+import { createAssignee, createLabel, createList, createTab, writeDayNote } from "../service/entities";
 import { wallClockTimeIn } from "@/lib/zoned";
-import { createTodo, deleteTodo, pushTransportFor, updateTodo } from "../service/todos";
+import { createTodo, deleteTodo, pushTransportFor, resolveActorAssigneeId, updateTodo } from "../service/todos";
 import { UPDATE_TODO_MAX_ENTRIES } from "@/lib/service/todos";
 import type { UserDurableObject } from "../user-do";
 import {
@@ -32,10 +43,12 @@ import { V1_RESOURCES, type V1Kind } from "./resources";
 import {
   parseAppendDayNoteRequest,
   parseCivilDate,
+  parseCreateAssigneeRequest,
   parseCreateLabelRequest,
   parseCreateListRequest,
   parseCreateTabRequest,
   parseCreateTodoRequest,
+  parseUpdateAssigneeRequest,
   parseUpdateLabelRequest,
   parseUpdateListRequest,
   parseUpdateTabRequest,
@@ -99,6 +112,8 @@ function listEntities(
       return stub.listEntities("tab");
     case "attachment":
       return stub.listEntities("attachment");
+    case "assignee":
+      return stub.listEntities("assignee");
   }
 }
 
@@ -114,7 +129,7 @@ function listEntities(
  */
 function getEntityRow(
   stub: DurableObjectStub<UserDurableObject>,
-  kind: "list" | "label" | "tab",
+  kind: "list" | "label" | "tab" | "assignee",
   id: string,
 ): ReturnType<UserDurableObject["getEntity"]> {
   switch (kind) {
@@ -124,6 +139,8 @@ function getEntityRow(
       return stub.getEntity("label", id);
     case "tab":
       return stub.getEntity("tab", id);
+    case "assignee":
+      return stub.getEntity("assignee", id);
   }
 }
 
@@ -236,16 +253,71 @@ function getTodoRow(
   return stub.getTodo(id);
 }
 
+/** The assignee a verified key acts as (EI-402), or null for the user. Looks
+ * up `assignee where apiKeyId = keyId` — never the key's name or metadata. */
+function actorFor(
+  stub: DurableObjectStub<UserDurableObject>,
+  keyId: string | null,
+): Promise<string | null> {
+  return resolveActorAssigneeId(keyId, (id) => stub.assigneeIdForApiKey(id));
+}
+
+const SPEC_PROBLEM_MESSAGE: Record<AgentSpecProblem, string> = {
+  "missing-done": "An agent's to-do needs at least one Done criterion (doneCriteria).",
+  "missing-access": "An agent's to-do needs access declared (access: [] means it needs nothing).",
+};
+
+/**
+ * The 400 for EI-402's two assignee rules, or `null` when the write is fine.
+ *
+ * - `assigneeId` must name a live assignee (checked only when the request
+ *   itself sets it — a stale id already on the row is not the caller's fault).
+ * - When the resulting to-do is assigned to an AGENT, `validateAgentSpec`
+ *   applies to the MERGED to-do (stored values under the patch), so a PATCH
+ *   that touches only `access` is judged against the stored checklist.
+ *
+ * Callers invoke this only when the request touches `assigneeId`,
+ * `doneCriteria` or `access`: a status-only PATCH (an agent completing its
+ * own to-do) never re-litigates a spec it did not change.
+ */
+async function assigneeSpecError(
+  stub: DurableObjectStub<UserDurableObject>,
+  merged: Pick<Todo, "assigneeId" | "doneCriteria" | "access">,
+  setsAssignee: boolean,
+): Promise<string | null> {
+  if (merged.assigneeId === null) return null;
+  const row = await getEntityRow(stub, "assignee", merged.assigneeId);
+  if (!row) return setsAssignee ? "assigneeId does not name an existing assignee." : null;
+  const problems = validateAgentSpec(merged, assigneeSchema.parse(row));
+  return problems.length > 0 ? problems.map((problem) => SPEC_PROBLEM_MESSAGE[problem]).join(" ") : null;
+}
+
+function invalidRequest(message: string, headers: HeadersInit): Response {
+  return json({ error: "invalid-request", message }, 400, headers);
+}
+
 async function handleCreateTodo(
   request: Request,
   stub: DurableObjectStub<UserDurableObject>,
   userId: string,
+  keyId: string | null,
   headers: HeadersInit,
 ): Promise<Response> {
   const body = await request.json().catch(() => null);
   const raw = parseCreateTodoRequest(body);
   if (!raw) return json({ error: "invalid-request" }, 400, headers);
   const parsed = await resolveDateInputs(raw, () => loadTimezone(stub, userId));
+
+  const specError = await assigneeSpecError(
+    stub,
+    {
+      assigneeId: parsed.assigneeId ?? null,
+      doneCriteria: parsed.doneCriteria ?? [],
+      access: parsed.access ?? null,
+    },
+    true,
+  );
+  if (specError) return invalidRequest(specError, headers);
 
   // Key PRESENCE on the raw body, not a check on the parsed value (EI-308).
   // `todoSchema.reminderTime` carries `.nullable().default(null)`, and
@@ -278,7 +350,7 @@ async function handleCreateTodo(
   // both fire on a create (see `buildCreateTodoEntry`). Durable mode, not
   // the in-memory default — see `durableHlcQueue`'s doc comment.
   const nextHlc = await durableHlcQueue(stub, 2);
-  const ctx: ServiceContext = { userId, nextHlc };
+  const ctx: ServiceContext = { userId, nextHlc, actorAssigneeId: await actorFor(stub, keyId) };
 
   const { response, todoId } = await createTodo(
     ctx,
@@ -300,6 +372,7 @@ async function handleUpdateTodo(
   request: Request,
   stub: DurableObjectStub<UserDurableObject>,
   userId: string,
+  keyId: string | null,
   id: string,
   headers: HeadersInit,
 ): Promise<Response> {
@@ -312,10 +385,24 @@ async function handleUpdateTodo(
   if (!raw) return json({ error: "invalid-request" }, 400, headers);
   const parsed = await resolveDateInputs(raw, () => loadTimezone(stub, userId));
 
+  if ("assigneeId" in parsed || "doneCriteria" in parsed || "access" in parsed) {
+    const stored = todoSchema.parse(existing);
+    const specError = await assigneeSpecError(
+      stub,
+      {
+        assigneeId: "assigneeId" in parsed ? (parsed.assigneeId ?? null) : stored.assigneeId,
+        doneCriteria: "doneCriteria" in parsed ? (parsed.doneCriteria ?? []) : stored.doneCriteria,
+        access: "access" in parsed ? (parsed.access ?? null) : stored.access,
+      },
+      "assigneeId" in parsed && parsed.assigneeId !== null && parsed.assigneeId !== undefined,
+    );
+    if (specError) return invalidRequest(specError, headers);
+  }
+
   // Sized for the most entries an update can push, though most need fewer —
   // see `durableHlcQueue`'s doc comment for why over-requesting is harmless.
   const nextHlc = await durableHlcQueue(stub, UPDATE_TODO_MAX_ENTRIES);
-  const ctx: ServiceContext = { userId, nextHlc };
+  const ctx: ServiceContext = { userId, nextHlc, actorAssigneeId: await actorFor(stub, keyId) };
 
   const result = await updateTodo(ctx, id, parsed, pushTransportFor(stub, userId), existing);
   if (result.rejected.length > 0) {
@@ -338,6 +425,7 @@ async function handleUpdateTodo(
 async function handleDeleteTodo(
   stub: DurableObjectStub<UserDurableObject>,
   userId: string,
+  keyId: string | null,
   id: string,
   headers: HeadersInit,
 ): Promise<Response> {
@@ -357,7 +445,7 @@ async function handleDeleteTodo(
   // convention the create/update paths already use.
   const entryCount = childIds.length + attachmentIds.length + 2;
   const nextHlc = await durableHlcQueue(stub, entryCount + 1);
-  const ctx: ServiceContext = { userId, nextHlc };
+  const ctx: ServiceContext = { userId, nextHlc, actorAssigneeId: await actorFor(stub, keyId) };
 
   const title = typeof existing.title === "string" ? existing.title : "";
   const { rejected } = await deleteTodo(
@@ -568,6 +656,73 @@ async function handleCreateTab(
 
   const row = await getEntityRow(stub, "tab", tabId);
   return json(row ? tabSchema.parse(row) : null, 201, headers);
+}
+
+/** `POST /api/v1/assignees` (EI-402). Never sets `apiKeyId`. */
+async function handleCreateAssignee(
+  request: Request,
+  stub: DurableObjectStub<UserDurableObject>,
+  userId: string,
+  headers: HeadersInit,
+): Promise<Response> {
+  const parsed = parseCreateAssigneeRequest(await request.json().catch(() => null));
+  if (!parsed) return json({ error: "invalid-request" }, 400, headers);
+
+  const nextHlc = await durableHlcQueue(stub, 2);
+  const ctx: ServiceContext = { userId, nextHlc };
+
+  const { response, assigneeId } = await createAssignee(ctx, parsed, pushTransportFor(stub, userId));
+  if (response.rejected.length > 0) {
+    console.error("v1 create-assignee push rejected", response.rejected);
+    return json({ error: "internal-error" }, 500, headers);
+  }
+
+  const row = await getEntityRow(stub, "assignee", assigneeId);
+  return json(row ? assigneeSchema.parse(row) : null, 201, headers);
+}
+
+/**
+ * `DELETE /api/v1/assignees/{id}` (EI-402). Its to-dos go back to the owner
+ * (`assigneeId: null`) in the same push, like a label strip. The bound key is
+ * NOT revoked here — that is a Better Auth call the app makes; with the
+ * assignee tombstoned the key simply stops resolving to an actor.
+ */
+async function handleDeleteAssignee(
+  stub: DurableObjectStub<UserDurableObject>,
+  userId: string,
+  id: string,
+  headers: HeadersInit,
+): Promise<Response> {
+  const existing = await getEntityRow(stub, "assignee", id);
+  if (!existing) return json({ error: "not-found" }, 404, headers);
+
+  const affected = parseTodos(await listTodos(stub)).filter((todo) => todo.assigneeId === id);
+  if (affected.length > MAX_DEPENDENTS) {
+    return json({ error: "too-many-dependents" }, 409, headers);
+  }
+
+  const nextHlc = await durableHlcQueue(stub, affected.length + 2);
+  const ctx: ServiceContext = { userId, nextHlc };
+  const timestamp = new Date().toISOString();
+
+  const entries = [
+    ...affected.map((todo) => ({
+      id: crypto.randomUUID(),
+      kind: "todo" as const,
+      entityId: todo.id,
+      patch: { assigneeId: null, updatedAt: timestamp },
+      hlc: ctx.nextHlc(),
+    })),
+    ...buildDeleteEntry(ctx, "assignee", id),
+  ];
+
+  const { rejected } = await pushTransportFor(stub, userId)(entries);
+  if (rejected.length > 0) {
+    console.error("v1 delete-assignee push rejected", rejected);
+    return json({ error: "internal-error" }, 500, headers);
+  }
+
+  return new Response(null, { status: 204, headers });
 }
 
 /**
@@ -1009,12 +1164,54 @@ export async function handleV1Request(request: Request, env: CloudflareEnv): Pro
       }
     }
 
+    if (segment === "assignees" && request.method === "POST") {
+      const auth = await authorizeScope(auth0, request, "write");
+      if (!auth.ok) return json({ error: auth.error }, auth.status, headers);
+
+      const stub = env.USER_DO.get(env.USER_DO.idFromName(auth.userId));
+      return await handleCreateAssignee(request, stub, auth.userId, headers);
+    }
+
+    const assigneeIdMatch = /^assignees\/([^/]+)$/.exec(segment);
+    if (assigneeIdMatch) {
+      const assigneeId = decodeURIComponent(assigneeIdMatch[1]);
+      const scope = request.method === "GET" ? "read" : "write";
+      if (["GET", "PATCH", "DELETE"].includes(request.method)) {
+        const auth = await authorizeScope(auth0, request, scope);
+        if (!auth.ok) return json({ error: auth.error }, auth.status, headers);
+        const stub = env.USER_DO.get(env.USER_DO.idFromName(auth.userId));
+
+        if (request.method === "DELETE") {
+          return await handleDeleteAssignee(stub, auth.userId, assigneeId, headers);
+        }
+
+        const row = await getEntityRow(stub, "assignee", assigneeId);
+        if (!row) return json({ error: "not-found" }, 404, headers);
+        if (request.method === "GET") return json(assigneeSchema.parse(row), 200, headers);
+
+        const parsed = parseUpdateAssigneeRequest(await request.json().catch(() => null));
+        if (!parsed) return json({ error: "invalid-request" }, 400, headers);
+
+        const nextHlc = await durableHlcQueue(stub, 2);
+        const { rejected } = await pushTransportFor(stub, auth.userId)(
+          buildUpdateAssigneeEntry({ userId: auth.userId, nextHlc }, assigneeId, parsed),
+        );
+        if (rejected.length > 0) {
+          console.error("v1 update-assignee push rejected", rejected);
+          return json({ error: "internal-error" }, 500, headers);
+        }
+
+        const updated = await getEntityRow(stub, "assignee", assigneeId);
+        return json(updated ? assigneeSchema.parse(updated) : null, 200, headers);
+      }
+    }
+
     if (segment === "todos" && request.method === "POST") {
       const auth = await authorizeScope(auth0, request, "write");
       if (!auth.ok) return json({ error: auth.error }, auth.status, headers);
 
       const stub = env.USER_DO.get(env.USER_DO.idFromName(auth.userId));
-      return await handleCreateTodo(request, stub, auth.userId, headers);
+      return await handleCreateTodo(request, stub, auth.userId, auth.keyId, headers);
     }
 
     const todoIdMatch = /^todos\/([^/]+)$/.exec(segment);
@@ -1036,7 +1233,7 @@ export async function handleV1Request(request: Request, env: CloudflareEnv): Pro
         if (!auth.ok) return json({ error: auth.error }, auth.status, headers);
 
         const stub = env.USER_DO.get(env.USER_DO.idFromName(auth.userId));
-        return await handleUpdateTodo(request, stub, auth.userId, todoId, headers);
+        return await handleUpdateTodo(request, stub, auth.userId, auth.keyId, todoId, headers);
       }
 
       if (request.method === "DELETE") {
@@ -1044,7 +1241,7 @@ export async function handleV1Request(request: Request, env: CloudflareEnv): Pro
         if (!auth.ok) return json({ error: auth.error }, auth.status, headers);
 
         const stub = env.USER_DO.get(env.USER_DO.idFromName(auth.userId));
-        return await handleDeleteTodo(stub, auth.userId, todoId, headers);
+        return await handleDeleteTodo(stub, auth.userId, auth.keyId, todoId, headers);
       }
     }
 

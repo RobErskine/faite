@@ -105,6 +105,9 @@ function todo(overrides: Partial<Todo> & { id: string }): Todo {
     duplicateOf: null,
     duplicateHeld: null,
     suggestedListId: null,
+    assigneeId: null,
+    doneCriteria: [],
+    access: null,
     ...overrides,
   };
 }
@@ -1776,5 +1779,30 @@ describe("backlogMembership agrees with the board (EI-366)", () => {
 
     expect(todos.filter(inBacklog).map((t) => t.id).sort()).toEqual([...boardBacklog].sort());
     expect(boardBacklog.sort()).toEqual(["archived-list", "in-backlog", "missing-list", "no-list"]);
+  });
+});
+
+describe("buildBoard assignee filter (EI-402)", () => {
+  const mixed = [
+    todo({ id: "mine", listId: "groceries", scheduledDate: "2026-08-05" }),
+    todo({ id: "bot", listId: "groceries", scheduledDate: "2026-08-05", assigneeId: "a1" }),
+    todo({ id: "other", listId: "groceries", scheduledDate: "2026-08-05", assigneeId: "a2" }),
+  ];
+  const dayIds = (filter: string | null) =>
+    buildBoard(mixed, LISTS, ctx, [], { assigneeFilter: filter })
+      .days.find((d) => d.day === "2026-08-05")!
+      .todos.map((t) => t.id)
+      .sort();
+
+  it("shows everyone by default", () => {
+    expect(dayIds(null)).toEqual(["bot", "mine", "other"]);
+  });
+
+  it("narrows to one assignee's to-dos", () => {
+    expect(dayIds("a1")).toEqual(["bot"]);
+  });
+
+  it("reads \"me\" as the unassigned to-dos", () => {
+    expect(dayIds("me")).toEqual(["mine"]);
   });
 });

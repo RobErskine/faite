@@ -1,4 +1,6 @@
 import type {
+  Assignee,
+  AssigneeKind,
   Attachment,
   CivilDate,
   DayNote,
@@ -114,6 +116,9 @@ export async function createTodo(input: CreateTodoInput): Promise<string> {
     duplicateOf: null,
     duplicateHeld: null,
     suggestedListId: null,
+    assigneeId: null,
+    doneCriteria: [],
+    access: null,
   };
   return create("todo", todo, { events: [logTodoEvent(todo.id, "created")] });
 }
@@ -1303,6 +1308,50 @@ export async function deletePlace(id: string): Promise<void> {
     await mutate("todo", todo.id, { placeId: null });
   }
   await remove("place", id);
+}
+
+// ---------------------------------------------------------------------------
+// Assignees (EI-402)
+// ---------------------------------------------------------------------------
+
+export async function createAssignee(
+  name: string,
+  kind: AssigneeKind,
+  extra: Partial<Pick<Assignee, "color" | "instructions" | "apiKeyId">> = {},
+): Promise<string> {
+  const timestamp = now();
+  const assignee: Assignee = {
+    id: newId(),
+    ownerId: getCurrentOwnerId(),
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    deletedAt: null,
+    name,
+    kind,
+    color: extra.color ?? null,
+    instructions: kind === "agent" ? (extra.instructions ?? null) : null,
+    apiKeyId: kind === "agent" ? (extra.apiKeyId ?? null) : null,
+  };
+  return create("assignee", assignee);
+}
+
+export async function updateAssignee(
+  id: string,
+  patch: Partial<Omit<Assignee, "id" | "ownerId" | "createdAt">>,
+): Promise<void> {
+  await mutate("assignee", id, patch);
+}
+
+/** Delete an assignee and rehome every to-do assigned to it to "me"
+ * (`assigneeId: null`). The doneCriteria/access data stays on the to-do. The
+ * caller revokes the bound API key (it is a network call, not a store write). */
+export async function deleteAssignee(id: string): Promise<void> {
+  const db = getDb();
+  const assigned = await db.todos.where("assigneeId").equals(id).toArray();
+  for (const todo of assigned) {
+    await mutate("todo", todo.id, { assigneeId: null });
+  }
+  await remove("assignee", id);
 }
 
 // ---------------------------------------------------------------------------

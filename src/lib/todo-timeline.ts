@@ -32,6 +32,13 @@ export interface TodoTimelineEvent {
    * payload, or unioned across a coalesced run) so the render layer never
    * has to know about coalescing. */
   fields?: string[];
+  /** Note body, for a `note` entry — read from the payload here so the
+   * render layer never parses it. */
+  text?: string;
+  /** Who made it when not a person at the keyboard — `agent:<assignee id>`
+   * (EI-402). The renderer resolves the id to a name, falling back to
+   * "Agent". */
+  via?: string;
   /** True for the one derived `created` row with no real event behind it. */
   synthetic?: boolean;
 }
@@ -89,14 +96,38 @@ function editedFields(payload: unknown): string[] {
   return Array.isArray(fields) ? (fields as string[]) : [];
 }
 
+function noteText(payload: unknown): string {
+  if (!payload || typeof payload !== "object") return "";
+  const text = (payload as { text?: unknown }).text;
+  return typeof text === "string" ? text : "";
+}
+
+function viaOf(payload: unknown): string | undefined {
+  if (!payload || typeof payload !== "object") return undefined;
+  const via = (payload as { via?: unknown }).via;
+  return typeof via === "string" ? via : undefined;
+}
+
+/** "Agent" fallback, or the assignee's name when `agent:<id>` resolves. */
+export function viaLabel(
+  via: string | undefined,
+  assigneeNames?: ReadonlyMap<string, string>,
+): string | null {
+  if (!via?.startsWith("agent:")) return null;
+  return assigneeNames?.get(via.slice("agent:".length)) ?? "Agent";
+}
+
 function toTimelineEvent(row: TodoEvent): TodoTimelineEvent {
   const payload = parseEventPayload(row.payload);
+  const via = viaOf(payload);
   return {
     key: row.id,
     kind: row.kind,
     at: row.at,
     payload,
     ...(row.kind === "edited" ? { fields: editedFields(payload) } : {}),
+    ...(row.kind === "note" ? { text: noteText(payload) } : {}),
+    ...(via ? { via } : {}),
   };
 }
 

@@ -52,6 +52,9 @@ const TODO: Todo = {
   duplicateOf: null,
   duplicateHeld: null,
   suggestedListId: null,
+  assigneeId: null,
+  doneCriteria: [],
+  access: null,
 };
 
 interface HarnessProps {
@@ -826,6 +829,33 @@ describe("on-demand sections (EI-396)", () => {
     expect(
       screen.getByRole("button", { name: /^History/ }).getAttribute("aria-expanded"),
     ).toBe("true");
+  });
+
+  it("renders a note's text and, for an agent's write, who wrote it (EI-402)", () => {
+    const note = (id: string, payload: unknown): TodoEvent => ({
+      id,
+      ownerId: "local",
+      createdAt: "2026-08-05T09:00:00.000Z",
+      updatedAt: "2026-08-05T09:00:00.000Z",
+      deletedAt: null,
+      todoId: TODO.id,
+      kind: "note",
+      at: "2026-08-05T09:00:00.000Z",
+      payload: JSON.stringify(payload),
+    });
+    render(
+      <Harness
+        events={[
+          note("n1", { text: "Opened the PR", via: "agent:a1" }),
+          note("n2", { text: "Checked by hand", via: "ui" }),
+        ]}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^History/ }));
+    expect(screen.getAllByText("Note")).toHaveLength(2);
+    expect(screen.getByText("Opened the PR")).toBeTruthy();
+    expect(screen.getByText("Checked by hand")).toBeTruthy();
+    expect(screen.getAllByText("by Agent")).toHaveLength(1);
   });
 
   it("opens History on click", () => {

@@ -11,6 +11,7 @@ import {
   ChevronDown,
   CornerDownRight,
   FileX,
+  MessageSquare,
   Paperclip,
   Pencil,
   Plus,
@@ -62,6 +63,8 @@ import { LocationField } from "@/components/board/location-field";
 import { CaptureSourceBadge } from "@/components/todo/capture-source-badge";
 import { ListField } from "@/components/board/list-field";
 import { LabelPicker } from "@/components/board/label-picker";
+import { AssigneePicker } from "@/components/board/assignee-picker";
+import { AgentSpecEditor } from "@/components/board/agent-spec-editor";
 import {
   QuickAddPreview,
   quickAddNoticeChips,
@@ -97,11 +100,13 @@ import {
   type RollSummaryPayload,
   type TodoTimelineEvent,
   type TodoTimelineItem,
+  viaLabel,
 } from "@/lib/todo-timeline";
 import type { RecurrenceRule } from "@/lib/recurrence";
 import type {
   ActivityEventKind,
   CivilDate,
+  Assignee,
   Label as LabelRecord,
   List,
   Place,
@@ -160,6 +165,8 @@ function storyLineFor(
  * stacked there), so List, Labels and Location now stack like everything else
  * and the body's own `space-y-5` spaces them.
  */
+const EMPTY_ASSIGNEES: Assignee[] = [];
+
 function SheetRow({
   label,
   htmlFor,
@@ -206,6 +213,9 @@ interface TodoSheetProps {
   /** Every live tab — see the List field, grouped into "{tabName} > {listName}" sections. */
   tabs: Tab[];
   labels: LabelRecord[];
+  /** Agents and people a to-do can be assigned to (EI-402). Optional so a
+   * caller with none doesn't have to thread an empty list. */
+  assignees?: Assignee[];
   /** Saved locations (`lib/schema.ts`'s `Place`) — see the Location field. */
   places: Place[];
   /** Named reminder times (EI-106) — see the Reminder field (`ReminderPicker`).
@@ -317,6 +327,7 @@ function TodoSheetContent({
   todos = [],
   tabs,
   labels,
+  assignees = EMPTY_ASSIGNEES,
   places,
   reminderPresets = [],
   events = [],
@@ -956,6 +967,21 @@ function TodoSheetContent({
             <SheetRow label="Location" htmlFor="todo-location-input">
               <LocationField todo={todo} places={places} onSave={onSave} />
             </SheetRow>
+
+            <SheetRow label="Who" htmlFor="todo-assignee">
+              <AssigneePicker
+                value={todo.assigneeId}
+                assignees={assignees}
+                onChange={(assigneeId) => onSave(todo.id, { assigneeId })}
+              />
+            </SheetRow>
+
+            {/* Renders nothing unless the assignee is an agent. */}
+            <AgentSpecEditor
+              todo={todo}
+              assignee={assignees.find((a) => a.id === todo.assigneeId)}
+              onSave={onSave}
+            />
           </>
 
           {/*
@@ -1021,6 +1047,7 @@ function TodoSheetContent({
             ctx={ctx}
             listsById={listsById}
             settings={settings}
+            assignees={assignees}
           />
         </div>
 
@@ -1364,6 +1391,7 @@ const HISTORY_EVENT_LABEL: Partial<Record<HistoryEventKind, string>> = {
   deleted: "Deleted",
   attached: "Attached",
   detached: "Removed file",
+  note: "Note",
   rolledOver: "Rolled over",
   overflowed: "Fell into Overflow",
 };
@@ -1380,6 +1408,7 @@ const HISTORY_EVENT_ICON: Partial<Record<HistoryEventKind, ComponentType<{ class
   deleted: Trash2,
   attached: Paperclip,
   detached: FileX,
+  note: MessageSquare,
   rolledOver: CornerDownRight,
   overflowed: Archive,
 };
@@ -1402,9 +1431,10 @@ const FIELD_LABELS: Record<string, string> = {
   recurrenceRule: "Repeat rule",
 };
 
-/** The optional one-line detail under `moved`/`scheduled`/`edited`/rollover
+/** The optional detail under `moved`/`scheduled`/`edited`/`note`/rollover
  * rows — everything else is fully said by the meta line alone. */
 function historyDetail(event: TodoTimelineEvent): string | null {
+  if (event.kind === "note") return event.text || null;
   if (event.kind === "moved") {
     const payload = event.payload as { toListId?: string | null; toListName?: string | null } | null;
     return `→ ${payload?.toListName ?? "Backlog"}`;
@@ -1488,6 +1518,7 @@ interface HistorySectionProps {
   ctx?: PlacementContext;
   listsById: ReadonlyMap<string, List>;
   settings?: Settings;
+  assignees: Assignee[];
 }
 
 /** Every kind, in the order the filter menu lists them. */
@@ -1518,7 +1549,12 @@ function HistorySection({
   ctx,
   listsById,
   settings,
+  assignees,
 }: HistorySectionProps) {
+  const assigneeNames = useMemo(
+    () => new Map(assignees.map((a) => [a.id, a.name])),
+    [assignees],
+  );
   const items = useMemo(
     () => buildTodoTimeline(events, todo, ctx, timezone, today),
     [events, todo, ctx, timezone, today],
@@ -1635,6 +1671,8 @@ function HistorySection({
                 const label =
                   HISTORY_EVENT_LABEL[event.kind as HistoryEventKind] ?? FALLBACK_LABEL;
                 const detail = historyDetail(event);
+                // Who wrote it, for an agent's write (EI-402).
+                const by = viaLabel(event.via, assigneeNames);
                 return (
                   <TimelineRow
                     key={event.key}
@@ -1647,7 +1685,18 @@ function HistorySection({
                     accent={historyAccent(event, listsById)}
                     isLast={lastEventKey !== undefined && item === lastEventKey}
                   >
-                    {detail && <p className="mt-0.5 text-xs text-muted-foreground">{detail}</p>}
+                    {detail && (
+                      <p
+                        className={cn(
+                          "mt-0.5 text-xs text-muted-foreground",
+                          // A note is free text with its own line breaks.
+                          event.kind === "note" && "whitespace-pre-line break-words",
+                        )}
+                      >
+                        {detail}
+                      </p>
+                    )}
+                    {by && <p className="mt-0.5 text-2xs text-muted-foreground">by {by}</p>}
                   </TimelineRow>
                 );
               })}

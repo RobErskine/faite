@@ -2,6 +2,7 @@ import type { PushEntry, PushResponse } from "@/lib/sync/wire";
 import { SYNC_PROTOCOL_VERSION } from "@/lib/sync/wire";
 import {
   buildCreateTodoEntry,
+  buildAddNoteEntry,
   buildDeleteTodoEntry,
   buildUpdateTodoEntry,
   type CreateTodoInput,
@@ -10,6 +11,7 @@ import {
   type UpdateTodoInput,
 } from "@/lib/service/todos";
 import type { ServiceContext } from "@/lib/service/context";
+import { doneCriterionSchema, type DoneCriterion } from "@/lib/schema";
 import type { UserDurableObject } from "../user-do";
 
 /**
@@ -57,6 +59,80 @@ export function pushTransportFor(
 }
 
 /**
+ * Resolves which assignee (agent) a verified API key acts as (EI-402). The
+ * key id is the only input: names and metadata on a key are spoofable and
+ * never used. `lookup` is the DO query `assignee where ownerId = userId AND
+ * apiKeyId = keyId`; a session (no key) or a key bound to no assignee is the
+ * user themselves, i.e. null.
+ */
+export async function resolveActorAssigneeId(
+  keyId: string | null,
+  lookup: (keyId: string) => Promise<string | null>,
+): Promise<string | null> {
+  if (!keyId) return null;
+  return (await lookup(keyId)) ?? null;
+}
+
+/** What `stampActor` needs from the stored row: the criteria that already
+ * exist, whose `addedBy` must survive an agent re-sending the whole list. */
+export interface StampBefore {
+  doneCriteria?: unknown;
+}
+
+/**
+ * Overwrites every client-supplied attribution with the server-resolved
+ * actor (EI-402). A caller can put anything in an event payload or a
+ * criterion's `addedBy`; neither is believed.
+ *
+ * - Every `todoEvent` payload gets `via: agent:<id>` when there is an actor,
+ *   and has any `via` of that shape stripped when there is not. The
+ *   client-only values (`overdrive`, `smart-sort`) never come from this path.
+ * - A criterion whose id is NOT already on the stored row is new, so its
+ *   `addedBy` becomes the actor (null for the user). One that already exists
+ *   keeps its stored `addedBy`.
+ */
+export function stampActor(
+  ctx: ServiceContext,
+  entries: PushEntry[],
+  before?: StampBefore,
+): PushEntry[] {
+  const actor = ctx.actorAssigneeId ?? null;
+  const existing = new Map<string, DoneCriterion>();
+  const stored = doneCriterionSchema.array().safeParse(before?.doneCriteria);
+  if (stored.success) for (const criterion of stored.data) existing.set(criterion.id, criterion);
+
+  return entries.map((entry) => {
+    if (entry.kind === "todoEvent") {
+      const patch = { ...(entry.patch as Record<string, unknown>) };
+      const raw = typeof patch.payload === "string" ? safeJsonObject(patch.payload) : {};
+      const { via: _ignored, ...rest } = raw;
+      const payload = actor ? { v: 1, ...rest, via: `agent:${actor}` } : rest;
+      patch.payload = actor || Object.keys(payload).length > 0 ? JSON.stringify(payload) : null;
+      return { ...entry, patch };
+    }
+    if (entry.kind === "todo") {
+      const patch = entry.patch as Record<string, unknown>;
+      if (!Array.isArray(patch.doneCriteria)) return entry;
+      const doneCriteria = (patch.doneCriteria as DoneCriterion[]).map((criterion) => {
+        const stored = existing.get(criterion.id);
+        return stored ? { ...criterion, addedBy: stored.addedBy ?? null } : { ...criterion, addedBy: actor };
+      });
+      return { ...entry, patch: { ...patch, doneCriteria } };
+    }
+    return entry;
+  });
+}
+
+function safeJsonObject(text: string): Record<string, unknown> {
+  try {
+    const value: unknown = JSON.parse(text);
+    return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
  * Create a todo via the sync push path rather than a direct database write.
  * Pushes the todo AND its "created" `todoEvent` in one batch — see
  * `buildCreateTodoEntry`'s doc comment for why both must land together.
@@ -72,7 +148,7 @@ export async function createTodo(
   input: CreateTodoInput,
   push: PushTransport,
 ): Promise<{ response: PushResponse; todoId: string }> {
-  const entries = buildCreateTodoEntry(ctx, input);
+  const entries = stampActor(ctx, buildCreateTodoEntry(ctx, input));
   const response = await push(entries);
   return { response, todoId: entries[0].entityId };
 }
@@ -86,9 +162,9 @@ export async function updateTodo(
   id: string,
   patch: UpdateTodoInput,
   push: PushTransport,
-  before?: UpdateTodoBefore,
+  before?: UpdateTodoBefore & StampBefore,
 ): Promise<PushResponse> {
-  return push(buildUpdateTodoEntry(ctx, id, patch, before));
+  return push(stampActor(ctx, buildUpdateTodoEntry(ctx, id, patch, before), before));
 }
 
 /**
@@ -107,5 +183,16 @@ export async function deleteTodo(
   input: DeleteTodoInput,
   push: PushTransport,
 ): Promise<PushResponse> {
-  return push(buildDeleteTodoEntry(ctx, id, input));
+  return push(stampActor(ctx, buildDeleteTodoEntry(ctx, id, input)));
+}
+
+/** Append a progress `note` event to a to-do's history (EI-402). One push; the
+ * caller sizes `durableHlcQueue` at 1. `via` is stamped from `ctx`. */
+export async function addNote(
+  ctx: ServiceContext,
+  todoId: string,
+  text: string,
+  push: PushTransport,
+): Promise<PushResponse> {
+  return push(stampActor(ctx, buildAddNoteEntry(ctx, todoId, text)));
 }

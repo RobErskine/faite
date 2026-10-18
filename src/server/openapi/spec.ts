@@ -1,6 +1,7 @@
 import { createDocument } from "zod-openapi";
 import type { ZodOpenApiPathsObject } from "zod-openapi";
 import {
+  assigneeSchema,
   attachmentSchema,
   dayNoteSchema,
   labelSchema,
@@ -16,6 +17,7 @@ import {
   dayNotePaths,
   derivedPaths,
   internalOnlyPaths,
+  assigneeItemPaths,
   labelAndTabItemPaths,
   listItemPath,
   patchTodoPath,
@@ -45,6 +47,11 @@ import {
 // `z.globalRegistry`; this module is the only consumer.
 todoSchema.meta({ id: "Todo", description: "A to-do item." });
 listSchema.meta({ id: "List", description: "A planning-half column." });
+assigneeSchema.meta({
+  id: "Assignee",
+  description:
+    "An agent or a person a to-do can be assigned to. A to-do with no assignee is the account owner's own.",
+});
 labelSchema.meta({ id: "Label", description: "A multi-assign tag." });
 projectSchema.meta({ id: "Project", description: "A cross-cutting bucket of todos." });
 tabSchema.meta({ id: "Tab", description: "A group of planning-half columns." });
@@ -97,6 +104,7 @@ const entitySchemas = {
   Todo: todoSchema,
   List: listSchema,
   Label: labelSchema,
+  Assignee: assigneeSchema,
   Project: projectSchema,
   Tab: tabSchema,
   DayNote: dayNoteSchema,
@@ -241,6 +249,7 @@ export function buildPublicDocument() {
       ...patchTodoPath,
       ...listItemPath,
       ...labelAndTabItemPaths,
+      ...assigneeItemPaths,
       ...dayNotePaths,
       ...derivedPaths,
     },

@@ -1,5 +1,6 @@
 import Dexie, { type EntityTable } from "dexie";
 import type {
+  Assignee,
   Attachment,
   DayNote,
   Label,
@@ -32,6 +33,7 @@ export class FaiteDatabase extends Dexie {
   places!: EntityTable<Place, "id">;
   todoEvents!: EntityTable<TodoEvent, "id">;
   reminderPresets!: EntityTable<ReminderPreset, "id">;
+  assignees!: EntityTable<Assignee, "id">;
   attachments!: EntityTable<Attachment, "id">;
   settings!: EntityTable<Settings, "ownerId">;
   outbox!: EntityTable<OutboxEntry, "id">;
@@ -101,6 +103,15 @@ export class FaiteDatabase extends Dexie {
     // gets replaced wholesale (see v7 above).
     this.version(8).stores({
       attachments: "id, todoId, deletedAt",
+    });
+    // Assignees (EI-402): agents and people a to-do can be assigned to.
+    // `assigneeId` is indexed on todos for the assignee filter and for
+    // `deleteAssignee`, which rehomes every to-do pointing at one. Restates
+    // all of `todos` — `.stores()` replaces an existing table's index list.
+    this.version(9).stores({
+      todos:
+        "id, listId, projectId, scheduledDate, status, position, deletedAt, recurrenceParentId, placeId, assigneeId",
+      assignees: "id, deletedAt",
     });
   }
 }

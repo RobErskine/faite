@@ -1,9 +1,12 @@
 import { uuidv7 } from "uuidv7";
 import {
+  assigneeSchema,
   dayNoteSchema,
   labelSchema,
   listSchema,
   tabSchema,
+  type Assignee,
+  type AssigneeKind,
   type CivilDate,
   type DayNote,
   type Label,
@@ -77,13 +80,15 @@ interface EntityBuilderSpec {
     | typeof listSchema
     | typeof labelSchema
     | typeof tabSchema
-    | typeof dayNoteSchema;
+    | typeof dayNoteSchema
+    | typeof assigneeSchema;
 }
 
 const LIST: EntityBuilderSpec = { kind: "list", schema: listSchema };
 const LABEL: EntityBuilderSpec = { kind: "label", schema: labelSchema };
 const TAB: EntityBuilderSpec = { kind: "tab", schema: tabSchema };
 const DAY_NOTE: EntityBuilderSpec = { kind: "dayNote", schema: dayNoteSchema };
+const ASSIGNEE: EntityBuilderSpec = { kind: "assignee", schema: assigneeSchema };
 
 /**
  * A CREATE is simply a patch touching every field — the same convention
@@ -323,6 +328,49 @@ export function buildUpdateTabEntry(
   patch: UpdateTabInput,
 ): PushEntry[] {
   return buildUpdate(ctx, TAB, id, patch);
+}
+
+/* -------------------------------------------------------------- assignees */
+
+export interface CreateAssigneeInput {
+  name: string;
+  kind: AssigneeKind;
+  color?: string | null;
+  instructions?: string | null;
+}
+
+/** Never `apiKeyId`: the key binding is made in the app, where the key is
+ * created, and a REST caller must not be able to rebind identity (EI-402). */
+export type UpdateAssigneeInput = Partial<
+  Pick<Assignee, "name" | "kind" | "color" | "instructions">
+>;
+
+export function buildCreateAssigneeEntry(
+  ctx: ServiceContext,
+  input: CreateAssigneeInput,
+): PushEntry[] {
+  const timestamp = new Date().toISOString();
+
+  return buildCreate(ctx, ASSIGNEE, {
+    id: uuidv7(),
+    ownerId: ctx.userId,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    deletedAt: null,
+    name: input.name,
+    kind: input.kind,
+    color: input.color ?? null,
+    instructions: input.instructions ?? null,
+    apiKeyId: null,
+  });
+}
+
+export function buildUpdateAssigneeEntry(
+  ctx: ServiceContext,
+  id: string,
+  patch: UpdateAssigneeInput,
+): PushEntry[] {
+  return buildUpdate(ctx, ASSIGNEE, id, patch);
 }
 
 /* -------------------------------------------------------------- day notes */

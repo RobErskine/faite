@@ -1,16 +1,20 @@
 import {
+  buildCreateAssigneeEntry,
   buildCreateDayNoteEntry,
   buildCreateLabelEntry,
   buildCreateListEntry,
   buildCreateTabEntry,
   buildDeleteEntry,
+  buildUpdateAssigneeEntry,
   buildUpdateDayNoteEntry,
   buildUpdateLabelEntry,
   buildUpdateListEntry,
   buildUpdateTabEntry,
+  type CreateAssigneeInput,
   type CreateLabelInput,
   type CreateListInput,
   type CreateTabInput,
+  type UpdateAssigneeInput,
   type UpdateDayNoteInput,
   type UpdateLabelInput,
   type UpdateListInput,
@@ -105,6 +109,25 @@ export async function updateTab(
   push: PushTransport,
 ): Promise<PushResponse> {
   return push(buildUpdateTabEntry(ctx, id, patch));
+}
+
+export async function createAssignee(
+  ctx: ServiceContext,
+  input: CreateAssigneeInput,
+  push: PushTransport,
+): Promise<{ response: PushResponse; assigneeId: string }> {
+  const entries = buildCreateAssigneeEntry(ctx, input);
+  const response = await push(entries);
+  return { response, assigneeId: entries[0].entityId };
+}
+
+export async function updateAssignee(
+  ctx: ServiceContext,
+  id: string,
+  patch: UpdateAssigneeInput,
+  push: PushTransport,
+): Promise<PushResponse> {
+  return push(buildUpdateAssigneeEntry(ctx, id, patch));
 }
 
 /**

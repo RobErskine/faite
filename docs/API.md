@@ -287,7 +287,29 @@ that have no REST equivalent:
 | `get_overflow` | read | Runs `@/lib/scheduling`'s `deriveColumn()` — the SAME pure function the board renders with — against this account's own Settings (`UserDurableObject.getSettings()`) instead of a client's in-memory copy. No REST equivalent. |
 | `get_day_note` | read | One day's Markdown journal note (EI-342). `date` (`YYYY-MM-DD`) defaults to today in the account's `timezone`. A day with no note returns `{ date, body: "" }`, same as `GET /api/v1/day-notes/{date}`. |
 | `append_day_note` | write | Adds `**HH:MM** — text` to the end of a day's note (EI-342) — see "Day notes" below. Same `date` default. Pointer's voice capture uses it. |
+| `list_assignees` | read | The agents and people a to-do can be assigned to (EI-402). `apiKeyId` is left out. |
+| `get_my_work` | read | The agent queue (EI-402): the open to-dos assigned to the agent this key is bound to, each with its `doneCriteria` and `access`, plus the standing `instructions`. No arguments. A key that is not bound to an agent gets an error, not an empty list. |
+| `add_note` | write | `{ todoId, text }` (max 4,000 chars). Appends a `note` event to the to-do's history, attributed to the key's agent. |
+| `add_criterion` | write | `{ todoId, text }`. Adds a line to the Done checklist; `addedBy` is the key's agent. |
+| `update_criterion` | write | `{ todoId, criterionId, done?, text? }`. Ticks, unticks or rewords one Done line. |
+| `update_access` | write | `{ todoId, access: [{ name, status? }] }`. Replaces the access list; `[]` declares "needs nothing". |
 | `get_profile` | read | `timezone` is an IANA name (`"America/New_York"`), or `"UTC"` if never set. `displayName`/avatar fields/`timezone` only — never the device-local board-layout prefs (`backlogWidth`, `splitRatio`, etc.) that live in the same `settings` row but describe one device's screen, not the account. |
+
+**Assignees and the agent queue (EI-402).** A to-do has `assigneeId` (null is
+the account owner), `doneCriteria` (`[{ id, text, done, addedBy }]`) and
+`access` (`[{ name, status }]` or null). `create_todo` and `update_todo` take
+all three; so do `POST` and `PATCH /api/v1/todos`. **Rule:** when the assignee
+is an agent the to-do needs at least one `doneCriteria` line and `access`
+must not be null (`[]` means "needs nothing"); a violation is a 400 / tool
+error whose message says which. `GET /api/v1/todos?assigneeId=<id>` filters
+to one assignee, `assigneeId=none` to the owner's own; `list_todos` takes the
+same. `/api/v1/assignees` (`GET`, `POST`) and `/api/v1/assignees/{id}`
+(`GET`, `PATCH`, `DELETE`) manage assignees; deleting one hands its to-dos back
+to the owner. `apiKeyId` is read-only over REST: the binding of a key to an
+agent is written by the app (Settings > Assignees > Create key) and the server
+looks the acting assignee up from the verified key id, never from a name or
+metadata. An unbound key acts as the owner. Setup and a sample prompt:
+[AGENT-QUEUE.md](AGENT-QUEUE.md).
 
 **Date inputs (EI-338).** `scheduledDate` and `deadline` — on `create_todo`,
 `update_todo`, `POST /api/v1/todos` and `PATCH /api/v1/todos/{id}` — accept

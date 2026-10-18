@@ -46,6 +46,9 @@ const todo = (overrides: Partial<Todo> = {}): Todo => ({
   duplicateOf: null,
   duplicateHeld: null,
   suggestedListId: null,
+  assigneeId: null,
+  doneCriteria: [],
+  access: null,
   ...overrides,
 });
 

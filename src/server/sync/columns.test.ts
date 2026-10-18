@@ -14,6 +14,7 @@ describe("TABLE_NAME_BY_KIND / COLUMNS_BY_KIND", () => {
       todoEvent: "todo_events",
       reminderPreset: "reminder_presets",
       attachment: "attachments",
+      assignee: "assignees",
       settings: "settings",
     });
   });

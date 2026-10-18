@@ -9,9 +9,11 @@ import { todoQuerySchema } from "@/server/v1/query";
 import { listQuerySchema } from "@/server/v1/list-query";
 import { profileSchema } from "@/server/v1/derived";
 import {
+  createAssigneeRequestSchema,
   createLabelRequestSchema,
   createListRequestSchema,
   createTabRequestSchema,
+  updateAssigneeRequestSchema,
   updateLabelRequestSchema,
   updateTabRequestSchema,
   upsertDayNoteRequestSchema,
@@ -680,7 +682,9 @@ export const v1Paths: ZodOpenApiPathsObject = Object.fromEntries(
                   content: { "application/json": { schema } },
                 },
                 "400": {
-                  description: "Malformed request — missing title, or a field fails validation.",
+                  description:
+                    "Malformed request — missing title, a field fails validation, `assigneeId` names no assignee, " +
+                    "or the assignee is an agent and `doneCriteria` is empty or `access` is null (`message` says which).",
                   content: { "application/json": { schema: errorSchema("invalid-request") } },
                 },
                 "401": unauthenticated,
@@ -717,6 +721,37 @@ export const v1Paths: ZodOpenApiPathsObject = Object.fromEntries(
                 },
                 "400": {
                   description: "Malformed request — missing name, or a field fails validation.",
+                  content: { "application/json": { schema: errorSchema("invalid-request") } },
+                },
+                "401": unauthenticated,
+                "403": insufficientScope,
+                "500": {
+                  description: "Unhandled server error.",
+                  content: { "application/json": { schema: errorSchema("internal-error") } },
+                },
+              },
+            },
+          }
+        : {}),
+      ...(kind === "assignee"
+        ? {
+            post: {
+              tags: ["v1"],
+              summary: "Create an assignee.",
+              description:
+                "Requires the `write` scope. `apiKeyId` is not accepted: the key " +
+                "binding is made in the app. A write is a push — see docs/API.md.",
+              operationId: "createV1Assignee",
+              requestBody: {
+                content: { "application/json": { schema: createAssigneeRequestSchema } },
+              },
+              responses: {
+                "201": {
+                  description: "The created assignee.",
+                  content: { "application/json": { schema } },
+                },
+                "400": {
+                  description: "Malformed request — missing name or kind, or a field fails validation.",
                   content: { "application/json": { schema: errorSchema("invalid-request") } },
                 },
                 "401": unauthenticated,
@@ -1067,6 +1102,86 @@ export const labelAndTabItemPaths: ZodOpenApiPathsObject = Object.fromEntries(
     ];
   }),
 );
+
+/** `/api/v1/assignees/{id}` — GET/PATCH/DELETE (EI-402). */
+export const assigneeItemPaths: ZodOpenApiPathsObject = {
+  "/api/v1/assignees/{id}": {
+    get: {
+      tags: ["v1"],
+      summary: "Fetch one assignee.",
+      description: "Requires the `read` scope. A soft-deleted assignee 404s.",
+      operationId: "getV1Assignee",
+      requestParams: { path: z.object({ id: z.string() }) },
+      responses: {
+        "200": {
+          description: "The assignee.",
+          content: { "application/json": { schema: V1_RESOURCES.assignees.schema } },
+        },
+        "401": unauthenticated,
+        "403": insufficientScope,
+        "404": {
+          description: "No such assignee, or it is deleted.",
+          content: { "application/json": { schema: errorSchema("not-found") } },
+        },
+      },
+    },
+    patch: {
+      tags: ["v1"],
+      summary: "Patch an existing assignee.",
+      description:
+        "Requires the `write` scope. Only the fields present in the body are touched. " +
+        "`apiKeyId` cannot be changed here.",
+      operationId: "updateV1Assignee",
+      requestParams: { path: z.object({ id: z.string() }) },
+      requestBody: {
+        content: { "application/json": { schema: updateAssigneeRequestSchema } },
+      },
+      responses: {
+        "200": {
+          description: "The updated assignee.",
+          content: { "application/json": { schema: V1_RESOURCES.assignees.schema } },
+        },
+        "400": {
+          description: "Empty or malformed patch.",
+          content: { "application/json": { schema: errorSchema("invalid-request") } },
+        },
+        "401": unauthenticated,
+        "403": insufficientScope,
+        "404": {
+          description: "No such assignee, or it is deleted.",
+          content: { "application/json": { schema: errorSchema("not-found") } },
+        },
+      },
+    },
+    delete: {
+      tags: ["v1"],
+      summary: "Delete an assignee.",
+      description:
+        "Requires the `write` scope. A soft delete: the assignee is tombstoned and its " +
+        "to-dos go back to you (`assigneeId: null`), in one atomic write. Its bound API " +
+        "key is not revoked here; it simply stops acting as anyone.",
+      operationId: "deleteV1Assignee",
+      requestParams: { path: z.object({ id: z.string() }) },
+      responses: {
+        "204": { description: "Deleted." },
+        "401": unauthenticated,
+        "403": insufficientScope,
+        "404": {
+          description: "No such assignee, or it was already deleted.",
+          content: { "application/json": { schema: errorSchema("not-found") } },
+        },
+        "409": {
+          description: "More to-dos are assigned to this assignee than one atomic write may update.",
+          content: { "application/json": { schema: errorSchema("too-many-dependents") } },
+        },
+        "500": {
+          description: "Unhandled server error.",
+          content: { "application/json": { schema: errorSchema("internal-error") } },
+        },
+      },
+    },
+  },
+};
 
 /**
  * `/api/v1/day-notes` (A16, EI-296) — one Markdown note per calendar day.

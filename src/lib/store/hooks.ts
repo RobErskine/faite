@@ -3,6 +3,7 @@
 import { useLiveQuery } from "dexie-react-hooks";
 import { useEffect, useMemo, useState } from "react";
 import type {
+  Assignee,
   Attachment,
   CivilDate,
   DayNote,
@@ -190,6 +191,15 @@ export function useArchivedTabs(): Tab[] {
 export function useLabels(): Label[] {
   const rows = useLiveQuery(() => getDb().labels.toArray(), [], [] as Label[]);
   return useMemo(() => alive(rows).sort(byPosition), [rows]);
+}
+
+/** Agents and people a to-do can be assigned to (EI-402), alphabetical. */
+export function useAssignees(): Assignee[] {
+  const rows = useLiveQuery(() => getDb().assignees.toArray(), [], [] as Assignee[]);
+  return useMemo(
+    () => alive(rows).sort((a, b) => a.name.localeCompare(b.name)),
+    [rows],
+  );
 }
 
 /** Named reminder times (EI-106). Sorted by `position` — the picker itself

@@ -35,6 +35,7 @@ export const SYNC_KINDS = [
   "todoEvent",
   "reminderPreset",
   "attachment",
+  "assignee",
   "settings",
 ] as const satisfies readonly SyncKind[];
 

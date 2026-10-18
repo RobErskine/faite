@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TodoEvent } from "./schema";
-import { buildTodoTimeline, HISTORY_STARTS_AT } from "./todo-timeline";
+import { buildTodoTimeline, HISTORY_STARTS_AT, viaLabel } from "./todo-timeline";
 import type { PlacementContext } from "./scheduling";
 
 const TODO = {
@@ -256,5 +256,40 @@ describe("buildTodoTimeline", () => {
       expect(kinds).not.toContain("rolledOver");
       expect(kinds).not.toContain("overflowed");
     });
+  });
+});
+
+describe("note events (EI-402)", () => {
+  it("surfaces the note text and the agent `via`", () => {
+    const items = buildTodoTimeline(
+      [
+        event({ kind: "created", at: "2026-09-01T10:00:00.000Z" }),
+        event({
+          kind: "note",
+          at: "2026-09-01T11:00:00.000Z",
+          payload: JSON.stringify({ v: 1, text: "Draft is up", via: "agent:a1" }),
+        }),
+      ],
+      TODO,
+    );
+    const note = items.find((i) => i.type === "event" && i.event.kind === "note");
+    expect(note).toMatchObject({ event: { text: "Draft is up", via: "agent:a1" } });
+  });
+
+  it("a malformed note payload yields empty text rather than throwing", () => {
+    const items = buildTodoTimeline(
+      [event({ kind: "note", at: "2026-09-01T11:00:00.000Z", payload: "{nope" })],
+      TODO,
+    );
+    const note = items.find((i) => i.type === "event" && i.event.kind === "note");
+    expect(note).toMatchObject({ event: { text: "" } });
+  });
+
+  it("viaLabel resolves an assignee name, falls back to Agent, and ignores other vias", () => {
+    expect(viaLabel("agent:a1", new Map([["a1", "Scout"]]))).toBe("Scout");
+    expect(viaLabel("agent:zzz", new Map())).toBe("Agent");
+    expect(viaLabel("agent:a1")).toBe("Agent");
+    expect(viaLabel("overdrive")).toBeNull();
+    expect(viaLabel(undefined)).toBeNull();
   });
 });

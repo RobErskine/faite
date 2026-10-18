@@ -192,6 +192,24 @@ export function rawTabRow(overrides: Record<string, unknown> = {}): Record<strin
   };
 }
 
+/** A raw `assignees` row, `version` included. */
+export function rawAssigneeRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    version: 5,
+    id: "assignee-1",
+    ownerId: "user-1",
+    createdAt: "2026-09-01T00:00:00.000Z",
+    updatedAt: "2026-09-01T00:00:00.000Z",
+    deletedAt: null,
+    name: "Triage bot",
+    kind: "agent",
+    color: null,
+    instructions: null,
+    apiKeyId: "key-1",
+    ...overrides,
+  };
+}
+
 /** A raw `labels` row, `version` included. */
 export function rawLabelRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {

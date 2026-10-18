@@ -427,6 +427,34 @@ export const USER_DB_MIGRATIONS: readonly UserDbMigration[] = [
       "ALTER TABLE settings ADD COLUMN smart_sort_enabled integer NOT NULL DEFAULT 0",
     ],
   },
+  {
+    id: 27,
+    name: "assignees",
+    statements: [
+      // EI-402. A whole new table, left out of `bootstrap.ts` like
+      // `reminder_presets` (migration 11). `kind` is NOT NULL in SQL here
+      // because every create carries it from the client's Zod-validated row.
+      `CREATE TABLE IF NOT EXISTS assignees (
+    id text PRIMARY KEY NOT NULL,
+    owner_id text NOT NULL,
+    created_at text NOT NULL,
+    updated_at text NOT NULL,
+    deleted_at text,
+    version integer NOT NULL,
+    name text NOT NULL,
+    kind text NOT NULL,
+    color text,
+    instructions text,
+    api_key_id text
+  )`,
+      // assignee_id and access are nullable (NULL = me / undeclared, true of
+      // every existing row). done_criteria is NOT NULL DEFAULT '[]' like
+      // label_ids: the Zod default is [] and existing rows have no criteria.
+      "ALTER TABLE todos ADD COLUMN assignee_id text",
+      "ALTER TABLE todos ADD COLUMN done_criteria text NOT NULL DEFAULT '[]'",
+      "ALTER TABLE todos ADD COLUMN access text",
+    ],
+  },
   // Add new migrations here. Never edit one above this line.
   //
   // Example — adding a nullable column (the safe, ordinary case):

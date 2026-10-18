@@ -2,6 +2,7 @@ import { getTableColumns, getTableName } from "drizzle-orm";
 import type { SQLiteTable } from "drizzle-orm/sqlite-core";
 import { describe, expect, it } from "vitest";
 import {
+  assigneeSchema,
   attachmentSchema,
   dayNoteSchema,
   labelSchema,
@@ -51,6 +52,7 @@ const ZOD_BY_KIND: Record<SyncKindName, { shape: Record<string, unknown> }> = {
   todoEvent: todoEventSchema,
   reminderPreset: reminderPresetSchema,
   attachment: attachmentSchema,
+  assignee: assigneeSchema,
   settings: settingsSchema,
 };
 
@@ -65,6 +67,7 @@ const TABLES_BY_KIND: Record<SyncKindName, SQLiteTable> = {
   todoEvent: userSchema.todoEvents,
   reminderPreset: userSchema.reminderPresets,
   attachment: userSchema.attachments,
+  assignee: userSchema.assignees,
   settings: userSchema.settings,
 };
 
@@ -80,6 +83,7 @@ const ALL_TABLES: SQLiteTable[] = [
   userSchema.todoEvents,
   userSchema.reminderPresets,
   userSchema.attachments,
+  userSchema.assignees,
   userSchema.settings,
   userSchema.fieldClocks,
   userSchema.syncMeta,
@@ -109,6 +113,7 @@ const KNOWN_DIVERGENCES: Record<string, { drizzleOnly?: string[]; zodOnly?: stri
   // sweep's own bookkeeping (EI-245), never sent to a client. See
   // `SERVER_ONLY_FIELDS` in `lib/sync/wire.ts`.
   attachment: { drizzleOnly: ["version", "sweptAt"] },
+  assignee: { drizzleOnly: ["version"] },
   settings: { drizzleOnly: ["version"] },
 };
 
