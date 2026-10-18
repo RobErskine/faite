@@ -43,6 +43,7 @@ import {
   useBootstrap,
   useDayNotes,
   useDuplicateTodos,
+  useAssignees,
   useLabels,
   useLists,
   usePlacementContext,
@@ -56,6 +57,7 @@ import {
 } from "@/lib/store/hooks";
 import { DEFAULT_TAB_ID } from "@/lib/store/repositories";
 import { isHeldDuplicate } from "@/lib/duplicates";
+import { ASSIGNEE_FILTER_ME, useAssigneeFilter } from "@/lib/assignee-filter";
 
 /** `settingsSchema.workdays`' default, for reads that land before Dexie does. */
 const DEFAULT_WORKDAYS = [1, 2, 3, 4, 5];
@@ -135,6 +137,8 @@ export function useBoardData(params: UseBoardDataParams) {
   const tabs = useTabs();
   const archivedTabs = useArchivedTabs();
   const labels = useLabels();
+  const assignees = useAssignees();
+  const rawAssigneeFilter = useAssigneeFilter();
   const places = usePlaces();
   const reminderPresets = useReminderPresets();
   const settings = useSettings();
@@ -451,6 +455,13 @@ export function useBoardData(params: UseBoardDataParams) {
   );
 
   const visibleStatuses = settings?.visibleStatuses;
+  // A filter naming an assignee that no longer exists (deleted, or left over
+  // from another account) must not hide the whole board with no visible cause.
+  const assigneeFilter =
+    rawAssigneeFilter &&
+    (rawAssigneeFilter === ASSIGNEE_FILTER_ME || assignees.some((a) => a.id === rawAssigneeFilter))
+      ? rawAssigneeFilter
+      : null;
   const board = useMemo(
     () =>
       ctx
@@ -461,6 +472,7 @@ export function useBoardData(params: UseBoardDataParams) {
             hiddenLists,
             {
               visibleStatuses,
+              assigneeFilter,
               forceOverflow: recurrenceExpansion?.forceOverflow,
               tabsById,
               // The zone `ctx.today` came from, so a settled card's finish
@@ -476,6 +488,7 @@ export function useBoardData(params: UseBoardDataParams) {
       ctx,
       hiddenLists,
       visibleStatuses,
+      assigneeFilter,
       tabsById,
       settings?.timezone,
     ],
@@ -962,6 +975,8 @@ export function useBoardData(params: UseBoardDataParams) {
     tabs,
     archivedTabs,
     labels,
+    assignees,
+    assigneeFilter,
     places,
     reminderPresets,
     settings,

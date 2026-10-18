@@ -99,7 +99,7 @@ export function scopeGranted(permissions: Record<string, string[]> | null | unde
 }
 
 export type ScopeResult =
-  | { ok: true; userId: string }
+  | { ok: true; userId: string; keyId: string | null }
   | { ok: false; status: 401; error: "unauthenticated" }
   | { ok: false; status: 403; error: "insufficient-scope" };
 
@@ -138,7 +138,7 @@ export async function authorizeScope(auth: Auth, request: Request, scope: ApiSco
   if (!bearer) {
     const session = await getSessionSafe(auth, request);
     return session
-      ? { ok: true, userId: session.user.id }
+      ? { ok: true, userId: session.user.id, keyId: null }
       : { ok: false, status: 401, error: "unauthenticated" };
   }
 
@@ -147,5 +147,8 @@ export async function authorizeScope(auth: Auth, request: Request, scope: ApiSco
 
   if (!scopeGranted(result.key.permissions, scope)) return { ok: false, status: 403, error: "insufficient-scope" };
 
-  return { ok: true, userId: result.key.referenceId };
+  // `keyId` is the one trustworthy handle on WHICH key this was (EI-402): the
+  // server resolves an agent actor from it (`assignee.apiKeyId`). A cookie
+  // session has no key, so it is null — which reads as "me".
+  return { ok: true, userId: result.key.referenceId, keyId: result.key.id };
 }

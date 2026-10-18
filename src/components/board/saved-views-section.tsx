@@ -14,6 +14,7 @@ import {
 import { LOCAL_OWNER_ID } from "@/lib/store/owner";
 import { mutateSettings } from "@/lib/store/mutate";
 import { applySavedView, captureSavedView, useSavedViews } from "@/lib/saved-views";
+import { setAssigneeFilter, useAssigneeFilter } from "@/lib/assignee-filter";
 import type { Settings } from "@/lib/schema";
 
 interface SavedViewsSectionProps {
@@ -40,11 +41,12 @@ interface SavedViewsSectionProps {
 export function SavedViewsSection({ settings }: SavedViewsSectionProps) {
   const [views, setViews] = useSavedViews();
   const [draftName, setDraftName] = useState("");
+  const assigneeFilter = useAssigneeFilter();
 
   const handleSave = () => {
     const name = draftName.trim();
     if (!name || !settings) return;
-    setViews((prev) => [...prev, captureSavedView(name, settings)]);
+    setViews((prev) => [...prev, captureSavedView(name, settings, assigneeFilter)]);
     setDraftName("");
   };
 
@@ -70,9 +72,11 @@ export function SavedViewsSection({ settings }: SavedViewsSectionProps) {
             <div key={view.id} className="flex items-center gap-1">
               <DropdownMenuItem
                 className="flex-1"
-                onClick={() =>
-                  void mutateSettings(LOCAL_OWNER_ID, applySavedView(view))
-                }
+                onClick={() => {
+                  void mutateSettings(LOCAL_OWNER_ID, applySavedView(view));
+                  // Absent on views saved before the filter existed: everyone.
+                  setAssigneeFilter(view.assigneeFilter ?? null);
+                }}
               >
                 <span className="truncate">{view.name}</span>
               </DropdownMenuItem>

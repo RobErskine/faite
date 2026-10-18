@@ -1,6 +1,6 @@
 import { uuidv7 } from "uuidv7";
 import { positionAtEnd } from "@/lib/ordering";
-import { todoSchema, type CivilDate, type Priority, type Todo } from "@/lib/schema";
+import { todoSchema, type AccessItem, type CivilDate, type DoneCriterion, type Priority, type Todo } from "@/lib/schema";
 import type { PushEntry } from "@/lib/sync/wire";
 import type { ServiceContext } from "./context";
 
@@ -36,6 +36,12 @@ export interface CreateTodoInput {
    * A5, EI-230: was silently dropped here (hard-coded `null` below) — the
    * parity gap `docs/API.md`/the milestone doc's §6 names. */
   parentId?: string | null;
+  /** EI-402. Who the to-do is for; null/absent is the account owner. */
+  assigneeId?: string | null;
+  /** EI-402. The Done checklist. */
+  doneCriteria?: DoneCriterion[];
+  /** EI-402. null/absent is "not declared"; `[]` is "needs nothing". */
+  access?: AccessItem[] | null;
 }
 
 /**
@@ -106,6 +112,14 @@ interface DeletedPayload {
   title: string;
 }
 
+/** Mirrors `todo-events.ts`'s `NotePayload`/`NOTE_TEXT_MAX_LENGTH` (EI-402) —
+ * kept local for the reason above; keep the two in step. */
+export const NOTE_TEXT_MAX_LENGTH = 4000;
+interface NotePayload {
+  v: 1;
+  text: string;
+}
+
 /** Mirrors `todo-events.ts`'s `StatusPayload`, minus `via`: the list a
  * to-do was in when it was settled (EI-323). */
 interface StatusPayload {
@@ -162,7 +176,7 @@ function buildTodoEventEntry(
   ctx: ServiceContext,
   todoId: string,
   kind: string,
-  payload: EditedPayload | DeletedPayload | ScheduledPayload | StatusPayload | null,
+  payload: EditedPayload | DeletedPayload | ScheduledPayload | StatusPayload | NotePayload | null,
   at: string,
 ): PushEntry {
   const timestamp = new Date().toISOString();
@@ -185,6 +199,16 @@ function buildTodoEventEntry(
     patch: event,
     hlc: ctx.nextHlc(),
   };
+}
+
+/**
+ * Builds the single `note` `todoEvent` for a progress note (EI-402). The text
+ * is trimmed and capped at `NOTE_TEXT_MAX_LENGTH`; `via` is NOT set here —
+ * the server's `stampActor` adds it from the verified key.
+ */
+export function buildAddNoteEntry(ctx: ServiceContext, todoId: string, text: string): PushEntry[] {
+  const note: NotePayload = { v: 1, text: text.trim().slice(0, NOTE_TEXT_MAX_LENGTH) };
+  return [buildTodoEventEntry(ctx, todoId, "note", note, new Date().toISOString())];
 }
 
 /**
@@ -229,6 +253,9 @@ export function buildCreateTodoEntry(ctx: ServiceContext, input: CreateTodoInput
     duplicateOf: null,
     duplicateHeld: null,
     suggestedListId: null,
+    assigneeId: input.assigneeId ?? null,
+    doneCriteria: input.doneCriteria ?? [],
+    access: input.access ?? null,
   };
 
   // The one safety net a hand-mirrored builder actually needs: fail loudly

@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { listSchema, tabSchema } from "@/lib/schema";
-import { parseCreateTodoRequest, parsePatchRequest, parseUpdateTodoRequest } from "./validate";
+import {
+  parseCreateAssigneeRequest,
+  parseCreateTodoRequest,
+  parsePatchRequest,
+  parseUpdateAssigneeRequest,
+  parseUpdateTodoRequest,
+} from "./validate";
 
 describe("parseCreateTodoRequest", () => {
   it("accepts a minimal request — just a title, every optional field defaulted", () => {
@@ -22,6 +28,9 @@ describe("parseCreateTodoRequest", () => {
       reminderTime: null,
       source: null,
       parentId: null,
+      assigneeId: null,
+      doneCriteria: [],
+      access: null,
     });
   });
 
@@ -172,5 +181,44 @@ describe("parsePatchRequest generalizes beyond todos", () => {
 
   it("still rejects a well-formed key carrying the wrong type", () => {
     expect(parsePatchRequest(listSchema, LIST_FIELDS, { name: 42 })).toBeNull();
+  });
+});
+
+describe("assignee fields (EI-402)", () => {
+  it("accepts assigneeId, doneCriteria and access on create", () => {
+    const parsed = parseCreateTodoRequest({
+      title: "Triage",
+      assigneeId: "a1",
+      doneCriteria: [{ id: "c1", text: "PR open" }],
+      access: [],
+    });
+    expect(parsed).toMatchObject({
+      assigneeId: "a1",
+      doneCriteria: [{ id: "c1", text: "PR open", done: false }],
+      access: [],
+    });
+  });
+
+  it("a PATCH naming only access does not expand to assigneeId or doneCriteria", () => {
+    expect(parseUpdateTodoRequest({ access: [{ name: "repo" }] })).toEqual({
+      access: [{ name: "repo", status: "needed" }],
+    });
+  });
+
+  it("rejects a malformed criterion", () => {
+    expect(parseUpdateTodoRequest({ doneCriteria: [{ text: "no id" }] })).toBeNull();
+  });
+});
+
+describe("assignee requests", () => {
+  it("requires name and kind, and never accepts apiKeyId", () => {
+    expect(parseCreateAssigneeRequest({ name: "Bot" })).toBeNull();
+    const parsed = parseCreateAssigneeRequest({ name: "Bot", kind: "agent", apiKeyId: "k1" });
+    expect(parsed).toEqual({ name: "Bot", kind: "agent", color: null, instructions: null });
+  });
+
+  it("a PATCH only carries the keys present, and drops apiKeyId", () => {
+    expect(parseUpdateAssigneeRequest({ color: "blue", apiKeyId: "k1" })).toEqual({ color: "blue" });
+    expect(parseUpdateAssigneeRequest({ apiKeyId: "k1" })).toBeNull();
   });
 });

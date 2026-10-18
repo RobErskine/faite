@@ -1,4 +1,4 @@
-import { attachmentSchema, labelSchema, listSchema, tabSchema, todoSchema } from "@/lib/schema";
+import { assigneeSchema, attachmentSchema, labelSchema, listSchema, tabSchema, todoSchema } from "@/lib/schema";
 
 /**
  * The `/api/v1` resource map: which URL segment maps to which sync kind, the
@@ -40,6 +40,13 @@ export const V1_RESOURCES = {
   tabs: {
     kind: "tab",
     schema: tabSchema,
+    methods: ["GET", "POST", "PATCH", "DELETE"],
+  },
+  /** Agents and people a to-do can be assigned to (EI-402). `apiKeyId` is
+   * returned but never writable here. */
+  assignees: {
+    kind: "assignee",
+    schema: assigneeSchema,
     methods: ["GET", "POST", "PATCH", "DELETE"],
   },
   /**

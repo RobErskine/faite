@@ -93,6 +93,12 @@ export const todos = sqliteTable("todos", {
   duplicateHeld: integer("duplicate_held", { mode: "boolean" }),
   /** EI-367 — see `todoSchema.suggestedListId`. */
   suggestedListId: text("suggested_list_id"),
+  /** EI-402 — see `todoSchema.assigneeId`. */
+  assigneeId: text("assignee_id"),
+  /** JSON-encoded array of Done criteria — see `todoSchema.doneCriteria`. */
+  doneCriteria: text("done_criteria").notNull().default("[]"),
+  /** JSON-encoded array of access items, NULL = undeclared — see `todoSchema.access`. */
+  access: text("access"),
 });
 
 export const tabs = sqliteTable("tabs", {
@@ -194,6 +200,16 @@ export const reminderPresets = sqliteTable("reminder_presets", {
   name: text("name").notNull(),
   time: text("time").notNull(),
   position: text("position").notNull(),
+});
+
+/** Agents and people a to-do can be assigned to — see `assigneeSchema` in `lib/schema.ts`. */
+export const assignees = sqliteTable("assignees", {
+  ...syncableColumns,
+  name: text("name").notNull(),
+  kind: text("kind"),
+  color: text("color"),
+  instructions: text("instructions"),
+  apiKeyId: text("api_key_id"),
 });
 
 /** Singleton row, keyed by `ownerId` — one settings row per DO (one owner per DO). */

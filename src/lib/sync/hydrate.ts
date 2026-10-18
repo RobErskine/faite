@@ -1,5 +1,6 @@
 import type { ZodType } from "zod";
 import {
+  assigneeSchema,
   attachmentSchema,
   dayNoteSchema,
   labelSchema,
@@ -40,6 +41,7 @@ const SCHEMA_BY_KIND: Record<SyncKind, ZodType> = {
   todoEvent: todoEventSchema,
   reminderPreset: reminderPresetSchema,
   attachment: attachmentSchema,
+  assignee: assigneeSchema,
   settings: settingsSchema,
 };
 

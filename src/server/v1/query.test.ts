@@ -31,6 +31,9 @@ function todo(overrides: Partial<Todo>): Todo {
     duplicateOf: null,
     duplicateHeld: null,
     suggestedListId: null,
+    assigneeId: null,
+    doneCriteria: [],
+    access: null,
     ...overrides,
   };
 }
@@ -135,5 +138,21 @@ describe("q and fields (EI-340)", () => {
     ];
     expect(filterTodos(todos, { q: "sofa" }).map((t) => t.id)).toEqual(["3", "1"]);
     expect(filterTodos(todos, { q: "sofa", offset: 1 }).map((t) => t.id)).toEqual(["1"]);
+  });
+});
+
+describe("assigneeId filter (EI-402)", () => {
+  const todos = [
+    todo({ id: "mine" }),
+    todo({ id: "bot", assigneeId: "a1" }),
+    todo({ id: "other", assigneeId: "a2" }),
+  ];
+
+  it("matches one assignee", () => {
+    expect(filterTodos(todos, query("assigneeId=a1")!).map((t) => t.id)).toEqual(["bot"]);
+  });
+
+  it("`none` is the unassigned ones", () => {
+    expect(filterTodos(todos, query("assigneeId=none")!).map((t) => t.id)).toEqual(["mine"]);
   });
 });

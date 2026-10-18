@@ -3,6 +3,7 @@ import type { SQLiteTable } from "drizzle-orm/sqlite-core";
 import type { SyncKind } from "@/lib/sync/wire";
 import { SERVER_ONLY_FIELDS, SETTINGS_SYNCED_FIELDS } from "@/lib/sync/wire";
 import {
+  assignees,
   attachments,
   dayNotes,
   labels,
@@ -42,6 +43,7 @@ const TABLES: Record<SyncKind, SQLiteTable> = {
   todoEvent: todoEvents,
   reminderPreset: reminderPresets,
   attachment: attachments,
+  assignee: assignees,
   settings,
 };
 
@@ -73,6 +75,8 @@ export interface ColumnMeta {
  */
 const JSON_ENCODED_FIELDS = new Set([
   "labelIds",
+  "doneCriteria",
+  "access",
   "workdays",
   "visibleStatuses",
   "visibleEventKinds",

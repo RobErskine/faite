@@ -53,6 +53,12 @@ export interface SavedView {
   visibleStatuses: TodoStatus[];
   visibleDays: number;
   showWeekends: boolean;
+  /**
+   * The assignee filter at capture time (EI-402; `lib/assignee-filter.ts`).
+   * Optional so views saved before it existed still read and apply — absent
+   * means everyone.
+   */
+  assigneeFilter?: string | null;
 }
 
 function safeGet(): string | null {
@@ -119,7 +125,11 @@ function writeSavedViews(views: SavedView[]): void {
 }
 
 /** Builds a new saved view from the board's current settings. Does not persist it. */
-export function captureSavedView(name: string, settings: Settings): SavedView {
+export function captureSavedView(
+  name: string,
+  settings: Settings,
+  assigneeFilter: string | null = null,
+): SavedView {
   return {
     id: uuidv7(),
     name,
@@ -128,6 +138,7 @@ export function captureSavedView(name: string, settings: Settings): SavedView {
     visibleStatuses: settings.visibleStatuses,
     visibleDays: settings.visibleDays,
     showWeekends: settings.showWeekends,
+    assigneeFilter,
   };
 }
 

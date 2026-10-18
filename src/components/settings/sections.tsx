@@ -1,5 +1,6 @@
 import {
   Bell,
+  Bot,
   CornerDownRight,
   Info,
   KeyRound,
@@ -20,6 +21,7 @@ import { DesignSection } from "./design-section";
 import { LoopSection } from "./loop-section";
 import { RemindersSection } from "./reminders-section";
 import { PlacesSection } from "./places-section";
+import { AssigneesSection } from "./assignees-section";
 import { EmailSection } from "./email-section";
 import { SmartSortingSection } from "./smart-sorting-section";
 import { DeveloperSection } from "./developer-section";
@@ -71,6 +73,13 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     description: "Saved locations you can attach to a to-do.",
     icon: MapPin,
     Component: PlacesSection,
+  },
+  {
+    id: "assignees",
+    label: "Assignees",
+    description: "Agents and people you can assign to-dos to, and an API key for each agent.",
+    icon: Bot,
+    Component: AssigneesSection,
   },
   {
     id: "email",

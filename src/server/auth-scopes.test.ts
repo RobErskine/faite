@@ -1,5 +1,12 @@
-import { describe, expect, it } from "vitest";
-import { DESKTOP_KEY_NAME, DESKTOP_KEY_PERMISSIONS, scopeGranted } from "./auth-scopes";
+import { describe, expect, it, vi } from "vitest";
+import type { Auth } from "./auth";
+import { DESKTOP_KEY_NAME, DESKTOP_KEY_PERMISSIONS, authorizeScope, scopeGranted } from "./auth-scopes";
+
+vi.mock("./auth", () => ({
+  getSessionSafe: vi.fn(async (_auth: unknown, request: Request) =>
+    request.headers.get("x-test-session") ? { user: { id: "session-user" } } : null,
+  ),
+}));
 
 /**
  * `scopeGranted` is the one function standing between a narrow,
@@ -86,5 +93,45 @@ describe("scopeGranted ignores name entirely (EI-261 regression)", () => {
     for (const scope of ["read", "write", "sync", "places"] as const) {
       expect(scopeGranted(DESKTOP_KEY_PERMISSIONS, scope)).toBe(true);
     }
+  });
+});
+
+/** EI-402: `authorizeScope` hands back the verified key's id — the only
+ * trustworthy handle on which agent is calling. */
+describe("authorizeScope keyId", () => {
+  function fakeAuth(key: Record<string, unknown> | null): Auth {
+    return {
+      api: { verifyApiKey: vi.fn(async () => ({ valid: key !== null, key })) },
+    } as unknown as Auth;
+  }
+  const bearer = (token = "k") => new Request("https://x.test/", { headers: { authorization: `Bearer ${token}` } });
+
+  it("returns the verified key's id, not its name or metadata", async () => {
+    const auth = fakeAuth({
+      id: "key-1",
+      name: "key-spoof",
+      metadata: { keyId: "key-spoof" },
+      referenceId: "user-1",
+      permissions: { api: ["read"] },
+    });
+    expect(await authorizeScope(auth, bearer(), "read")).toEqual({ ok: true, userId: "user-1", keyId: "key-1" });
+  });
+
+  it("a cookie session has no key: keyId is null", async () => {
+    const request = new Request("https://x.test/", { headers: { "x-test-session": "1" } });
+    expect(await authorizeScope(fakeAuth(null), request, "read")).toEqual({
+      ok: true,
+      userId: "session-user",
+      keyId: null,
+    });
+  });
+
+  it("a valid key without the scope is 403 and carries no keyId", async () => {
+    const auth = fakeAuth({ id: "key-1", referenceId: "user-1", permissions: { api: ["read"] } });
+    expect(await authorizeScope(auth, bearer(), "write")).toEqual({
+      ok: false,
+      status: 403,
+      error: "insufficient-scope",
+    });
   });
 });

@@ -47,6 +47,7 @@ const EXPECTED_INTERNAL_PATHS = [
   "/api/v1/lists",
   "/api/v1/labels",
   "/api/v1/tabs",
+  "/api/v1/assignees",
   "/api/v1/attachments",
 ];
 
@@ -105,6 +106,8 @@ describe("buildPublicDocument", () => {
   it("documents exactly the public surface, and nothing else", () => {
     expect(Object.keys(buildPublicDocument().paths ?? {}).sort()).toEqual(
       [
+        "/api/v1/assignees",
+        "/api/v1/assignees/{id}",
         "/api/v1/attachments",
         "/api/v1/backlog",
         "/api/v1/day-notes",
@@ -126,7 +129,7 @@ describe("buildPublicDocument", () => {
 
   it("every entity collection is writable; attachments deliberately are not", () => {
     const paths = buildPublicDocument().paths ?? {};
-    for (const path of ["/api/v1/todos", "/api/v1/lists", "/api/v1/labels", "/api/v1/tabs"]) {
+    for (const path of ["/api/v1/todos", "/api/v1/lists", "/api/v1/labels", "/api/v1/tabs", "/api/v1/assignees"]) {
       expect(paths[path]).toHaveProperty("post");
     }
     // EI-242: a write here would have to carry file bytes, and this API is
@@ -158,7 +161,7 @@ describe("buildPublicDocument", () => {
 
   it("every item route carries the full GET/PATCH/DELETE trio", () => {
     const paths = buildPublicDocument().paths ?? {};
-    for (const kind of ["todos", "lists", "labels", "tabs"]) {
+    for (const kind of ["todos", "lists", "labels", "tabs", "assignees"]) {
       expect(Object.keys(paths[`/api/v1/${kind}/{id}`]).sort()).toEqual([
         "delete",
         "get",

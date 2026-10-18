@@ -33,17 +33,25 @@ import {
 /** Every tool docs/API.md documents. A tool added or removed without the
  * docs changing fails here. */
 const DOCUMENTED_TOOLS = [
+  "add_criterion",
+  "add_note",
+  "append_day_note",
   "complete_todo",
   "create_todo",
   "get_backlog",
+  "get_day_note",
+  "get_my_work",
   "get_overflow",
   "get_profile",
+  "list_assignees",
   "list_attachments",
   "list_labels",
   "list_lists",
   "list_tabs",
   "list_todos",
   "search_todos",
+  "update_access",
+  "update_criterion",
   "update_todo",
 ];
 

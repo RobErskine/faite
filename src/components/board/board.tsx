@@ -55,6 +55,7 @@ import { setDayNote, updateTodo } from "@/lib/store/repositories";
 import { boardDragAnnouncements } from "@/lib/dnd-announcements";
 import { useAnyMenuOpen } from "@/lib/menu-open-store";
 import { ContextMenusEnabled } from "@/components/ui/context-menu";
+import { AssigneesProvider } from "@/components/board/assignees-context";
 
 /**
  * Pass A/B/C of `board.tsx`'s extraction (docs/ARCHITECTURE.md, mobile plan
@@ -366,6 +367,7 @@ export function Board() {
       phone's counterpart.
     */
     <ContextMenusEnabled value={!coarse}>
+    <AssigneesProvider assignees={data.assignees}>
     <DndContext
       sensors={actions.sensors}
       collisionDetection={actions.collisionDetection}
@@ -490,6 +492,7 @@ export function Board() {
         todos={data.todos}
         tabs={data.tabs}
         labels={data.labels}
+        assignees={data.assignees}
         places={data.places}
         reminderPresets={data.reminderPresets}
         events={data.todoEvents}
@@ -712,6 +715,7 @@ export function Board() {
       onVerdict={actions.handleOverdriveVerdict}
       autoConfirmMs={data.settings?.overdriveAutoConfirmMs ?? 0}
     />
+    </AssigneesProvider>
     </ContextMenusEnabled>
   );
 }

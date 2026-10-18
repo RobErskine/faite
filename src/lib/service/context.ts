@@ -46,4 +46,14 @@ export interface ServiceContext {
    * scaffold doesn't quietly pick an answer nobody signed off on.
    */
   nextHlc: () => string;
+
+  /**
+   * The assignee (an agent) this call acts as, resolved SERVER-SIDE from the
+   * verified API key id (EI-402) — never read from a request body, and never
+   * from a key's name or metadata, which are spoofable. Null or absent means
+   * the user themselves: a cookie session, or a key bound to no assignee.
+   * `server/service/todos.ts` stamps `via: agent:<id>` on events and
+   * `addedBy` on new Done criteria from it, overwriting client-sent values.
+   */
+  actorAssigneeId?: string | null;
 }

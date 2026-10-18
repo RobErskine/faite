@@ -25,6 +25,7 @@ reasoning — two copies drift, and the stale one always wins the argument.
 | [SYNC.md](SYNC.md) | Push/pull, the Durable Object, the WebSocket. What is settled, and the limits deliberately accepted. |
 | [AUTH.md](AUTH.md) | Sign-in, sessions, account switching — where each piece lives and how to operate it. Rationale is in ARCHITECTURE §2.12–2.13. |
 | [API.md](API.md) | The public API and MCP adapter: token model, scopes, the two OpenAPI documents, `/api/v1` routes. |
+| [AGENT-QUEUE.md](AGENT-QUEUE.md) | Assigning to-dos to an agent: the setup recipe, the Done and Access rule, the MCP tools it works the queue with, and a sample cron prompt (EI-402). |
 | [ATTACHMENTS.md](ATTACHMENTS.md) | Files on a to-do over R2 — the JSON/bytes two-plane split, the ordering invariant, and why the limits are not higher. |
 | [EMAIL-INGEST.md](EMAIL-INGEST.md) | Forwarding mail into Backlog: Email Routing → `worker.ts email()` → DO push, with the trust and privacy invariants. |
 | [DUPLICATES.md](DUPLICATES.md) | Duplicate to-do detection on the user's own Jev key: the one hook in `push()`, the held flag, the encrypted key. |

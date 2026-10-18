@@ -871,9 +871,25 @@ export function placeSettled(
   return { half: "calendar", day: todo.scheduledDate };
 }
 
+/** `"me"` matches a null assignee, an id matches that assignee, null matches all. */
+export function matchesAssigneeFilter(
+  todo: Pick<Todo, "assigneeId">,
+  filter: string | null | undefined,
+): boolean {
+  if (!filter) return true;
+  if (filter === "me") return !todo.assigneeId;
+  return todo.assigneeId === filter;
+}
+
 export interface BuildBoardOptions {
   /** Which statuses render. Defaults to unfinished work only. */
   visibleStatuses?: readonly TodoStatus[];
+  /**
+   * Narrow the board to one assignee (EI-402): `"me"` is the to-dos with no
+   * assignee, any other string an `Assignee` id, null/omitted everyone. Applied
+   * beside `visibleStatuses`, before placement.
+   */
+  assigneeFilter?: string | null;
   /**
    * Rendered directly in Overflow, bypassing `deriveColumn`/`placeSettled`
    * entirely — used for a recurring occurrence that must overflow the moment
@@ -933,13 +949,16 @@ export function buildBoard(
   hiddenLists: readonly List[] = [],
   {
     visibleStatuses = DEFAULT_VISIBLE_STATUSES,
+    assigneeFilter = null,
     forceOverflow = [],
     tabsById = new Map(),
     timezone = "UTC",
   }: BuildBoardOptions = {},
 ): BoardModel {
   const shown = new Set(visibleStatuses);
-  const visible = todos.filter((t) => shown.has(t.status));
+  const visible = todos.filter(
+    (t) => shown.has(t.status) && matchesAssigneeFilter(t, assigneeFilter),
+  );
   const hiddenListIds = new Set(hiddenLists.map((l) => l.id));
 
   const days: DayColumn[] = ctx.visibleWindow.map((day) => ({
@@ -1008,6 +1027,7 @@ export function buildBoard(
   }
 
   for (const todo of forceOverflow) {
+    if (!matchesAssigneeFilter(todo, assigneeFilter)) continue;
     if (!shown.has(todo.status)) continue;
     overflow.todos.push(todo);
   }

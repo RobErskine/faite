@@ -32,6 +32,7 @@ export interface FakeStub {
   childTodoIds: ReturnType<typeof vi.fn>;
   todoIdsInList: ReturnType<typeof vi.fn>;
   backlogListId: ReturnType<typeof vi.fn>;
+  isApiKeyOrphaned: ReturnType<typeof vi.fn>;
   listIdsInTab: ReturnType<typeof vi.fn>;
   defaultTabId: ReturnType<typeof vi.fn>;
   todosWithLabel: ReturnType<typeof vi.fn>;
@@ -68,6 +69,7 @@ export function makeStub(overrides: Partial<FakeStub> = {}): FakeStub {
     childTodoIds: vi.fn().mockResolvedValue([]),
     todoIdsInList: vi.fn().mockResolvedValue([]),
     backlogListId: vi.fn().mockResolvedValue("backlog-1"),
+    isApiKeyOrphaned: vi.fn().mockResolvedValue(false),
     listIdsInTab: vi.fn().mockResolvedValue([]),
     defaultTabId: vi.fn().mockResolvedValue("tab-1"),
     todosWithLabel: vi.fn().mockResolvedValue([]),
@@ -188,6 +190,24 @@ export function rawTabRow(overrides: Record<string, unknown> = {}): Record<strin
     color: null,
     emoji: null,
     iconUrl: null,
+    ...overrides,
+  };
+}
+
+/** A raw `assignees` row, `version` included. */
+export function rawAssigneeRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    version: 5,
+    id: "assignee-1",
+    ownerId: "user-1",
+    createdAt: "2026-09-01T00:00:00.000Z",
+    updatedAt: "2026-09-01T00:00:00.000Z",
+    deletedAt: null,
+    name: "Triage bot",
+    kind: "agent",
+    color: null,
+    instructions: null,
+    apiKeyId: "key-1",
     ...overrides,
   };
 }

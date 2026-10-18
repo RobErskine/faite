@@ -69,6 +69,33 @@ describe("captureSavedView", () => {
   });
 });
 
+describe("assignee filter in saved views (EI-402)", () => {
+  it("captures the assignee filter, defaulting to everyone", () => {
+    expect(captureSavedView("A", settings()).assigneeFilter).toBeNull();
+    expect(captureSavedView("A", settings(), "a1").assigneeFilter).toBe("a1");
+  });
+
+  it("still reads a view saved before the field existed", () => {
+    localStorage.setItem(
+      "faite:saved-views",
+      JSON.stringify([
+        {
+          id: "v1",
+          name: "Old",
+          createdAt: "2026-08-10T00:00:00.000Z",
+          activeTabId: null,
+          visibleStatuses: ["open"],
+          visibleDays: 7,
+          showWeekends: true,
+        },
+      ]),
+    );
+    const [view] = readSavedViews();
+    expect(view.name).toBe("Old");
+    expect(view.assigneeFilter).toBeUndefined();
+  });
+});
+
 describe("applySavedView", () => {
   it("produces exactly the four-field settings patch, nothing else", () => {
     const view: SavedView = {

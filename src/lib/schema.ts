@@ -33,6 +33,30 @@ export const idSchema = z.string().min(1);
 export type Id = z.infer<typeof idSchema>;
 
 /**
+ * One line of a to-do's Done checklist (EI-402): a condition that must hold
+ * for the work to count as finished. `addedBy` is the assignee id of whoever
+ * wrote the line, null/absent for the user themselves.
+ */
+export const doneCriterionSchema = z.object({
+  id: idSchema,
+  text: z.string(),
+  done: z.boolean().default(false),
+  addedBy: idSchema.nullable().optional(),
+});
+export type DoneCriterion = z.infer<typeof doneCriterionSchema>;
+
+/**
+ * One thing an agent needs access to before it can do a to-do (EI-402).
+ * `status` is free text on purpose (e.g. "needed", "granted") until the UI
+ * settles a vocabulary; nothing branches on it yet.
+ */
+export const accessItemSchema = z.object({
+  name: z.string().min(1),
+  status: z.string().default("needed"),
+});
+export type AccessItem = z.infer<typeof accessItemSchema>;
+
+/**
  * `dropped` is "won't do" — deliberately distinct from `done`. Collapsing them
  * loses the difference between finishing something and abandoning it, which
  * matters for history and stats.
@@ -372,8 +396,54 @@ export const todoSchema = z.object({
    * pointing at a list that has since gone simply stops being shown.
    */
   suggestedListId: idSchema.nullable().default(null),
+
+  /**
+   * Who this to-do is for (EI-402): an `Assignee` id. Null means "me" — the
+   * account owner — which is also what every row written before this field
+   * existed reads as. Deleting an assignee rehomes its to-dos to null.
+   */
+  assigneeId: idSchema.nullable().default(null),
+
+  /**
+   * The Done checklist: what must be true for this to count as finished.
+   * Required (at least one line) only when the assignee is an agent — see
+   * `validateAgentSpec` in `lib/assignee-rules.ts`. Kept when a to-do is
+   * unassigned or reassigned.
+   */
+  doneCriteria: z.array(doneCriterionSchema).default([]),
+
+  /**
+   * What the assignee needs access to. Null means "not declared yet"; an
+   * empty array means "declared: needs nothing" — the two are different and
+   * only the second satisfies an agent's spec.
+   */
+  access: z.array(accessItemSchema).nullable().default(null),
 });
 export type Todo = z.infer<typeof todoSchema>;
+
+/** Who can be assigned a to-do (EI-402). */
+export const assigneeKindSchema = z.enum(["agent", "person"]);
+export type AssigneeKind = z.infer<typeof assigneeKindSchema>;
+
+/**
+ * An agent or a person a to-do can be assigned to. Null `Todo.assigneeId`
+ * is the account owner, so the owner has no row here.
+ */
+export const assigneeSchema = z.object({
+  ...syncableFields,
+  name: z.string().min(1),
+  kind: assigneeKindSchema,
+  color: z.string().nullable().default(null),
+  /** Standing instructions for an agent; free text. */
+  instructions: z.string().nullable().default(null),
+  /**
+   * The server-side API key bound to this agent (one key per agent). A
+   * reference only — the secret never syncs. Null for people and for agents
+   * not yet bound.
+   */
+  apiKeyId: z.string().nullable().default(null),
+});
+export type Assignee = z.infer<typeof assigneeSchema>;
 
 /**
  * A day's notes — a journal entry, or loose things worth remembering.
@@ -880,6 +950,7 @@ export const entityKindSchema = z.enum([
   "todoEvent",
   "reminderPreset",
   "attachment",
+  "assignee",
   "settings",
 ]);
 export type EntityKind = z.infer<typeof entityKindSchema>;

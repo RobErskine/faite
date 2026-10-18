@@ -43,6 +43,9 @@ export const todoQuerySchema = z.object({
   scheduledDate: civilDateSchema.optional(),
   /** Matches a todo carrying this label among its `labelIds`. */
   labelId: idSchema.optional(),
+  /** EI-402. A to-do assigned to this assignee; `none` is the unassigned
+   * ones (the account owner's own). */
+  assigneeId: idSchema.optional().describe("Assignee id, or `none` for unassigned (your own) to-dos."),
   /** ISO-8601 instant. Todos with `updatedAt` strictly greater are returned —
    * the cheap "what changed since I last looked" a polling client wants.
    * Compared as strings, which is correct for ISO-8601 UTC and is the same
@@ -132,6 +135,10 @@ export function filterTodos(todos: Todo[], query: TodoQuery): Todo[] {
       return false;
     }
     if (query.labelId !== undefined && !todo.labelIds.includes(query.labelId)) return false;
+    if (query.assigneeId !== undefined) {
+      const wanted = query.assigneeId === "none" ? null : query.assigneeId;
+      if (todo.assigneeId !== wanted) return false;
+    }
     if (query.updatedSince !== undefined && !(todo.updatedAt > query.updatedSince)) return false;
     return true;
   });

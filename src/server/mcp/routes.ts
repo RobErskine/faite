@@ -2,7 +2,10 @@ import { createMcpHandler } from "agents/mcp";
 import type { AuthInfo } from "@modelcontextprotocol/server";
 import { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
+import { uuidv7 } from "uuidv7";
 import {
+  accessItemSchema,
+  assigneeSchema,
   attachmentSchema,
   civilDateSchema,
   dayNoteSchema,
@@ -12,11 +15,13 @@ import {
   tabSchema,
   todoSchema,
   todoStatusSchema,
+  type Todo,
 } from "@/lib/schema";
+import { validateAgentSpec, type AgentSpecProblem } from "@/lib/assignee-rules";
 import { deadlineInputSchema, priorityInputSchema, resolveDateInputs, scheduledDateInputSchema } from "@/lib/date-input";
 import { contextFromSettings, deriveColumn, OVERFLOW, todayIn } from "@/lib/scheduling";
 import type { ServiceContext } from "@/lib/service/context";
-import { UPDATE_TODO_MAX_ENTRIES } from "@/lib/service/todos";
+import { NOTE_TEXT_MAX_LENGTH, UPDATE_TODO_MAX_ENTRIES } from "@/lib/service/todos";
 import { APPEND_DAY_NOTE_MAX_LENGTH, appendDayNoteEntry, dayNoteIdFor } from "@/lib/service/entities";
 import { wallClockTimeIn } from "@/lib/zoned";
 import { createAuth } from "../auth";
@@ -24,7 +29,7 @@ import { scopeGranted, type ApiScope } from "../auth-scopes";
 import { extractBearerCredential } from "../bearer";
 import { corsHeaders, handleOptions } from "../cors";
 import { durableHlcQueue } from "../service/hlc";
-import { createTodo, pushTransportFor, updateTodo } from "../service/todos";
+import { addNote, createTodo, pushTransportFor, resolveActorAssigneeId, updateTodo } from "../service/todos";
 import { writeDayNote } from "../service/entities";
 import type { UserDurableObject } from "../user-do";
 import { withEventStreamAccept } from "./accept";
@@ -122,6 +127,8 @@ export { withEventStreamAccept } from "./accept";
 
 interface McpIdentity {
   userId: string;
+  /** The verified key's id (EI-402) — never its name or metadata, which are spoofable. */
+  keyId: string;
   permissions: Record<string, string[]> | null;
 }
 
@@ -135,6 +142,7 @@ async function resolveIdentity(request: Request, env: CloudflareEnv): Promise<Mc
 
   return {
     userId: result.key.referenceId,
+    keyId: result.key.id,
     permissions: result.key.permissions ?? null,
   };
 }
@@ -231,19 +239,119 @@ async function loadSettings(identity: McpIdentity, stub: DurableObjectStub<UserD
   return settingsOrDefault(row, identity.userId);
 }
 
+const SPEC_PROBLEM_MESSAGE: Record<AgentSpecProblem, string> = {
+  "missing-done": "An agent's to-do needs at least one Done criterion (doneCriteria).",
+  "missing-access": "An agent's to-do needs access declared (access: [] means it needs nothing).",
+};
+
+/** Same two rules as REST's `assigneeSpecError` (EI-402): the assignee must
+ * exist when the call sets it, and an agent's to-do needs a Done checklist and
+ * declared access. Judged on the MERGED to-do. Returns a message or null. */
+async function assigneeSpecError(
+  stub: DurableObjectStub<UserDurableObject>,
+  merged: Pick<Todo, "assigneeId" | "doneCriteria" | "access">,
+  setsAssignee: boolean,
+  // The stored spec, when the write does not change the assignee: only problems
+  // the write INTRODUCES are rejected, so adding one Done line to an agent
+  // to-do that predates the rule (no access yet) still works.
+  before?: Pick<Todo, "doneCriteria" | "access">,
+): Promise<string | null> {
+  if (merged.assigneeId === null) return null;
+  const row = await getAssignee(stub, merged.assigneeId);
+  if (!row) return setsAssignee ? "assigneeId does not name an existing assignee." : null;
+  const assignee = assigneeSchema.parse(row);
+  const existing = before ? validateAgentSpec(before, assignee) : [];
+  const problems = validateAgentSpec(merged, assignee).filter((problem) => !existing.includes(problem));
+  return problems.length > 0 ? problems.map((problem) => SPEC_PROBLEM_MESSAGE[problem]).join(" ") : null;
+}
+
+function getAssignee(
+  stub: DurableObjectStub<UserDurableObject>,
+  id: string,
+): ReturnType<UserDurableObject["getEntity"]> {
+  return stub.getEntity("assignee", id);
+}
+
+function listAssignees(stub: DurableObjectStub<UserDurableObject>): ReturnType<UserDurableObject["listEntities"]> {
+  return stub.listEntities("assignee");
+}
+
+const doneCriterionInput = z.object({
+  id: z.string().min(1).optional().describe("Omit for a new line; the server mints one."),
+  text: z.string().trim().min(1),
+  done: z.boolean().optional(),
+});
+
+const accessItemInput = z.object({
+  name: z.string().trim().min(1),
+  status: z.string().optional().describe('Free text, e.g. "needed", "granted", "blocked". Default "needed".'),
+});
+
+const assigneeIdInput = idSchema
+  .nullable()
+  .optional()
+  .describe("Assignee id from list_assignees. Omit or null: the to-do is for the account owner (me).");
+
+const doneCriteriaInput = z
+  .array(doneCriterionInput)
+  .optional()
+  .describe("The Done checklist. At least one line is required when the assignee is an agent.");
+
+const accessInput = z
+  .array(accessItemInput)
+  .nullable()
+  .optional()
+  .describe("What the assignee needs access to. [] means it needs nothing; null means not declared.");
+
+/** The Done checklist as stored: a minted id for new lines. `addedBy` is left
+ * for the server's `stampActor` to set. */
+function criteriaFromInput(input: z.infer<typeof doneCriterionInput>[]) {
+  return input.map((c) => ({ id: c.id ?? uuidv7(), text: c.text, done: c.done ?? false }));
+}
+
+function accessFromInput(input: z.infer<typeof accessItemInput>[] | null | undefined) {
+  return input ? input.map((item) => accessItemSchema.parse({ name: item.name, status: item.status })) : input;
+}
+
+/** How an agent works its queue. Served as the MCP `instructions` and again in
+ * `get_my_work`, since many clients never surface the former. */
+export const AGENT_QUEUE_INSTRUCTIONS =
+  "You are working a queue of to-dos assigned to you. Call get_my_work to see your open " +
+  "to-dos. For each one: read its description, its Done checklist (doneCriteria) and its " +
+  "access list. Use add_note to report progress, update_criterion to tick a Done line when " +
+  "it is true, and update_access if what you need changes (status \"blocked\" when you " +
+  "cannot proceed). When every Done line is ticked, call complete_todo. If you need " +
+  "something from the owner (a decision, a credential, a review), call create_todo with " +
+  "NO assignee: it lands as a to-do for them. Do not assign it to yourself.";
+
 function buildServer(
   env: CloudflareEnv,
   identity: McpIdentity,
   stub: DurableObjectStub<UserDurableObject>,
 ): McpServer {
-  const server = new McpServer({ name: "faite", version: "1.0.0" });
+  const server = new McpServer(
+    { name: "faite", version: "1.0.0" },
+    { instructions: AGENT_QUEUE_INSTRUCTIONS },
+  );
+
+  // The assignee this key acts as (EI-402), resolved once per request from the
+  // verified key id — never a name or metadata. Null: the owner themselves.
+  let actorPromise: Promise<string | null> | undefined;
+  const actor = () =>
+    (actorPromise ??= resolveActorAssigneeId(identity.keyId, (id) => stub.assigneeIdForApiKey(id)));
+  const serviceCtx = async (entries: number): Promise<ServiceContext> => ({
+    userId: identity.userId,
+    nextHlc: await durableHlcQueue(stub, entries),
+    actorAssigneeId: await actor(),
+  });
 
   server.registerTool(
     "list_todos",
     {
       description:
         "List the caller's non-deleted to-dos, in board order, after any filters. " +
-        "To find a to-do by what it says, use search_todos instead.",
+        "Filter by assigneeId (or \"none\" for your own); ask for doneCriteria/access " +
+        "in `fields` to see an agent's spec. To find a to-do by what it says, use search_todos instead.",
       inputSchema: {
         ...todoQuerySchema.omit({ q: true, fields: true }).shape,
         fields: todoFieldsInput,
@@ -297,18 +405,31 @@ function buildServer(
         deadline: deadlineInputSchema.optional(),
         priority: priorityInputSchema.optional(),
         description: z.string().nullable().optional(),
+        assigneeId: assigneeIdInput,
+        doneCriteria: doneCriteriaInput,
+        access: accessInput,
       },
     },
-    async (rawInput) => {
+    async ({ doneCriteria, access, ...rawInput }) => {
       requireScope(identity, "write");
 
-      const input = await resolveDateInputs(rawInput, () => loadTimezone(identity, stub));
+      const dated = await resolveDateInputs(rawInput, () => loadTimezone(identity, stub));
+      // No assigneeId means a to-do for the owner — never defaulted to the
+      // calling agent. That is how an agent says "I need you".
+      const input = {
+        ...dated,
+        assigneeId: dated.assigneeId ?? null,
+        doneCriteria: criteriaFromInput(doneCriteria ?? []),
+        access: accessFromInput(access) ?? null,
+      };
+      const specError = await assigneeSpecError(stub, input, true);
+      if (specError) throw new Error(specError);
+
       const position = await stub.nextTodoPosition();
       const reminderTime = await stub.defaultReminderTimeForList(input.listId ?? null);
       // Two stamps: the todo entry and its "created" todoEvent always both
       // fire on a create — see `buildCreateTodoEntry`'s doc comment.
-      const nextHlc = await durableHlcQueue(stub, 2);
-      const ctx: ServiceContext = { userId: identity.userId, nextHlc };
+      const ctx = await serviceCtx(2);
 
       const { response, todoId } = await createTodo(
         ctx,
@@ -340,8 +461,7 @@ function buildServer(
       // exactly the server-originated UPDATE the milestone doc's own A4
       // rationale names ("An MCP 'mark this todo done' would" hit the
       // per-isolate collision the in-memory mode can't survive).
-      const nextHlc = await durableHlcQueue(stub, UPDATE_TODO_MAX_ENTRIES);
-      const ctx: ServiceContext = { userId: identity.userId, nextHlc };
+      const ctx = await serviceCtx(UPDATE_TODO_MAX_ENTRIES);
 
       const { rejected } = await updateTodo(
         ctx,
@@ -379,12 +499,23 @@ function buildServer(
         location: z.string().nullable().optional(),
         parentId: idSchema.nullable().optional(),
         completedAt: z.string().nullable().optional(),
+        assigneeId: assigneeIdInput,
+        doneCriteria: doneCriteriaInput.describe(
+          "Replaces the whole Done checklist. Keep an existing line's id to keep its addedBy; " +
+            "for one line use add_criterion / update_criterion.",
+        ),
+        access: accessInput,
       },
     },
-    async ({ id, ...rawInput }) => {
+    async ({ id, doneCriteria, access, ...rawInput }) => {
       requireScope(identity, "write");
 
-      const input = await resolveDateInputs(rawInput, () => loadTimezone(identity, stub));
+      const dated = await resolveDateInputs(rawInput, () => loadTimezone(identity, stub));
+      const input = {
+        ...dated,
+        ...(doneCriteria !== undefined ? { doneCriteria: criteriaFromInput(doneCriteria) } : {}),
+        ...(access !== undefined ? { access: accessFromInput(access) } : {}),
+      };
 
       // None of these fields carry a Zod `.default()` — deliberately, so an
       // absent key stays absent here rather than resolving to a schema
@@ -404,8 +535,22 @@ function buildServer(
       const existing = await stub.getTodo(id);
       if (!existing) throw new Error(`No such to-do: ${id}`);
 
-      const nextHlc = await durableHlcQueue(stub, UPDATE_TODO_MAX_ENTRIES);
-      const ctx: ServiceContext = { userId: identity.userId, nextHlc };
+      if ("assigneeId" in patch || "doneCriteria" in patch || "access" in patch) {
+        const stored = todoSchema.parse(existing);
+        const specError = await assigneeSpecError(
+          stub,
+          {
+            assigneeId: "assigneeId" in patch ? (input.assigneeId ?? null) : stored.assigneeId,
+            doneCriteria: "doneCriteria" in patch ? (input.doneCriteria ?? []) : stored.doneCriteria,
+            access: "access" in patch ? (input.access ?? null) : stored.access,
+          },
+          "assigneeId" in patch && input.assigneeId != null,
+          "assigneeId" in patch ? undefined : stored,
+        );
+        if (specError) throw new Error(specError);
+      }
+
+      const ctx = await serviceCtx(UPDATE_TODO_MAX_ENTRIES);
 
       const { rejected } = await updateTodo(
         ctx,
@@ -592,8 +737,7 @@ function buildServer(
       const current = existing ? dayNoteSchema.parse(existing).body : "";
       const body = appendDayNoteEntry(current, text, wallClockTimeIn(timezone));
 
-      const nextHlc = await durableHlcQueue(stub, 2);
-      const ctx: ServiceContext = { userId: identity.userId, nextHlc };
+      const ctx = await serviceCtx(2);
       const { rejected } = await writeDayNote(ctx, day, body, existing, pushTransportFor(stub, identity.userId));
       if (rejected.length > 0) {
         throw new Error("The server refused this entry — please try again.");
@@ -601,6 +745,157 @@ function buildServer(
 
       const row = await getDayNote(stub, dayNoteIdFor(day));
       return textResult(row ? dayNoteSchema.parse(row) : null);
+    },
+  );
+
+  server.registerTool(
+    "list_assignees",
+    {
+      description:
+        "List the assignees a to-do can be given to: agents and people. Use an id " +
+        "as assigneeId on create_todo / update_todo, or to filter list_todos.",
+      inputSchema: {},
+    },
+    async () => {
+      requireScope(identity, "read");
+      const rows = await listAssignees(stub);
+      // `apiKeyId` is a server-side binding, not something a client needs.
+      return textResult(
+        rows.map((row) => {
+          const { apiKeyId: _apiKeyId, ...assignee } = assigneeSchema.parse(row);
+          return assignee;
+        }),
+      );
+    },
+  );
+
+  server.registerTool(
+    "get_my_work",
+    {
+      description:
+        "Your queue: the open to-dos assigned to the agent this API key is bound to, " +
+        "with each one's Done checklist and access list, plus how to work them. " +
+        "Fails if this key is not bound to an agent in Faite's Settings.",
+      inputSchema: {},
+    },
+    async () => {
+      requireScope(identity, "read");
+      const assigneeId = await actor();
+      if (!assigneeId) {
+        throw new Error(
+          "This API key is not bound to an agent. Create the key from the agent's row in Settings > Assignees.",
+        );
+      }
+      const [assigneeRow, rows] = await Promise.all([getAssignee(stub, assigneeId), listTodos(stub)]);
+      const assignee = assigneeRow ? assigneeSchema.parse(assigneeRow) : null;
+      const todos = rows
+        .map((row) => todoSchema.parse(row))
+        .filter((todo) => todo.assigneeId === assigneeId && todo.status === "open");
+      return textResult({
+        assignee: assignee && { id: assignee.id, name: assignee.name, instructions: assignee.instructions },
+        instructions: AGENT_QUEUE_INSTRUCTIONS,
+        todos,
+      });
+    },
+  );
+
+  /** Loads a to-do for a progress tool, or throws like `complete_todo`. */
+  const requireTodo = async (id: string): Promise<{ raw: NonNullable<Awaited<ReturnType<typeof stub.getTodo>>>; todo: Todo }> => {
+    const raw = await stub.getTodo(id);
+    if (!raw) throw new Error(`No such to-do: ${id}`);
+    return { raw, todo: todoSchema.parse(raw) };
+  };
+
+  server.registerTool(
+    "add_note",
+    {
+      description:
+        "Add a progress note to a to-do's history. Use it to report what you did, " +
+        "found, or are blocked on. The note is attributed to the agent this key is bound to.",
+      inputSchema: {
+        todoId: z.string().min(1),
+        text: z.string().trim().min(1).max(NOTE_TEXT_MAX_LENGTH),
+      },
+    },
+    async ({ todoId, text }) => {
+      requireScope(identity, "write");
+      await requireTodo(todoId);
+      const ctx = await serviceCtx(1);
+      const { rejected } = await addNote(ctx, todoId, text, pushTransportFor(stub, identity.userId));
+      if (rejected.length > 0) throw new Error("The server refused this entry — please try again.");
+      return textResult({ ok: true });
+    },
+  );
+
+  /** Patches `doneCriteria`/`access` on one to-do, with REST's agent-spec rule. */
+  const patchSpec = async (
+    id: string,
+    existing: Awaited<ReturnType<typeof requireTodo>>,
+    patch: { doneCriteria: Todo["doneCriteria"] } | { access: Todo["access"] },
+  ) => {
+    const merged = { ...existing.todo, ...patch };
+    const specError = await assigneeSpecError(stub, merged, false, existing.todo);
+    if (specError) throw new Error(specError);
+    const ctx = await serviceCtx(UPDATE_TODO_MAX_ENTRIES);
+    const { rejected } = await updateTodo(ctx, id, patch, pushTransportFor(stub, identity.userId), existing.raw);
+    if (rejected.length > 0) throw new Error("The server refused this update — please try again.");
+    return textResult(todoOrNull(await stub.getTodo(id)));
+  };
+
+  server.registerTool(
+    "add_criterion",
+    {
+      description: "Add one line to a to-do's Done checklist. Returns the updated to-do.",
+      inputSchema: { todoId: z.string().min(1), text: z.string().trim().min(1) },
+    },
+    async ({ todoId, text }) => {
+      requireScope(identity, "write");
+      const existing = await requireTodo(todoId);
+      // `addedBy` is stamped by the service from the verified key, not here.
+      const doneCriteria = [...existing.todo.doneCriteria, { id: uuidv7(), text, done: false }];
+      return patchSpec(todoId, existing, { doneCriteria });
+    },
+  );
+
+  server.registerTool(
+    "update_criterion",
+    {
+      description:
+        "Tick (or untick) one Done line, or reword it. Find the criterionId in " +
+        "get_my_work. Returns the updated to-do.",
+      inputSchema: {
+        todoId: z.string().min(1),
+        criterionId: z.string().min(1),
+        done: z.boolean().optional(),
+        text: z.string().trim().min(1).optional(),
+      },
+    },
+    async ({ todoId, criterionId, done, text }) => {
+      requireScope(identity, "write");
+      if (done === undefined && text === undefined) throw new Error("Provide done or text.");
+      const existing = await requireTodo(todoId);
+      if (!existing.todo.doneCriteria.some((c) => c.id === criterionId)) {
+        throw new Error(`No such criterion: ${criterionId}`);
+      }
+      const doneCriteria = existing.todo.doneCriteria.map((c) =>
+        c.id === criterionId ? { ...c, ...(done !== undefined ? { done } : {}), ...(text !== undefined ? { text } : {}) } : c,
+      );
+      return patchSpec(todoId, existing, { doneCriteria });
+    },
+  );
+
+  server.registerTool(
+    "update_access",
+    {
+      description:
+        "Replace a to-do's access list: what you need access to, and where each stands " +
+        '(status e.g. "needed", "granted", "blocked"). [] means you need nothing. Returns the updated to-do.',
+      inputSchema: { todoId: z.string().min(1), access: z.array(accessItemInput) },
+    },
+    async ({ todoId, access }) => {
+      requireScope(identity, "write");
+      const existing = await requireTodo(todoId);
+      return patchSpec(todoId, existing, { access: accessFromInput(access) ?? [] });
     },
   );
 
@@ -660,6 +955,14 @@ export async function handleMcpRequest(request: Request, env: CloudflareEnv): Pr
   }
 
   const stub = env.USER_DO.get(env.USER_DO.idFromName(identity.userId));
+
+  // A key whose bound assignee was deleted is refused, not demoted to "the owner".
+  if (await stub.isApiKeyOrphaned(identity.keyId)) {
+    return Response.json(
+      { error: "unauthenticated" },
+      { status: 401, headers: corsHeaders(request.headers.get("Origin")) },
+    );
+  }
 
   // Constructed fresh per request — the factory below closes over `env`,
   // `identity`, and `stub` for THIS request only. `createMcpHandler` itself

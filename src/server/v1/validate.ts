@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { deadlineInputSchema, priorityInputSchema, scheduledDateInputSchema } from "@/lib/date-input";
-import { civilDateSchema, dayNoteSchema, labelSchema, listSchema, tabSchema, todoSchema } from "@/lib/schema";
+import { assigneeSchema, civilDateSchema, dayNoteSchema, labelSchema, listSchema, tabSchema, todoSchema } from "@/lib/schema";
 import { APPEND_DAY_NOTE_MAX_LENGTH } from "@/lib/service/entities";
 
 /**
@@ -30,6 +30,9 @@ const OPTIONAL_ON_CREATE = {
   reminderTime: true,
   source: true,
   parentId: true,
+  assigneeId: true,
+  doneCriteria: true,
+  access: true,
 } as const;
 
 const CREATE_FIELDS = { title: true, ...OPTIONAL_ON_CREATE } as const;
@@ -329,4 +332,36 @@ export function parseDayNoteRange(params: URLSearchParams): DayNoteRange | null 
   }
   const parsed = dayNoteRangeSchema.safeParse(raw);
   return parsed.success ? parsed.data : null;
+}
+
+// ---------------------------------------------------------- assignees (EI-402)
+
+/**
+ * `apiKeyId` is excluded on purpose: the key binding is written in the app,
+ * where the key is created, and a REST caller (an agent key included) must
+ * not be able to rebind which key acts as which assignee.
+ */
+const ASSIGNEE_OPTIONAL_ON_CREATE = { color: true, instructions: true } as const;
+const ASSIGNEE_CREATE_FIELDS = { name: true, kind: true, ...ASSIGNEE_OPTIONAL_ON_CREATE } as const;
+
+export const createAssigneeRequestSchema = assigneeSchema
+  .pick(ASSIGNEE_CREATE_FIELDS)
+  .partial(ASSIGNEE_OPTIONAL_ON_CREATE);
+
+export type CreateAssigneeRequest = z.infer<typeof createAssigneeRequestSchema>;
+
+export function parseCreateAssigneeRequest(body: unknown): CreateAssigneeRequest | null {
+  const parsed = createAssigneeRequestSchema.safeParse(body);
+  return parsed.success ? parsed.data : null;
+}
+
+const UPDATABLE_ASSIGNEE_FIELDS = new Set(Object.keys(ASSIGNEE_CREATE_FIELDS));
+
+/** Docs only — see `parsePatchRequest`. */
+export const updateAssigneeRequestSchema = assigneeSchema.pick(ASSIGNEE_CREATE_FIELDS).partial();
+
+export type UpdateAssigneeRequest = z.infer<typeof updateAssigneeRequestSchema>;
+
+export function parseUpdateAssigneeRequest(body: unknown): UpdateAssigneeRequest | null {
+  return parsePatchRequest(assigneeSchema, UPDATABLE_ASSIGNEE_FIELDS, body) as UpdateAssigneeRequest | null;
 }
