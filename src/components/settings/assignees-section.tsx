@@ -336,8 +336,20 @@ export function AssigneesSection() {
             Add
           </Button>
         </div>
-        <KindSwitch value={kind} onChange={setKind} />
-        <ColorPicker value={color} onChange={setColor} label="New assignee color" />
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+          <KindSwitch value={kind} onChange={setKind} />
+          <div className="flex items-center gap-2">
+            <Label htmlFor="assignee-color" className="font-normal">
+              Color
+            </Label>
+            <ColorPicker
+              id="assignee-color"
+              value={color}
+              onChange={setColor}
+              label="New assignee color"
+            />
+          </div>
+        </div>
       </div>
 
       <NewKeyDialog apiKey={newKey} onClose={() => setNewKey(null)} />

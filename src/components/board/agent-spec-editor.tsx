@@ -80,6 +80,9 @@ export function AgentSpecEditor({ todo, assignee, onSave }: AgentSpecEditorProps
         <h3 id="agent-done-heading" className="text-sm font-medium">
           Done
         </h3>
+        <p className="text-xs text-muted-foreground">
+          Definition of done: how does the agent know when the task has been fully completed?
+        </p>
         <ul className="space-y-1">
           {criteria.map((criterion) => (
             <li key={criterion.id} className="flex items-center gap-2">
@@ -203,7 +206,7 @@ export function AgentSpecEditor({ todo, assignee, onSave }: AgentSpecEditorProps
       </section>
 
       {problems.length > 0 && (
-        <ul className="space-y-0.5 text-xs text-destructive" role="status">
+        <ul className="space-y-0.5 text-xs text-muted-foreground" role="status">
           {problems.map((problem) => (
             <li key={problem}>{PROBLEM_COPY[problem]}</li>
           ))}
