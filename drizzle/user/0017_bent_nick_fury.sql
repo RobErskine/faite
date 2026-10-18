@@ -6,7 +6,7 @@ CREATE TABLE `assignees` (
 	`deleted_at` text,
 	`version` integer NOT NULL,
 	`name` text NOT NULL,
-	`kind` text NOT NULL,
+	`kind` text,
 	`color` text,
 	`instructions` text,
 	`api_key_id` text

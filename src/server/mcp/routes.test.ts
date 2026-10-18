@@ -222,6 +222,35 @@ describe("agent writes (EI-402)", () => {
     }
   });
 
+  it("add_criterion works on an agent to-do that predates the rule and has no access yet", async () => {
+    const stub = agentEnv(true);
+    stub.getTodo.mockResolvedValue({ ...stored, access: null });
+    expect((await run("add_criterion", { todoId: "todo-1", text: "Tests pass" })).isError).toBe(false);
+    expect(pushedEntries(stub).some((e) => e.kind === "todo")).toBe(true);
+  });
+
+  it("update_access works on an agent to-do that has no Done lines yet", async () => {
+    const stub = agentEnv(true);
+    stub.getTodo.mockResolvedValue({ ...stored, doneCriteria: [] });
+    const { isError } = await run("update_access", { todoId: "todo-1", access: [] });
+    expect(isError).toBe(false);
+  });
+
+  it("still rejects a write that introduces a problem (removing the last Done line)", async () => {
+    const stub = agentEnv(true);
+    stub.getTodo.mockResolvedValue(stored);
+    const { isError, text } = await run("update_todo", { id: "todo-1", doneCriteria: [] });
+    expect(isError).toBe(true);
+    expect(text).toContain("Done criterion");
+  });
+
+  it("refuses a key whose bound assignee was deleted", async () => {
+    const stub = agentEnv(false);
+    stub.isApiKeyOrphaned.mockResolvedValue(true);
+    const res = await handleMcpRequest(callTool("list_todos", {}), env);
+    expect(res.status).toBe(401);
+  });
+
   it("update_access replaces the list", async () => {
     const stub = agentEnv(true);
     stub.getTodo.mockResolvedValue(stored);

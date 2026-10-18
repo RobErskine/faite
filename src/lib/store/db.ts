@@ -112,7 +112,15 @@ export class FaiteDatabase extends Dexie {
       todos:
         "id, listId, projectId, scheduledDate, status, position, deletedAt, recurrenceParentId, placeId, assigneeId",
       assignees: "id, deletedAt",
-    });
+    }).upgrade((tx) =>
+      // Rows written before EI-402 lack the three new fields; backfill so
+      // nothing downstream sees `undefined` where the schema says otherwise.
+      tx.table("todos").toCollection().modify((todo) => {
+        todo.assigneeId ??= null;
+        todo.doneCriteria ??= [];
+        todo.access ??= null;
+      }),
+    );
   }
 }
 

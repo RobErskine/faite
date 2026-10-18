@@ -732,11 +732,27 @@ export class UserDurableObject extends DurableObject {
   async assigneeIdForApiKey(keyId: string): Promise<string | null> {
     const [row] = this.ctx.storage.sql
       .exec<{ id: string }>(
-        "SELECT id FROM assignees WHERE api_key_id = ? AND deleted_at IS NULL LIMIT 1",
+        "SELECT id FROM assignees WHERE api_key_id = ? AND kind = 'agent' AND deleted_at IS NULL LIMIT 1",
         keyId,
       )
       .toArray();
     return row?.id ?? null;
+  }
+
+  /**
+   * True when API key `keyId` was bound to an agent that has since been
+   * deleted, and no live agent holds it (EI-402). Deleting an assignee does not
+   * revoke its key, so without this check the key would fall through to "no
+   * assignee" and start acting as the owner with full access.
+   */
+  async isApiKeyOrphaned(keyId: string): Promise<boolean> {
+    const rows = this.ctx.storage.sql
+      .exec<{ deleted_at: string | null }>(
+        "SELECT deleted_at FROM assignees WHERE api_key_id = ? AND kind = 'agent'",
+        keyId,
+      )
+      .toArray();
+    return rows.length > 0 && rows.every((row) => row.deleted_at !== null);
   }
 
   /**

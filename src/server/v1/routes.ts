@@ -12,7 +12,7 @@ import { validateAgentSpec, type AgentSpecProblem } from "@/lib/assignee-rules";
 import { resolveDateInputs } from "@/lib/date-input";
 import type { ServiceContext } from "@/lib/service/context";
 import { createAuth } from "../auth";
-import { authorizeScope } from "../auth-scopes";
+import { authorizeScope as authorizeScopeBase, type ApiScope } from "../auth-scopes";
 import { handleOptions, publicCorsHeaders } from "../cors";
 import { durableHlcQueue } from "../service/hlc";
 import {
@@ -284,11 +284,17 @@ async function assigneeSpecError(
   stub: DurableObjectStub<UserDurableObject>,
   merged: Pick<Todo, "assigneeId" | "doneCriteria" | "access">,
   setsAssignee: boolean,
+  // The stored spec, when the write does not change the assignee: only problems
+  // the write INTRODUCES are rejected, so adding one Done line to an agent
+  // to-do that predates the rule (no access yet) still works.
+  before?: Pick<Todo, "doneCriteria" | "access">,
 ): Promise<string | null> {
   if (merged.assigneeId === null) return null;
   const row = await getEntityRow(stub, "assignee", merged.assigneeId);
   if (!row) return setsAssignee ? "assigneeId does not name an existing assignee." : null;
-  const problems = validateAgentSpec(merged, assigneeSchema.parse(row));
+  const assignee = assigneeSchema.parse(row);
+  const existing = before ? validateAgentSpec(before, assignee) : [];
+  const problems = validateAgentSpec(merged, assignee).filter((problem) => !existing.includes(problem));
   return problems.length > 0 ? problems.map((problem) => SPEC_PROBLEM_MESSAGE[problem]).join(" ") : null;
 }
 
@@ -395,6 +401,7 @@ async function handleUpdateTodo(
         access: "access" in parsed ? (parsed.access ?? null) : stored.access,
       },
       "assigneeId" in parsed && parsed.assigneeId !== null && parsed.assigneeId !== undefined,
+      "assigneeId" in parsed ? undefined : stored,
     );
     if (specError) return invalidRequest(specError, headers);
   }
@@ -684,8 +691,8 @@ async function handleCreateAssignee(
 /**
  * `DELETE /api/v1/assignees/{id}` (EI-402). Its to-dos go back to the owner
  * (`assigneeId: null`) in the same push, like a label strip. The bound key is
- * NOT revoked here — that is a Better Auth call the app makes; with the
- * assignee tombstoned the key simply stops resolving to an actor.
+ * NOT revoked here (Better Auth's delete needs a session): instead, a key whose
+ * assignee is tombstoned is refused with a 401 by `authorizeScope` below.
  */
 async function handleDeleteAssignee(
   stub: DurableObjectStub<UserDurableObject>,
@@ -923,6 +930,23 @@ export async function handleV1Request(request: Request, env: CloudflareEnv): Pro
   const headers = publicCorsHeaders(request.headers.get("Origin"));
   const url = new URL(request.url);
   const auth0 = createAuth(env, request);
+
+  // `authorizeScope`, plus: a key bound to an assignee that was later deleted
+  // is refused (EI-402) rather than falling through to "acts as the owner".
+  const authorizeScope = async (
+    authInstance: typeof auth0,
+    req: Request,
+    scope: ApiScope,
+  ): Promise<Awaited<ReturnType<typeof authorizeScopeBase>>> => {
+    const result = await authorizeScopeBase(authInstance, req, scope);
+    if (result.ok && result.keyId) {
+      const stub = env.USER_DO.get(env.USER_DO.idFromName(result.userId));
+      if (await stub.isApiKeyOrphaned(result.keyId)) {
+        return { ok: false, status: 401, error: "unauthenticated" };
+      }
+    }
+    return result;
+  };
 
   try {
     // A plain string, with the cast pushed down to the ONE lookup that needs

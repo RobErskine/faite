@@ -117,7 +117,10 @@ test("an agent works its queue through MCP, and the history names the agent", as
     data: {
       title: "Draft the release notes",
       assigneeId,
-      doneCriteria: [{ text: "Notes are written" }, { text: "Notes are proofread" }],
+      doneCriteria: [
+        { id: "criterion-written", text: "Notes are written", done: false },
+        { id: "criterion-proofread", text: "Notes are proofread", done: false },
+      ],
       access: [{ name: "Changelog repo", status: "needed" }],
     },
   });

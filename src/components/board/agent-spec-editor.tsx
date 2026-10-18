@@ -47,8 +47,8 @@ export function AgentSpecEditor({ todo, assignee, onSave }: AgentSpecEditorProps
   if (!assignee || assignee.kind !== "agent") return null;
 
   const problems = validateAgentSpec(todo, assignee);
-  const criteria = todo.doneCriteria;
-  const access = todo.access;
+  const criteria = todo.doneCriteria ?? [];
+  const access = todo.access ?? null;
 
   const saveCriteria = (next: DoneCriterion[]) => onSave(todo.id, { doneCriteria: next });
   const saveAccess = (next: AccessItem[]) => onSave(todo.id, { access: next });

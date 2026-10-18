@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "9f41f6ab-fc85-4afb-9b98-1f04c3acd38a",
+  "id": "d9bae8ad-6fc4-400c-8dd9-a658e7b2b158",
   "prevId": "b4f089f7-ce10-47d6-9d52-7a33a6868b20",
   "tables": {
     "assignees": {
@@ -60,7 +60,7 @@
           "name": "kind",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
+          "notNull": false,
           "autoincrement": false
         },
         "color": {

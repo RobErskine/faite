@@ -1233,6 +1233,32 @@ describe("assignee rules on todos (EI-402)", () => {
     expect(res.status).toBe(200);
   });
 
+  it("PATCH adding a Done line works on an agent to-do that predates the rule (no access yet)", async () => {
+    withAssignee(rawAssigneeRow());
+    stub.getTodo.mockResolvedValue(
+      rawTodoRow({ assigneeId: "assignee-1", doneCriteria: [{ ...criterion, done: false }], access: null }),
+    );
+    const res = await handleV1Request(
+      v1Request("PATCH", "/api/v1/todos/todo-1", { doneCriteria: [{ ...criterion, done: false }, { id: "c2", text: "More" }] }),
+      env,
+    );
+    expect(res.status).toBe(200);
+  });
+
+  it("PATCH declaring access works on an agent to-do with no Done lines yet", async () => {
+    withAssignee(rawAssigneeRow());
+    stub.getTodo.mockResolvedValue(rawTodoRow({ assigneeId: "assignee-1", doneCriteria: [], access: null }));
+    const res = await handleV1Request(v1Request("PATCH", "/api/v1/todos/todo-1", { access: [] }), env);
+    expect(res.status).toBe(200);
+  });
+
+  it("any request from a key whose bound assignee was deleted is a 401", async () => {
+    authorize.mockResolvedValue({ ok: true, userId: "user-1", keyId: "key-1" });
+    stub.isApiKeyOrphaned.mockResolvedValue(true);
+    const res = await handleV1Request(v1Request("GET", "/api/v1/todos"), env);
+    expect(res.status).toBe(401);
+  });
+
   it("PATCH 400s reassigning to an agent when the stored to-do has no checklist", async () => {
     withAssignee(rawAssigneeRow());
     stub.getTodo.mockResolvedValue(rawTodoRow());

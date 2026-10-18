@@ -251,11 +251,17 @@ async function assigneeSpecError(
   stub: DurableObjectStub<UserDurableObject>,
   merged: Pick<Todo, "assigneeId" | "doneCriteria" | "access">,
   setsAssignee: boolean,
+  // The stored spec, when the write does not change the assignee: only problems
+  // the write INTRODUCES are rejected, so adding one Done line to an agent
+  // to-do that predates the rule (no access yet) still works.
+  before?: Pick<Todo, "doneCriteria" | "access">,
 ): Promise<string | null> {
   if (merged.assigneeId === null) return null;
   const row = await getAssignee(stub, merged.assigneeId);
   if (!row) return setsAssignee ? "assigneeId does not name an existing assignee." : null;
-  const problems = validateAgentSpec(merged, assigneeSchema.parse(row));
+  const assignee = assigneeSchema.parse(row);
+  const existing = before ? validateAgentSpec(before, assignee) : [];
+  const problems = validateAgentSpec(merged, assignee).filter((problem) => !existing.includes(problem));
   return problems.length > 0 ? problems.map((problem) => SPEC_PROBLEM_MESSAGE[problem]).join(" ") : null;
 }
 
@@ -539,6 +545,7 @@ function buildServer(
             access: "access" in patch ? (input.access ?? null) : stored.access,
           },
           "assigneeId" in patch && input.assigneeId != null,
+          "assigneeId" in patch ? undefined : stored,
         );
         if (specError) throw new Error(specError);
       }
@@ -827,7 +834,7 @@ function buildServer(
     patch: { doneCriteria: Todo["doneCriteria"] } | { access: Todo["access"] },
   ) => {
     const merged = { ...existing.todo, ...patch };
-    const specError = await assigneeSpecError(stub, merged, false);
+    const specError = await assigneeSpecError(stub, merged, false, existing.todo);
     if (specError) throw new Error(specError);
     const ctx = await serviceCtx(UPDATE_TODO_MAX_ENTRIES);
     const { rejected } = await updateTodo(ctx, id, patch, pushTransportFor(stub, identity.userId), existing.raw);
@@ -948,6 +955,14 @@ export async function handleMcpRequest(request: Request, env: CloudflareEnv): Pr
   }
 
   const stub = env.USER_DO.get(env.USER_DO.idFromName(identity.userId));
+
+  // A key whose bound assignee was deleted is refused, not demoted to "the owner".
+  if (await stub.isApiKeyOrphaned(identity.keyId)) {
+    return Response.json(
+      { error: "unauthenticated" },
+      { status: 401, headers: corsHeaders(request.headers.get("Origin")) },
+    );
+  }
 
   // Constructed fresh per request — the factory below closes over `env`,
   // `identity`, and `stub` for THIS request only. `createMcpHandler` itself

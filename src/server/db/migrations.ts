@@ -432,8 +432,9 @@ export const USER_DB_MIGRATIONS: readonly UserDbMigration[] = [
     name: "assignees",
     statements: [
       // EI-402. A whole new table, left out of `bootstrap.ts` like
-      // `reminder_presets` (migration 11). `kind` is NOT NULL in SQL here
-      // because every create carries it from the client's Zod-validated row.
+      // `reminder_presets` (migration 11). `kind` is nullable in SQL like the
+      // other synced-entity columns: the schema-parity rule keeps SQL looser
+      // than Zod, and the Zod row always carries it.
       `CREATE TABLE IF NOT EXISTS assignees (
     id text PRIMARY KEY NOT NULL,
     owner_id text NOT NULL,
@@ -442,7 +443,7 @@ export const USER_DB_MIGRATIONS: readonly UserDbMigration[] = [
     deleted_at text,
     version integer NOT NULL,
     name text NOT NULL,
-    kind text NOT NULL,
+    kind text,
     color text,
     instructions text,
     api_key_id text

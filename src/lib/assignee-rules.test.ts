@@ -48,3 +48,11 @@ describe("card chip helpers", () => {
     expect(hasBlockedAccess({ access: [{ name: "Repo", status: "needs_setup" }] })).toBe(true);
   });
 });
+
+describe("rows written before EI-402", () => {
+  it("reads missing fields defensively", () => {
+    expect(validateAgentSpec({}, agent)).toEqual(["missing-done", "missing-access"]);
+    expect(doneProgress({})).toEqual({ done: 0, total: 0 });
+    expect(hasBlockedAccess({})).toBe(false);
+  });
+});

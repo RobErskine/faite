@@ -206,7 +206,7 @@ export const reminderPresets = sqliteTable("reminder_presets", {
 export const assignees = sqliteTable("assignees", {
   ...syncableColumns,
   name: text("name").notNull(),
-  kind: text("kind").notNull(),
+  kind: text("kind"),
   color: text("color"),
   instructions: text("instructions"),
   apiKeyId: text("api_key_id"),

@@ -146,7 +146,7 @@ function coalesceEdited(events: readonly TodoTimelineEvent[]): TodoTimelineEvent
       prev &&
       Math.abs(new Date(event.at).getTime() - new Date(prev.at).getTime()) <= COALESCE_WINDOW_MS;
 
-    if (event.kind === "edited" && prev?.kind === "edited" && withinWindow) {
+    if (event.kind === "edited" && prev?.kind === "edited" && event.via === prev.via && withinWindow) {
       result[result.length - 1] = {
         ...prev,
         fields: [...new Set([...(prev.fields ?? []), ...(event.fields ?? [])])],

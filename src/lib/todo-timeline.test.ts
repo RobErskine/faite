@@ -130,6 +130,23 @@ describe("buildTodoTimeline", () => {
       expect(edited.event.fields?.sort()).toEqual(["priority", "title"]);
     });
 
+    it("does NOT merge an agent's edit into the owner's, even inside the window", () => {
+      const first = event({
+        kind: "edited",
+        at: "2026-08-13T00:00:00.000Z",
+        payload: JSON.stringify({ v: 1, fields: ["title"] }),
+      });
+      const second = event({
+        kind: "edited",
+        at: "2026-08-13T00:00:30.000Z",
+        payload: JSON.stringify({ v: 1, fields: ["priority"], via: "agent:a1" }),
+      });
+
+      const items = buildTodoTimeline([first, second], TODO);
+      const edits = items.filter((i) => i.type === "event" && i.event.kind === "edited");
+      expect(edits).toHaveLength(2);
+    });
+
     it("does NOT merge two edits exactly at the window boundary (> 2 minutes apart)", () => {
       const first = event({
         kind: "edited",
