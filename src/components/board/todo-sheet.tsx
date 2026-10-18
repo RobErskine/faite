@@ -968,20 +968,25 @@ function TodoSheetContent({
               <LocationField todo={todo} places={places} onSave={onSave} />
             </SheetRow>
 
-            <SheetRow label="Who" htmlFor="todo-assignee">
-              <AssigneePicker
-                value={todo.assigneeId}
-                assignees={assignees}
-                onChange={(assigneeId) => onSave(todo.id, { assigneeId })}
-              />
-            </SheetRow>
+            {/* Hidden until the user has made an assignee (or this to-do already has one). */}
+            {(assignees.length > 0 || todo.assigneeId !== null) && (
+              <>
+                <SheetRow label="Who" htmlFor="todo-assignee">
+                  <AssigneePicker
+                    value={todo.assigneeId}
+                    assignees={assignees}
+                    onChange={(assigneeId) => onSave(todo.id, { assigneeId })}
+                  />
+                </SheetRow>
 
-            {/* Renders nothing unless the assignee is an agent. */}
-            <AgentSpecEditor
-              todo={todo}
-              assignee={assignees.find((a) => a.id === todo.assigneeId)}
-              onSave={onSave}
-            />
+                {/* Renders nothing unless the assignee is an agent. */}
+                <AgentSpecEditor
+                  todo={todo}
+                  assignee={assignees.find((a) => a.id === todo.assigneeId)}
+                  onSave={onSave}
+                />
+              </>
+            )}
           </>
 
           {/*

@@ -4,8 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Assignee } from "@/lib/schema";
 import { AssigneesSection } from "./assignees-section";
 
-const { rows, create, update, del, apiCreate, apiUpdate, apiDelete } = vi.hoisted(() => ({
+const { rows, session, create, update, del, apiCreate, apiUpdate, apiDelete } = vi.hoisted(() => ({
   rows: { current: [] as unknown[] },
+  session: { current: { user: { id: "u" } } as unknown },
   create: vi.fn(async () => "new-id"),
   update: vi.fn(async () => {}),
   del: vi.fn(async () => {}),
@@ -22,6 +23,7 @@ vi.mock("@/lib/store/repositories", () => ({
   deleteAssignee: del,
 }));
 vi.mock("@/lib/auth-client", () => ({
+  useSession: () => ({ data: session.current }),
   authClient: {
     apiKey: { create: apiCreate, update: apiUpdate, delete: apiDelete },
   },
@@ -45,6 +47,7 @@ function assignee(over: Partial<Assignee>): Assignee {
 
 beforeEach(() => {
   rows.current = [];
+  session.current = { user: { id: "u" } };
 });
 
 afterEach(() => {
@@ -56,7 +59,8 @@ describe("AssigneesSection", () => {
   it("adds an agent with the chosen color", async () => {
     render(<AssigneesSection />);
     fireEvent.change(document.getElementById("assignee-name")!, { target: { value: "Claude" } });
-    fireEvent.click(screen.getByRole("radio", { name: "Violet" }));
+    fireEvent.click(screen.getByRole("button", { name: "New assignee color" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Violet" }));
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Add" }));
     });
@@ -66,7 +70,7 @@ describe("AssigneesSection", () => {
   it("adds a person when Person is picked", async () => {
     render(<AssigneesSection />);
     fireEvent.change(document.getElementById("assignee-name")!, { target: { value: "Sam" } });
-    fireEvent.click(screen.getByRole("radio", { name: "Person" }));
+    fireEvent.click(screen.getByRole("switch")); // agent → person
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Add" }));
     });
@@ -88,6 +92,13 @@ describe("AssigneesSection", () => {
 
   it("does not offer a key to a person", () => {
     rows.current = [assignee({ kind: "person" })];
+    render(<AssigneesSection />);
+    expect(screen.queryByRole("button", { name: /Create key/ })).toBeNull();
+  });
+
+  it("hides Create key when signed out", () => {
+    rows.current = [assignee({})];
+    session.current = null;
     render(<AssigneesSection />);
     expect(screen.queryByRole("button", { name: /Create key/ })).toBeNull();
   });

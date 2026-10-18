@@ -12,59 +12,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { ColorPicker } from "@/components/ui/color-picker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { mintApiKey } from "@/lib/api-key-expiry";
-import { authClient } from "@/lib/auth-client";
-import { ACCENT_COLORS } from "@/lib/colors";
+import { authClient, useSession } from "@/lib/auth-client";
 import type { Assignee, AssigneeKind } from "@/lib/schema";
 import { useAssignees } from "@/lib/store/hooks";
 import { createAssignee, deleteAssignee, updateAssignee } from "@/lib/store/repositories";
 
-const KINDS: readonly { value: AssigneeKind; label: string }[] = [
-  { value: "agent", label: "Agent" },
-  { value: "person", label: "Person" },
-];
-
-/** One swatch per accent color, plus "none". Used by the add form and the row editor. */
-function ColorPicker({
-  value,
-  onChange,
-  label,
-}: {
-  value: string | null;
-  onChange: (color: string | null) => void;
-  label: string;
-}) {
-  return (
-    <div role="radiogroup" aria-label={label} className="flex flex-wrap items-center gap-1.5">
-      <button
-        type="button"
-        role="radio"
-        aria-checked={value === null}
-        aria-label="No color"
-        onClick={() => onChange(null)}
-        className="flex size-6 items-center justify-center rounded-full border text-xs text-muted-foreground aria-checked:ring-2 aria-checked:ring-ring"
-      >
-        –
-      </button>
-      {ACCENT_COLORS.map((color) => (
-        <button
-          key={color.value}
-          type="button"
-          role="radio"
-          aria-checked={value === color.value}
-          aria-label={color.name}
-          onClick={() => onChange(color.value)}
-          style={{ backgroundColor: color.value }}
-          className="flex size-6 items-center justify-center rounded-full aria-checked:ring-2 aria-checked:ring-ring aria-checked:ring-offset-2"
-        />
-      ))}
-    </div>
-  );
-}
-
-function KindPicker({
+/** Agent on, person off — binary, so a switch rather than two buttons. */
+function KindSwitch({
   value,
   onChange,
 }: {
@@ -72,20 +31,16 @@ function KindPicker({
   onChange: (kind: AssigneeKind) => void;
 }) {
   return (
-    <div role="radiogroup" aria-label="Kind" className="flex gap-1.5">
-      {KINDS.map((kind) => (
-        <Button
-          key={kind.value}
-          type="button"
-          role="radio"
-          aria-checked={value === kind.value}
-          variant={value === kind.value ? "secondary" : "outline"}
-          size="sm"
-          onClick={() => onChange(kind.value)}
-        >
-          {kind.label}
-        </Button>
-      ))}
+    <div className="flex items-center gap-2">
+      <Switch
+        id="assignee-is-agent"
+        checked={value === "agent"}
+        onCheckedChange={(checked) => onChange(checked ? "agent" : "person")}
+      />
+      <Label htmlFor="assignee-is-agent" className="font-normal">
+        This is an AI agent
+        <span className="text-muted-foreground"> — off means a person</span>
+      </Label>
     </div>
   );
 }
@@ -163,6 +118,8 @@ function AssigneeRow({
   const [busy, setBusy] = useState(false);
 
   const isAgent = assignee.kind === "agent";
+  // A key is minted through the account API, so it needs a signed-in session.
+  const { data: session } = useSession();
 
   const startEditing = () => {
     setName(assignee.name);
@@ -250,7 +207,7 @@ function AssigneeRow({
           </div>
         </div>
         <div className="flex items-center gap-1">
-          {isAgent && !assignee.apiKeyId && (
+          {isAgent && !assignee.apiKeyId && session && (
             <Button
               variant="outline"
               size="sm"
@@ -379,7 +336,7 @@ export function AssigneesSection() {
             Add
           </Button>
         </div>
-        <KindPicker value={kind} onChange={setKind} />
+        <KindSwitch value={kind} onChange={setKind} />
         <ColorPicker value={color} onChange={setColor} label="New assignee color" />
       </div>
 
