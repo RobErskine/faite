@@ -136,6 +136,9 @@ type Mode = { kind: "root" } | { kind: PaletteEntryMode };
 
 /** How `paletteFilter` recognizes a registry `fallback` row: cmdk hands a
  * filter only an item's value, the search and its keywords. */
+/** Stable empty list for "no agents offered" (EI-426). */
+const NO_AGENTS: never[] = [];
+
 const FALLBACK_KEYWORD = "faite:fallback";
 
 /**
@@ -211,7 +214,10 @@ export function CommandPalette({
   const [mentionedAssignee, setMentionedAssignee] = useState<MentionAssigneeOption | null>(null);
   const assigneesById = useAssigneesById();
   const assignees = useMemo(() => [...assigneesById.values()], [assigneesById]);
-  const agents = useMemo(() => assignees.filter((a) => a.kind === "agent"), [assignees]);
+  const agentAssignees = useMemo(() => assignees.filter((a) => a.kind === "agent"), [assignees]);
+  // A menu pick wins outright, so "for <agent>" is just words then and stays
+  // in the title — exactly as when a typed "@Name" assigns (EI-426).
+  const agents = mentionedAssignee ? NO_AGENTS : agentAssignees;
   // Matches `foldQuickAddDraft` has already folded out of `value` — see
   // board-column.tsx's own quick-add row for the identical pattern.
   const [confirmedMatches, setConfirmedMatches] = useState<QuickAddMatch[]>([]);
@@ -313,7 +319,7 @@ export function CommandPalette({
    * other reads "not used" — even when Enter comes before the next space.
    */
   const quickAdd = useMemo(() => {
-    const settled = settleQuickAddDraft(value, confirmedMatches, today, reminderPresets, { literals });
+    const settled = settleQuickAddDraft(value, confirmedMatches, today, reminderPresets, { literals, agents });
     return resolveQuickAdd(quickAddDraftToString(settled.text, settled.confirmed), today, {
       presets: reminderPresets,
       lists: mentionListOptions,
@@ -685,6 +691,7 @@ export function CommandPalette({
             }
             const folded = foldQuickAddDraft(next, confirmedMatches, today, reminderPresets, {
               literals,
+              agents,
             });
             setValue(folded.text);
             setConfirmedMatches(folded.confirmed);

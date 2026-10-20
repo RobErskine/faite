@@ -216,9 +216,8 @@ the result.
   longest name wins, so "for Claude Code" is not "for Claude" plus "Code".
 - **Precedence**, highest first: an assignee picked from the `@` menu, then
   an `@Name` typed out in full and never picked, then `for <agent>`. If a
-  menu pick and a `for` phrase both exist, the pick wins but the `for` words
-  are still stripped from the title. When a typed `@Name` assigns, the
-  `for <agent>` words stay in the title.
+  menu pick and a `for` phrase both exist, the pick wins and the `for` words
+  stay in the title, no chip. The same holds when a typed `@Name` assigns.
 - **Ambiguity assigns nothing.** Two agents matching the phrase assign
   neither, and the words stay in the title. A typed `@Name` that matches both
   a list and an assignee stays unresolved (the "@name · 2 match" chip, in

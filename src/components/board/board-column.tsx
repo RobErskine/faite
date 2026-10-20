@@ -74,6 +74,9 @@ const NO_SORTING: SortingStrategy = () => null;
  * also why the per-card insertion line needs no gating here: `overTodoId` can no
  * longer name a card in this half.
  */
+/** Stable empty list for "no agents offered" (EI-426). */
+const NO_AGENTS: never[] = [];
+
 const CARDS_NOT_DROPPABLE = { draggable: false, droppable: true } as const;
 
 /**
@@ -559,7 +562,10 @@ export function BoardColumn({
   const [mentionedAssignee, setMentionedAssignee] = useState<MentionAssigneeOption | null>(null);
   const assigneesById = useAssigneesById();
   const assignees = useMemo(() => [...assigneesById.values()], [assigneesById]);
-  const agents = useMemo(() => assignees.filter((a) => a.kind === "agent"), [assignees]);
+  const agentAssignees = useMemo(() => assignees.filter((a) => a.kind === "agent"), [assignees]);
+  // A menu pick wins outright, so "for <agent>" is just words then and stays
+  // in the title — exactly as when a typed "@Name" assigns (EI-426).
+  const agents = mentionedAssignee ? NO_AGENTS : agentAssignees;
   /** Words whose chip was dismissed — title text from then on (EI-375). */
   const [literals, setLiterals] = useState<string[]>([]);
   /**
@@ -641,6 +647,7 @@ export function BoardColumn({
   // on the next space; this covers the preview and an Enter that comes first.
   const settled = settleQuickAddDraft(draft, confirmedMatches, ctx.today, reminderPresets ?? [], {
     literals,
+    agents,
   });
 
   const commit = () => {
@@ -1353,6 +1360,7 @@ export function BoardColumn({
                     const raw = e.target.value;
                     const folded = foldQuickAddDraft(raw, confirmedMatches, ctx.today, reminderPresets ?? [], {
                       literals,
+                      agents,
                     });
                     setDraft(folded.text);
                     setConfirmedMatches(folded.confirmed);

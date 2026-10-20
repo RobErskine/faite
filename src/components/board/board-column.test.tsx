@@ -1334,6 +1334,27 @@ describe("quick-add — assignees (EI-426)", () => {
     expect(onQuickAdd).toHaveBeenCalledWith(expect.any(String), undefined, [], [], undefined);
   });
 
+  it("a picked assignee leaves a trailing 'for <agent>' in the title, with one chip", () => {
+    const onQuickAdd = vi.fn();
+    render(<Harness assignees={ASSIGNEES} onQuickAdd={onQuickAdd} />);
+    fireEvent.change(addInput(), { target: { value: "Write email for Instinct @mo" } });
+    fireEvent.select(addInput(), { target: { selectionStart: 28 } });
+    fireEvent.mouseDown(screen.getByRole("option", { name: /Mom/ }));
+    expect(screen.getByText("→ Mom")).toBeTruthy();
+    expect(screen.queryByText("→ Instinct")).toBeNull();
+    fireEvent.keyDown(addInput(), { key: "Enter" });
+    expect(onQuickAdd.mock.calls[0][0]).toContain("for Instinct");
+    expect(onQuickAdd.mock.calls[0][4]).toBe("mom");
+  });
+
+  it("a date typed after a folded one, then 'for <agent>', keeps the first date", () => {
+    render(<Harness assignees={ASSIGNEES} />);
+    fireEvent.change(addInput(), { target: { value: "email tomorrow " } });
+    fireEvent.change(addInput(), { target: { value: "email tomorrow fri for Instinct" } });
+    expect(screen.getByText("→ Instinct")).toBeTruthy();
+    expect(screen.getByText(/fri · not used/i)).toBeTruthy();
+  });
+
   it("previews a trailing 'for <agent>' as a dismissible chip, and not a person", () => {
     render(<Harness assignees={ASSIGNEES} />);
     fireEvent.change(addInput(), { target: { value: "Write email for Instinct" } });

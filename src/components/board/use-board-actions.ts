@@ -1345,8 +1345,9 @@ export function useBoardActions(
         presets: reminderPresets,
         lists,
         assignees,
-        // Only agents can be named by a trailing "for <name>" (EI-426).
-        agents: assignees.filter((a) => a.kind === "agent"),
+        // Only agents can be named by a trailing "for <name>" (EI-426), and
+        // not at all once a menu pick has assigned: the words stay in the title.
+        agents: mentionedAssigneeId ? [] : assignees.filter((a) => a.kind === "agent"),
         literals,
       });
       const assignee =

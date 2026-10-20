@@ -181,5 +181,6 @@ describe("handleQuickAdd: assignees (EI-426)", () => {
   it("a picked assignee outranks a typed 'for <agent>'", async () => {
     const created = await add("write email for Instinct", "mom");
     expect(created.assigneeId).toBe("mom");
+    expect(created.title).toBe("write email for Instinct");
   });
 });

@@ -1167,5 +1167,6 @@ describe("CommandPalette — quick-add assignees (EI-426)", () => {
 
     const created = await onlyTodo();
     expect(created.assigneeId).toBe("mom");
+    expect(created.title).toContain("for Instinct");
   });
 });
