@@ -13,6 +13,8 @@ import {
 export interface MentionItem<T> {
   id: string;
   label: string;
+  /** Muted text rendered after the label, e.g. "Agent". */
+  detail?: string;
   data: T;
 }
 
@@ -228,7 +230,10 @@ export function MentionMenu<T>({
             index === highlightedIndex ? "bg-muted text-foreground" : "hover:bg-muted/60",
           )}
         >
-          {item.label}
+          <span className="min-w-0 truncate">{item.label}</span>
+          {item.detail ? (
+            <span className="ml-2 shrink-0 text-xs text-muted-foreground">{item.detail}</span>
+          ) : null}
         </button>
       ))}
     </div>

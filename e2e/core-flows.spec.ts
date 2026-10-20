@@ -224,3 +224,23 @@ test("GOOD JOB mode throws confetti when a to-do is completed", async ({ page })
 
   await expect(confettiCanvas).toBeAttached();
 });
+
+test("quick-add assigns a trailing 'for <agent>' and strips the words (EI-426)", async ({ page }) => {
+  await page.getByRole("button", { name: "Account", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Settings" }).click();
+  await page.getByRole("tab", { name: /assignees/i }).click();
+  await page.getByLabel("Add an assignee").fill("Instinct");
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await expect(page.getByLabel("Edit Instinct")).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  await switchToLists(page);
+  const backlog = page.getByRole("region", { name: "Backlog" });
+  await backlog.getByPlaceholder("Add a to-do").fill("write email to daycare for Instinct");
+  await page.keyboard.press("Enter");
+
+  const card = backlog.getByRole("button", { name: /^write email to daycare/ });
+  await expect(card).toBeVisible();
+  await expect(card).not.toContainText("for Instinct");
+  await expect(card.locator('[data-row-badge="assignee"]')).toHaveText(/Instinct/);
+});

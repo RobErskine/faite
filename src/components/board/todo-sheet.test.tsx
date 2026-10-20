@@ -2,10 +2,11 @@
 import "fake-indexeddb/auto";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { AssigneesProvider } from "@/components/board/assignees-context";
 import { TodoSheet, type RecurrenceInfo } from "./todo-sheet";
 import { defaultRule } from "@/lib/recurrence";
 import { PRIORITY_RAILS } from "@/lib/priority";
-import type { Label as LabelRecord, List, Todo, TodoEvent } from "@/lib/schema";
+import type { Assignee, Label as LabelRecord, List, Todo, TodoEvent } from "@/lib/schema";
 import type { PlacementContext } from "@/lib/scheduling";
 
 /**
@@ -406,6 +407,71 @@ describe("title mentions — @list and #label", () => {
     await vi.waitFor(() => expect(onToggleLabel).toHaveBeenCalledTimes(1));
     expect(onToggleLabel.mock.calls[0][0]).toBe(TODO.id);
     expect(typeof onToggleLabel.mock.calls[0][1]).toBe("string");
+  });
+});
+
+const mkAssignee = (id: string, name: string, kind: Assignee["kind"]): Assignee => ({
+  id,
+  ownerId: "local-user",
+  createdAt: "2026-08-03T00:00:00.000Z",
+  updatedAt: "2026-08-03T00:00:00.000Z",
+  deletedAt: null,
+  name,
+  kind,
+  color: null,
+  instructions: null,
+  apiKeyId: null,
+});
+const INSTINCT = mkAssignee("as1", "Instinct", "agent");
+const MOM = mkAssignee("as2", "Mom", "person");
+
+describe("title assignees (EI-426)", () => {
+  it("picking an assignee from @ writes assigneeId at once", () => {
+    const onSave = vi.fn();
+    render(
+      <AssigneesProvider assignees={[INSTINCT, MOM]}>
+        <Harness onSave={onSave} />
+      </AssigneesProvider>,
+    );
+    fireEvent.change(screen.getByLabelText("Title"), {
+      target: { value: "Reply to the design feedback @mo" },
+    });
+
+    fireEvent.mouseDown(screen.getByRole("option", { name: /Mom/ }));
+
+    expect(onSave).toHaveBeenCalledWith(TODO.id, { assigneeId: "as2" });
+  });
+
+  it("a title ending \"for <agent>\" sets assigneeId and strips the words on blur", () => {
+    const onSave = vi.fn();
+    render(
+      <AssigneesProvider assignees={[INSTINCT, MOM]}>
+        <Harness onSave={onSave} />
+      </AssigneesProvider>,
+    );
+    const title = screen.getByLabelText("Title");
+    fireEvent.change(title, { target: { value: "Reply to the design feedback for Instinct" } });
+    fireEvent.blur(title);
+
+    expect(onSave).toHaveBeenCalledWith(TODO.id, { assigneeId: "as1" });
+    expect(screen.getByLabelText("Title")).toHaveProperty(
+      "value",
+      "Reply to the design feedback",
+    );
+  });
+
+  it("\"for <person>\" is left in the title", () => {
+    const onSave = vi.fn();
+    render(
+      <AssigneesProvider assignees={[INSTINCT, MOM]}>
+        <Harness onSave={onSave} />
+      </AssigneesProvider>,
+    );
+    const title = screen.getByLabelText("Title");
+    fireEvent.change(title, { target: { value: "Reply to the design feedback for Mom" } });
+    fireEvent.blur(title);
+
+    expect(onSave).not.toHaveBeenCalledWith(TODO.id, expect.objectContaining({ assigneeId: expect.anything() }));
   });
 });
 

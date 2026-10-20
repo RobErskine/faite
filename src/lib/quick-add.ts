@@ -26,7 +26,13 @@ import { addDays, dayOfWeek, formatShortDateAsOf, toCivilDate } from "./scheduli
  * is the one that applied.
  */
 
-export type QuickAddMatchKind = "priority" | "date" | "deadline" | "time";
+export type QuickAddMatchKind = "priority" | "date" | "deadline" | "time" | "assignee";
+
+/** Who a to-do is assigned to — the part of an `Assignee` quick-add needs. */
+export interface QuickAddAssignee {
+  id: string;
+  name: string;
+}
 
 export interface QuickAddMatch {
   /** The exact substring matched, for display. */
@@ -92,6 +98,13 @@ export interface QuickAddOptions {
    * word and gain a date just because its sheet was opened.
    */
   leadingDates?: boolean;
+  /**
+   * The AGENT assignees a trailing "for <name>" can name (EI-426). Agents
+   * only: "buy gift for Mom" names who the gift is for, not who does the
+   * work, so people are never offered here. Omitted or empty, "for" is just a
+   * word.
+   */
+  agents?: readonly QuickAddAssignee[];
 }
 
 export interface QuickAdd {
@@ -100,6 +113,8 @@ export interface QuickAdd {
   scheduledDate: CivilDate | null;
   deadline: CivilDate | null;
   reminderTime: string | null;
+  /** The agent a trailing "for <agent>" named (EI-426), or null. */
+  assignee: QuickAddAssignee | null;
   /** Left-to-right, one per kind that matched — for a live preview. */
   matches: QuickAddMatch[];
   /** Words left in the title on purpose — see `QuickAddNotice`. */
@@ -380,6 +395,8 @@ interface RawMatch {
   /** Set only for a preset-name time match — overrides the default
    * `formatTimeLabel(value)` label with the preset's own "emoji name". */
   presetLabel?: string;
+  /** Set only for an "assignee" match. */
+  agent?: QuickAddAssignee;
 }
 
 interface Word {
@@ -418,7 +435,35 @@ function labelForMatch(m: RawMatch, today: CivilDate): string {
       return labelForDate(m.value as CivilDate, today, "Due ");
     case "time":
       return m.presetLabel ?? formatTimeLabel(m.value as string);
+    case "assignee":
+      return `→ ${m.agent?.name ?? ""}`;
   }
+}
+
+/**
+ * A trailing "for <agent>" ending at word `hi - 1` (EI-426). The longest name
+ * is tried first, so "for Claude Code" is not read as "for Claude" with "Code"
+ * left over. Loose, like "@list": case, spaces, "-" and "_" are ignored.
+ * `ambiguous` means two agents answer to the phrase — the caller assigns
+ * neither and leaves the words in the title.
+ */
+function matchTrailingAgent(
+  words: readonly Word[],
+  hi: number,
+  input: string,
+  agents: readonly QuickAddAssignee[],
+): { start: number; agent: QuickAddAssignee } | "ambiguous" | null {
+  if (agents.length === 0) return null;
+  const maxWords = Math.max(...agents.map((a) => a.name.trim().split(/\s+/).length));
+  for (let k = Math.min(maxWords, hi - 1); k >= 1; k -= 1) {
+    if (words[hi - 1 - k].text.toLowerCase() !== "for") continue;
+    const key = normalizeListName(input.slice(words[hi - k].start, words[hi - 1].end));
+    if (!key) continue;
+    const found = agents.filter((a) => normalizeListName(a.name) === key);
+    if (found.length === 1) return { start: words[hi - 1 - k].start, agent: found[0] };
+    if (found.length > 1) return "ambiguous";
+  }
+  return null;
 }
 
 interface QuickAddScan {
@@ -449,6 +494,7 @@ function scanQuickAdd(
     scheduledDate: null,
     deadline: null,
     reminderTime: null,
+    assignee: null,
     matches: [],
     notices: [],
   };
@@ -503,6 +549,26 @@ function scanQuickAdd(
         hi -= 2;
         continue;
       }
+    }
+
+    // "for <agent>" — one per string; a second leaves its words in the title.
+    const agentMatch = trailing.some((t) => t.kind === "assignee")
+      ? null
+      : matchTrailingAgent(words, hi, input, options.agents ?? []);
+    if (agentMatch === "ambiguous") break;
+    if (agentMatch) {
+      const raw = input.slice(agentMatch.start, words[hi - 1].end);
+      if (literals.has(raw)) break;
+      trailing.push({
+        kind: "assignee",
+        start: agentMatch.start,
+        end: words[hi - 1].end,
+        raw,
+        value: agentMatch.agent.id,
+        agent: agentMatch.agent,
+      });
+      hi = words.findIndex((x) => x.start === agentMatch.start);
+      continue;
     }
 
     const w = words[hi - 1];
@@ -632,6 +698,7 @@ function scanQuickAdd(
       scheduledDate: value("date") as CivilDate | null,
       deadline: value("deadline") as CivilDate | null,
       reminderTime: value("time") as string | null,
+      assignee: winners.get("assignee")?.agent ?? null,
       matches: applied.map((m) => ({ raw: m.raw, kind: m.kind, label: labelForMatch(m, today) })),
       notices: sortedNotices(),
     },
@@ -814,6 +881,52 @@ export interface UnresolvedListMention {
   raw: string;
   query: string;
   matches: number;
+  /**
+   * Set only when the candidates were not all lists (EI-426): "assignee" when
+   * they were all assignees, "both" when a list and an assignee share the
+   * name. Absent for the list-only case, so it reads as it always has.
+   */
+  among?: "assignee" | "both";
+}
+
+/** Which list or assignee a typed "@query" names — one pool, so a name used by
+ * both a list and an assignee is ambiguous rather than quietly the list. */
+function matchMention<L extends { name: string }, A extends { name: string }>(
+  query: string,
+  lists: readonly L[],
+  assignees: readonly A[],
+):
+  | { kind: "list"; list: L }
+  | { kind: "assignee"; assignee: A }
+  | { kind: "ambiguous"; matches: number; among: UnresolvedListMention["among"] }
+  | { kind: "none" } {
+  if (assignees.length === 0) {
+    const r = matchListMention(query, lists);
+    if (r.kind === "match") return { kind: "list", list: r.list };
+    if (r.kind === "ambiguous") return { kind: "ambiguous", matches: r.lists.length, among: undefined };
+    return { kind: "none" };
+  }
+  type Candidate = { list: L } | { assignee: A };
+  const pool: { name: string; c: Candidate }[] = [
+    ...lists.map((list) => ({ name: list.name, c: { list } as Candidate })),
+    ...assignees.map((assignee) => ({ name: assignee.name, c: { assignee } as Candidate })),
+  ];
+  const lower = query.toLowerCase();
+  const key = normalizeListName(query);
+  let found = pool.filter((p) => p.name.toLowerCase() === lower);
+  if (found.length === 0 && key) found = pool.filter((p) => normalizeListName(p.name) === key);
+  if (found.length === 0) return { kind: "none" };
+  if (found.length === 1) {
+    const c = found[0].c;
+    return "list" in c ? { kind: "list", list: c.list } : { kind: "assignee", assignee: c.assignee };
+  }
+  const hasList = found.some((p) => "list" in p.c);
+  const hasAssignee = found.some((p) => "assignee" in p.c);
+  return {
+    kind: "ambiguous",
+    matches: found.length,
+    among: hasList && hasAssignee ? "both" : hasAssignee ? "assignee" : undefined,
+  };
 }
 
 /**
@@ -828,11 +941,13 @@ export interface UnresolvedListMention {
  * mentions would leave no text at all, nothing is lifted: "@groceries" on
  * its own is a title, not an empty to-do.
  */
-export function extractListMentions<L extends { name: string }>(
+export function extractListMentions<L extends { name: string }, A extends { name: string } = never>(
   input: string,
   lists: readonly L[],
-): { text: string; list: L | null; unresolved: UnresolvedListMention[] } {
+  assignees: readonly A[] = [],
+): { text: string; list: L | null; assignee: A | null; unresolved: UnresolvedListMention[] } {
   let list: L | null = null;
+  let assignee: A | null = null;
   const unresolved: UnresolvedListMention[] = [];
   const spans: { start: number; end: number }[] = [];
   const re = /(^|\s)@(\S+)/g;
@@ -840,33 +955,43 @@ export function extractListMentions<L extends { name: string }>(
   while ((m = re.exec(input))) {
     const start = m.index + m[1].length;
     const query = m[2];
-    const result = matchListMention(query, lists);
-    if (result.kind === "match") {
-      list ??= result.list;
+    const result = matchMention(query, lists, assignees);
+    if (result.kind === "list" || result.kind === "assignee") {
+      if (result.kind === "list") list ??= result.list;
+      else assignee ??= result.assignee;
       spans.push({ start, end: start + query.length + 1 });
     } else {
       unresolved.push({
         raw: `@${query}`,
         query,
-        matches: result.kind === "ambiguous" ? result.lists.length : 0,
+        matches: result.kind === "ambiguous" ? result.matches : 0,
+        ...(result.kind === "ambiguous" && result.among ? { among: result.among } : {}),
       });
     }
   }
-  if (spans.length === 0) return { text: input, list: null, unresolved };
+  if (spans.length === 0) return { text: input, list: null, assignee: null, unresolved };
 
   let text = input;
   for (const span of [...spans].reverse()) {
     text = `${text.slice(0, span.start).trimEnd()} ${text.slice(span.end).trimStart()}`;
   }
   text = text.trim();
-  if (!text) return { text: input, list: null, unresolved };
-  return { text, list, unresolved };
+  if (!text) return { text: input, list: null, assignee: null, unresolved };
+  return { text, list, assignee, unresolved };
 }
 
-export interface ResolvedQuickAdd<L> extends QuickAdd {
+export interface ResolvedQuickAdd<L, A extends QuickAddAssignee = QuickAddAssignee>
+  extends Omit<QuickAdd, "assignee"> {
   /** The list a typed "@mention" resolved to — null when none did. A list
    * picked from the mention menu is the caller's, and outranks this. */
   list: L | null;
+  /**
+   * Who the to-do is assigned to (EI-426): a typed "@Name" (any assignee)
+   * outranks a trailing "for <agent>". An assignee picked from the mention
+   * menu is the caller's, and outranks both. When an "@Name" wins, a "for"
+   * phrase is not parsed at all and stays in the title — never dropped.
+   */
+  assignee: A | QuickAddAssignee | null;
   unresolvedMentions: UnresolvedListMention[];
 }
 
@@ -878,24 +1003,43 @@ export interface ResolvedQuickAdd<L> extends QuickAdd {
  * chip and the write can never disagree (EI-235 duplicated the glue; this is
  * where new behavior goes instead).
  */
-export function resolveQuickAdd<L extends { name: string }>(
+export function resolveQuickAdd<
+  L extends { name: string },
+  A extends QuickAddAssignee = QuickAddAssignee,
+>(
   input: string,
   today: CivilDate,
   options: QuickAddOptions & {
     presets?: readonly ReminderPreset[];
     lists?: readonly L[];
+    /** Every assignee, agents and people — an "@Name" may name either. The
+     * agents among them are not inferred: pass `agents` for "for <name>". */
+    assignees?: readonly A[];
   } = {},
-): ResolvedQuickAdd<L> {
-  const mentions = extractListMentions(input, options.lists ?? []);
-  const parsed = parseQuickAdd(mentions.text, today, options.presets ?? [], options);
-  return { ...parsed, list: mentions.list, unresolvedMentions: mentions.unresolved };
+): ResolvedQuickAdd<L, A> {
+  const mentions = extractListMentions(input, options.lists ?? [], options.assignees ?? []);
+  const parsed = parseQuickAdd(
+    mentions.text,
+    today,
+    options.presets ?? [],
+    mentions.assignee ? { ...options, agents: [] } : options,
+  );
+  return {
+    ...parsed,
+    list: mentions.list,
+    assignee: mentions.assignee ?? parsed.assignee,
+    unresolvedMentions: mentions.unresolved,
+  };
 }
 
 /** The chip's words for an "@word" that filed nowhere. */
 export function unresolvedMentionLabel(mention: UnresolvedListMention): string {
-  return mention.matches > 1
-    ? `${mention.raw} · ${mention.matches} lists match`
-    : `${mention.raw} · no list`;
+  if (mention.matches > 1) {
+    if (mention.among === "both") return `${mention.raw} · list and assignee match`;
+    if (mention.among === "assignee") return `${mention.raw} · ${mention.matches} assignees match`;
+    return `${mention.raw} · ${mention.matches} lists match`;
+  }
+  return `${mention.raw} · no list`;
 }
 
 export interface QuickAddLanding {
@@ -917,21 +1061,27 @@ export function describeQuickAddLanding({
   today,
   scheduledDate,
   list,
+  assignee = null,
   unresolvedMentions = [],
 }: {
   today: CivilDate;
   scheduledDate: CivilDate | null;
   list: { name: string; isBacklog?: boolean } | null;
+  /** Who it was assigned to (EI-426) — named last: "Added to Fri · Instinct". */
+  assignee?: { name: string } | null;
   unresolvedMentions?: readonly UnresolvedListMention[];
 }): QuickAddLanding {
   const parts: string[] = [];
   if (scheduledDate) parts.push(formatQuickAddDate(scheduledDate, today));
   if (list && !(list.isBacklog && scheduledDate)) parts.push(list.name);
   if (parts.length === 0) parts.push("Backlog");
+  if (assignee) parts.push(assignee.name);
 
   const notes = unresolvedMentions.map((m) =>
     m.matches > 1
-      ? `${m.raw} matches ${m.matches} lists, so it stayed in the title.`
+      ? m.among === "both"
+        ? `${m.raw} matches a list and an assignee, so it stayed in the title.`
+        : `${m.raw} matches ${m.matches} ${m.among === "assignee" ? "assignees" : "lists"}, so it stayed in the title.`
       : `No list is called ${m.raw}, so it stayed in the title.`,
   );
   return { message: `Added to ${parts.join(" · ")}`, note: notes.length ? notes.join(" ") : null };

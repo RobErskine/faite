@@ -3,11 +3,12 @@ import "fake-indexeddb/auto";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CommandPalette } from "./command-palette";
+import { AssigneesProvider } from "./assignees-context";
 import { announceQuickAdd } from "./quick-add-toast";
 import { formatShortDate } from "@/lib/scheduling";
 import { collapseRecurringSeries } from "@/lib/search";
 import { resetDbForTests, getDb } from "@/lib/store/db";
-import type { Label as LabelRecord, List, Settings, Tab, Todo } from "@/lib/schema";
+import type { Assignee, Label as LabelRecord, List, Settings, Tab, Todo } from "@/lib/schema";
 
 /**
  * Regression guard for the ⌘K crash.
@@ -1090,5 +1091,82 @@ describe("CommandPalette — result names speak their state (EI-391)", () => {
     expect(
       screen.getByRole("option", { name: "File taxes, Deadline Oct 19, due in 5 days, Backlog" }),
     ).toBeTruthy();
+  });
+});
+
+/** EI-426 in the palette: "@" offers assignees, "for <agent>" assigns. */
+describe("CommandPalette — quick-add assignees (EI-426)", () => {
+  const assignee = (id: string, name: string, kind: "agent" | "person"): Assignee =>
+    ({ id, name, kind, color: null, instructions: null, apiKeyId: null }) as unknown as Assignee;
+  const ASSIGNEES = [assignee("instinct", "Instinct", "agent"), assignee("mom", "Mom", "person")];
+
+  const NEW_TODO = "What needs doing?";
+  const renderWithAssignees = () =>
+    render(
+      <AssigneesProvider assignees={ASSIGNEES}>
+        <CommandPalette {...renderPaletteDefaults()} />
+      </AssigneesProvider>,
+    );
+  const openNewTodo = () => fireEvent.click(screen.getByText("New to-do"));
+  const type = (text: string) =>
+    fireEvent.change(screen.getByPlaceholderText(NEW_TODO), { target: { value: text } });
+  const submit = () => fireEvent.keyDown(screen.getByPlaceholderText(NEW_TODO), { key: "Enter" });
+  const onlyTodo = async () => {
+    await waitFor(async () => expect(await getDb().todos.count()).toBe(1));
+    return (await getDb().todos.toArray())[0];
+  };
+
+  beforeEach(() => vi.mocked(announceQuickAdd).mockClear());
+
+  it("picking an assignee from the @ menu sets assigneeId and shows a chip", async () => {
+    renderWithAssignees();
+    openNewTodo();
+    type("Call @mo");
+    expect(screen.getByRole("option", { name: /Mom/ }).textContent).toContain("Person");
+    fireEvent.mouseDown(screen.getByRole("option", { name: /Mom/ }));
+    expect(screen.getByText("→ Mom")).toBeTruthy();
+    submit();
+
+    const created = await onlyTodo();
+    expect(created.assigneeId).toBe("mom");
+    expect(announceQuickAdd).toHaveBeenCalledWith(created.id, "Call", {
+      message: "Added to Backlog · Mom",
+      note: null,
+    });
+  });
+
+  it("a trailing 'for <agent>' assigns it and strips the words from the title", async () => {
+    renderWithAssignees();
+    openNewTodo();
+    type("Write email for Instinct");
+    expect(screen.getByText("→ Instinct")).toBeTruthy();
+    submit();
+
+    const created = await onlyTodo();
+    expect(created.title).toBe("Write email");
+    expect(created.assigneeId).toBe("instinct");
+  });
+
+  it("'for <person>' is just words", async () => {
+    renderWithAssignees();
+    openNewTodo();
+    type("Buy gift for Mom");
+    submit();
+
+    const created = await onlyTodo();
+    expect(created.title).toBe("Buy gift for Mom");
+    expect(created.assigneeId).toBeNull();
+  });
+
+  it("a picked assignee outranks a typed 'for <agent>'", async () => {
+    renderWithAssignees();
+    openNewTodo();
+    type("Write email for Instinct @mo");
+    fireEvent.mouseDown(screen.getByRole("option", { name: /Mom/ }));
+    submit();
+
+    const created = await onlyTodo();
+    expect(created.assigneeId).toBe("mom");
+    expect(created.title).toContain("for Instinct");
   });
 });

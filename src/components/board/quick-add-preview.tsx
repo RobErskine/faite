@@ -170,17 +170,21 @@ export function dismissibleMatchChip(
  * `typingMention` is the "@query" still being typed — it would read "no
  * list" on every keystroke until it matched, so it is left to the mention
  * menu until the caret leaves it. `pickedList` suppresses the resolved-list
- * chip when the menu already picked one: a pick outranks typed text.
+ * chip when the menu already picked one: a pick outranks typed text. `pickedAssignee` does
+ * the same for the assignee a typed "@Name" resolved to (EI-426); a trailing
+ * "for <agent>" has its own dismissible chip, from `matches`.
  */
 export function quickAddStatusChips<L extends { id: string; name: string; color?: string | null }>(
   resolved: ResolvedQuickAdd<L>,
   {
     typingMention = null,
     pickedList = false,
+    pickedAssignee = false,
     onCreateList,
   }: {
     typingMention?: string | null;
     pickedList?: boolean;
+    pickedAssignee?: boolean;
     onCreateList?: (name: string) => void;
   } = {},
 ): QuickAddChip[] {
@@ -191,6 +195,13 @@ export function quickAddStatusChips<L extends { id: string; name: string; color?
       label: `→ ${resolved.list.name}`,
       color: resolved.list.color ?? null,
     });
+  }
+  if (
+    resolved.assignee &&
+    !pickedAssignee &&
+    !resolved.matches.some((m) => m.kind === "assignee")
+  ) {
+    chips.push({ key: `assignee:${resolved.assignee.id}`, label: `→ ${resolved.assignee.name}` });
   }
   for (const mention of resolved.unresolvedMentions) {
     if (mention.raw === typingMention) continue;

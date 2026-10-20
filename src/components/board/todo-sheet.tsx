@@ -72,6 +72,7 @@ import {
 } from "@/components/board/quick-add-preview";
 import { MentionMenu, useMention, type MentionSource } from "@/components/mention-menu";
 import type { MentionListOption, MentionPick } from "@/components/board/board-column";
+import { useAssigneesById } from "@/components/board/assignees-context";
 import { TimelineList, TimelineRow } from "@/components/board/timeline";
 import { cn } from "@/lib/utils";
 import { useExitRetained } from "@/lib/use-exit-retained";
@@ -197,6 +198,9 @@ const noop = () => {};
  * its last word.
  */
 const TITLE_PARSE: QuickAddOptions = { leadingDates: false };
+
+/** `MentionPick` plus the assignee pick (EI-426) this sheet resolves itself. */
+type SheetMentionPick = MentionPick | { kind: "assignee"; assignee: Assignee };
 
 interface TodoSheetProps {
   todo: Todo | null;
@@ -393,14 +397,32 @@ function TodoSheetContent({
       })),
     [lists, liveTabsById],
   );
-  const mentionSources = useMemo((): MentionSource<MentionPick>[] => [
+  const assigneesById = useAssigneesById();
+  const assigneeList = useMemo(() => [...assigneesById.values()], [assigneesById]);
+  // Only agents answer to a trailing "for <name>": "for Mom" names a receiver.
+  const titleParse = useMemo(
+    (): QuickAddOptions => ({
+      ...TITLE_PARSE,
+      agents: assigneeList.filter((a) => a.kind === "agent"),
+    }),
+    [assigneeList],
+  );
+  const mentionSources = useMemo((): MentionSource<SheetMentionPick>[] => [
     {
       trigger: "@",
-      items: mentionListOptions.map((list) => ({
-        id: list.id,
-        label: list.name,
-        data: { kind: "list" as const, list },
-      })),
+      items: [
+        ...mentionListOptions.map((list) => ({
+          id: list.id,
+          label: list.name,
+          data: { kind: "list" as const, list },
+        })),
+        ...assigneeList.map((assignee) => ({
+          id: `assignee:${assignee.id}`,
+          label: assignee.name,
+          detail: assignee.kind === "agent" ? "Agent" : "Person",
+          data: { kind: "assignee" as const, assignee },
+        })),
+      ],
     },
     {
       trigger: "#",
@@ -419,7 +441,7 @@ function TodoSheetContent({
         data: { kind: "create-label" as const, name: query },
       }),
     },
-  ], [mentionListOptions, labels, todo.labelIds]);
+  ], [mentionListOptions, assigneeList, labels, todo.labelIds]);
   const mention = useMention({ value: title, cursor: titleCursor, sources: mentionSources });
 
   useEffect(() => {
@@ -438,6 +460,7 @@ function TodoSheetContent({
 
     const pick = resolved.item.data;
     if (pick.kind === "list") onSave(todo.id, { listId: pick.list.id });
+    else if (pick.kind === "assignee") onSave(todo.id, { assigneeId: pick.assignee.id });
     else if (pick.kind === "label") onToggleLabel(todo.id, pick.label.id);
     else if (pick.kind === "create-label") {
       const id = await createLabel(pick.name);
@@ -466,7 +489,7 @@ function TodoSheetContent({
     // field must not re-parse it into a different day.
     if (next === todo.title) return;
 
-    const parsed = parseQuickAdd(next, today, reminderPresets, TITLE_PARSE);
+    const parsed = parseQuickAdd(next, today, reminderPresets, titleParse);
     const patch: Partial<Todo> = {};
     if (parsed.matches.length > 0) {
       if (parsed.title !== todo.title) patch.title = parsed.title;
@@ -474,6 +497,7 @@ function TodoSheetContent({
       if (parsed.scheduledDate !== null) patch.scheduledDate = parsed.scheduledDate;
       if (parsed.deadline !== null) patch.deadline = parsed.deadline;
       if (parsed.reminderTime !== null) patch.reminderTime = parsed.reminderTime;
+      if (parsed.assignee !== null) patch.assigneeId = parsed.assignee.id;
       setTitle(parsed.title);
     } else if (next !== todo.title) {
       patch.title = next;
@@ -501,7 +525,7 @@ function TodoSheetContent({
     const trimmed = raw.trimEnd();
     if (trimmed === "") return raw;
 
-    const parsed = parseQuickAdd(trimmed, today, reminderPresets, TITLE_PARSE);
+    const parsed = parseQuickAdd(trimmed, today, reminderPresets, titleParse);
     // A "not used" second date in the field (EI-379): folding the winner out
     // would leave the loser to win on the next space. Leave it to the blur.
     if (parsed.matches.length === 0 || parsed.notices.some((n) => n.kind === "unused-date")) {
@@ -513,6 +537,7 @@ function TodoSheetContent({
     if (parsed.scheduledDate !== null) patch.scheduledDate = parsed.scheduledDate;
     if (parsed.deadline !== null) patch.deadline = parsed.deadline;
     if (parsed.reminderTime !== null) patch.reminderTime = parsed.reminderTime;
+    if (parsed.assignee !== null) patch.assigneeId = parsed.assignee.id;
     if (Object.keys(patch).length > 0) onSave(todo.id, patch);
     return `${parsed.title} `;
   };
@@ -523,12 +548,12 @@ function TodoSheetContent({
   // Nothing while the title is untouched — `commitTitle` applies nothing then.
   const titleChips = useMemo((): QuickAddChip[] => {
     if (title.trim() === todo.title) return [];
-    const parsed = parseQuickAdd(title, today, reminderPresets, TITLE_PARSE);
+    const parsed = parseQuickAdd(title, today, reminderPresets, titleParse);
     return [
       ...parsed.matches.map((m) => ({ key: `${m.kind}:${m.raw}`, label: m.label })),
       ...quickAddNoticeChips(parsed.notices),
     ];
-  }, [title, todo.title, today, reminderPresets]);
+  }, [title, todo.title, today, reminderPresets, titleParse]);
 
   /** The "Done" button's box — the confetti origin for both it and `⌘↵`. */
   const markDoneRef = useRef<HTMLButtonElement | null>(null);

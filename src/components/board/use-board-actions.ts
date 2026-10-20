@@ -560,6 +560,7 @@ export function useBoardActions(
     recurrenceExpansion,
     reminderPresets,
     selectedTodos,
+    assignees = [],
   } = data;
 
   /*
@@ -1330,6 +1331,9 @@ export function useBoardActions(
       mentionedLabelIds?: string[],
       /** Words dismissed from the preview, kept as title text (EI-375). */
       literals?: readonly string[],
+      /** The assignee picked from the "@" menu (EI-426). Outranks one the
+       * typed text named, the same way `mentionedListId` outranks a typed list. */
+      mentionedAssigneeId?: string,
     ) => {
       // Quick-add rows only render once `ctx` is loaded (the `!ctx` early
       // return below gates the whole board), so this never actually fires
@@ -1337,7 +1341,19 @@ export function useBoardActions(
       if (!ctx) return;
       // Same resolution the row's preview ran, so the chip and the write agree:
       // a typed-out "@to-read" files into "To Read" even if never picked.
-      const parsed = resolveQuickAdd(input, ctx.today, { presets: reminderPresets, lists, literals });
+      const parsed = resolveQuickAdd(input, ctx.today, {
+        presets: reminderPresets,
+        lists,
+        assignees,
+        // Only agents can be named by a trailing "for <name>" (EI-426), and
+        // not at all once a menu pick has assigned: the words stay in the title.
+        agents: mentionedAssigneeId ? [] : assignees.filter((a) => a.kind === "agent"),
+        literals,
+      });
+      const assignee =
+        (mentionedAssigneeId ? assignees.find((a) => a.id === mentionedAssigneeId) : null) ??
+        parsed.assignee;
+      const assigneeId = mentionedAssigneeId ?? parsed.assignee?.id ?? null;
       const listId = mentionedListId ?? parsed.list?.id ?? target.listId ?? null;
       // An explicit date token beats the column it was typed into — the user
       // said Friday. Only falls back to `target.day` (a day column drop) when
@@ -1353,6 +1369,7 @@ export function useBoardActions(
         priority: parsed.priority,
         reminderTime: parsed.reminderTime,
         labelIds: mentionedLabelIds,
+        assigneeId,
       });
       // Ask Jev for a list now, not after sync (EI-373). It checks for itself
       // that smart sorting is on and the to-do landed in Backlog.
@@ -1368,11 +1385,12 @@ export function useBoardActions(
           today: ctx.today,
           scheduledDate,
           list,
+          assignee,
           unresolvedMentions: parsed.unresolvedMentions,
         }),
       );
     },
-    [ctx, lists, listsById, reminderPresets],
+    [ctx, lists, listsById, reminderPresets, assignees],
   );
 
   /**

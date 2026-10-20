@@ -30,7 +30,7 @@ import {
 import { isTextEntry } from "@/lib/undo";
 import { MentionMenu, useMention, type MentionSource } from "@/components/mention-menu";
 import { createLabel } from "@/lib/store/repositories";
-import type { CivilDate, Label as LabelRecord, List, ReminderPreset, Todo } from "@/lib/schema";
+import type { AssigneeKind, CivilDate, Label as LabelRecord, List, ReminderPreset, Todo } from "@/lib/schema";
 import type { PlacementContext } from "@/lib/scheduling";
 import type { ConfettiOrigin } from "@/lib/celebrate";
 import {
@@ -47,6 +47,7 @@ import {
   type QuickAddChip,
 } from "./quick-add-preview";
 import { TodoCard } from "./todo-card";
+import { useAssigneesById } from "./assignees-context";
 import { useCompletionBeat } from "./use-completion-beat";
 import type { TodoContextActions } from "./todo-card-menu";
 import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
@@ -73,6 +74,9 @@ const NO_SORTING: SortingStrategy = () => null;
  * also why the per-card insertion line needs no gating here: `overTodoId` can no
  * longer name a card in this half.
  */
+/** Stable empty list for "no agents offered" (EI-426). */
+const NO_AGENTS: never[] = [];
+
 const CARDS_NOT_DROPPABLE = { draggable: false, droppable: true } as const;
 
 /**
@@ -122,9 +126,25 @@ export interface MentionLabelOption {
   emoji: string | null;
 }
 
+/**
+ * A quick-add "@assignee" mention candidate (EI-426) — an agent or a person.
+ * Both are offered in the menu, because a pick is not a guess.
+ */
+export interface MentionAssigneeOption {
+  id: string;
+  name: string;
+  kind: AssigneeKind;
+}
+
+/** The muted word beside an assignee in the "@" menu. */
+export function assigneeKindDetail(kind: AssigneeKind): string {
+  return kind === "agent" ? "Agent" : "Person";
+}
+
 /** What a mention resolved to — the tagged union `useMention`'s `T` carries. */
 export type MentionPick =
   | { kind: "list"; list: MentionListOption }
+  | { kind: "assignee"; assignee: MentionAssigneeOption }
   | { kind: "label"; label: MentionLabelOption }
   | { kind: "create-label"; name: string };
 
@@ -194,12 +214,15 @@ interface BoardColumnProps {
    * in board.tsx). `labelIds` carries every "#label" mention picked, in the
    * order they were picked. `literals` are the words whose chip was dismissed
    * (EI-375) — `handleQuickAdd` reads them as title text, not tokens.
+   * `assigneeId` is the assignee picked from the "@" menu (EI-426); it
+   * outranks one the typed text names.
    */
   onQuickAdd?: (
     title: string,
     listId?: string,
     labelIds?: string[],
     literals?: readonly string[],
+    assigneeId?: string,
   ) => void;
   /**
    * Creates a list from a quick-add "@mention" that matched none (EI-375) —
@@ -536,6 +559,13 @@ export function BoardColumn({
   const [quickAddCursor, setQuickAddCursor] = useState(0);
   const [mentionedList, setMentionedList] = useState<MentionListOption | null>(null);
   const [mentionedLabels, setMentionedLabels] = useState<MentionLabelOption[]>([]);
+  const [mentionedAssignee, setMentionedAssignee] = useState<MentionAssigneeOption | null>(null);
+  const assigneesById = useAssigneesById();
+  const assignees = useMemo(() => [...assigneesById.values()], [assigneesById]);
+  const agentAssignees = useMemo(() => assignees.filter((a) => a.kind === "agent"), [assignees]);
+  // A menu pick wins outright, so "for <agent>" is just words then and stays
+  // in the title — exactly as when a typed "@Name" assigns (EI-426).
+  const agents = mentionedAssignee ? NO_AGENTS : agentAssignees;
   /** Words whose chip was dismissed — title text from then on (EI-375). */
   const [literals, setLiterals] = useState<string[]>([]);
   /**
@@ -555,11 +585,19 @@ export function BoardColumn({
   const mentionSources = useMemo((): MentionSource<MentionPick>[] => [
     {
       trigger: "@",
-      items: (lists ?? []).map((list) => ({
-        id: list.id,
-        label: list.name,
-        data: { kind: "list" as const, list },
-      })),
+      items: [
+        ...(lists ?? []).map((list) => ({
+          id: list.id,
+          label: list.name,
+          data: { kind: "list" as const, list },
+        })),
+        ...assignees.map((assignee) => ({
+          id: assignee.id,
+          label: assignee.name,
+          detail: assigneeKindDetail(assignee.kind),
+          data: { kind: "assignee" as const, assignee },
+        })),
+      ],
     },
     {
       trigger: "#",
@@ -576,7 +614,7 @@ export function BoardColumn({
         data: { kind: "create-label" as const, name: query },
       }),
     },
-  ], [lists, labels, mentionedLabelIds]);
+  ], [lists, assignees, labels, mentionedLabelIds]);
   const mention = useMention({ value: draft, cursor: quickAddCursor, sources: mentionSources });
 
   useEffect(() => {
@@ -595,6 +633,7 @@ export function BoardColumn({
 
     const pick = resolved.item.data;
     if (pick.kind === "list") setMentionedList(pick.list);
+    else if (pick.kind === "assignee") setMentionedAssignee(pick.assignee);
     else if (pick.kind === "label") setMentionedLabels((ls) => [...ls, pick.label]);
     else if (pick.kind === "create-label") {
       const id = await createLabel(pick.name);
@@ -608,6 +647,7 @@ export function BoardColumn({
   // on the next space; this covers the preview and an Enter that comes first.
   const settled = settleQuickAddDraft(draft, confirmedMatches, ctx.today, reminderPresets ?? [], {
     literals,
+    agents,
   });
 
   const commit = () => {
@@ -616,7 +656,13 @@ export function BoardColumn({
     // itself, so it never needs to know folding happened.
     const combined = quickAddDraftToString(settled.text, settled.confirmed);
     if (!combined || !onQuickAdd) return;
-    onQuickAdd(combined, mentionedList?.id, mentionedLabels.map((l) => l.id), literals);
+    onQuickAdd(
+      combined,
+      mentionedList?.id,
+      mentionedLabels.map((l) => l.id),
+      literals,
+      mentionedAssignee?.id,
+    );
     // The new to-do almost never matches whatever was typed — an add that
     // appears to do nothing reads as broken, not as filtered.
     if (filterActive) onFilterChange?.("");
@@ -624,6 +670,7 @@ export function BoardColumn({
     setConfirmedMatches([]);
     setQuickAddCursor(0);
     setMentionedList(null);
+    setMentionedAssignee(null);
     setMentionedLabels([]);
     setLiterals([]);
   };
@@ -663,6 +710,8 @@ export function BoardColumn({
     const resolved = resolveQuickAdd(settled.text, ctx.today, {
       presets: reminderPresets ?? [],
       lists: lists ?? [],
+      assignees,
+      agents,
       literals,
     });
     if (settled.text.trim()) {
@@ -673,6 +722,13 @@ export function BoardColumn({
         key: `list:${mentionedList.id}`,
         label: `→ ${mentionedList.name}`,
         color: mentionedList.color,
+      });
+    }
+    if (mentionedAssignee) {
+      chips.push({
+        key: `assignee:${mentionedAssignee.id}`,
+        label: `→ ${mentionedAssignee.name}`,
+        onRemove: () => setMentionedAssignee(null),
       });
     }
     for (const label of mentionedLabels) {
@@ -687,6 +743,7 @@ export function BoardColumn({
       ...quickAddStatusChips(resolved, {
         typingMention,
         pickedList: mentionedList !== null,
+        pickedAssignee: mentionedAssignee !== null,
         onCreateList,
       }),
     );
@@ -1303,6 +1360,7 @@ export function BoardColumn({
                     const raw = e.target.value;
                     const folded = foldQuickAddDraft(raw, confirmedMatches, ctx.today, reminderPresets ?? [], {
                       literals,
+                      agents,
                     });
                     setDraft(folded.text);
                     setConfirmedMatches(folded.confirmed);
@@ -1357,6 +1415,7 @@ export function BoardColumn({
                       setDraft("");
                       setConfirmedMatches([]);
                       setMentionedList(null);
+                      setMentionedAssignee(null);
                       setMentionedLabels([]);
                       setLiterals([]);
                     }
