@@ -38,7 +38,7 @@ The rule lives in `src/lib/assignee-rules.ts`.
 
 | Tool | Use |
 |---|---|
-| `get_my_work` | Its queue: open to-dos assigned to it, with Done lines (and their ids), access, and how to work them. Errors if the key is not bound to an agent. |
+| `get_my_work` | Its queue: open to-dos assigned to it, with Done lines (and their ids), access, and how to work them. `todos` holds what is unscheduled or scheduled for today or earlier; a to-do scheduled for a later day (in the owner's timezone) waits in `upcoming`, soonest first, with `upcomingCount` and the `today` used for the cut-off (EI-408). Errors if the key is not bound to an agent. |
 | `add_note` | Report progress. Shows in the to-do's history as "by <agent>". |
 | `add_criterion` / `update_criterion` | Add a Done line, or tick (`done: true`) or reword one. |
 | `update_access` | Replace the access list; set a status such as `blocked` when stuck. |
@@ -56,8 +56,9 @@ server also sends this as the MCP `instructions` and inside `get_my_work`, so
 the prompt can be short.
 
 ```text
-You are Claude, working my Faite queue. Call get_my_work. For each to-do:
-read the description, the Done lines and the access list. Do the work. After
+You are Claude, working my Faite queue. Call get_my_work. Work only its
+`todos`; leave `upcoming` alone until its day. For each to-do: read the
+description, the Done lines and the access list. Do the work. After
 each meaningful step call add_note, and tick a Done line with update_criterion
 only when it is true. If you are missing access, call update_access with that
 item's status set to "blocked" and move on. When every Done line is ticked,

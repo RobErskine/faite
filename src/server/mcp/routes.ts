@@ -317,7 +317,8 @@ function accessFromInput(input: z.infer<typeof accessItemInput>[] | null | undef
  * `get_my_work`, since many clients never surface the former. */
 export const AGENT_QUEUE_INSTRUCTIONS =
   "You are working a queue of to-dos assigned to you. Call get_my_work to see your open " +
-  "to-dos. For each one: read its description, its Done checklist (doneCriteria) and its " +
+  "to-dos. Work only `todos`: `upcoming` holds to-dos scheduled for a later day, so do " +
+  "not start one before its scheduledDate. For each one: read its description, its Done checklist (doneCriteria) and its " +
   "access list. Use add_note to report progress, update_criterion to tick a Done line when " +
   "it is true, and update_access if what you need changes (status \"blocked\" when you " +
   "cannot proceed). When every Done line is ticked, call complete_todo. If you need " +
@@ -775,6 +776,8 @@ function buildServer(
       description:
         "Your queue: the open to-dos assigned to the agent this API key is bound to, " +
         "with each one's Done checklist and access list, plus how to work them. " +
+        "To-dos scheduled after today (in the owner's timezone) are left out of `todos` " +
+        "and listed in `upcoming` until their day. " +
         "Fails if this key is not bound to an agent in Faite's Settings.",
       inputSchema: {},
     },
@@ -786,15 +789,29 @@ function buildServer(
           "This API key is not bound to an agent. Create the key from the agent's row in Settings > Assignees.",
         );
       }
-      const [assigneeRow, rows] = await Promise.all([getAssignee(stub, assigneeId), listTodos(stub)]);
+      const [assigneeRow, rows, timezone] = await Promise.all([
+        getAssignee(stub, assigneeId),
+        listTodos(stub),
+        loadTimezone(identity, stub),
+      ]);
       const assignee = assigneeRow ? assigneeSchema.parse(assigneeRow) : null;
-      const todos = rows
+      const today = todayIn(timezone);
+      const open = rows
         .map((row) => todoSchema.parse(row))
         .filter((todo) => todo.assigneeId === assigneeId && todo.status === "open");
+      // EI-408: a to-do scheduled after today is not work yet. Civil dates
+      // compare as strings; unscheduled and overdue to-dos stay in the queue.
+      const todos = open.filter((todo) => todo.scheduledDate === null || todo.scheduledDate <= today);
+      const upcoming = open
+        .filter((todo) => todo.scheduledDate !== null && todo.scheduledDate > today)
+        .sort((a, b) => a.scheduledDate!.localeCompare(b.scheduledDate!));
       return textResult({
         assignee: assignee && { id: assignee.id, name: assignee.name, instructions: assignee.instructions },
         instructions: AGENT_QUEUE_INSTRUCTIONS,
+        today,
         todos,
+        upcoming,
+        upcomingCount: upcoming.length,
       });
     },
   );

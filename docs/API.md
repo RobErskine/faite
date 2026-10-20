@@ -288,7 +288,7 @@ that have no REST equivalent:
 | `get_day_note` | read | One day's Markdown journal note (EI-342). `date` (`YYYY-MM-DD`) defaults to today in the account's `timezone`. A day with no note returns `{ date, body: "" }`, same as `GET /api/v1/day-notes/{date}`. |
 | `append_day_note` | write | Adds `**HH:MM** — text` to the end of a day's note (EI-342) — see "Day notes" below. Same `date` default. Pointer's voice capture uses it. |
 | `list_assignees` | read | The agents and people a to-do can be assigned to (EI-402). `apiKeyId` is left out. |
-| `get_my_work` | read | The agent queue (EI-402): the open to-dos assigned to the agent this key is bound to, each with its `doneCriteria` and `access`, plus the standing `instructions`. No arguments. A key that is not bound to an agent gets an error, not an empty list. |
+| `get_my_work` | read | The agent queue (EI-402): the open to-dos assigned to the agent this key is bound to, each with its `doneCriteria` and `access`, plus the standing `instructions`. A to-do scheduled after today (owner's timezone) is not in `todos` but in `upcoming` (soonest first), with `upcomingCount` and `today` (EI-408). No arguments. A key that is not bound to an agent gets an error, not an empty list. |
 | `add_note` | write | `{ todoId, text }` (max 4,000 chars). Appends a `note` event to the to-do's history, attributed to the key's agent. |
 | `add_criterion` | write | `{ todoId, text }`. Adds a line to the Done checklist; `addedBy` is the key's agent. |
 | `update_criterion` | write | `{ todoId, criterionId, done?, text? }`. Ticks, unticks or rewords one Done line. |
