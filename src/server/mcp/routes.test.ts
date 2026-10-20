@@ -145,6 +145,24 @@ describe("get_my_work (EI-402)", () => {
     expect(out.instructions).toContain("create_todo");
   });
 
+  it("holds to-dos scheduled after today in upcoming, soonest first (EI-408)", async () => {
+    agentEnv(true, [
+      rawTodoRow({ id: "unscheduled", assigneeId: "assignee-1" }),
+      rawTodoRow({ id: "overdue", assigneeId: "assignee-1", scheduledDate: "2000-01-01" }),
+      rawTodoRow({ id: "later", assigneeId: "assignee-1", scheduledDate: "2999-02-01" }),
+      rawTodoRow({ id: "soon", assigneeId: "assignee-1", scheduledDate: "2999-01-01" }),
+      rawTodoRow({ id: "done-later", assigneeId: "assignee-1", status: "done", scheduledDate: "2999-01-01" }),
+    ]);
+    const { isError, text } = await run("get_my_work");
+    expect(isError).toBe(false);
+    const out = JSON.parse(text);
+    expect(out.today).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(out.todos.map((t: { id: string }) => t.id)).toEqual(["unscheduled", "overdue"]);
+    expect(out.upcoming.map((t: { id: string }) => t.id)).toEqual(["soon", "later"]);
+    expect(out.upcomingCount).toBe(2);
+    expect(out.instructions).toContain("upcoming");
+  });
+
   it("errors when the key is not bound to an assignee", async () => {
     agentEnv(false);
     const { isError, text } = await run("get_my_work");
