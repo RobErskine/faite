@@ -313,6 +313,20 @@ function accessFromInput(input: z.infer<typeof accessItemInput>[] | null | undef
   return input ? input.map((item) => accessItemSchema.parse({ name: item.name, status: item.status })) : input;
 }
 
+/** EI-407: every tool that targets one to-do names it `todoId`. `id` was the
+ * name on `complete_todo` / `update_todo` first, so those two still accept it
+ * for clients built before the rename. */
+const legacyTodoIdInput = z.string().min(1).optional().describe("Deprecated alias for todoId.");
+
+function targetTodoId(input: { todoId?: string; id?: string }): string {
+  if (input.todoId && input.id && input.todoId !== input.id) {
+    throw new Error("todoId and id name different to-dos. Send todoId only.");
+  }
+  const todoId = input.todoId ?? input.id;
+  if (!todoId) throw new Error("Provide todoId.");
+  return todoId;
+}
+
 /** How an agent works its queue. Served as the MCP `instructions` and again in
  * `get_my_work`, since many clients never surface the former. */
 export const AGENT_QUEUE_INSTRUCTIONS =
@@ -370,7 +384,7 @@ function buildServer(
     "search_todos",
     {
       description:
-        "Find to-dos by what they say, best match first — e.g. to get the id for " +
+        "Find to-dos by what they say, best match first — e.g. to get the todoId for " +
         "complete_todo or update_todo. Matches any word of any term against the title " +
         "and description: exactly, by prefix, or with one typo in words of 5+ letters. " +
         "Send the content words plus synonyms and alternate phrasings as separate terms " +
@@ -401,7 +415,7 @@ function buildServer(
       description: "Create a new to-do.",
       inputSchema: {
         title: z.string().min(1),
-        listId: z.string().nullable().optional(),
+        listId: idSchema.nullable().optional(),
         scheduledDate: scheduledDateInputSchema.optional(),
         deadline: deadlineInputSchema.optional(),
         priority: priorityInputSchema.optional(),
@@ -450,10 +464,11 @@ function buildServer(
     "complete_todo",
     {
       description: "Mark a to-do as done.",
-      inputSchema: { id: z.string().min(1) },
+      inputSchema: { todoId: z.string().min(1).optional(), id: legacyTodoIdInput },
     },
-    async ({ id }) => {
+    async (input) => {
       requireScope(identity, "write");
+      const id = targetTodoId(input);
 
       const existing = await stub.getTodo(id);
       if (!existing) throw new Error(`No such to-do: ${id}`);
@@ -487,7 +502,8 @@ function buildServer(
         "Patch an existing to-do. Only the fields provided are touched — " +
         "everything else on the to-do is left exactly as it was.",
       inputSchema: {
-        id: z.string().min(1),
+        todoId: z.string().min(1).optional(),
+        id: legacyTodoIdInput,
         title: z.string().min(1).optional(),
         description: z.string().nullable().optional(),
         status: todoStatusSchema.optional(),
@@ -508,8 +524,9 @@ function buildServer(
         access: accessInput,
       },
     },
-    async ({ id, doneCriteria, access, ...rawInput }) => {
+    async ({ todoId, id: legacyId, doneCriteria, access, ...rawInput }) => {
       requireScope(identity, "write");
+      const id = targetTodoId({ todoId, id: legacyId });
 
       const dated = await resolveDateInputs(rawInput, () => loadTimezone(identity, stub));
       const input = {

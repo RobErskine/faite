@@ -277,8 +277,8 @@ that have no REST equivalent:
 | `list_todos` | read | Same filters as `GET /api/v1/todos` (`status`, `listId`, `scheduledDate`, `labelId`, `updatedSince`, `limit`, `offset`). Slim by default — `id`, `title`, `status`, `scheduledDate`, `deadline`, `listId`, `priority`, nulls left out, compact JSON; `fields` widens it (EI-340). |
 | `search_todos` | read | Find a to-do by what it says, best match first (EI-340). `query` is a term or an array of terms — the CLIENT sends synonyms (`["couch","sofa","loveseat"]`); Faite has no synonym list. Any word matches the title or description exactly, by prefix (3+ letters), or with one typo (5+ letters); title hits outrank description hits. `status` defaults to `open`, `limit` to 8. Same slim rows as `list_todos`. |
 | `create_todo` | write | `scheduledDate`/`deadline` take a date or an offset date-time — see "Date inputs" below. |
-| `update_todo` | write | General patch — only the fields provided are touched, same rule as `PATCH /api/v1/todos/{id}`. Same date inputs. |
-| `complete_todo` | write | Kept as its own tool rather than folded into `update_todo` — "mark done" is common enough to deserve a one-field call. |
+| `update_todo` | write | General patch — only the fields provided are touched, same rule as `PATCH /api/v1/todos/{id}`. Same date inputs. Targets the to-do by `todoId`; `id` still works as a deprecated alias (EI-407). |
+| `complete_todo` | write | Kept as its own tool rather than folded into `update_todo` — "mark done" is common enough to deserve a one-field call. Takes `todoId`; `id` is a deprecated alias. Every MCP tool that targets one to-do names it `todoId` (EI-407). |
 | `list_lists` | read | Defaults to `id`, `name`, `description`, `isBacklog` only, null fields and archived lists left out, compact JSON — Pointer pastes it into a model prompt (EI-338). Optional `fields` (array of list field names) and `includeArchived` (boolean). |
 | `list_labels` | read | |
 | `list_attachments` | read | Metadata only, across every to-do; fetch bytes from `GET /api/attachments/{id}` with the same credentials. No REST equivalent — attaching a file still needs the app UI. |

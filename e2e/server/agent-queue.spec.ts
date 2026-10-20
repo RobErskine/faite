@@ -163,7 +163,7 @@ test("an agent works its queue through MCP, and the history names the agent", as
       criterionId: todo.doneCriteria[1].id,
       done: true,
     });
-    const done = await callTool(agent, "complete_todo", { id: todo.id });
+    const done = await callTool(agent, "complete_todo", { todoId: todo.id });
     expect(done.isError).toBe(false);
     expect((done.json as McpTodo).status).toBe("done");
 
