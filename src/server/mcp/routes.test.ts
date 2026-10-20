@@ -218,7 +218,7 @@ describe("agent writes (EI-402)", () => {
     const stub = agentEnv(true);
     stub.getTodo.mockResolvedValue(stored);
     await run("update_todo", {
-      id: "todo-1",
+      todoId: "todo-1",
       doneCriteria: [
         { id: "c1", text: "Ship it", addedBy: "someone-else" },
         { id: "c2", text: "New line", addedBy: "someone-else" },
@@ -232,12 +232,36 @@ describe("agent writes (EI-402)", () => {
   it("complete_todo events carry via", async () => {
     const stub = agentEnv(true);
     stub.getTodo.mockResolvedValue(stored);
-    await run("complete_todo", { id: "todo-1" });
+    await run("complete_todo", { todoId: "todo-1" });
     const events = pushedEntries(stub).filter((e) => e.kind === "todoEvent");
     expect(events.length).toBeGreaterThan(0);
     for (const e of events) {
       expect(JSON.parse((e.patch as { payload: string }).payload).via).toBe("agent:assignee-1");
     }
+  });
+
+  it("complete_todo and update_todo still take the deprecated id (EI-407)", async () => {
+    const stub = agentEnv(true);
+    stub.getTodo.mockResolvedValue(stored);
+    expect((await run("complete_todo", { id: "todo-1" })).isError).toBe(false);
+    expect((await run("update_todo", { id: "todo-1", title: "Renamed" })).isError).toBe(false);
+    expect(stub.getTodo).toHaveBeenCalledWith("todo-1");
+  });
+
+  it("refuses a todoId and id that name different to-dos (EI-407)", async () => {
+    const stub = agentEnv(true);
+    stub.getTodo.mockResolvedValue(stored);
+    const { isError, text } = await run("complete_todo", { todoId: "todo-1", id: "todo-2" });
+    expect(isError).toBe(true);
+    expect(text).toContain("different to-dos");
+    expect(stub.push).not.toHaveBeenCalled();
+  });
+
+  it("complete_todo with neither todoId nor id says what is missing (EI-407)", async () => {
+    agentEnv(true);
+    const { isError, text } = await run("complete_todo", {});
+    expect(isError).toBe(true);
+    expect(text).toContain("Provide todoId");
   });
 
   it("add_criterion works on an agent to-do that predates the rule and has no access yet", async () => {
@@ -257,7 +281,7 @@ describe("agent writes (EI-402)", () => {
   it("still rejects a write that introduces a problem (removing the last Done line)", async () => {
     const stub = agentEnv(true);
     stub.getTodo.mockResolvedValue(stored);
-    const { isError, text } = await run("update_todo", { id: "todo-1", doneCriteria: [] });
+    const { isError, text } = await run("update_todo", { todoId: "todo-1", doneCriteria: [] });
     expect(isError).toBe(true);
     expect(text).toContain("Done criterion");
   });
@@ -311,7 +335,7 @@ describe("agent writes (EI-402)", () => {
   it("update_todo moving a to-do to an agent re-checks the spec", async () => {
     const stub = agentEnv(true);
     stub.getTodo.mockResolvedValue(rawTodoRow({ id: "todo-1" }));
-    const { isError } = await run("update_todo", { id: "todo-1", assigneeId: "assignee-1" });
+    const { isError } = await run("update_todo", { todoId: "todo-1", assigneeId: "assignee-1" });
     expect(isError).toBe(true);
     expect(stub.push).not.toHaveBeenCalled();
   });

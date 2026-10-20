@@ -46,6 +46,8 @@ The rule lives in `src/lib/assignee-rules.ts`.
 | `create_todo` | With **no** `assigneeId`: a to-do for the owner. This is how an agent says "I need you" (a decision, a credential, a review). It is never defaulted to the agent itself. |
 | `list_assignees`, `list_todos` | Look around. `list_todos` takes `assigneeId` (or `none`). |
 
+Every tool here names the to-do `todoId` (EI-407).
+
 Anything an agent writes has `via: agent:<assigneeId>` stamped by the server,
 and new Done lines get `addedBy`, overwriting whatever the client sent.
 
