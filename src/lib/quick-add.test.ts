@@ -11,6 +11,7 @@ import {
   resolveQuickAdd,
   restoreFoldedMatch,
   settleQuickAddDraft,
+  unresolvedMentionLabel,
 } from "./quick-add";
 import type { ReminderPreset } from "./schema";
 
@@ -851,5 +852,179 @@ describe("EI-379: quick-add never drops a date word silently", () => {
       const settled = settleQuickAddDraft(`${first.text}!oct 20`, first.confirmed, OCT_14);
       expect(settled).toEqual({ text: "Call about !oct 20", confirmed: first.confirmed });
     });
+  });
+});
+
+describe("EI-426: a trailing \"for <agent>\" assigns", () => {
+  const INSTINCT = { id: "a1", name: "Instinct" };
+  const agents = [INSTINCT];
+  const parse = (input: string, a = agents, extra = {}) =>
+    parseQuickAdd(input, TODAY, [], { agents: a, ...extra });
+
+  it("takes the trailing phrase out of the title and names the agent", () => {
+    const out = parse("write email to daycare for Instinct");
+    expect(out.title).toBe("write email to daycare");
+    expect(out.assignee).toEqual(INSTINCT);
+    expect(out.matches).toEqual([{ raw: "for Instinct", kind: "assignee", label: "→ Instinct" }]);
+  });
+
+  it("sits among the other trailing tokens", () => {
+    const out = parse("write email to daycare for Instinct fri 2pm");
+    expect(out.title).toBe("write email to daycare");
+    expect(out.assignee).toEqual(INSTINCT);
+    expect(out.scheduledDate).toBe("2026-08-14");
+    expect(out.reminderTime).toBe("14:00");
+  });
+
+  it("is case-insensitive and ignores spaces, hyphens and underscores in the name", () => {
+    const out = parse("ship it FOR claude-code", [{ id: "c", name: "Claude Code" }]);
+    expect(out.title).toBe("ship it");
+    expect(out.assignee?.id).toBe("c");
+  });
+
+  it("does nothing without agents, or for a name that is not an agent (a person)", () => {
+    expect(parseQuickAdd("buy gift for Mom", TODAY).assignee).toBeNull();
+    const out = parse("buy gift for Mom");
+    expect(out.assignee).toBeNull();
+    expect(out.title).toBe("buy gift for Mom");
+    expect(parseQuickAdd("write email for Instinct", TODAY).title).toBe("write email for Instinct");
+  });
+
+  it("is edge-only: not read in the middle of the title", () => {
+    const out = parse("for Instinct to call");
+    expect(out.assignee).toBeNull();
+    expect(out.title).toBe("for Instinct to call");
+    expect(parse("ask for Instinct to call mom").assignee).toBeNull();
+  });
+
+  it("tries the longest name first", () => {
+    const both = [
+      { id: "short", name: "Claude" },
+      { id: "long", name: "Claude Code" },
+    ];
+    const out = parse("fix the build for Claude Code", both);
+    expect(out.assignee?.id).toBe("long");
+    expect(out.title).toBe("fix the build");
+    const short = parse("fix the build for Claude", both);
+    expect(short.assignee?.id).toBe("short");
+  });
+
+  it("assigns nothing when two agents answer to the name, and the words stay", () => {
+    const out = parse("tidy up for Instinct", [
+      { id: "1", name: "Instinct" },
+      { id: "2", name: "instinct" },
+    ]);
+    expect(out.assignee).toBeNull();
+    expect(out.title).toBe("tidy up for Instinct");
+  });
+
+  it("only the last \"for <agent>\" applies; an earlier one stays in the title", () => {
+    const out = parse("brief for Instinct for Instinct");
+    expect(out.assignee).toEqual(INSTINCT);
+    expect(out.title).toBe("brief for Instinct");
+  });
+
+  it("dismissing the chip (literals) puts the words back", () => {
+    const out = parse("write email for Instinct", agents, { literals: ["for Instinct"] });
+    expect(out.assignee).toBeNull();
+    expect(out.title).toBe("write email for Instinct");
+  });
+
+  it("a dismissed chip can be restored into the text where it was folded from", () => {
+    const folded = foldQuickAddDraft("write email for Instinct ", [], TODAY, [], { agents });
+    expect(folded.text).toBe("write email ");
+    const chip = folded.confirmed[0];
+    expect(chip.kind).toBe("assignee");
+    expect(restoreFoldedMatch(folded.text, chip)).toBe("write email for Instinct");
+  });
+
+  it("never empties the title", () => {
+    const out = parse("for Instinct");
+    expect(out.title).toBe("for Instinct");
+    expect(out.assignee).toBeNull();
+    expect(parse("for Instinct fri").title).toBe("for Instinct fri");
+  });
+});
+
+describe("EI-426: @Name resolves against assignees too", () => {
+  const LISTS = [{ id: "read", name: "To Read" }];
+  const PEOPLE = [
+    { id: "a1", name: "Instinct", kind: "agent" },
+    { id: "p1", name: "Mom", kind: "person" },
+  ];
+
+  it("a typed-out @Instinct resolves and leaves the title", () => {
+    const out = resolveQuickAdd("write email @Instinct fri", TODAY, {
+      lists: LISTS,
+      assignees: PEOPLE,
+    });
+    expect(out.title).toBe("write email");
+    expect(out.assignee).toBe(PEOPLE[0]);
+    expect(out.list).toBeNull();
+    expect(out.scheduledDate).toBe("2026-08-14");
+  });
+
+  it("any kind resolves by @, including a person", () => {
+    const out = resolveQuickAdd("call @mom", TODAY, { assignees: PEOPLE });
+    expect(out.assignee).toBe(PEOPLE[1]);
+    expect(out.title).toBe("call");
+  });
+
+  it("a list and an assignee can both apply", () => {
+    const out = resolveQuickAdd("Dune @to-read @instinct", TODAY, {
+      lists: LISTS,
+      assignees: PEOPLE,
+    });
+    expect(out.list).toBe(LISTS[0]);
+    expect(out.assignee).toBe(PEOPLE[0]);
+    expect(out.title).toBe("Dune");
+  });
+
+  it("a name used by both a list and an assignee is ambiguous and stays in the title", () => {
+    const lists = [{ id: "l", name: "Instinct" }];
+    const out = resolveQuickAdd("plan trip @instinct", TODAY, { lists, assignees: PEOPLE });
+    expect(out.title).toBe("plan trip @instinct");
+    expect(out.list).toBeNull();
+    expect(out.assignee).toBeNull();
+    expect(out.unresolvedMentions).toEqual([
+      { raw: "@instinct", query: "instinct", matches: 2, among: "both" },
+    ]);
+    expect(unresolvedMentionLabel(out.unresolvedMentions[0])).toBe(
+      "@instinct · list and assignee match",
+    );
+  });
+
+  it("@ outranks \"for <agent>\"; the for-words then stay in the title", () => {
+    const agents = [{ id: "a2", name: "Other" }];
+    const out = resolveQuickAdd("write email @Instinct for Other", TODAY, {
+      assignees: [...PEOPLE, ...agents],
+      agents,
+    });
+    expect(out.assignee).toBe(PEOPLE[0]);
+    expect(out.title).toBe("write email for Other");
+  });
+
+  it("\"for <agent>\" assigns when no @ did", () => {
+    const out = resolveQuickAdd("write email for Instinct", TODAY, {
+      assignees: PEOPLE,
+      agents: [PEOPLE[0]],
+    });
+    expect(out.assignee).toEqual(PEOPLE[0]);
+    expect(out.title).toBe("write email");
+  });
+
+  it("the toast names the assignee last", () => {
+    expect(
+      describeQuickAddLanding({
+        today: TODAY,
+        scheduledDate: "2026-08-14",
+        list: null,
+        assignee: { name: "Instinct" },
+      }).message,
+    ).toBe("Added to Fri, Aug 14 · Instinct");
+    expect(
+      describeQuickAddLanding({ today: TODAY, scheduledDate: null, list: null, assignee: { name: "Instinct" } })
+        .message,
+    ).toBe("Added to Backlog · Instinct");
   });
 });

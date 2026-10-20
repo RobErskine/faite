@@ -79,6 +79,8 @@ export interface CreateTodoInput {
    * Prefer `createSubtask` over passing this directly; it enforces the
    * one-level rule. */
   parentId?: string | null;
+  /** Who it is assigned to (EI-426) — quick-add's "@Name" / "for <agent>". */
+  assigneeId?: string | null;
 }
 
 export async function createTodo(input: CreateTodoInput): Promise<string> {
@@ -116,7 +118,7 @@ export async function createTodo(input: CreateTodoInput): Promise<string> {
     duplicateOf: null,
     duplicateHeld: null,
     suggestedListId: null,
-    assigneeId: null,
+    assigneeId: input.assigneeId ?? null,
     doneCriteria: [],
     access: null,
   };

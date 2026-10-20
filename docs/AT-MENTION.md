@@ -214,9 +214,9 @@ did and a gotcha (`empty:hidden`) worth knowing before styling either.
 
 | Field | Sigils | Resolves as |
 | --- | --- | --- |
-| Quick-add row (`board-column.tsx`) — list/day columns, Backlog | `@` list, `#` label | Staged (`mentionedList`/`mentionedLabels`), applied on commit |
-| ⌘K palette, root + "New to-do" (`command-palette.tsx`) | `@` list, `#` label | Staged, applied on create |
-| To-do sheet title (`todo-sheet.tsx`) | `@` list, `#` label | Immediate field write (`onSave`/`onToggleLabel`) |
+| Quick-add row (`board-column.tsx`) — list/day columns, Backlog | `@` list **or assignee**, `#` label | Staged (`mentionedList`/`mentionedLabels`), applied on commit |
+| ⌘K palette, root + "New to-do" (`command-palette.tsx`) | `@` list **or assignee**, `#` label | Staged, applied on create |
+| To-do sheet title (`todo-sheet.tsx`) | `@` list **or assignee**, `#` label | Immediate field write (`onSave`/`onToggleLabel`) |
 
 `#label` also offers inline creation (§3a) on all three; `@list` does not.
 

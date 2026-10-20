@@ -6,8 +6,9 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { BoardColumn, FILTER_MIN_TODOS } from "./board-column";
 import { dayGroupId, type TodoGroup } from "@/lib/board";
 import { cardStop, groupStop } from "@/lib/column-nav";
-import type { List, Todo } from "@/lib/schema";
+import type { Assignee, List, Todo } from "@/lib/schema";
 import { ListColumnMenu } from "./list-column-menu";
+import { AssigneesProvider } from "./assignees-context";
 import { dayRegionLabel, type PlacementContext } from "@/lib/scheduling";
 import { BEAT_MS, GIVE_UP_MS, LEAVE_MS, TICK_LEAD_MS } from "@/lib/completion-beat";
 
@@ -104,7 +105,9 @@ interface HarnessProps {
     listId?: string,
     labelIds?: string[],
     literals?: readonly string[],
+    assigneeId?: string,
   ) => void;
+  assignees?: Assignee[];
   onCreateList?: (name: string) => void;
   lists?: { id: string; name: string; color: string | null }[];
   footer?: React.ReactNode;
@@ -119,10 +122,11 @@ interface HarnessProps {
   onToggle?: (t: Todo) => void | Promise<unknown>;
 }
 
-function Harness({ groups, todos, ...rest }: HarnessProps) {
+function Harness({ groups, todos, assignees = [], ...rest }: HarnessProps) {
   const resolvedTodos = todos ?? (groups ? groups.flatMap((g) => g.todos) : [todo("flat")]);
   return (
     <TooltipProvider>
+      <AssigneesProvider assignees={assignees}>
       <DndContext>
         <BoardColumn
           id="day:2026-08-09"
@@ -137,6 +141,7 @@ function Harness({ groups, todos, ...rest }: HarnessProps) {
           {...rest}
         />
       </DndContext>
+      </AssigneesProvider>
     </TooltipProvider>
   );
 }
@@ -607,7 +612,7 @@ describe("in-column filter", () => {
     const addInput = screen.getByRole("textbox", { name: "Add a to-do to Sunday" });
     fireEvent.change(addInput, { target: { value: "New task" } });
     fireEvent.keyDown(addInput, { key: "Enter" });
-    expect(onQuickAdd).toHaveBeenCalledWith("New task", undefined, [], []);
+    expect(onQuickAdd).toHaveBeenCalledWith("New task", undefined, [], [], undefined);
     expect(onFilterChange).toHaveBeenCalledWith("");
   });
 });
@@ -654,7 +659,7 @@ describe("quick-add — folding a completed date/time word out of the input", ()
     fireEvent.change(addInput(), { target: { value: "Buy milk tomorrow " } });
     expect(addInput()).toHaveProperty("value", "Buy milk tomorrow ");
     fireEvent.keyDown(addInput(), { key: "Enter" });
-    expect(onQuickAdd).toHaveBeenCalledWith("Buy milk tomorrow", undefined, [], ["tomorrow"]);
+    expect(onQuickAdd).toHaveBeenCalledWith("Buy milk tomorrow", undefined, [], ["tomorrow"], undefined);
   });
 
   it("committing reappends the folded word so the created todo still gets the parsed field", () => {
@@ -662,7 +667,7 @@ describe("quick-add — folding a completed date/time word out of the input", ()
     render(<Harness onQuickAdd={onQuickAdd} />);
     fireEvent.change(addInput(), { target: { value: "Buy milk tomorrow " } });
     fireEvent.keyDown(addInput(), { key: "Enter" });
-    expect(onQuickAdd).toHaveBeenCalledWith("Buy milk tomorrow", undefined, [], []);
+    expect(onQuickAdd).toHaveBeenCalledWith("Buy milk tomorrow", undefined, [], [], undefined);
     expect(addInput()).toHaveProperty("value", "");
   });
 
@@ -716,7 +721,7 @@ describe("quick-add — a second date is 'not used', never dropped (EI-379)", ()
     expect(screen.getByText("Thu Oct 1")).toBeTruthy();
     expect(keep("oct 1")).toBeTruthy();
     fireEvent.keyDown(addInput(), { key: "Enter" });
-    expect(onQuickAdd).toHaveBeenCalledWith("Call about Thursday oct 1", undefined, [], ["Thursday"]);
+    expect(onQuickAdd).toHaveBeenCalledWith("Call about Thursday oct 1", undefined, [], ["Thursday"], undefined);
   });
 
   it("an Enter before the next space still commits the first date as the winner", () => {
@@ -728,7 +733,7 @@ describe("quick-add — a second date is 'not used', never dropped (EI-379)", ()
     fireEvent.keyDown(addInput(), { key: "Enter" });
     // The folded word goes back where it was typed, so the parse at write
     // time sees "tomorrow" first — the same thing the preview showed.
-    expect(onQuickAdd).toHaveBeenCalledWith("Buy milk tomorrow fri", undefined, [], []);
+    expect(onQuickAdd).toHaveBeenCalledWith("Buy milk tomorrow fri", undefined, [], [], undefined);
   });
 
   it("a word-only date at the start says it was not used", () => {
@@ -770,6 +775,7 @@ describe("quick-add — a dismissible date chip (EI-375)", () => {
       undefined,
       [],
       ["Thursday"],
+      undefined,
     );
   });
 
@@ -795,7 +801,7 @@ describe("quick-add — a dismissible date chip (EI-375)", () => {
     render(<Harness onQuickAdd={onQuickAdd} />);
     fireEvent.change(addInput(), { target: { value: "Buy milk" } });
     fireEvent.blur(addInput(), { relatedTarget: null });
-    expect(onQuickAdd).toHaveBeenCalledWith("Buy milk", undefined, [], []);
+    expect(onQuickAdd).toHaveBeenCalledWith("Buy milk", undefined, [], [], undefined);
   });
 });
 
@@ -1285,5 +1291,71 @@ describe("the completion beat", () => {
     fireEvent.click(boxOf("b"));
     rerender(<Harness todos={[a]} />); // e.g. a filter hid it
     expect(rowOf("b")).toBeNull();
+  });
+});
+
+describe("quick-add — assignees (EI-426)", () => {
+  const addInput = () => screen.getByRole("textbox", { name: "Add a to-do to Sunday" });
+  const assignee = (id: string, name: string, kind: "agent" | "person"): Assignee =>
+    ({ id, name, kind, color: null, instructions: null, apiKeyId: null }) as unknown as Assignee;
+  const ASSIGNEES = [
+    assignee("instinct", "Instinct", "agent"),
+    assignee("mom", "Mom", "person"),
+  ];
+
+  it("offers agents and people in the @ menu, with their kind", () => {
+    render(<Harness assignees={ASSIGNEES} />);
+    fireEvent.change(addInput(), { target: { value: "Call @" } });
+    fireEvent.select(addInput(), { target: { selectionStart: 6 } });
+    expect(screen.getByRole("option", { name: /Instinct/ }).textContent).toContain("Agent");
+    expect(screen.getByRole("option", { name: /Mom/ }).textContent).toContain("Person");
+  });
+
+  it("picking an assignee shows a chip and sets assigneeId on commit", () => {
+    const onQuickAdd = vi.fn();
+    render(<Harness assignees={ASSIGNEES} onQuickAdd={onQuickAdd} />);
+    fireEvent.change(addInput(), { target: { value: "Call @mo" } });
+    fireEvent.select(addInput(), { target: { selectionStart: 8 } });
+    fireEvent.mouseDown(screen.getByRole("option", { name: /Mom/ }));
+    expect(screen.getByText("→ Mom")).toBeTruthy();
+    fireEvent.keyDown(addInput(), { key: "Enter" });
+    expect(onQuickAdd).toHaveBeenCalledWith(expect.any(String), undefined, [], [], "mom");
+  });
+
+  it("the picked assignee chip can be dismissed", () => {
+    const onQuickAdd = vi.fn();
+    render(<Harness assignees={ASSIGNEES} onQuickAdd={onQuickAdd} />);
+    fireEvent.change(addInput(), { target: { value: "Call @mo" } });
+    fireEvent.select(addInput(), { target: { selectionStart: 8 } });
+    fireEvent.mouseDown(screen.getByRole("option", { name: /Mom/ }));
+    fireEvent.mouseDown(screen.getByRole("button", { name: "Remove → Mom" }));
+    expect(screen.queryByText("→ Mom")).toBeNull();
+    fireEvent.keyDown(addInput(), { key: "Enter" });
+    expect(onQuickAdd).toHaveBeenCalledWith(expect.any(String), undefined, [], [], undefined);
+  });
+
+  it("previews a trailing 'for <agent>' as a dismissible chip, and not a person", () => {
+    render(<Harness assignees={ASSIGNEES} />);
+    fireEvent.change(addInput(), { target: { value: "Write email for Instinct" } });
+    expect(screen.getByText("→ Instinct")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Keep “for Instinct” in the title" })).toBeTruthy();
+    fireEvent.change(addInput(), { target: { value: "Buy gift for Mom" } });
+    expect(screen.queryByText("→ Mom")).toBeNull();
+  });
+
+  it("dismissing the 'for <agent>' chip keeps the words as literals", () => {
+    const onQuickAdd = vi.fn();
+    render(<Harness assignees={ASSIGNEES} onQuickAdd={onQuickAdd} />);
+    fireEvent.change(addInput(), { target: { value: "Write email for Instinct" } });
+    fireEvent.mouseDown(screen.getByRole("button", { name: "Keep “for Instinct” in the title" }));
+    expect(screen.queryByText("→ Instinct")).toBeNull();
+    fireEvent.keyDown(addInput(), { key: "Enter" });
+    expect(onQuickAdd).toHaveBeenCalledWith(
+      "Write email for Instinct",
+      undefined,
+      [],
+      ["for Instinct"],
+      undefined,
+    );
   });
 });

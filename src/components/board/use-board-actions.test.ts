@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+// @vitest-environment happy-dom
+import { cleanup, renderHook } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ClientRect } from "@dnd-kit/core";
 import {
   dayColumnId,
@@ -9,7 +11,21 @@ import {
   dayGroupId,
   weekendColumnId,
 } from "@/lib/board";
-import { collisionDetection, computeAutoScroll } from "./use-board-actions";
+import { announceQuickAdd } from "./quick-add-toast";
+
+const createTodo = vi.fn(async (_input: unknown) => "new-id");
+vi.mock("@/lib/store/repositories", async (orig) => ({
+  ...(await orig<typeof import("@/lib/store/repositories")>()),
+  createTodo: (input: unknown) => createTodo(input),
+}));
+vi.mock("@/lib/smart-sort", async (orig) => ({
+  ...(await orig<typeof import("@/lib/smart-sort")>()),
+  proposeListForNewTodo: vi.fn(async () => {}),
+}));
+vi.mock("./quick-add-toast", () => ({ announceQuickAdd: vi.fn() }));
+vi.mock("sonner", () => ({ toast: Object.assign(vi.fn(), { success: vi.fn(), error: vi.fn() }) }));
+
+import { collisionDetection, computeAutoScroll, useBoardActions } from "./use-board-actions";
 
 describe("computeAutoScroll", () => {
   it("is off on phone — dnd-kit's incremental scroll fights the pager's scroll-snap", () => {
@@ -88,5 +104,82 @@ describe("collisionDetection: what a list drag can land on", () => {
 
   it("refuses a bare card id", () => {
     expect(resolve(["some-todo-uuid"])).toEqual([]);
+  });
+});
+
+/**
+ * EI-426: `handleQuickAdd` resolves the assignee the same way the preview
+ * does, and a menu pick outranks whatever the text named.
+ */
+describe("handleQuickAdd: assignees (EI-426)", () => {
+  afterEach(() => {
+    cleanup();
+    createTodo.mockClear();
+    vi.mocked(announceQuickAdd).mockClear();
+  });
+
+  const assignees = [
+    { id: "instinct", name: "Instinct", kind: "agent" },
+    { id: "mom", name: "Mom", kind: "person" },
+  ];
+
+  const add = async (
+    input: string,
+    picked?: string,
+    literals?: readonly string[],
+  ) => {
+    const back = { id: "back", name: "Backlog", isBacklog: true };
+    const data = {
+      lists: [back],
+      listsById: new Map([["back", back]]),
+      tabs: [],
+      tabsById: new Map(),
+      todosById: new Map(),
+      rawTodoIds: new Set<string>(),
+      selectedTodos: [],
+      settings: null,
+      assignees,
+      reminderPresets: [],
+      ctx: { today: "2026-10-20" },
+    };
+    const ui = { selectedIds: new Set<string>(), landingTodoIds: new Set(), setLandingTodoIds: vi.fn() };
+    const { result } = renderHook(() =>
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      useBoardActions(data as any, ui as any, false, "desktop"),
+    );
+    await result.current.handleQuickAdd(input, { listId: "back" }, undefined, [], literals, picked);
+    return createTodo.mock.calls[0][0] as { title: string; assigneeId: string | null };
+  };
+
+  it("'for <agent>' assigns it and strips the words from the title", async () => {
+    const created = await add("write email to daycare for Instinct");
+    expect(created.title).toBe("write email to daycare");
+    expect(created.assigneeId).toBe("instinct");
+    expect(announceQuickAdd).toHaveBeenCalledWith("new-id", "write email to daycare", {
+      message: "Added to Backlog · Instinct",
+      note: null,
+    });
+  });
+
+  it("'for <person>' stays in the title with no assignee", async () => {
+    const created = await add("buy gift for Mom");
+    expect(created.title).toBe("buy gift for Mom");
+    expect(created.assigneeId).toBeNull();
+  });
+
+  it("a dismissed 'for <agent>' stays in the title", async () => {
+    const created = await add("write email for Instinct", undefined, ["for Instinct"]);
+    expect(created.title).toBe("write email for Instinct");
+    expect(created.assigneeId).toBeNull();
+  });
+
+  it("a picked assignee sets assigneeId", async () => {
+    const created = await add("call", "mom");
+    expect(created.assigneeId).toBe("mom");
+  });
+
+  it("a picked assignee outranks a typed 'for <agent>'", async () => {
+    const created = await add("write email for Instinct", "mom");
+    expect(created.assigneeId).toBe("mom");
   });
 });

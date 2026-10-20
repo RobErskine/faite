@@ -67,7 +67,14 @@ import type {
   TodoStatus,
 } from "@/lib/schema";
 import { originOf, type ConfettiOrigin } from "@/lib/celebrate";
-import type { MentionLabelOption, MentionListOption, MentionPick } from "./board-column";
+import {
+  assigneeKindDetail,
+  type MentionAssigneeOption,
+  type MentionLabelOption,
+  type MentionListOption,
+  type MentionPick,
+} from "./board-column";
+import { useAssigneesById } from "./assignees-context";
 import { QuickAddPreview, dismissibleMatchChip, quickAddStatusChips } from "./quick-add-preview";
 import { announceQuickAdd } from "./quick-add-toast";
 import { formatCombo } from "@/lib/keyboard";
@@ -201,6 +208,10 @@ export function CommandPalette({
   const [cursor, setCursor] = useState(0);
   const [mentionedList, setMentionedList] = useState<MentionListOption | null>(null);
   const [mentionedLabels, setMentionedLabels] = useState<MentionLabelOption[]>([]);
+  const [mentionedAssignee, setMentionedAssignee] = useState<MentionAssigneeOption | null>(null);
+  const assigneesById = useAssigneesById();
+  const assignees = useMemo(() => [...assigneesById.values()], [assigneesById]);
+  const agents = useMemo(() => assignees.filter((a) => a.kind === "agent"), [assignees]);
   // Matches `foldQuickAddDraft` has already folded out of `value` — see
   // board-column.tsx's own quick-add row for the identical pattern.
   const [confirmedMatches, setConfirmedMatches] = useState<QuickAddMatch[]>([]);
@@ -306,9 +317,11 @@ export function CommandPalette({
     return resolveQuickAdd(quickAddDraftToString(settled.text, settled.confirmed), today, {
       presets: reminderPresets,
       lists: mentionListOptions,
+      assignees,
+      agents,
       literals,
     });
-  }, [value, confirmedMatches, today, reminderPresets, mentionListOptions, literals]);
+  }, [value, confirmedMatches, today, reminderPresets, mentionListOptions, assignees, agents, literals]);
 
   const mentionedLabelIds = useMemo(() => new Set(mentionedLabels.map((l) => l.id)), [mentionedLabels]);
 
@@ -323,11 +336,19 @@ export function CommandPalette({
     return [
       {
         trigger: "@",
-        items: mentionListOptions.map((list) => ({
-          id: list.id,
-          label: list.name,
-          data: { kind: "list" as const, list },
-        })),
+        items: [
+          ...mentionListOptions.map((list) => ({
+            id: list.id,
+            label: list.name,
+            data: { kind: "list" as const, list },
+          })),
+          ...assignees.map((assignee) => ({
+            id: assignee.id,
+            label: assignee.name,
+            detail: assigneeKindDetail(assignee.kind),
+            data: { kind: "assignee" as const, assignee },
+          })),
+        ],
       },
       {
         trigger: "#",
@@ -345,7 +366,7 @@ export function CommandPalette({
         }),
       },
     ];
-  }, [mode.kind, mentionListOptions, labels, mentionedLabelIds]);
+  }, [mode.kind, mentionListOptions, assignees, labels, mentionedLabelIds]);
   const mention = useMention({ value, cursor, sources: mentionSources });
 
   useEffect(() => {
@@ -363,6 +384,7 @@ export function CommandPalette({
 
     const pick = resolved.item.data;
     if (pick.kind === "list") setMentionedList(pick.list);
+    else if (pick.kind === "assignee") setMentionedAssignee(pick.assignee);
     else if (pick.kind === "label") setMentionedLabels((ls) => [...ls, pick.label]);
     else if (pick.kind === "create-label") {
       const id = await createLabel(pick.name);
@@ -385,6 +407,7 @@ export function CommandPalette({
       setLiterals([]);
       setCursor(0);
       setMentionedList(null);
+      setMentionedAssignee(null);
       setMentionedLabels([]);
     }
     onOpenChange(next);
@@ -438,6 +461,8 @@ export function CommandPalette({
   const createQuickAddTodo = async () => {
     const backlog = lists.find((l) => l.isBacklog);
     const listId = mentionedList?.id ?? quickAdd.list?.id ?? backlog?.id ?? null;
+    // A picked assignee outranks one the typed text named (EI-426).
+    const assignee = mentionedAssignee ?? quickAdd.assignee;
     const id = await createTodo({
       title: quickAdd.title,
       listId,
@@ -446,6 +471,7 @@ export function CommandPalette({
       priority: quickAdd.priority,
       reminderTime: quickAdd.reminderTime,
       labelIds: mentionedLabels.map((l) => l.id),
+      assigneeId: assignee?.id ?? null,
     });
     announceQuickAdd(
       id,
@@ -454,6 +480,7 @@ export function CommandPalette({
         today,
         scheduledDate: quickAdd.scheduledDate,
         list: lists.find((l) => l.id === listId) ?? null,
+        assignee,
         unresolvedMentions: quickAdd.unresolvedMentions,
       }),
     );
@@ -775,6 +802,15 @@ export function CommandPalette({
                   },
                 ]
               : []),
+            ...(mentionedAssignee
+              ? [
+                  {
+                    key: `assignee:${mentionedAssignee.id}`,
+                    label: `→ ${mentionedAssignee.name}`,
+                    onRemove: () => setMentionedAssignee(null),
+                  },
+                ]
+              : []),
             ...mentionedLabels.map((label) => ({
               key: `label:${label.id}`,
               label: label.emoji ? `#${label.emoji} ${label.name}` : `#${label.name}`,
@@ -785,6 +821,7 @@ export function CommandPalette({
             ...quickAddStatusChips(quickAdd, {
               typingMention: mention.trigger ? `@${mention.trigger.query}` : null,
               pickedList: mentionedList !== null,
+              pickedAssignee: mentionedAssignee !== null,
               onCreateList: (name) => void createMentionedList(name),
             }),
           ]}

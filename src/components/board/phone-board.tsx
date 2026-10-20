@@ -366,8 +366,8 @@ export function PhoneBoard({
                   emphasis={isToday}
                   onToggle={handleToggle}
                   onOpen={(todo) => openTodoSheet(todo.id)}
-                  onQuickAdd={(title, listId, labelIds, literals) =>
-                    void handleQuickAdd(title, { day: column.day }, listId, labelIds, literals)
+                  onQuickAdd={(title, listId, labelIds, literals, assigneeId) =>
+                    void handleQuickAdd(title, { day: column.day }, listId, labelIds, literals, assigneeId)
                   }
                   lists={mentionLists}
                   onCreateList={(name) => void handleCreateListFromMention(name)}
@@ -464,13 +464,14 @@ export function PhoneBoard({
                   awayTodoIds={board.awayTodoIds}
                   onToggle={handleToggle}
                   onOpen={(todo) => openTodoSheet(todo.id)}
-                  onQuickAdd={(title, listId, labelIds, literals) =>
+                  onQuickAdd={(title, listId, labelIds, literals, assigneeId) =>
                     void handleQuickAdd(
                       title,
                       { listId: filteredBacklogColumn.list.id },
                       listId,
                       labelIds,
                       literals,
+                      assigneeId,
                     )
                   }
                   lists={mentionLists}
@@ -525,8 +526,8 @@ export function PhoneBoard({
                   awayTodoIds={board.awayTodoIds}
                   onToggle={handleToggle}
                   onOpen={(todo) => openTodoSheet(todo.id)}
-                  onQuickAdd={(title, listId, labelIds, literals) =>
-                    void handleQuickAdd(title, { listId: column.list.id }, listId, labelIds, literals)
+                  onQuickAdd={(title, listId, labelIds, literals, assigneeId) =>
+                    void handleQuickAdd(title, { listId: column.list.id }, listId, labelIds, literals, assigneeId)
                   }
                   lists={mentionLists}
                   onCreateList={(name) => void handleCreateListFromMention(name)}

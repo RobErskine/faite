@@ -201,6 +201,29 @@ text the parser sees (see `quick-add-preview.tsx`'s doc comment). The one
 exception (EI-375): an `@list` typed out in full and never picked is resolved
 from the text by `resolveQuickAdd` before parsing — see below.
 
+**`for <agent>` assigns (EI-426).** A trailing `for <agent>` — "write email
+to daycare for Instinct" — assigns the to-do to that agent and takes the
+words out of the title ("write email to daycare"); the chip reads "→
+Instinct" and has a × like every other chip. It is a quick-add token, so it
+obeys the same edge rule (trailing run only) and `quickAdd.assignee` carries
+the result.
+
+- **Agents only.** People are never offered. "buy gift for Mom" names who the
+  gift is *for* (the receiver), not who does the work; an agent is the doer.
+  Callers pass `agents` in `QuickAddOptions`; omitted or empty, "for" is just
+  a word.
+- **Loose, longest first.** Case, spaces, `-` and `_` are ignored, and the
+  longest name wins, so "for Claude Code" is not "for Claude" plus "Code".
+- **Precedence**, highest first: an assignee picked from the `@` menu, then
+  an `@Name` typed out in full and never picked, then `for <agent>`. If a
+  menu pick and a `for` phrase both exist, the pick wins but the `for` words
+  are still stripped from the title. When a typed `@Name` assigns, the
+  `for <agent>` words stay in the title.
+- **Ambiguity assigns nothing.** Two agents matching the phrase assign
+  neither, and the words stay in the title. A typed `@Name` that matches both
+  a list and an assignee stays unresolved (the "@name · 2 match" chip, in
+  the title as typed) rather than quietly picking the list.
+
 **Never misfiled silently (EI-375).** Seen in production on one day: `oct 1`
 landed in *next* October with a chip reading just "Oct 1"; `@to-read` matched
 nothing and stayed in the title; "Call the dentist about Thursday" went onto
